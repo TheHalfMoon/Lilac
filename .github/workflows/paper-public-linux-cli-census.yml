@@ -1,0 +1,109 @@
+name: Paper Public Linux CLI Census
+
+on:
+  push:
+    branches:
+      - codex/paper-recovery-deep
+    paths:
+      - '.github/workflows/paper-public-linux-cli-census.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    name: Public Linux CLI census
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download official public AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --output Paper.AppImage \
+            'https://download.paper.design/linux/appImage'
+          sha256sum Paper.AppImage | tee appimage.sha256
+          chmod +x Paper.AppImage
+
+      - name: Extract AppImage and locate Paper CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./Paper.AppImage --appimage-extract >/dev/null
+          cli="$(find squashfs-root -type f -path '*/cli-bin/*/paper' -print -quit)"
+          if [ -z "$cli" ]; then
+            echo 'Paper CLI was not found in AppImage' >&2
+            find squashfs-root -maxdepth 8 -type f -printf '%s %p\n' | sort -nr | head -100
+            exit 1
+          fi
+          printf 'PAPER_CLI=%s\n' "$cli" >> "$GITHUB_ENV"
+
+      - name: Produce metadata-only Go CLI census
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum "$PAPER_CLI" > cli.sha256
+          stat -c '%s' "$PAPER_CLI" > cli.size
+          go version -m "$PAPER_CLI" > go-build-info.txt
+          strings -a "$PAPER_CLI" > cli.strings
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import re
+          from pathlib import Path
+
+          cli = Path(__import__('os').environ['PAPER_CLI'])
+          strings = Path('cli.strings').read_text(errors='ignore').splitlines()
+          build_info = Path('go-build-info.txt').read_text(errors='ignore')
+          appimage_sha = Path('appimage.sha256').read_text().split()[0]
+          cli_sha = Path('cli.sha256').read_text().split()[0]
+          cli_size = int(Path('cli.size').read_text().strip())
+
+          module_functions = sorted({
+              line for line in strings
+              if line.startswith('github.com/paper-design/paper/cli/')
+              and '.go' not in line
+              and len(line) < 300
+          })
+          source_files = sorted({
+              line for line in strings
+              if line.startswith('github.com/paper-design/paper/cli/') and line.endswith('.go')
+          })
+          public_literals = sorted({
+              line for line in strings
+              if line in {
+                  'https://app.paper.design',
+                  '/mcp/desktop/config.json',
+                  'X-Paper-From',
+                  'PAPER_ORIGIN',
+              }
+          })
+          json_tags = sorted({line for line in strings if line.startswith('json:"') and len(line) < 100})
+
+          output = {
+              'source_url': 'https://download.paper.design/linux/appImage',
+              'appimage_sha256': appimage_sha,
+              'cli_path_in_appimage': str(cli),
+              'cli_sha256': cli_sha,
+              'cli_size_bytes': cli_size,
+              'go_build_info_sha256': hashlib.sha256(build_info.encode()).hexdigest(),
+              'go_build_info_lines': [line.strip() for line in build_info.splitlines() if line.strip()],
+              'paper_cli_source_files': source_files,
+              'paper_cli_function_symbols': module_functions,
+              'paper_public_literals': public_literals,
+              'json_tag_strings': json_tags,
+          }
+          Path('paper-linux-cli-census.json').write_text(json.dumps(output, indent=2, sort_keys=True) + '\n')
+          print(json.dumps(output, indent=2, sort_keys=True))
+          PY
+          rm -f cli.strings go-build-info.txt cli.sha256 cli.size appimage.sha256
+
+      - name: Upload metadata-only census
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-public-linux-cli-census
+          path: paper-linux-cli-census.json
+          if-no-files-found: error
+          retention-days: 7
