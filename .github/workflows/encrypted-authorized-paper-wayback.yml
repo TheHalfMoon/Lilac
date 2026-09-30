@@ -1,0 +1,54 @@
+name: Encrypted authorized Paper Wayback recovery
+
+on:
+  push:
+    branches:
+      - codex/recover-public-paper-artifacts
+    paths:
+      - .github/workflows/encrypted-authorized-paper-wayback.yml
+      - scripts/stage-authorized-paper-wayback-recovery.py
+      - scripts/recovery-public-key.pem
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover-wayback-encrypted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage archived bundles privately on runner
+        run: python3 scripts/stage-authorized-paper-wayback-recovery.py
+
+      - name: Encrypt archived bundles before artifact upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p encrypted-paper-wayback-recovery
+          tar -czf "$RUNNER_TEMP/paper-wayback-recovery.tar.gz" authorized-paper-wayback-recovery
+          openssl rand -hex 32 > "$RUNNER_TEMP/paper-wayback-passphrase.txt"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 250000 \
+            -in "$RUNNER_TEMP/paper-wayback-recovery.tar.gz" \
+            -out encrypted-paper-wayback-recovery/paper-wayback-recovery.tar.gz.enc \
+            -pass file:"$RUNNER_TEMP/paper-wayback-passphrase.txt"
+          openssl pkeyutl -encrypt -pubin \
+            -inkey scripts/recovery-public-key.pem \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -in "$RUNNER_TEMP/paper-wayback-passphrase.txt" \
+            -out encrypted-paper-wayback-recovery/passphrase.key.enc
+          cp authorized-paper-wayback-recovery/RECOVERY.json encrypted-paper-wayback-recovery/RECOVERY.json
+          sha256sum encrypted-paper-wayback-recovery/paper-wayback-recovery.tar.gz.enc \
+            encrypted-paper-wayback-recovery/passphrase.key.enc \
+            > encrypted-paper-wayback-recovery/SHA256SUMS
+
+      - name: Upload encrypted Wayback recovery only
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-authorized-paper-wayback-recovery
+          path: encrypted-paper-wayback-recovery
+          if-no-files-found: error
+          retention-days: 1
