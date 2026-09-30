@@ -8,6 +8,7 @@ on:
       - .github/workflows/public-paper-artifact-census.yml
       - scripts/public-paper-artifact-census.py
       - scripts/historical-paper-desktop-census.py
+      - scripts/historical-paper-desktop-census-v2.py
   workflow_dispatch:
 
 permissions:
@@ -50,7 +51,7 @@ jobs:
           npm install --global @electron/asar
 
       - name: Run historical Desktop archaeology
-        run: python3 scripts/historical-paper-desktop-census.py
+        run: python3 scripts/historical-paper-desktop-census-v2.py
 
       - name: Upload metadata-only historical report
         uses: actions/upload-artifact@v4
