@@ -1,0 +1,67 @@
+name: Encrypted authorized Paper recovery
+
+on:
+  push:
+    branches:
+      - codex/recover-public-paper-artifacts
+    paths:
+      - .github/workflows/encrypted-authorized-paper-recovery.yml
+      - scripts/stage-authorized-paper-recovery.py
+      - scripts/recovery-public-key.pem
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover-encrypted:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install local inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full file openssl
+          npm install --global @electron/asar
+
+      - name: Stage authorized recovery privately on runner
+        run: python3 scripts/stage-authorized-paper-recovery.py
+
+      - name: Encrypt recovered source before artifact upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p encrypted-paper-recovery
+          tar -czf "$RUNNER_TEMP/paper-recovery.tar.gz" authorized-paper-recovery
+          openssl rand -hex 32 > "$RUNNER_TEMP/paper-recovery-passphrase.txt"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 250000 \
+            -in "$RUNNER_TEMP/paper-recovery.tar.gz" \
+            -out encrypted-paper-recovery/paper-recovery.tar.gz.enc \
+            -pass file:"$RUNNER_TEMP/paper-recovery-passphrase.txt"
+          openssl pkeyutl -encrypt -pubin \
+            -inkey scripts/recovery-public-key.pem \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -in "$RUNNER_TEMP/paper-recovery-passphrase.txt" \
+            -out encrypted-paper-recovery/passphrase.key.enc
+          cp authorized-paper-recovery/RECOVERY.json encrypted-paper-recovery/RECOVERY.json
+          cat > encrypted-paper-recovery/ENCRYPTION.txt <<'EOF'
+          Hybrid encrypted recovery artifact.
+          Payload: AES-256-CBC, PBKDF2, 250000 iterations.
+          Passphrase envelope: RSA-OAEP with SHA-256.
+          The matching private key is not present in this repository or artifact.
+          Raw recovered source was never uploaded unencrypted.
+          EOF
+          sha256sum encrypted-paper-recovery/paper-recovery.tar.gz.enc \
+            encrypted-paper-recovery/passphrase.key.enc \
+            > encrypted-paper-recovery/SHA256SUMS
+
+      - name: Upload encrypted recovery only
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-authorized-paper-recovery
+          path: encrypted-paper-recovery
+          if-no-files-found: error
+          retention-days: 1
