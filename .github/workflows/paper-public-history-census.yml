@@ -1,0 +1,136 @@
+name: Paper Public History Census
+
+on:
+  push:
+    branches:
+      - codex/paper-history-expansion
+    paths:
+      - '.github/workflows/paper-public-history-census.yml'
+      - 'scripts/census-paper-asar.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    name: Paper ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - version: '0.5.1'
+            build: '260727g4bj55u42'
+            sha256: '911a4ac3105cd717bfb114a1f06bfecc554b72f76ba8ef55385d4038bb850f4b'
+          - version: '0.5.2'
+            build: '2607302lnm29wpj'
+            sha256: 'b66bce75039406312b487db5b317d06a882f8b3b05178714e77185efdd444d5d'
+          - version: '0.5.3'
+            build: '260807bfjxxqmpq'
+            sha256: '1470b6ef9dda316cc642e53c25b90c4463aa3f413dad59f00f5c2c47f616fb19'
+          - version: '0.5.4'
+            build: '2608142b19r2kkj'
+            sha256: '7e6cdca8ad526ea1646f3e9888cf69c0bff44f7e452ff8a73585786d60f745d5'
+          - version: '0.5.5'
+            build: '2608248vduqftg0'
+            sha256: 'e07476fbab53f431b437375e5768db22a388b0e092559d4d582779a73c7dabc5'
+          - version: '0.5.6'
+            build: '2608278ikbsisiz'
+            sha256: 'de9f80928c1340ddbe470e5637b7d26da425de1869ce0d721067df75748a1962'
+          - version: '0.5.8'
+            build: '260910c6c61cnhq'
+            sha256: '0c91f02366c9dc77a669204bbfe6a52fed4727cfcf69a7f0fffb6437b6256d04'
+          - version: '0.5.9'
+            build: '260912scb5jfzbk'
+            sha256: 'd87988c92d12cac6b549900bd3725a3d8fff958635743c25eeaff81dc804b7fa'
+          - version: '0.5.10'
+            build: '260915hvvfu9v5u'
+            sha256: '4ade89a5fff673c9d94cf5e508c65be26a6e1e0f4739b320592e956bece016a6'
+          - version: '0.5.11'
+            build: '260918wsvtkwn81'
+            sha256: '03a027b2b1bc1df2e54f8db3d4cd5c1c404bf56994926113efe223e0b2a27079'
+          - version: '0.5.12'
+            build: '260923mbui5shcl'
+            sha256: '01963c49efd6bf1b5e6f752edb77c5fc4fefc6fae37aa7be6518c58f9b75e4fd'
+          - version: '0.5.13'
+            build: '260928cvv9p60wr'
+            sha256: 'ae140abcfadad106691653b30bbb965aaab9a0104209a135ca23c5b431b12515'
+
+    steps:
+      - name: Checkout Lilac recovery tooling
+        uses: actions/checkout@v4
+
+      - name: Install archive tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq p7zip-full
+
+      - name: Download and verify public Paper Desktop artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/paper"
+          encoded_version="${{ matrix.version }}"
+          url="https://download.todesktop.com/2601167vjw8xe/Paper%20${encoded_version}%20-%20Build%20${{ matrix.build }}-arm64.dmg"
+          dmg="$RUNNER_TEMP/paper/Paper-${{ matrix.version }}.dmg"
+          curl --fail --location --retry 3 --retry-delay 2 --output "$dmg" "$url"
+          printf '%s  %s\n' '${{ matrix.sha256 }}' "$dmg" | sha256sum --check --strict
+          printf 'PAPER_DMG=%s\n' "$dmg" >> "$GITHUB_ENV"
+
+      - name: Extract public DMG and locate app.asar
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/paper/dmg"
+          mkdir -p "$out"
+          set +e
+          7z x -y "$PAPER_DMG" "-o$out" >"$RUNNER_TEMP/paper/7z.log" 2>&1
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/paper/7z.log"
+          if [ "$rc" -gt 2 ]; then
+            echo "7z extraction failed with exit code $rc" >&2
+            exit "$rc"
+          fi
+          asar="$(find "$out" -type f -name app.asar -print -quit)"
+          if [ -z "$asar" ]; then
+            echo 'app.asar was not found in the public DMG' >&2
+            find "$out" -maxdepth 6 -type f -printf '%s %p\n' | sort -nr | head -100
+            exit 1
+          fi
+          printf 'PAPER_ASAR=%s\n' "$asar" >> "$GITHUB_ENV"
+
+      - name: Produce metadata-only source recovery census
+        run: |
+          python3 scripts/census-paper-asar.py \
+            "$PAPER_ASAR" \
+            --version '${{ matrix.version }}' \
+            --build-id '${{ matrix.build }}' \
+            --dmg-sha256 '${{ matrix.sha256 }}' \
+            --output "paper-${{ matrix.version }}-census.json"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = next(Path('.').glob('paper-*-census.json'))
+          d = json.loads(p.read_text())
+          print(json.dumps({
+              'version': d['version'],
+              'build_id': d['build_id'],
+              'asar': d['asar'],
+              'first_party_source_count': d['first_party_source']['count'],
+              'source_map_count': d['source_maps']['count'],
+              'maps_with_sources_content': d['source_maps']['with_sources_content'],
+              'internal_paths_with_content_count': len(d['source_maps']['internal_paths_with_content']),
+              'target_hits': {k: len(v) for k, v in d['source_maps']['target_hits'].items()},
+          }, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload metadata-only census
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-${{ matrix.version }}-metadata-census
+          path: paper-${{ matrix.version }}-census.json
+          if-no-files-found: error
+          retention-days: 7
