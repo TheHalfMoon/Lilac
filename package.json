@@ -1,0 +1,13 @@
+{
+  "name": "lilac",
+  "private": true,
+  "version": "0.0.0",
+  "description": "AI-native design workspace with bidirectional design and code workflows.",
+  "scripts": {
+    "check": "node --check scripts/import-authorized-paper.mjs && node --test tests/*.test.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
