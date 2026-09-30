@@ -22,3 +22,5 @@ jobs:
         env:
           PAPER_PUBLIC_TARGET: https://app.paper.design/playground/heatmap?node=01K4PQADK7SX9ZFSZQ72Q7XMV3
         run: node scripts/probe-public-paper-client.mjs
+      - name: Extract editor contract metadata
+        run: node scripts/analyze-paper-editor-contracts.mjs
