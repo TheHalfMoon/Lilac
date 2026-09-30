@@ -1,0 +1,31 @@
+name: Paper Wayback JavaScript census
+
+on:
+  push:
+    branches:
+      - codex/recover-public-paper-artifacts
+    paths:
+      - .github/workflows/paper-wayback-js-census.yml
+      - scripts/paper-wayback-js-census.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wayback-js:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inspect archived public Paper JavaScript
+        run: python3 scripts/paper-wayback-js-census.py
+
+      - name: Upload metadata-only Wayback report
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-wayback-js-census
+          path: paper-wayback-census/report
+          if-no-files-found: error
+          retention-days: 30
