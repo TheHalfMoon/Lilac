@@ -65,14 +65,6 @@ jobs:
           Path('paper-mcp-config-census.json').write_text(json.dumps(output, indent=2, sort_keys=True) + '\n')
           print(json.dumps(output, indent=2, sort_keys=True))
 
-      - name: Upload public response for ephemeral local contract analysis
-        uses: actions/upload-artifact@v4
-        with:
-          name: paper-public-mcp-config-raw-ephemeral
-          path: paper-mcp-config.json
-          if-no-files-found: error
-          retention-days: 1
-
       - name: Remove raw response
         run: rm -f paper-mcp-config.json
 
