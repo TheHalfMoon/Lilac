@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/public-paper-artifact-census.yml
       - scripts/public-paper-artifact-census.py
+      - scripts/historical-paper-desktop-census.py
   workflow_dispatch:
 
 permissions:
@@ -33,5 +34,28 @@ jobs:
         with:
           name: paper-public-artifact-census
           path: paper-census/report
+          if-no-files-found: error
+          retention-days: 30
+
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install archaeology tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full file
+          npm install --global @electron/asar
+
+      - name: Run historical Desktop archaeology
+        run: python3 scripts/historical-paper-desktop-census.py
+
+      - name: Upload metadata-only historical report
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-desktop-history-census
+          path: paper-history/report
           if-no-files-found: error
           retention-days: 30
