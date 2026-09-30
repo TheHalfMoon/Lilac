@@ -1,0 +1,24 @@
+name: Probe public Paper client
+
+on:
+  push:
+    branches:
+      - codex/probe-public-paper-client
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe public playground assets
+        env:
+          PAPER_PUBLIC_TARGET: https://app.paper.design/playground/heatmap?node=01K4PQADK7SX9ZFSZQ72Q7XMV3
+        run: node scripts/probe-public-paper-client.mjs
