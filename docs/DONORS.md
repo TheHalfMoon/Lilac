@@ -8,10 +8,22 @@ This ledger tracks code, design, architecture, and behavior sources considered b
 
 - Role: **primary foundation / authorized donor**
 - Authorization basis: project owner explicitly states they have full permission to copy, modify, and use the Paper.design source code for Lilac.
-- Exact artifact/repository: **not yet available in connected sources**
-- Exact revision/hash: **pending intake**
-- Import state: **NOT IMPORTED**
-- Rule: do not represent public utility repositories as the complete Paper product source.
+- Original private monorepo identified from shipped Desktop documentation: `paper-design/paper`.
+- Private monorepo access: **not available through connected GitHub sources**.
+- Shipped/public artifact intake state: **PARTIAL_RECOVERY_PROVEN**.
+- Current exact Desktop source: recovered from public/end-user-shipped Paper Desktop 0.5.14 packages.
+- Historical Desktop lineage: 21 observed public/shipped builds, with exact first-party source paths and historical source-map evidence.
+- Internal package source: exact embedded source independently verified for 16 TypeScript files plus `cli/package.json` across `models`, `assets`, `cli`, and `client-desktop-types`.
+- Web editor: production/lazy JavaScript bundles are publicly shipped to the browser; current original TS/TSX source maps have not been recovered.
+- Snapshot extension: official shipped CRX recovered and inventoried; current observed extension bundle does not include source maps.
+- Complete original product repository: **NOT RECOVERED**.
+- Rule: do not describe partial shipped-artifact recovery as a complete monorepo import, and do not represent public utility repositories as the complete Paper product source.
+- Public-repository boundary: Lilac records metadata, hashes, paths, and compatibility evidence publicly; raw proprietary recovered source remains outside the public repository unless public redistribution rights are separately established.
+
+Primary recovery evidence:
+
+- `docs/evidence/PAPER_PUBLIC_SHIPPED_RECOVERY_CENSUS_2026-10-01.md`
+- `docs/evidence/PAPER_DESKTOP_HISTORY_EXPANSION_2026-10-01.md`
 
 ### Public Paper repositories observed
 
@@ -24,6 +36,21 @@ This ledger tracks code, design, architecture, and behavior sources considered b
 | `paper-design/google-fonts-scripts` | font metadata/build scripts | pending exact license check | tooling/reference |
 | `paper-design/liquid-logo` | shader demo/application | pending exact license check | reference only unless intentionally imported |
 | `paper-design/webmcp-agent-example` | WebMCP example harness | pending exact license check | MCP integration reference |
+
+## External MIT donor/reference: `vcashwin/paper-snapshot`
+
+- Repository: `vcashwin/paper-snapshot`
+- Observed main revision: `12920e03e5bd6758a5e5d20db92b68e0410b0fb0`
+- License: MIT, copyright 2026 vcashwin.
+- Classification: **independent third-party donor/reference**, not an official Paper repository and not proof of Paper ownership/original source.
+- Purpose: readable TypeScript implementation of a Paper-compatible DOM capture and inline-style serialization pipeline.
+- Relevant packages:
+  - `@paper-snapshot/core` — picker, capture, serializer, clipboard, styles, text, wrapping;
+  - `@paper-snapshot/react` — React capture UI/hook surface;
+  - `@paper-snapshot/electron` — Electron clipboard and guest/webview capture support.
+- High-value source paths include `packages/core/src/capture.ts`, `picker.ts`, `serialize-node.ts`, `serialize.ts`, `styles.ts`, `text.ts`, `types.ts`, and Electron/React adapters.
+- Intended Lilac use: donor/reference for Lilac's website/app intake and snapshot subsystem, subject to preserving the MIT copyright and permission notice in substantial copied portions.
+- Provenance rule: any code imported from this repository must retain its own donor record and must never be mislabeled as recovered proprietary Paper source.
 
 ## External reference: Doop
 
