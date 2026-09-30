@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/paper-recovery-surface-census.yml
       - scripts/paper-recovery-surface-census.py
+      - scripts/inventory-paper-dist-main-sourcemap.py
   workflow_dispatch:
 
 permissions:
@@ -27,6 +28,12 @@ jobs:
 
       - name: Run recovery surface census
         run: python3 scripts/paper-recovery-surface-census.py
+
+      - name: Inventory embedded first-party workspace sources
+        run: |
+          python3 scripts/inventory-paper-dist-main-sourcemap.py \
+            paper-recovery-surface/extract/map-asar/dist/main.cjs.map \
+            --output paper-recovery-surface/report/embedded-first-party-sources.tsv
 
       - name: Upload metadata-only recovery report
         uses: actions/upload-artifact@v4
