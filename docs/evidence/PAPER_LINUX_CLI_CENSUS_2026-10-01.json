@@ -1,0 +1,24 @@
+{
+  "source_url": "https://download.paper.design/linux/appImage",
+  "appimage_sha256": "e343fdf1e26800399ca40a1248624cb14f4f8d4e4b060169d27b5f479ba8d896",
+  "cli_path_in_appimage": "resources/app.asar.unpacked/dist/cli-bin/linux-x64/paper",
+  "cli_sha256": "29b74102ab777c295194a80ba229387afa36aff64e8a614a868729556443cb58",
+  "cli_size_bytes": 6226082,
+  "go_version": "go1.26.8",
+  "module": "github.com/paper-design/paper/cli",
+  "command_package": "github.com/paper-design/paper/cli/cmd",
+  "goos": "linux",
+  "goarch": "amd64",
+  "source_files_exposed_by_runtime_metadata": [
+    "github.com/paper-design/paper/cli/cmd/paper.go",
+    "github.com/paper-design/paper/cli/internal/config.go",
+    "github.com/paper-design/paper/cli/internal/conn_reset_other.go",
+    "github.com/paper-design/paper/cli/internal/relay.go"
+  ],
+  "provenance": {
+    "workflow_run": 36788666557,
+    "workflow_head": "c80b3e5e2537e12f5b1b5c53d694ac9aeb881767",
+    "result": "SUCCESS",
+    "raw_binary_committed": false
+  }
+}
