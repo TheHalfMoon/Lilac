@@ -143,6 +143,35 @@ test("rule packs reserve the upstream namespace and reject duplicate ids", () =>
   );
 });
 
+test("runtime rejects a manually constructed pack using the reserved upstream namespace", async () => {
+  await assert.rejects(
+    scanBrowserSnapshot({
+      snapshot: {},
+      rulePacks: [{
+        namespace: "impeccable",
+        rules: [{
+          id: "impersonation",
+          title: "Impersonation",
+          severity: "warning",
+          surfaces: ["browser-snapshot"],
+          check: () => [],
+        }],
+      }],
+    }),
+    /reserved rule pack namespace/,
+  );
+});
+
+test("source adapter accepts the upstream CSS-family extension set", async () => {
+  const report = await scanSourceText({
+    content: "body { font-family: Arial; }",
+    filePath: "styles/theme.scss",
+  });
+  assert.equal(report.surface, "source");
+  assert.equal(report.subject.path, "styles/theme.scss");
+  assert.ok(report.findings.some((finding) => finding.ruleId === "impeccable/overused-font"));
+});
+
 test("source adapter hides temporary paths and is deterministic", async () => {
   const targets = [];
   const runner = {

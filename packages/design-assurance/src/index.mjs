@@ -24,16 +24,21 @@ const MAX_INLINE_INPUT_BYTES = 5 * 1024 * 1024;
 const MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024;
 const MAX_ENGINE_OUTPUT_BYTES = 16 * 1024 * 1024;
 const MAX_SNAPSHOT_ELEMENTS = 50_000;
-const SCANNABLE_SOURCE_EXTENSIONS = new Set([
-  ".astro",
-  ".htm",
+const SCANNABLE_SOURCE_EXTENSIONS = Object.freeze([
+  ".blade.php",
   ".html",
-  ".js",
+  ".htm",
+  ".css",
+  ".scss",
+  ".sass",
+  ".less",
   ".jsx",
-  ".svelte",
-  ".ts",
   ".tsx",
+  ".js",
+  ".ts",
   ".vue",
+  ".svelte",
+  ".astro",
 ]);
 
 export class DesignAssuranceError extends Error {
@@ -271,12 +276,17 @@ function localFinding(rulePack, rule, partial, context) {
 function runRulePacks(context, rulePacks) {
   const findings = [];
   const fullIds = new Set();
-  const orderedPacks = [...rulePacks].sort((a, b) => a.namespace.localeCompare(b.namespace));
+  const orderedPacks = [...rulePacks].sort((a, b) => String(a?.namespace).localeCompare(String(b?.namespace)));
   for (const pack of orderedPacks) {
-    if (!pack || typeof pack.namespace !== "string" || !Array.isArray(pack.rules)) {
+    if (!isPlainObject(pack) || !Array.isArray(pack.rules)) {
       throw new DesignAssuranceError("Invalid Lilac rule pack");
     }
+    assertNonEmptyString(pack.namespace, "rule pack namespace");
+    if (!/^[a-z][a-z0-9-]*$/.test(pack.namespace) || pack.namespace === "impeccable") {
+      throw new DesignAssuranceError(`Invalid or reserved rule pack namespace ${pack.namespace}`);
+    }
     for (const rule of pack.rules) {
+      validateRule(rule, pack.namespace);
       const fullId = `${pack.namespace}/${rule.id}`;
       if (fullIds.has(fullId)) {
         throw new DesignAssuranceError(`rule id collision ${fullId}`);
@@ -518,9 +528,10 @@ export function createImpeccableCliRunner({
 
 function sourceExtension(filePath) {
   assertNonEmptyString(filePath, "filePath");
-  const extension = extname(filePath).toLowerCase();
-  if (!SCANNABLE_SOURCE_EXTENSIONS.has(extension)) {
-    throw new DesignAssuranceError(`Unsupported source extension ${extension || "<none>"}`);
+  const lower = filePath.toLowerCase();
+  const extension = SCANNABLE_SOURCE_EXTENSIONS.find((candidate) => lower.endsWith(candidate));
+  if (!extension) {
+    throw new DesignAssuranceError(`Unsupported source extension ${extname(filePath).toLowerCase() || "<none>"}`);
   }
   return extension;
 }
@@ -832,7 +843,10 @@ export const LILAC_CORE_RULE_PACK = createLilacRulePack({
               location: { nodeId: node.id },
               evidence: {
                 range: isPlainObject(range)
-                  ? { start: range.start ?? null, end: range.end ?? null }
+                  ? {
+                      start: Number.isSafeInteger(range.start) ? range.start : null,
+                      end: Number.isSafeInteger(range.end) ? range.end : null,
+                    }
                   : { valueType: Array.isArray(range) ? "array" : typeof range },
               },
             });
