@@ -3,8 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "description": "AI-native design workspace with bidirectional design and code workflows.",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "check": "node --check scripts/import-authorized-paper.mjs && node --test tests/*.test.mjs",
+    "check": "node --check scripts/import-authorized-paper.mjs && node --check packages/document-model/src/index.mjs && node --check packages/history/src/index.mjs && node --test tests/*.test.mjs",
     "test": "node --test tests/*.test.mjs"
   },
   "engines": {
