@@ -107,11 +107,6 @@ const MESSAGE_KINDS = new Set<AgentEventKind>([
   "assistant_message_delta",
   "assistant_message_final",
 ]);
-const ASSISTANT_KINDS = new Set<AgentEventKind>([
-  "assistant_message_start",
-  "assistant_message_delta",
-  "assistant_message_final",
-]);
 const TOOL_KINDS = new Set<AgentEventKind>([
   "tool_call_start",
   "tool_call_arguments_delta",
@@ -120,6 +115,45 @@ const TOOL_KINDS = new Set<AgentEventKind>([
   "tool_error",
   "tool_canceled",
 ]);
+const EVENT_KEYS = new Set([
+  "schemaVersion",
+  "id",
+  "sequence",
+  "runId",
+  "sessionId",
+  "timestamp",
+  "kind",
+  "turnId",
+  "messageId",
+  "toolCallId",
+  "operationId",
+  "transactionId",
+  "data",
+]);
+const DATA_KEYS: Record<AgentEventKind, ReadonlySet<string>> = {
+  run_created: new Set(["metadata"]),
+  run_started: new Set(["metadata"]),
+  run_paused: new Set(["reason"]),
+  run_resumed: new Set(["reason"]),
+  run_completed: new Set(["summary"]),
+  run_failed: new Set(["error"]),
+  run_canceled: new Set(["reason"]),
+  user_message: new Set(["content"]),
+  assistant_message_start: new Set(["role"]),
+  assistant_message_delta: new Set(["delta"]),
+  assistant_message_final: new Set(["content", "finishReason"]),
+  tool_call_start: new Set(["name"]),
+  tool_call_arguments_delta: new Set(["delta"]),
+  tool_call_final: new Set(["name", "arguments"]),
+  tool_result: new Set(["name", "result", "elapsedMs"]),
+  tool_error: new Set(["name", "error", "elapsedMs"]),
+  tool_canceled: new Set(["name", "reason"]),
+  environment_input: new Set(["references", "description"]),
+  plan_started: new Set(["title"]),
+  plan_updated: new Set(["steps"]),
+  plan_step_updated: new Set(["step"]),
+  plan_completed: new Set(["summary"]),
+};
 
 function eventError(error: unknown): never {
   if (error instanceof AgentEventError) throw error;
@@ -148,6 +182,16 @@ function assertObject(value: unknown, label: string): asserts value is Record<st
   }
 }
 
+function assertAllowedKeys(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+  label: string,
+): void {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) throw new AgentEventError(`${label} contains unsupported field ${key}`);
+  }
+}
+
 function assertOptionalId(value: unknown, label: string): void {
   if (value !== undefined) assertId(value, label);
 }
@@ -166,26 +210,33 @@ function assertDelta(value: unknown, label: string): void {
 }
 
 function validateEnvironmentReference(value: unknown, index: number): void {
-  assertObject(value, `environment reference ${index}`);
+  const label = `environment reference ${index}`;
+  assertObject(value, label);
+  assertAllowedKeys(
+    value,
+    new Set(["kind", "refId", "mediaType", "sha256", "byteLength", "width", "height", "label"]),
+    label,
+  );
   if (!["screenshot", "viewport", "codebase", "context"].includes(String(value.kind))) {
-    throw new AgentEventError(`environment reference ${index}.kind is unsupported`);
+    throw new AgentEventError(`${label}.kind is unsupported`);
   }
-  assertId(value.refId, `environment reference ${index}.refId`);
-  if (value.mediaType !== undefined) assertString(value.mediaType, `environment reference ${index}.mediaType`, 256);
+  assertId(value.refId, `${label}.refId`);
+  if (value.mediaType !== undefined) assertString(value.mediaType, `${label}.mediaType`, 256);
   if (value.sha256 !== undefined) {
-    assertString(value.sha256, `environment reference ${index}.sha256`, 64);
+    assertString(value.sha256, `${label}.sha256`, 64);
     if (!/^[a-f0-9]{64}$/u.test(value.sha256 as string)) {
-      throw new AgentEventError(`environment reference ${index}.sha256 must be lowercase SHA-256 hex`);
+      throw new AgentEventError(`${label}.sha256 must be lowercase SHA-256 hex`);
     }
   }
-  assertFiniteNonNegative(value.byteLength, `environment reference ${index}.byteLength`);
-  assertFiniteNonNegative(value.width, `environment reference ${index}.width`);
-  assertFiniteNonNegative(value.height, `environment reference ${index}.height`);
-  if (value.label !== undefined) assertString(value.label, `environment reference ${index}.label`, 1024);
+  assertFiniteNonNegative(value.byteLength, `${label}.byteLength`);
+  assertFiniteNonNegative(value.width, `${label}.width`);
+  assertFiniteNonNegative(value.height, `${label}.height`);
+  if (value.label !== undefined) assertString(value.label, `${label}.label`, 1024);
 }
 
 function validatePlanStep(value: unknown, label: string): void {
   assertObject(value, label);
+  assertAllowedKeys(value, new Set(["id", "content", "status"]), label);
   assertId(value.id, `${label}.id`);
   assertString(value.content, `${label}.content`);
   if (!["pending", "active", "completed", "failed", "canceled"].includes(String(value.status))) {
@@ -194,89 +245,91 @@ function validatePlanStep(value: unknown, label: string): void {
 }
 
 function validateData(kind: AgentEventKind, data: unknown): void {
-  assertObject(data, `${kind}.data`);
+  const label = `${kind}.data`;
+  assertObject(data, label);
+  assertAllowedKeys(data, DATA_KEYS[kind], label);
   switch (kind) {
     case "run_created":
     case "run_started":
-      if (data.metadata !== undefined) normalizeJson(data.metadata, `${kind}.data.metadata`);
+      if (data.metadata !== undefined) normalizeJson(data.metadata, `${label}.metadata`);
       return;
     case "run_paused":
     case "run_canceled":
-      assertString(data.reason, `${kind}.data.reason`, 4096);
+      assertString(data.reason, `${label}.reason`, 4096);
       return;
     case "run_resumed":
-      if (data.reason !== undefined) assertString(data.reason, `${kind}.data.reason`, 4096);
+      if (data.reason !== undefined) assertString(data.reason, `${label}.reason`, 4096);
       return;
     case "run_completed":
-      if (data.summary !== undefined) assertString(data.summary, `${kind}.data.summary`);
+      if (data.summary !== undefined) assertString(data.summary, `${label}.summary`);
       return;
     case "run_failed":
-      assertString(data.error, `${kind}.data.error`);
+      assertString(data.error, `${label}.error`);
       return;
     case "user_message":
-      assertString(data.content, `${kind}.data.content`);
+      assertString(data.content, `${label}.content`);
       return;
     case "assistant_message_start":
       if (data.role !== undefined && data.role !== "assistant") {
-        throw new AgentEventError(`${kind}.data.role must be assistant`);
+        throw new AgentEventError(`${label}.role must be assistant`);
       }
       return;
     case "assistant_message_delta":
-      assertDelta(data.delta, `${kind}.data.delta`);
+      assertDelta(data.delta, `${label}.delta`);
       return;
     case "assistant_message_final":
-      assertString(data.content, `${kind}.data.content`);
-      if (data.finishReason !== undefined) assertString(data.finishReason, `${kind}.data.finishReason`, 1024);
+      assertString(data.content, `${label}.content`);
+      if (data.finishReason !== undefined) assertString(data.finishReason, `${label}.finishReason`, 1024);
       return;
     case "tool_call_start":
-      assertId(data.name, `${kind}.data.name`);
+      assertId(data.name, `${label}.name`);
       return;
     case "tool_call_arguments_delta":
-      assertDelta(data.delta, `${kind}.data.delta`);
+      assertDelta(data.delta, `${label}.delta`);
       return;
     case "tool_call_final":
-      assertId(data.name, `${kind}.data.name`);
-      normalizeJson(data.arguments, `${kind}.data.arguments`);
+      assertId(data.name, `${label}.name`);
+      normalizeJson(data.arguments, `${label}.arguments`);
       return;
     case "tool_result":
-      assertId(data.name, `${kind}.data.name`);
-      normalizeJson(data.result, `${kind}.data.result`);
-      assertFiniteNonNegative(data.elapsedMs, `${kind}.data.elapsedMs`);
+      assertId(data.name, `${label}.name`);
+      normalizeJson(data.result, `${label}.result`);
+      assertFiniteNonNegative(data.elapsedMs, `${label}.elapsedMs`);
       return;
     case "tool_error":
-      assertId(data.name, `${kind}.data.name`);
-      assertString(data.error, `${kind}.data.error`);
-      assertFiniteNonNegative(data.elapsedMs, `${kind}.data.elapsedMs`);
+      assertId(data.name, `${label}.name`);
+      assertString(data.error, `${label}.error`);
+      assertFiniteNonNegative(data.elapsedMs, `${label}.elapsedMs`);
       return;
     case "tool_canceled":
-      assertId(data.name, `${kind}.data.name`);
-      assertString(data.reason, `${kind}.data.reason`, 4096);
+      assertId(data.name, `${label}.name`);
+      assertString(data.reason, `${label}.reason`, 4096);
       return;
     case "environment_input":
       if (!Array.isArray(data.references) || data.references.length === 0) {
-        throw new AgentEventError(`${kind}.data.references must be a non-empty array`);
+        throw new AgentEventError(`${label}.references must be a non-empty array`);
       }
       if (data.references.length > MAX_ENVIRONMENT_REFERENCES) {
-        throw new AgentEventError(`${kind}.data.references exceeds ${MAX_ENVIRONMENT_REFERENCES} entries`);
+        throw new AgentEventError(`${label}.references exceeds ${MAX_ENVIRONMENT_REFERENCES} entries`);
       }
       data.references.forEach(validateEnvironmentReference);
-      if (data.description !== undefined) assertString(data.description, `${kind}.data.description`, 4096);
+      if (data.description !== undefined) assertString(data.description, `${label}.description`, 4096);
       return;
     case "plan_started":
-      if (data.title !== undefined) assertString(data.title, `${kind}.data.title`, 4096);
+      if (data.title !== undefined) assertString(data.title, `${label}.title`, 4096);
       return;
     case "plan_updated":
-      if (!Array.isArray(data.steps)) throw new AgentEventError(`${kind}.data.steps must be an array`);
+      if (!Array.isArray(data.steps)) throw new AgentEventError(`${label}.steps must be an array`);
       if (data.steps.length > MAX_PLAN_STEPS) {
-        throw new AgentEventError(`${kind}.data.steps exceeds ${MAX_PLAN_STEPS} entries`);
+        throw new AgentEventError(`${label}.steps exceeds ${MAX_PLAN_STEPS} entries`);
       }
-      data.steps.forEach((step, index) => validatePlanStep(step, `${kind}.data.steps[${index}]`));
+      data.steps.forEach((step, index) => validatePlanStep(step, `${label}.steps[${index}]`));
       return;
     case "plan_step_updated":
-      validatePlanStep(data.step, `${kind}.data.step`);
+      validatePlanStep(data.step, `${label}.step`);
       return;
     case "plan_completed":
-      assertString(data.summary, `${kind}.data.summary`);
+      assertString(data.summary, `${label}.summary`);
       return;
   }
 }
@@ -284,6 +337,7 @@ function validateData(kind: AgentEventKind, data: unknown): void {
 export function validateAgentEvent(value: unknown): asserts value is AgentEvent {
   try {
     assertObject(value, "event");
+    assertAllowedKeys(value, EVENT_KEYS, "event");
     if (value.schemaVersion !== AGENT_EVENT_SCHEMA_VERSION) {
       throw new AgentEventError(`unsupported event schema version ${String(value.schemaVersion)}`);
     }
@@ -307,9 +361,6 @@ export function validateAgentEvent(value: unknown): asserts value is AgentEvent 
     if (MESSAGE_KINDS.has(kind) && (value.turnId === undefined || value.messageId === undefined)) {
       throw new EventCorrelationError(`${kind} requires turnId and messageId`);
     }
-    if (ASSISTANT_KINDS.has(kind) && value.messageId === undefined) {
-      throw new EventCorrelationError(`${kind} requires messageId`);
-    }
     if (TOOL_KINDS.has(kind)) {
       if (value.turnId === undefined || value.messageId === undefined || value.toolCallId === undefined) {
         throw new EventCorrelationError(`${kind} requires turnId, messageId, and toolCallId`);
@@ -329,9 +380,7 @@ export function validateAgentEvent(value: unknown): asserts value is AgentEvent 
   }
 }
 
-export function createAgentEvent<T extends AgentEventKind>(
-  input: AgentEvent<T>,
-): AgentEvent<T> {
+export function createAgentEvent<T extends AgentEventKind>(input: AgentEvent<T>): AgentEvent<T> {
   validateAgentEvent(input);
   return cloneJson(input) as AgentEvent<T>;
 }
