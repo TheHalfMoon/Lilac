@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
 
 import { createDocument } from "../packages/document-model/src/index.mjs";
@@ -15,6 +16,8 @@ import {
   scanSourceText,
   scanStaticHtml,
 } from "../packages/design-assurance/src/index.mjs";
+
+const require = createRequire(import.meta.url);
 
 function upstreamFinding(overrides = {}) {
   return {
@@ -79,8 +82,34 @@ function documentWithBrokenBindings() {
 test("pins the exact Impeccable donor and runtime versions", () => {
   assert.equal(IMPECCABLE_PIN.revision, "e103efe779e2dd01274dabae83531fef00bf2563");
   assert.equal(IMPECCABLE_PIN.packageVersion, "4.1.0");
-  assert.equal(IMPECCABLE_PIN.engineVersion, "0.1.11");
+  assert.equal(IMPECCABLE_PIN.sourceEngineVersion, "0.1.11");
+  assert.equal(IMPECCABLE_PIN.engineVersion, "0.1.5");
   assert.equal(IMPECCABLE_PIN.license, "Apache-2.0");
+});
+
+test("installed Impeccable runtime matches the recorded package and engine pin", () => {
+  const packageJson = JSON.parse(readFileSync(require.resolve("impeccable/package.json"), "utf8"));
+  assert.equal(packageJson.version, IMPECCABLE_PIN.packageVersion);
+  const osName = process.platform === "win32" ? "windows" : process.platform;
+  const platformPackage = `@impeccable/cli-${osName}-${process.arch}`;
+  assert.equal(packageJson.optionalDependencies[platformPackage], IMPECCABLE_PIN.engineVersion);
+});
+
+test("local rule evidence must be JSON-serializable", async () => {
+  const badPack = createLilacRulePack({
+    namespace: "bad-evidence",
+    rules: [{
+      id: "bigint",
+      title: "Bad evidence",
+      severity: "warning",
+      surfaces: ["browser-snapshot"],
+      check: () => [{ evidence: { value: 1n } }],
+    }],
+  });
+  await assert.rejects(
+    scanBrowserSnapshot({ snapshot: {}, rulePacks: [badPack] }),
+    /evidence must be JSON-serializable/,
+  );
 });
 
 test("normalizes upstream findings into the Lilac contract", () => {
@@ -189,6 +218,14 @@ test("browser adapter uses the shared report contract and protects private targe
   assert.equal(calls[0].options.viewport.width, 390);
   await assert.rejects(
     scanBrowserUrl({ url: "http://127.0.0.1:3000", runner }),
+    /allowPrivateNetwork/,
+  );
+  await assert.rejects(
+    scanBrowserUrl({ url: "http://[::1]:3000", runner }),
+    /allowPrivateNetwork/,
+  );
+  await assert.rejects(
+    scanBrowserUrl({ url: "http://[fd00::1]:3000", runner }),
     /allowPrivateNetwork/,
   );
   await assert.rejects(

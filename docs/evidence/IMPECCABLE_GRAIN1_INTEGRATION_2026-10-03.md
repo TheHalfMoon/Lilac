@@ -8,7 +8,8 @@ This record binds Lilac Grain 1 to the exact public Impeccable source and runtim
 - Studied revision: `e103efe779e2dd01274dabae83531fef00bf2563`
 - Public license observed at that revision: Apache-2.0
 - npm package: `impeccable@4.1.0`
-- native detector engine package version: `0.1.11`
+- source snapshot `ENGINE_VERSION`: `0.1.11`
+- published `impeccable@4.1.0` native detector dependency: `0.1.5`
 - Lilac issue: #17
 
 No Impeccable product branding, agent-harness generated skill trees, hosted services, or unrelated runtime subsystems are copied into Lilac.
@@ -17,7 +18,7 @@ No Impeccable product branding, agent-harness generated skill trees, hosted serv
 
 At the pinned revision, Impeccable's package exposes a small Node launcher and platform-specific optional packages containing the native Rust detector binary. The detector runtime itself is implemented by the Cargo workspace. The upstream documentation states that `crates/foundation` defines the finding and rule-pack contracts, `crates/core` holds pure rule logic, `crates/html` handles static HTML, and `crates/browser` performs browser/CDP snapshot-based scanning.
 
-Lilac therefore depends on the published `impeccable@4.1.0` package instead of vendoring the Rust monorepo. This keeps upstream updates and attribution explicit while executing the same published engine locally.
+Lilac therefore depends on the published `impeccable@4.1.0` package instead of vendoring the Rust monorepo. The studied source revision has already advanced its workspace `ENGINE_VERSION` to `0.1.11`, while the published npm package still pins platform binaries at `0.1.5`. Lilac records both facts separately and does not claim that the npm binary is byte-identical to the later source snapshot. Runtime behavior is qualified against the actually installed `0.1.5` binary.
 
 ## Proven upstream contracts used by Lilac
 

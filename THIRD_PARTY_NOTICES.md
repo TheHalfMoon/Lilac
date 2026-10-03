@@ -7,7 +7,8 @@ Lilac uses or interoperates with third-party software under its respective licen
 - Project: `pbakaus/impeccable`
 - Source revision studied and pinned by Lilac: `e103efe779e2dd01274dabae83531fef00bf2563`
 - npm runtime: `impeccable@4.1.0`
-- detector engine version: `0.1.11`
+- source snapshot engine version: `0.1.11`
+- published runtime detector engine version: `0.1.5`
 - Copyright: 2025 Paul Bakaus
 - License: Apache License 2.0
 - Upstream project: https://github.com/pbakaus/impeccable

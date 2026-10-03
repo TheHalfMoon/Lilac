@@ -12,7 +12,8 @@ export const IMPECCABLE_PIN = Object.freeze({
   revision: "e103efe779e2dd01274dabae83531fef00bf2563",
   packageName: "impeccable",
   packageVersion: "4.1.0",
-  engineVersion: "0.1.11",
+  sourceEngineVersion: "0.1.11",
+  engineVersion: "0.1.5",
   license: "Apache-2.0",
 });
 
@@ -44,6 +45,18 @@ export class DesignAssuranceError extends Error {
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function cloneJsonData(value, label) {
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) {
+      throw new TypeError("value is not JSON-serializable");
+    }
+    return JSON.parse(serialized);
+  } catch (error) {
+    throw new DesignAssuranceError(`${label} must be JSON-serializable`, { cause: error });
+  }
 }
 
 function assertNonEmptyString(value, label) {
@@ -240,7 +253,9 @@ function localFinding(rulePack, rule, partial, context) {
     invariant: rule.invariant === true,
     message,
     description: typeof partial.description === "string" ? partial.description : (rule.description ?? ""),
-    evidence: isPlainObject(partial.evidence) ? structuredClone(partial.evidence) : {},
+    evidence: isPlainObject(partial.evidence)
+      ? cloneJsonData(partial.evidence, `Rule ${rulePack.namespace}/${rule.id} evidence`)
+      : {},
     location: {
       path: typeof location.path === "string" ? location.path : (context.path ?? null),
       url: typeof location.url === "string" ? location.url : (context.url ?? null),
@@ -588,11 +603,23 @@ function isPrivateIpv4(hostname) {
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
     return false;
   }
-  return parts[0] === 10
+  return parts[0] === 0
+    || parts[0] === 10
     || parts[0] === 127
+    || (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127)
     || (parts[0] === 169 && parts[1] === 254)
     || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
     || (parts[0] === 192 && parts[1] === 168);
+}
+
+function isPrivateIpv6(hostname) {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!host.includes(":")) return false;
+  if (host === "::" || host === "::1") return true;
+  if (/^f[cd][0-9a-f]{2}:/i.test(host)) return true;
+  if (/^fe[89ab][0-9a-f]:/i.test(host)) return true;
+  const mapped = host.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i);
+  return mapped ? isPrivateIpv4(mapped[1]) : false;
 }
 
 function validateBrowserUrl(value, { allowPrivateNetwork = false } = {}) {
@@ -614,7 +641,8 @@ function validateBrowserUrl(value, { allowPrivateNetwork = false } = {}) {
     || host === "::1"
     || host.endsWith(".localhost")
     || host.endsWith(".local")
-    || isPrivateIpv4(host);
+    || isPrivateIpv4(host)
+    || isPrivateIpv6(host);
   if (privateHost && !allowPrivateNetwork) {
     throw new DesignAssuranceError("private-network browser scans require allowPrivateNetwork: true");
   }
@@ -802,7 +830,11 @@ export const LILAC_CORE_RULE_PACK = createLilacRulePack({
             findings.push({
               message: `Source binding ${node.id} has an invalid source range`,
               location: { nodeId: node.id },
-              evidence: { range: structuredClone(range) },
+              evidence: {
+                range: isPlainObject(range)
+                  ? { start: range.start ?? null, end: range.end ?? null }
+                  : { valueType: Array.isArray(range) ? "array" : typeof range },
+              },
             });
           }
         }
