@@ -61,10 +61,15 @@ Status: ACTIVE — substantial exact/shipped-source recovery proven; remaining c
 
 ## Next canonical action
 
-Continue two tracks in parallel:
+Paper recovery is now opportunistic rather than an implementation blocker. Accept only genuinely new artifacts with marginal evidence value, preserve immutable provenance, and never relabel compatibility reconstruction as original source.
 
-1. **Recovery:** accept only genuinely new artifacts with marginal evidence value, including older-device/cache or authorized read-only forensic evidence. Preserve immutable hashes/provenance and never relabel reconstruction as original source.
-2. **Implementation:** begin Lilac's independent compatibility foundation from the now-validated document/MCP/Desktop/runtime surfaces. Proceed into the canonical document model, deterministic transactions/history, renderer/canvas, code adapters/sync, and importer/exporter programs.
+Implementation proceeds in the donor-study order:
+
+1. **Grain 1 — Design Assurance Foundation (Issue #17):** integrate a bounded, revision-pinned Impeccable detector boundary and establish deterministic Lilac rule packs before expanding agent autonomy.
+2. **Grain 2 — Durable Agent Kernel (Issue #16):** port Unreal Agent session/operation semantics into a Lilac-native runtime after Grain 1 is qualified.
+3. Follow with the typed agent event protocol, Firstmate-derived supervision, Lilac-native collaboration, import stack, decision router, delivery governance, and design-method/resource layers defined in `docs/DONOR_INTEGRATION_MAP.md`.
+
+The canonical donor rationale and exact studied revisions live in `docs/DONOR_DEEP_STUDY_2026-10-03.md`.
 
 The full Paper monorepo is no longer a prerequisite for Lilac implementation, but it remains a missing artifact for any claim of complete original-source recovery.
 
