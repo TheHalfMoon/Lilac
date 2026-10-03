@@ -1,6 +1,11 @@
 import { cloneJson } from "@lilac/agent-runtime";
 import { AgentEventError, HandlerRegistrationError } from "./errors.ts";
-import { type AgentEvent, type AgentEventKind, validateAgentEvent } from "./events.ts";
+import {
+  AGENT_EVENT_KINDS,
+  type AgentEvent,
+  type AgentEventKind,
+  validateAgentEvent,
+} from "./events.ts";
 
 export interface AgentEventHandler {
   id: string;
@@ -19,6 +24,8 @@ export interface EventDispatchResult {
   deliveries: HandlerDispatchResult[];
 }
 
+const EVENT_KIND_SET = new Set<string>(AGENT_EVENT_KINDS);
+
 function deepFreeze<T>(value: T, seen = new Set<object>()): Readonly<T> {
   if (value === null || typeof value !== "object" || seen.has(value as object)) return value;
   seen.add(value as object);
@@ -29,6 +36,9 @@ function deepFreeze<T>(value: T, seen = new Set<object>()): Readonly<T> {
 }
 
 function validateHandler(handler: AgentEventHandler): void {
+  if (handler === null || typeof handler !== "object" || Array.isArray(handler)) {
+    throw new HandlerRegistrationError("handler must be an object");
+  }
   if (typeof handler.id !== "string" || handler.id.trim() === "") {
     throw new HandlerRegistrationError("handler.id must be a non-empty string");
   }
@@ -40,6 +50,11 @@ function validateHandler(handler: AgentEventHandler): void {
     }
     if (new Set(handler.kinds).size !== handler.kinds.length) {
       throw new HandlerRegistrationError("handler.kinds must not contain duplicates");
+    }
+    for (const kind of handler.kinds) {
+      if (typeof kind !== "string" || !EVENT_KIND_SET.has(kind)) {
+        throw new HandlerRegistrationError(`handler ${handler.id} has unsupported event kind ${String(kind)}`);
+      }
     }
   }
 }
