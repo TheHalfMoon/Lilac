@@ -253,6 +253,39 @@ function applyOperation(document, operation) {
   }
 }
 
+function collectAffectedNodeIds(document, operation, ids) {
+  const add = (value) => {
+    if (typeof value === "string" && value !== "") ids.add(value);
+  };
+
+  switch (operation.type) {
+    case "insert-node":
+      add(operation.node?.id);
+      add(operation.parentId);
+      break;
+    case "remove-node": {
+      const node = getNode(document, operation.nodeId);
+      add(node.parentId);
+      for (const id of getSubtreeNodeIds(document, operation.nodeId)) add(id);
+      break;
+    }
+    case "restore-subtree":
+      add(operation.parentId);
+      for (const node of operation.nodes ?? []) add(node?.id);
+      break;
+    case "set-props":
+      add(operation.nodeId);
+      break;
+    case "move-node": {
+      const node = getNode(document, operation.nodeId);
+      add(operation.nodeId);
+      add(node.parentId);
+      add(operation.parentId);
+      break;
+    }
+  }
+}
+
 export function getAffectedNodeIds(transaction) {
   const ids = new Set();
   for (const operation of transaction.operations) {
@@ -282,7 +315,9 @@ export function applyTransaction(document, transaction, { enforceBaseRevision = 
 
   const working = cloneDocument(document);
   const inverseOperations = [];
+  const affectedNodeIds = new Set();
   for (const operation of normalizedTransaction.operations) {
+    collectAffectedNodeIds(working, operation, affectedNodeIds);
     const inverse = applyOperation(working, operation);
     inverseOperations.unshift(inverse);
   }
@@ -305,7 +340,7 @@ export function applyTransaction(document, transaction, { enforceBaseRevision = 
     document: normalizedDocument,
     inverse,
     transaction: normalizedTransaction,
-    affectedNodeIds: getAffectedNodeIds(normalizedTransaction),
+    affectedNodeIds: [...affectedNodeIds].sort(),
   };
 }
 

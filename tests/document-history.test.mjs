@@ -94,7 +94,7 @@ test("transaction inserts nodes and records deterministic provenance", () => {
   assert.equal(result.document.revision, 1);
   assert.deepEqual(result.document.nodes["frame-1"].children, ["text-1", "button-1"]);
   assert.equal(result.document.nodes["button-1"].parentId, "frame-1");
-  assert.deepEqual(result.affectedNodeIds, ["button-1"]);
+  assert.deepEqual(result.affectedNodeIds, ["button-1", "frame-1"]);
   assert.equal(result.inverse.metadata.sourceTransactionId, "tx-insert");
   assert.equal(document.nodes["button-1"], undefined, "input document must remain immutable");
 });
@@ -152,6 +152,7 @@ test("removing a subtree is exactly reversible except for monotonic revision", (
   }));
 
   assert.deepEqual(Object.keys(history.document.nodes), ["page-1"]);
+  assert.deepEqual(history.past.at(-1).affectedNodeIds, ["frame-1", "page-1", "text-1"]);
   history = undo(history);
   assert.deepEqual(structuralSnapshot(history.document), structuralSnapshot(initial));
   assert.equal(history.document.revision, 2);
@@ -180,6 +181,7 @@ test("move-node preserves ordering and cannot create a cycle", () => {
   }));
   assert.deepEqual(result.document.nodes["frame-1"].children, []);
   assert.deepEqual(result.document.nodes["frame-2"].children, ["text-1"]);
+  assert.deepEqual(result.affectedNodeIds, ["frame-1", "frame-2", "text-1"]);
 
   assert.throws(() => applyTransaction(result.document, createTransaction({
     id: "tx-cycle",
