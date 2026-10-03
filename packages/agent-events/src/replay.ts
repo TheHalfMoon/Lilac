@@ -1,4 +1,4 @@
-import { cloneJson } from "@lilac/agent-runtime";
+import { canonicalStringify, cloneJson } from "@lilac/agent-runtime";
 import { AgentEventError, EventCorrelationError } from "./errors.ts";
 import { type AgentEvent, type AgentEventKind, type PlanStep, validateAgentEvent } from "./events.ts";
 
@@ -72,6 +72,17 @@ function requireRunning(state: AgentEventReplayState, event: AgentEvent): void {
   }
 }
 
+function assertRunCompletionSettled(state: AgentEventReplayState, event: AgentEvent): void {
+  for (const message of Object.values(state.assistantMessages)) {
+    if (!message.finalized) correlationError(event, `assistant message ${message.messageId} is not finalized`);
+  }
+  for (const call of Object.values(state.toolCalls)) {
+    if (!call.finalized) correlationError(event, `tool call ${call.toolCallId} is not finalized`);
+    if (call.terminal === null) correlationError(event, `tool call ${call.toolCallId} has no terminal result`);
+  }
+  if (state.plan.active) correlationError(event, "active plan must finish before run_completed");
+}
+
 function validateRunTransition(state: AgentEventReplayState, event: AgentEvent): void {
   switch (event.kind) {
     case "run_created":
@@ -91,25 +102,25 @@ function validateRunTransition(state: AgentEventReplayState, event: AgentEvent):
       state.runStatus = "running";
       return;
     case "run_completed":
+      if (!["created", "running", "paused"].includes(state.runStatus)) {
+        correlationError(event, `run_completed cannot follow ${state.runStatus}`);
+      }
+      assertRunCompletionSettled(state, event);
+      state.runStatus = "completed";
+      return;
     case "run_failed":
-    case "run_canceled": {
+    case "run_canceled":
       if (!["created", "running", "paused"].includes(state.runStatus)) {
         correlationError(event, `${event.kind} cannot follow ${state.runStatus}`);
       }
-      state.runStatus = event.kind === "run_completed"
-        ? "completed"
-        : event.kind === "run_failed"
-          ? "failed"
-          : "canceled";
+      state.runStatus = event.kind === "run_failed" ? "failed" : "canceled";
       return;
-    }
   }
 }
 
 function validateOperationCorrelation(state: AgentEventReplayState, event: AgentEvent): void {
-  if (event.operationId === undefined) return;
+  if (event.operationId === undefined || event.transactionId === undefined) return;
   const knownTransaction = state.operationTransactions[event.operationId];
-  if (event.transactionId === undefined) return;
   if (knownTransaction !== undefined && knownTransaction !== event.transactionId) {
     correlationError(event, `operation ${event.operationId} is already bound to transaction ${knownTransaction}`);
   }
@@ -143,8 +154,26 @@ function applyAssistantEvent(state: AgentEventReplayState, event: AgentEvent): v
     return;
   }
 
+  const finalContent = (event.data as { content: string }).content;
+  if (current.deltas.length !== 0 && current.deltas.join("") !== finalContent) {
+    correlationError(event, `assistant message ${messageId} final content differs from streamed deltas`);
+  }
   current.finalized = true;
-  current.content = (event.data as { content: string }).content;
+  current.content = finalContent;
+}
+
+function assertToolArgumentsMatchDeltas(current: ToolCallReplayState, event: AgentEvent, value: unknown): void {
+  if (current.argumentDeltas.length === 0) return;
+  const accumulated = current.argumentDeltas.join("");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(accumulated);
+  } catch {
+    correlationError(event, `tool call ${current.toolCallId} argument deltas do not form valid JSON`);
+  }
+  if (canonicalStringify(parsed) !== canonicalStringify(value)) {
+    correlationError(event, `tool call ${current.toolCallId} final arguments differ from streamed deltas`);
+  }
 }
 
 function applyToolEvent(state: AgentEventReplayState, event: AgentEvent): void {
@@ -189,6 +218,7 @@ function applyToolEvent(state: AgentEventReplayState, event: AgentEvent): void {
     if (current.finalized) correlationError(event, `tool call ${toolCallId} is already finalized`);
     const data = event.data as { name: string; arguments: unknown };
     if (data.name !== current.name) correlationError(event, `tool call ${toolCallId} changed tool name`);
+    assertToolArgumentsMatchDeltas(current, event, data.arguments);
     current.finalized = true;
     current.arguments = cloneJson(data.arguments);
     current.operationId = event.operationId ?? null;
@@ -282,7 +312,9 @@ export function replayAgentEvents(events: readonly AgentEvent[]): AgentEventRepl
       correlationError(event, `sequence ${event.sequence} is not contiguous after ${state.lastSequence}`);
     }
     if (ids.has(event.id)) correlationError(event, `event id ${event.id} is duplicated`);
-    if (TERMINAL_RUN_STATES.has(state.runStatus)) correlationError(event, `event appears after terminal run state ${state.runStatus}`);
+    if (TERMINAL_RUN_STATES.has(state.runStatus)) {
+      correlationError(event, `event appears after terminal run state ${state.runStatus}`);
+    }
 
     if (RUN_KINDS.has(event.kind)) {
       validateRunTransition(state, event);
