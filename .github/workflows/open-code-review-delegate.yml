@@ -8,9 +8,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: open-code-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   delegate-review:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out exact pull request head
         uses: actions/checkout@v4
@@ -22,6 +27,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install pinned Alibaba Open Code Review
         run: npm install --global @alibaba-group/open-code-review@1.12.9
