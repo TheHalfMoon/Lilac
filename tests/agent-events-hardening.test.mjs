@@ -30,8 +30,8 @@ test("append rejects event logs that exceed the serialized byte bound", () => {
     event(1, "run_created"),
     event(2, "run_started"),
   ];
-  const content = "x".repeat(60 * 1024);
-  for (let sequence = 3; sequence <= 276; sequence += 1) {
+  const content = "x".repeat(30 * 1024);
+  for (let sequence = 3; sequence <= 550; sequence += 1) {
     events.push(event(
       sequence,
       "user_message",
@@ -48,9 +48,9 @@ test("append rejects event logs that exceed the serialized byte bound", () => {
   assert.throws(
     () => appendAgentEvent(
       oversizedLog,
-      event(277, "user_message", { content: "next" }, {
-        turnId: "turn-277",
-        messageId: "message-277",
+      event(551, "user_message", { content: "next" }, {
+        turnId: "turn-551",
+        messageId: "message-551",
       }),
     ),
     AgentEventError,
