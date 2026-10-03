@@ -138,7 +138,15 @@ function validateToolStatusShape(value: unknown): ToolCallStatusRecord {
 function lastForkSequence(session: AgentSession): number | null {
   let sequence: number | null = null;
   for (const record of session.records) {
-    if (record.type === "item" && record.item.kind === "fork") {
+    if (
+      record !== null
+      && typeof record === "object"
+      && record.type === "item"
+      && record.item !== null
+      && typeof record.item === "object"
+      && record.item.kind === "fork"
+      && Number.isSafeInteger(record.item.sequence)
+    ) {
       sequence = record.item.sequence;
     }
   }

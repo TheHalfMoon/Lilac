@@ -123,6 +123,12 @@ export function createOperation(input: {
   if (!STATUS_SET.has(status)) {
     throw new AgentRuntimeError(`operation ${input.id} has unsupported status ${String(status)}`);
   }
+  const authority = validateAuthority(input.authority, input.id);
+  if (authority.transactionId !== null) {
+    throw new AgentRuntimeError(
+      `new operation ${input.id} cannot start bound to a Lilac transaction`,
+    );
+  }
   const operation: OperationEnvelope = {
     schemaVersion: AGENT_RUNTIME_SCHEMA_VERSION,
     id: input.id,
@@ -131,7 +137,7 @@ export function createOperation(input: {
     status,
     state: normalizeJson(input.state ?? {}, `operation ${input.id}.state`),
     idempotency: normalizeJson(input.idempotency ?? {}, `operation ${input.id}.idempotency`),
-    authority: validateAuthority(input.authority, input.id),
+    authority,
   };
   validateOperation(operation);
   return operation;
