@@ -165,11 +165,12 @@ function applyRestoreSubtree(document, operation) {
       }
     }
   }
-  if (operation.parentId !== null) getNode(document, operation.parentId);
+  const parentId = operation.parentId ?? null;
+  if (parentId !== null) getNode(document, parentId);
 
   for (const node of snapshot) document.nodes[node.id] = node;
-  document.nodes[operation.rootId].parentId = operation.parentId ?? null;
-  attachNode(document, operation.rootId, operation.parentId ?? null, operation.index);
+  document.nodes[operation.rootId].parentId = parentId;
+  attachNode(document, operation.rootId, parentId, operation.index);
   return { type: "remove-node", nodeId: operation.rootId };
 }
 

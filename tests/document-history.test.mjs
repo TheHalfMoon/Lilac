@@ -191,6 +191,40 @@ test("move-node preserves ordering and cannot create a cycle", () => {
   })), TransactionError);
 });
 
+
+test("restore-subtree treats an omitted parentId as a root insertion", () => {
+  const document = createDocument({ id: "empty-doc", nodes: [] });
+  const result = applyTransaction(document, createTransaction({
+    id: "tx-restore-root",
+    actor: "history:test",
+    baseRevision: 0,
+    operations: [{
+      type: "restore-subtree",
+      rootId: "page-restored",
+      index: 0,
+      nodes: [{ id: "page-restored", type: "page", parentId: null, children: [], props: {}, metadata: {} }],
+    }],
+  }));
+  assert.deepEqual(result.document.rootIds, ["page-restored"]);
+  assert.equal(result.document.nodes["page-restored"].parentId, null);
+});
+
+test("failed multi-operation transactions are atomic to the caller", () => {
+  const document = wiredBaseDocument();
+  const before = structuralSnapshot(document);
+  assert.throws(() => applyTransaction(document, createTransaction({
+    id: "tx-atomic-failure",
+    actor: "agent:test",
+    baseRevision: 0,
+    operations: [
+      { type: "set-props", nodeId: "text-1", set: { text: "Temporary" } },
+      { type: "move-node", nodeId: "page-1", parentId: "text-1", index: 0 },
+    ],
+  })), TransactionError);
+  assert.deepEqual(structuralSnapshot(document), before);
+  assert.equal(document.nodes["text-1"].props.text, "Hello");
+});
+
 test("new commits after undo clear the redo branch", () => {
   let history = createHistoryState(wiredBaseDocument());
   history = commitTransaction(history, createTransaction({
