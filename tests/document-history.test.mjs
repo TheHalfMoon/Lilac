@@ -19,25 +19,28 @@ import {
   undo,
 } from "../packages/history/src/index.mjs";
 
-function baseDocument() {
+function wiredBaseDocument() {
   return createDocument({
     id: "doc-1",
     name: "Fixture",
     nodes: [
-      createNode({ id: "page-1", type: "page" }),
-      createNode({ id: "frame-1", type: "frame", parentId: "page-1", props: { x: 0, y: 0 } }),
-      createNode({ id: "text-1", type: "text", parentId: "frame-1", props: { text: "Hello" } }),
+      createNode({ id: "page-1", type: "page", children: ["frame-1"] }),
+      createNode({
+        id: "frame-1",
+        type: "frame",
+        parentId: "page-1",
+        children: ["text-1"],
+        props: { x: 0, y: 0 },
+      }),
+      createNode({
+        id: "text-1",
+        type: "text",
+        parentId: "frame-1",
+        props: { text: "Hello" },
+      }),
     ],
     rootIds: ["page-1"],
   });
-}
-
-function wiredBaseDocument() {
-  const document = baseDocument();
-  document.nodes["page-1"].children.push("frame-1");
-  document.nodes["frame-1"].children.push("text-1");
-  validateDocument(document);
-  return document;
 }
 
 function structuralSnapshot(document) {
@@ -51,7 +54,14 @@ function structuralSnapshot(document) {
 }
 
 test("document validation rejects inconsistent parent/child links", () => {
-  assert.throws(() => baseDocument(), DocumentInvariantError);
+  assert.throws(() => createDocument({
+    id: "invalid-doc",
+    nodes: [
+      createNode({ id: "page-1", type: "page" }),
+      createNode({ id: "frame-1", type: "frame", parentId: "page-1" }),
+    ],
+    rootIds: ["page-1"],
+  }), DocumentInvariantError);
 });
 
 test("canonical graph validates a connected ordered tree", () => {
