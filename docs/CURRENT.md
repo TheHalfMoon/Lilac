@@ -6,7 +6,7 @@ Last updated: 2026-10-03
 
 **LILAC-P00 — Foundation and authorized-source intake**
 
-Status: ACTIVE — substantial exact/shipped-source recovery proven; remaining client-side source gaps are compatibility-reconstructed and validated where observable
+Status: ACTIVE — recovery baseline proven; Grain 1 Design Assurance is canonical; Grain 2 Durable Agent Kernel is the next implementation frontier
 
 ## Canonical facts
 
@@ -18,6 +18,9 @@ Status: ACTIVE — substantial exact/shipped-source recovery proven; remaining c
 - Public/shipped recovery census PR #5 merged at canonical `main` SHA `2685a526d714ff2fe5b5cb2e602dea38d0b8a8cd`; post-merge CI run `36784889241` succeeded on that exact SHA.
 - Expanded 21-release recovery PR #6 merged at canonical `main` SHA `961e9eb54abf40bb41bcc0da25ed04d756217f15`; post-merge Foundation check run `36786708837` succeeded on that exact SHA.
 - Deep MCP/CLI recovery PR #7 merged at canonical `main` SHA `480e198be3be23b5d401b739a2c0bfd9b7c4acd1`; post-merge Foundation check run `36790000118` succeeded on that exact SHA.
+- Donor deep-study/final intake plan PR #18 merged at `dc3fd11f2776aff5183bf60bae0fc8d1f6352f6a`; post-merge CI run `37135354302` succeeded on that exact SHA.
+- Grain 1 Design Assurance PR #19 merged at `240a20f0ef131c614139ab452e7e5c7cead84524`; exact-head PR CI run `37140203005` and post-merge CI run `37140267250` both succeeded.
+- Issue #17 is `CLOSED_CANONICAL`. The next authorized implementation grain is Issue #16: Durable Lilac Agent Kernel from Unreal Agent semantics.
 - The complete Paper private monorepo is **not** available through the connected GitHub source and has not been recovered from any public or end-user-shipped artifact.
 - Private GitHub access is no longer a hard prerequisite for product progress: publicly downloadable, end-user-shipped, and user-authorized local runtime artifacts expose substantial exact first-party source and high-confidence compatibility contracts.
 - Current Desktop 0.5.14 packages expose exact `@paper/desktop` TypeScript source. Cross-platform packaging confirms the same current Desktop source surface with platform-specific native artifacts.
@@ -40,13 +43,16 @@ Status: ACTIVE — substantial exact/shipped-source recovery proven; remaining c
 - A final public GitHub/web/package sweep did not locate an independent exact copy of the three unresolved original TypeScript files or a public mirror/fork of the complete `paper-design/paper` monorepo.
 - Public Paper repositories remain separate independently licensed sources and must retain their own license/NOTICE obligations.
 - Raw proprietary Paper source recovered from shipped/local artifacts is not committed to the public Lilac repository. Public evidence records contain hashes, paths, counts, contract metadata, validation results, and architectural findings only.
-- Detailed recovery evidence:
+- Grain 1 uses the published `impeccable@4.1.0` local runtime. The studied source revision `e103efe779e2dd01274dabae83531fef00bf2563` records `ENGINE_VERSION=0.1.11`, while the actually published platform runtime dependency is `0.1.5`; Lilac records these separately and does not claim byte identity.
+- Grain 1 provides deterministic source/static/browser/snapshot/document assurance, namespaced Lilac rule packs, invariant policy controls, source-binding checks, token-registry checks, private-target guards, bounded inputs/outputs/runtime, and explicit Apache-2.0 provenance.
+- Detailed recovery/integration evidence:
   - `docs/evidence/PAPER_PUBLIC_SHIPPED_RECOVERY_CENSUS_2026-10-01.md`
   - `docs/evidence/PAPER_DESKTOP_HISTORY_EXPANSION_2026-10-01.md`
   - `docs/evidence/PAPER_DEEP_RECOVERY_2026-10-01.md`
   - `docs/evidence/PAPER_PUBLIC_MCP_CONFIG_CENSUS_2026-10-01.json`
   - `docs/evidence/PAPER_LINUX_CLI_CENSUS_2026-10-01.json`
   - `docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-03.md`
+  - `docs/evidence/IMPECCABLE_GRAIN1_INTEGRATION_2026-10-03.md`
 - Source-intake tracking issue remains #2.
 
 ## Active gates
@@ -58,16 +64,21 @@ Status: ACTIVE — substantial exact/shipped-source recovery proven; remaining c
 | P00-G03 Authorized Paper source intake | PARTIAL_RECOVERY_PROVEN | Exact current/historical Desktop source, 21-build lineage, historical internal-package source fragments, native CLI metadata, current web bundles/runtime architecture, public MCP schemas, validated client-side compatibility reconstruction, and Snapshot evidence; full original monorepo not recovered |
 | P00-G04 Reproducible upstream build | PARTIAL_NOT_STARTED | Recovered Desktop source can be qualified independently; full original product clean build remains unavailable without the complete original source tree |
 | P00-G05 Transformation plan | PROVEN_BASELINE | `docs/MASTER_PLAN.md` and `docs/ARCHITECTURE.md` merged |
+| I01 Design Assurance Foundation | PROVEN | PR #19 merged at `240a20f0ef131c614139ab452e7e5c7cead84524`; exact-head and post-merge CI SUCCESS; Issue #17 closed canonical |
+| I02 Durable Agent Kernel | ACTIVE_NEXT | Issue #16; Unreal Agent session/operation semantics port into a Lilac-native runtime |
 
 ## Next canonical action
 
-Paper recovery is now opportunistic rather than an implementation blocker. Accept only genuinely new artifacts with marginal evidence value, preserve immutable provenance, and never relabel compatibility reconstruction as original source.
+Paper recovery is opportunistic rather than an implementation blocker. Accept only genuinely new artifacts with marginal evidence value, preserve immutable provenance, and never relabel compatibility reconstruction as original source.
 
-Implementation proceeds in the donor-study order:
+Implementation now proceeds from **Issue #16 — Durable Agent Kernel**:
 
-1. **Grain 1 — Design Assurance Foundation (Issue #17):** integrate a bounded, revision-pinned Impeccable detector boundary and establish deterministic Lilac rule packs before expanding agent autonomy.
-2. **Grain 2 — Durable Agent Kernel (Issue #16):** port Unreal Agent session/operation semantics into a Lilac-native runtime after Grain 1 is qualified.
-3. Follow with the typed agent event protocol, Firstmate-derived supervision, Lilac-native collaboration, import stack, decision router, delivery governance, and design-method/resource layers defined in `docs/DONOR_INTEGRATION_MAP.md`.
+1. Port the pinned Unreal Agent append-only session history, versioned operation state, idempotency, replay/resume, fork, cancellation/failure, and recovery semantics into `packages/agent-runtime`.
+2. Extend every document-affecting operation with Lilac actor identity, intent, capability/tool identity, affected node/source identities, and canonical Lilac transaction ID.
+3. Keep `document-model` + `history` as the only authority allowed to commit canvas/document mutations.
+4. Do not mix Firstmate multi-worker/worktree supervision into this grain; supervision follows only after the durable single-session kernel is canonical.
+
+After Issue #16, continue with the typed agent event protocol, Firstmate-derived supervision, Lilac-native collaboration, import stack, decision router, delivery governance, and design-method/resource layers defined in `docs/DONOR_INTEGRATION_MAP.md`.
 
 The canonical donor rationale and exact studied revisions live in `docs/DONOR_DEEP_STUDY_2026-10-03.md`.
 
