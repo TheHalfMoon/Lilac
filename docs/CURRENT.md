@@ -6,7 +6,7 @@ Last updated: 2026-10-03
 
 **LILAC-P00 — Foundation and authorized-source intake**
 
-Status: ACTIVE — recovery baseline proven; Grain 1 Design Assurance is canonical; Grain 2 Durable Agent Kernel is the next implementation frontier
+Status: ACTIVE — recovery baseline proven; Grain 1 Design Assurance and Grain 2 Durable Agent Kernel are canonical; Grain 3 Agent Event Protocol is the next implementation frontier
 
 ## Canonical facts
 
@@ -20,7 +20,11 @@ Status: ACTIVE — recovery baseline proven; Grain 1 Design Assurance is canonic
 - Deep MCP/CLI recovery PR #7 merged at canonical `main` SHA `480e198be3be23b5d401b739a2c0bfd9b7c4acd1`; post-merge Foundation check run `36790000118` succeeded on that exact SHA.
 - Donor deep-study/final intake plan PR #18 merged at `dc3fd11f2776aff5183bf60bae0fc8d1f6352f6a`; post-merge CI run `37135354302` succeeded on that exact SHA.
 - Grain 1 Design Assurance PR #19 merged at `240a20f0ef131c614139ab452e7e5c7cead84524`; exact-head PR CI run `37140203005` and post-merge CI run `37140267250` both succeeded.
-- Issue #17 is `CLOSED_CANONICAL`. The next authorized implementation grain is Issue #16: Durable Lilac Agent Kernel from Unreal Agent semantics.
+- Grain 1 canonical closeout PR #20 merged at `8b444dbf96a4f064a8d0dd21ba19dc2b7d28cd5e`; post-merge CI run `37143328607` succeeded.
+- Grain 2 Durable Agent Kernel PR #21 merged at `943a0727b9e15abbe7e47d8d7aa99adc6b0c3434`; exact-head PR CI run `37144809927` and post-merge CI run `37144857504` both succeeded.
+- Issue #17 and Issue #16 are `CLOSED_CANONICAL`.
+- Issue #22 is the next authorized implementation grain: typed Lilac Agent Event Protocol from UI-TARS taxonomy.
+- The pinned Grain 3 donor revision `bytedance/UI-TARS-desktop@2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a` exists and the repository LICENSE at that exact revision is Apache-2.0.
 - The complete Paper private monorepo is **not** available through the connected GitHub source and has not been recovered from any public or end-user-shipped artifact.
 - Private GitHub access is no longer a hard prerequisite for product progress: publicly downloadable, end-user-shipped, and user-authorized local runtime artifacts expose substantial exact first-party source and high-confidence compatibility contracts.
 - Current Desktop 0.5.14 packages expose exact `@paper/desktop` TypeScript source. Cross-platform packaging confirms the same current Desktop source surface with platform-specific native artifacts.
@@ -45,6 +49,7 @@ Status: ACTIVE — recovery baseline proven; Grain 1 Design Assurance is canonic
 - Raw proprietary Paper source recovered from shipped/local artifacts is not committed to the public Lilac repository. Public evidence records contain hashes, paths, counts, contract metadata, validation results, and architectural findings only.
 - Grain 1 uses the published `impeccable@4.1.0` local runtime. The studied source revision `e103efe779e2dd01274dabae83531fef00bf2563` records `ENGINE_VERSION=0.1.11`, while the actually published platform runtime dependency is `0.1.5`; Lilac records these separately and does not claim byte identity.
 - Grain 1 provides deterministic source/static/browser/snapshot/document assurance, namespaced Lilac rule packs, invariant policy controls, source-binding checks, token-registry checks, private-target guards, bounded inputs/outputs/runtime, and explicit Apache-2.0 provenance.
+- Grain 2 provides append-only replayable sessions, deterministic input idempotency, immutable-parent forks, versioned operation envelopes, validated lifecycle transitions, cancellation/failure/recovery, synchronous tool translation, explicit authority attribution, transaction binding only through `@lilac/history`, and hardened canonical JSON handling.
 - Detailed recovery/integration evidence:
   - `docs/evidence/PAPER_PUBLIC_SHIPPED_RECOVERY_CENSUS_2026-10-01.md`
   - `docs/evidence/PAPER_DESKTOP_HISTORY_EXPANSION_2026-10-01.md`
@@ -53,7 +58,10 @@ Status: ACTIVE — recovery baseline proven; Grain 1 Design Assurance is canonic
   - `docs/evidence/PAPER_LINUX_CLI_CENSUS_2026-10-01.json`
   - `docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-03.md`
   - `docs/evidence/IMPECCABLE_GRAIN1_INTEGRATION_2026-10-03.md`
-- Source-intake tracking issue remains #2.
+  - `docs/evidence/GRAIN1_CLOSEOUT_2026-10-03.md`
+  - `docs/evidence/UNREAL_AGENT_GRAIN2_PORT_2026-10-03.md`
+  - `docs/evidence/GRAIN2_CLOSEOUT_2026-10-03.md`
+- Source-intake tracking issue #2 remains open for opportunistic evidence recovery only; it is not an implementation blocker.
 
 ## Active gates
 
@@ -65,20 +73,23 @@ Status: ACTIVE — recovery baseline proven; Grain 1 Design Assurance is canonic
 | P00-G04 Reproducible upstream build | PARTIAL_NOT_STARTED | Recovered Desktop source can be qualified independently; full original product clean build remains unavailable without the complete original source tree |
 | P00-G05 Transformation plan | PROVEN_BASELINE | `docs/MASTER_PLAN.md` and `docs/ARCHITECTURE.md` merged |
 | I01 Design Assurance Foundation | PROVEN | PR #19 merged at `240a20f0ef131c614139ab452e7e5c7cead84524`; exact-head and post-merge CI SUCCESS; Issue #17 closed canonical |
-| I02 Durable Agent Kernel | ACTIVE_NEXT | Issue #16; Unreal Agent session/operation semantics port into a Lilac-native runtime |
+| I02 Durable Agent Kernel | PROVEN | PR #21 merged at `943a0727b9e15abbe7e47d8d7aa99adc6b0c3434`; exact-head and post-merge CI SUCCESS; Issue #16 closed canonical |
+| I03 Agent Event Protocol | ACTIVE_NEXT | Issue #22; adapt the pinned UI-TARS event taxonomy into a Lilac-owned typed event protocol |
 
 ## Next canonical action
 
 Paper recovery is opportunistic rather than an implementation blocker. Accept only genuinely new artifacts with marginal evidence value, preserve immutable provenance, and never relabel compatibility reconstruction as original source.
 
-Implementation now proceeds from **Issue #16 — Durable Agent Kernel**:
+Implementation now proceeds from **Issue #22 — Agent Event Protocol**:
 
-1. Port the pinned Unreal Agent append-only session history, versioned operation state, idempotency, replay/resume, fork, cancellation/failure, and recovery semantics into `packages/agent-runtime`.
-2. Extend every document-affecting operation with Lilac actor identity, intent, capability/tool identity, affected node/source identities, and canonical Lilac transaction ID.
-3. Keep `document-model` + `history` as the only authority allowed to commit canvas/document mutations.
-4. Do not mix Firstmate multi-worker/worktree supervision into this grain; supervision follows only after the durable single-session kernel is canonical.
+1. Study only the high-value typed event/emitter surfaces at `bytedance/UI-TARS-desktop@2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a`.
+2. Build `packages/agent-events` as a Lilac-owned provider-neutral protocol for run, message/streaming, tool-call, environment, plan, operation, and transaction-correlated events.
+3. Require caller-supplied timestamps and monotonic per-run sequence identities; replay must deterministically reconstruct canonical state.
+4. Isolate event handlers so one handler failure cannot corrupt bus state or prevent unrelated delivery.
+5. Keep event records observational: they may correlate to `@lilac/agent-runtime` operation/transaction IDs but may not mutate the document directly.
+6. Keep the UI-TARS model, remote operator, and browser-automation stack optional and outside this grain.
 
-After Issue #16, continue with the typed agent event protocol, Firstmate-derived supervision, Lilac-native collaboration, import stack, decision router, delivery governance, and design-method/resource layers defined in `docs/DONOR_INTEGRATION_MAP.md`.
+After Issue #22, continue with Firstmate-derived supervision, Lilac-native collaboration, import stack, decision router, delivery governance, and design-method/resource layers defined in `docs/DONOR_INTEGRATION_MAP.md`.
 
 The canonical donor rationale and exact studied revisions live in `docs/DONOR_DEEP_STUDY_2026-10-03.md`.
 
@@ -86,4 +97,4 @@ The full Paper monorepo is no longer a prerequisite for Lilac implementation, bu
 
 ## Integrity rule
 
-Never fabricate source availability, ownership, build success, parity, review results, or Paper provenance. `PARTIAL_RECOVERY_PROVEN` is not equivalent to a complete Paper repository import, and `COMPATIBILITY_RECONSTRUCTED_VALIDATED` is not equivalent to recovered original source text.
+Never fabricate source availability, ownership, build success, parity, review results, or donor provenance. `PARTIAL_RECOVERY_PROVEN` is not equivalent to a complete Paper repository import, and semantic/compatibility ports must not be represented as recovered original source text.
