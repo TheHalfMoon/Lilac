@@ -66,6 +66,14 @@ function validateLogIdentity(log: AgentEventLog): void {
   }
 }
 
+function encodeBoundedLog(log: AgentEventLog): string {
+  const encoded = canonicalStringify(log);
+  if (new TextEncoder().encode(encoded).byteLength > MAX_EVENT_LOG_BYTES) {
+    throw new AgentEventError(`encoded event log exceeds ${MAX_EVENT_LOG_BYTES} UTF-8 bytes`);
+  }
+  return encoded;
+}
+
 export function createAgentEventLog(runId: string, sessionId: string): AgentEventLog {
   const log: AgentEventLog = {
     schemaVersion: AGENT_EVENT_SCHEMA_VERSION,
@@ -92,14 +100,15 @@ export function appendAgentEvent(log: AgentEventLog, event: AgentEvent): AgentEv
       `event sequence ${event.sequence} does not match expected sequence ${expectedSequence}`,
     );
   }
-  const events = [...log.events, cloneJson(event)];
-  replayAgentEvents(events);
-  return {
+  const nextLog: AgentEventLog = {
     schemaVersion: log.schemaVersion,
     runId: log.runId,
     sessionId: log.sessionId,
-    events,
+    events: [...log.events, cloneJson(event)],
   };
+  replayAgentEvents(nextLog.events);
+  encodeBoundedLog(nextLog);
+  return nextLog;
 }
 
 export function replayAgentEventLog(log: AgentEventLog): AgentEventReplayState | null {
@@ -115,11 +124,7 @@ export function validateAgentEventLog(log: AgentEventLog): void {
 
 export function serializeAgentEventLog(log: AgentEventLog): string {
   validateAgentEventLog(log);
-  const encoded = canonicalStringify(log);
-  if (new TextEncoder().encode(encoded).byteLength > MAX_EVENT_LOG_BYTES) {
-    throw new AgentEventError(`encoded event log exceeds ${MAX_EVENT_LOG_BYTES} UTF-8 bytes`);
-  }
-  return encoded;
+  return encodeBoundedLog(log);
 }
 
 export function deserializeAgentEventLog(encoded: string): AgentEventLog {
@@ -141,6 +146,7 @@ export function deserializeAgentEventLog(encoded: string): AgentEventLog {
   }
   const log = parsed as AgentEventLog;
   validateAgentEventLog(log);
+  encodeBoundedLog(log);
   return cloneJson(log);
 }
 
