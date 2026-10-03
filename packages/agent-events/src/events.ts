@@ -130,6 +130,14 @@ const EVENT_KEYS = new Set([
   "transactionId",
   "data",
 ]);
+const CORRELATION_KEYS = [
+  "turnId",
+  "messageId",
+  "toolCallId",
+  "operationId",
+  "transactionId",
+] as const;
+const TOOL_TERMINAL_CORRELATIONS = new Set<string>(CORRELATION_KEYS);
 const DATA_KEYS: Record<AgentEventKind, ReadonlySet<string>> = {
   run_created: new Set(["metadata"]),
   run_started: new Set(["metadata"]),
@@ -153,6 +161,30 @@ const DATA_KEYS: Record<AgentEventKind, ReadonlySet<string>> = {
   plan_updated: new Set(["steps"]),
   plan_step_updated: new Set(["step"]),
   plan_completed: new Set(["summary"]),
+};
+const CORRELATION_KEYS_BY_KIND: Record<AgentEventKind, ReadonlySet<string>> = {
+  run_created: new Set(),
+  run_started: new Set(),
+  run_paused: new Set(),
+  run_resumed: new Set(),
+  run_completed: new Set(),
+  run_failed: new Set(),
+  run_canceled: new Set(),
+  user_message: new Set(["turnId", "messageId"]),
+  assistant_message_start: new Set(["turnId", "messageId"]),
+  assistant_message_delta: new Set(["turnId", "messageId"]),
+  assistant_message_final: new Set(["turnId", "messageId"]),
+  tool_call_start: new Set(["turnId", "messageId", "toolCallId"]),
+  tool_call_arguments_delta: new Set(["turnId", "messageId", "toolCallId"]),
+  tool_call_final: TOOL_TERMINAL_CORRELATIONS,
+  tool_result: TOOL_TERMINAL_CORRELATIONS,
+  tool_error: TOOL_TERMINAL_CORRELATIONS,
+  tool_canceled: TOOL_TERMINAL_CORRELATIONS,
+  environment_input: new Set(["turnId"]),
+  plan_started: new Set(["turnId"]),
+  plan_updated: new Set(["turnId"]),
+  plan_step_updated: new Set(["turnId"]),
+  plan_completed: new Set(["turnId"]),
 };
 
 function eventError(error: unknown): never {
@@ -206,6 +238,15 @@ function assertDelta(value: unknown, label: string): void {
   assertString(value, label, MAX_DELTA_BYTES);
   if (new TextEncoder().encode(value).byteLength > MAX_DELTA_BYTES) {
     throw new AgentEventError(`${label} exceeds ${MAX_DELTA_BYTES} UTF-8 bytes`);
+  }
+}
+
+function validateCorrelationApplicability(value: Record<string, unknown>, kind: AgentEventKind): void {
+  const allowed = CORRELATION_KEYS_BY_KIND[kind];
+  for (const key of CORRELATION_KEYS) {
+    if (value[key] !== undefined && !allowed.has(key)) {
+      throw new EventCorrelationError(`${kind} does not allow ${key}`);
+    }
   }
 }
 
@@ -357,6 +398,7 @@ export function validateAgentEvent(value: unknown): asserts value is AgentEvent 
     assertOptionalId(value.toolCallId, "event.toolCallId");
     assertOptionalId(value.operationId, "event.operationId");
     assertOptionalId(value.transactionId, "event.transactionId");
+    validateCorrelationApplicability(value, kind);
 
     if (MESSAGE_KINDS.has(kind) && (value.turnId === undefined || value.messageId === undefined)) {
       throw new EventCorrelationError(`${kind} requires turnId and messageId`);
