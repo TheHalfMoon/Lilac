@@ -1,15 +1,16 @@
 import { canonicalStringify, cloneJson } from "@lilac/agent-runtime";
 import { AgentEventError, EventSequenceError } from "./errors.ts";
 import {
+  AGENT_EVENT_KINDS,
   AGENT_EVENT_SCHEMA_VERSION,
-  MAX_EVENT_BYTES,
   type AgentEvent,
   type AgentEventKind,
   validateAgentEvent,
 } from "./events.ts";
 import { replayAgentEvents, type AgentEventReplayState } from "./replay.ts";
 
-export const MAX_EVENT_LOG_EVENTS = 100_000;
+export const MAX_EVENT_LOG_EVENTS = 10_000;
+export const MAX_EVENT_LOG_BYTES = 16 * 1024 * 1024;
 export const MAX_EVENT_PAGE_SIZE = 1_000;
 
 export interface AgentEventLog {
@@ -36,15 +37,28 @@ export interface EventPage {
   more: boolean;
 }
 
+const EVENT_KIND_SET = new Set<string>(AGENT_EVENT_KINDS);
+const LOG_KEYS = new Set(["schemaVersion", "runId", "sessionId", "events"]);
+
 function validateLogIdentity(log: AgentEventLog): void {
+  if (log === null || typeof log !== "object" || Array.isArray(log)) {
+    throw new AgentEventError("event log must be an object");
+  }
+  const prototype = Object.getPrototypeOf(log);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new AgentEventError("event log must not be a class instance");
+  }
+  for (const key of Object.keys(log)) {
+    if (!LOG_KEYS.has(key)) throw new AgentEventError(`event log contains unsupported field ${key}`);
+  }
   if (log.schemaVersion !== AGENT_EVENT_SCHEMA_VERSION) {
     throw new AgentEventError(`unsupported event log schema version ${String(log.schemaVersion)}`);
   }
-  if (typeof log.runId !== "string" || log.runId.trim() === "") {
-    throw new AgentEventError("event log runId must be a non-empty string");
+  if (typeof log.runId !== "string" || log.runId.trim() === "" || log.runId.length > 256) {
+    throw new AgentEventError("event log runId must be a non-empty bounded string");
   }
-  if (typeof log.sessionId !== "string" || log.sessionId.trim() === "") {
-    throw new AgentEventError("event log sessionId must be a non-empty string");
+  if (typeof log.sessionId !== "string" || log.sessionId.trim() === "" || log.sessionId.length > 256) {
+    throw new AgentEventError("event log sessionId must be a non-empty bounded string");
   }
   if (!Array.isArray(log.events)) throw new AgentEventError("event log events must be an array");
   if (log.events.length > MAX_EVENT_LOG_EVENTS) {
@@ -101,14 +115,20 @@ export function validateAgentEventLog(log: AgentEventLog): void {
 
 export function serializeAgentEventLog(log: AgentEventLog): string {
   validateAgentEventLog(log);
-  return canonicalStringify(log);
+  const encoded = canonicalStringify(log);
+  if (new TextEncoder().encode(encoded).byteLength > MAX_EVENT_LOG_BYTES) {
+    throw new AgentEventError(`encoded event log exceeds ${MAX_EVENT_LOG_BYTES} UTF-8 bytes`);
+  }
+  return encoded;
 }
 
 export function deserializeAgentEventLog(encoded: string): AgentEventLog {
   if (typeof encoded !== "string") throw new AgentEventError("encoded event log must be a string");
-  const maxBytes = MAX_EVENT_LOG_EVENTS * MAX_EVENT_BYTES;
-  if (new TextEncoder().encode(encoded).byteLength > maxBytes) {
-    throw new AgentEventError("encoded event log exceeds the hard byte limit");
+  if (encoded.length > MAX_EVENT_LOG_BYTES) {
+    throw new AgentEventError(`encoded event log exceeds ${MAX_EVENT_LOG_BYTES} characters`);
+  }
+  if (new TextEncoder().encode(encoded).byteLength > MAX_EVENT_LOG_BYTES) {
+    throw new AgentEventError(`encoded event log exceeds ${MAX_EVENT_LOG_BYTES} UTF-8 bytes`);
   }
   let parsed: unknown;
   try {
@@ -145,11 +165,10 @@ export function queryAgentEvents(log: AgentEventLog, query: EventQuery = {}): Ev
     throw new AgentEventError(`limit must be between 1 and ${MAX_EVENT_PAGE_SIZE}`);
   }
   if (query.kinds !== undefined) {
-    const supported = new Set<AgentEventKind>();
-    for (const event of log.events) supported.add(event.kind);
+    if (!Array.isArray(query.kinds)) throw new AgentEventError("kinds must be an array");
     for (const kind of query.kinds) {
-      if (!supported.has(kind) && !log.events.some((event) => event.kind === kind)) {
-        // Empty results for a supported but absent kind are valid; runtime event validation owns kind support.
+      if (typeof kind !== "string" || !EVENT_KIND_SET.has(kind)) {
+        throw new AgentEventError(`unsupported query event kind ${String(kind)}`);
       }
     }
   }
