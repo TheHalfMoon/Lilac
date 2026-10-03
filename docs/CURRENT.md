@@ -37,6 +37,8 @@ Status: ACTIVE — substantial exact/shipped-source recovery proven; remaining c
 - The current web runtime exposes editor state surfaces for camera, selection, editor context, files/resources, pages, layer tree, undo/redo, tokens, multiplayer/Yjs awareness, comments, vector editing, Tailwind styles, DOM, gradients, images, navigation, typography, and UI state.
 - Current web AST analysis records 343 class declarations, 5,296 function declarations, 445 filtered semantic strings, and 1,200 retained semantic property signals in the main shipped bundle.
 - Current web code directly references internal package identities including `@paper/assets`, `@paper/client-desktop-types`, `@paper/client-signals`, `@paper/models`, `@paper/svg-parser`, and `@paper/vector-graph`.
+- Elevated read-only local forensics on the authorized Windows device found no VSS snapshots, restore points, Recycle Bin Paper artifacts, historical Paper records in the accessible USN window, secondary-drive/OneDrive/Box Paper backups, or publicly published copies of the newly identified internal workspace packages.
+- A React-fiber runtime pass recovered **99 distinct live component function bodies** into the private corpus (98 named in production form) without reading props, state values, credentials, or document content; this improves UI reconstruction but does not restore original TSX file boundaries.
 - A final public GitHub/web/package sweep did not locate an independent exact copy of the three unresolved original TypeScript files or a public mirror/fork of the complete `paper-design/paper` monorepo.
 - Public Paper repositories remain separate independently licensed sources and must retain their own license/NOTICE obligations.
 - Raw proprietary Paper source recovered from shipped/local artifacts is not committed to the public Lilac repository. Public evidence records contain hashes, paths, counts, contract metadata, validation results, and architectural findings only.
@@ -47,6 +49,7 @@ Status: ACTIVE — substantial exact/shipped-source recovery proven; remaining c
   - `docs/evidence/PAPER_PUBLIC_MCP_CONFIG_CENSUS_2026-10-01.json`
   - `docs/evidence/PAPER_LINUX_CLI_CENSUS_2026-10-01.json`
   - `docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-03.md`
+  - `docs/evidence/PAPER_LOCAL_FORENSIC_CLOSURE_2026-10-03.md`
 - Source-intake tracking issue remains #2.
 
 ## Active gates
