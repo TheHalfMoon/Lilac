@@ -3,6 +3,8 @@ import { AgentRuntimeError } from "./errors.ts";
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
+const MAX_JSON_DEPTH = 128;
+
 export function assertNonEmptyString(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new AgentRuntimeError(`${label} must be a non-empty string`);
@@ -23,6 +25,10 @@ export function assertPlainObject(
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new AgentRuntimeError(`${label} must be a plain object`);
   }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new AgentRuntimeError(`${label} must not be a class instance`);
+  }
 }
 
 export function normalizeStringSet(values: unknown, label: string): string[] {
@@ -39,7 +45,11 @@ export function normalizeJson(
   value: unknown,
   label = "value",
   seen = new Set<object>(),
+  depth = 0,
 ): JsonValue {
+  if (depth > MAX_JSON_DEPTH) {
+    throw new AgentRuntimeError(`${label} exceeds the maximum JSON nesting depth`);
+  }
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new AgentRuntimeError(`${label} contains a non-finite number`);
@@ -50,13 +60,29 @@ export function normalizeJson(
   seen.add(value);
   try {
     if (Array.isArray(value)) {
-      return value.map((entry, index) => normalizeJson(entry, `${label}[${index}]`, seen));
+      const result: JsonValue[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor || !("value" in descriptor)) {
+          throw new AgentRuntimeError(`${label}[${index}] must be an own data value`);
+        }
+        result.push(normalizeJson(descriptor.value, `${label}[${index}]`, seen, depth + 1));
+      }
+      return result;
     }
+
+    assertPlainObject(value, label);
     const object = value as Record<string, unknown>;
-    const result: Record<string, JsonValue> = {};
+    const result: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
     for (const key of Object.keys(object).sort()) {
-      if (object[key] === undefined) throw new AgentRuntimeError(`${label}.${key} is undefined`);
-      result[key] = normalizeJson(object[key], `${label}.${key}`, seen);
+      const descriptor = Object.getOwnPropertyDescriptor(object, key);
+      if (!descriptor || !("value" in descriptor)) {
+        throw new AgentRuntimeError(`${label}.${key} must be an own data value`);
+      }
+      if (descriptor.value === undefined) {
+        throw new AgentRuntimeError(`${label}.${key} is undefined`);
+      }
+      result[key] = normalizeJson(descriptor.value, `${label}.${key}`, seen, depth + 1);
     }
     return result;
   } finally {
