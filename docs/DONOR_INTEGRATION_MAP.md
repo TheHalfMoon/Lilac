@@ -1,131 +1,178 @@
 # Lilac Donor Integration Map
 
-This document maps authorized donor projects to bounded Lilac subsystems. It is an implementation plan, not a license waiver and not a directive to copy whole repositories blindly.
+This document is the execution map derived from `docs/DONOR_DEEP_STUDY_2026-10-03.md`. The deep-study document owns the evidence and source-by-source rationale; this file owns implementation sequence and subsystem boundaries.
 
-## Integration priorities
+## Rules
 
-| Donor | Primary Lilac role | Intake posture | Target subsystem |
-|---|---|---|---|
-| `kgoedecke/doop` | Paper-like multiplayer canvas, MCP collaboration, comments/activity, agent-visible editing | HIGH | canvas collaboration, MCP execution, comments, activity feed |
-| `kunchenguid/firstmate` | multi-agent orchestration, isolated worktrees, supervision, restart-safe state | HIGH | agent orchestration and multi-agent workspace |
-| `unreallabsai/unreal-agent` | durable async agent sessions, idempotent inputs, serializable operations, recovery/forks | HIGH | agent runtime kernel |
-| `kunchenguid/no-mistakes` | isolated guarded validation and PR delivery pipeline | HIGH | visual/code review and delivery gates |
-| `pbakaus/impeccable` | deterministic frontend/design detectors, critique/polish/harden workflows | HIGH | design decision assurance and quality engine |
-| `bytedance/UI-TARS-desktop` | multimodal GUI/browser operator, event-stream architecture, local/remote computer control | HIGH | live-app intake, GUI agent, operator/event stream |
-| `docling-project/docling` | local document parsing, PDF/layout/table/OCR/document model | HIGH | document/media importer |
-| `firecrawl/firecrawl` | resilient web crawl/scrape/action patterns and structured extraction | MEDIUM-HIGH | website intake and crawl architecture |
-| `AhmadIbrahiim/Website-downloader` | simple recursive offline website capture with asset rewriting | MEDIUM | offline website snapshot fallback |
-| `classifier.dev` | calibrated classification/decision routing and long-context filtering | MEDIUM | decision assurance, routing, retrieval pruning |
-| `caio0452/jev_search` | lightweight semantic directory/chunk search using decision models | MEDIUM | local/source retrieval reference |
-| `Appllama/appllama-skills` | design research/build discipline and simulator-verified mobile UX patterns | MEDIUM | design-agent skills and mobile adaptation |
-| `reinaldosimoes/design-resources` | curated resource taxonomy for fonts/icons/media/design systems | LOW-MEDIUM | resource discovery catalog; links/metadata rather than bulk asset copying |
+- Never bulk-copy a donor repository.
+- Pin every imported/adapted source snapshot to an exact revision.
+- Preserve applicable license/NOTICE text and third-party provenance.
+- Lilac `document-model` + `history` remain the only canvas mutation authority.
+- Deterministic validation runs before probabilistic/model judgment.
+- Core Lilac must work without mandatory paid cloud services.
+- Doop and Firecrawl public AGPL code are reference/optional-connector inputs by default; no AGPL code enters Lilac core without a separately documented rights/licensing decision for the exact subset.
 
-## Architectural allocation
+## Final priority map
 
-### 1. Canvas and collaboration
+| Priority | Donor | Posture | Lilac target |
+|---:|---|---|---|
+| 1 | `pbakaus/impeccable` | INTEGRATE + ADAPT | deterministic design assurance, WASM/browser/static checks, Lilac rule packs |
+| 2 | `unreallabsai/unreal-agent` | PORT | durable agent session/operation kernel |
+| 3 | `bytedance/UI-TARS-desktop` | ADAPT | typed agent event stream and optional DOM/visual operator |
+| 4 | `kunchenguid/firstmate` | PORT + ADAPT | worker/worktree supervision and restart reconciliation |
+| 5 | `docling-project/docling` | OPTIONAL LOCAL ADAPTER | structured document/PDF import |
+| 6 | `kunchenguid/no-mistakes` | DEVELOPMENT ADAPTATION | guarded source-change/PR/CI delivery gates |
+| 7 | `mrmps/classifier-dev` / classifier.dev | ADAPT + OPTIONAL PROVIDER | dimension/confidence/abstention decision contract |
+| 8 | `Appllama/appllama-skills` | ADAPT AS RULES | mobile/native design methodology and deterministic rule candidates |
+| 9 | `AhmadIbrahiim/Website-downloader` | SMALL FALLBACK ADAPTATION | bounded static website mirroring |
+| 10 | `reinaldosimoes/design-resources` | DATA ONLY | provider/resource catalog |
+| 11 | `kgoedecke/doop` | REFERENCE ONLY BY DEFAULT | clean-room collaboration/presence/comments/activity/MCP behavior |
+| 12 | `firecrawl/firecrawl` | REFERENCE + OPTIONAL CONNECTOR | capture engine/fallback/crawl-job architecture |
+| 13 | `caio0452/jev_search` | REFERENCE ONLY | retrieval criteria/chunking/prioritization ideas |
 
-Use `doop` as the strongest external implementation reference/donor for multiplayer canvas behavior that Paper source recovery did not provide cleanly: presence, WebSocket collaboration, comments, activity, per-frame editing state, MCP-authenticated agent collaboration, and local self-hosting patterns.
+## Grain 1 — Design Assurance Foundation
 
-Do not transplant Doop product identity or hosted-service assumptions. Any copied subsystem must be reduced to Lilac's document graph and transaction/history APIs rather than introducing a second canonical model.
+Target: `packages/design-assurance`.
 
-### 2. Agent runtime
+Use Impeccable revision `e103efe779e2dd01274dabae83531fef00bf2563` as the primary donor.
 
-Combine complementary ideas rather than adopting one harness wholesale:
+Deliver:
+- pinned detector integration boundary;
+- source-text, static-HTML, and browser/snapshot check interfaces;
+- namespaced `LilacRulePack` seam;
+- findings normalized into Lilac severity/evidence/fixability records;
+- deterministic rule execution with no model/provider requirement;
+- oracle/golden tests for stable behavior;
+- initial Lilac rules for document/source-binding and design-system invariants.
 
-- `unreal-agent`: canonical persisted session/operation model, idempotency, recovery, forks, tool translation boundaries;
-- `firstmate`: agent-fleet orchestration, worktree isolation, supervision, dispatch, restart reconciliation;
-- Lilac: transaction attribution, canvas/node authority, capability policy, and MCP compatibility.
+Do not import provider-specific generated skill folders or Impeccable product UX.
 
-The result should be a Lilac-native agent runtime with one authoritative operation log and no hidden agent mutation path.
+## Grain 2 — Durable Agent Kernel
 
-### 3. Review and decision assurance
+Target: `packages/agent-runtime`.
 
-Use:
+Port semantics from Unreal Agent revision `1b9f778453f411c029b39b85102aaefb95e7e48d`.
 
-- `no-mistakes` for guarded validation/delivery state machines and isolated worktree review;
-- `impeccable` for deterministic design-quality detectors and critique/polish/harden flows;
-- `classifier.dev` / Jev-style decisions for bounded routing, classification, and uncertainty-aware escalation.
+Deliver:
+- versioned append-only session records;
+- caller-supplied idempotency keys;
+- deterministic replay/resume;
+- fork records with immutable parent history;
+- versioned operation envelopes;
+- validated operation state transitions;
+- atomic tool-call-status + operation registration;
+- pure tool-call translation boundary with no hidden I/O;
+- actor/intent/capability/Lilac transaction attribution for document-affecting work.
 
-Rules:
+No multi-worker supervision in this grain.
 
-- deterministic checks run before model judgment;
-- model decisions never silently override invariant failures;
-- uncertain decisions may abstain/escalate;
-- every automated fix remains reversible and attributable.
+## Grain 3 — Agent Event Protocol
 
-### 4. Website and live-app intake
+Use UI-TARS revision `2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a` as an Apache-2.0 design/code donor for the event taxonomy.
 
-Use a layered intake stack:
+Deliver a Lilac-owned typed event stream covering:
+- run lifecycle;
+- user/assistant/streaming messages;
+- tool-call deltas and final calls/results;
+- environment inputs such as screenshots, viewport state, and codebase context;
+- plan lifecycle;
+- operation/transaction correlation;
+- handler isolation and event-debug inspector.
 
-1. browser/runtime instrumentation for source-aware local apps;
-2. Paper Snapshot-compatible DOM serialization already recovered/reconstructed;
-3. Firecrawl-derived crawl/scrape/action architecture for JS-heavy public sites;
-4. Website-downloader-derived recursive asset capture as a simple offline fallback;
-5. UI-TARS-derived visual/browser operator only when DOM/network paths are insufficient.
+The actual UI-TARS model and remote operator remain optional.
 
-All imported scripts are untrusted. Strip or sandbox executable content by default and preserve origin/provenance per captured asset.
+## Grain 4 — Agent Supervisor
 
-### 5. Documents and media
+Port/adapt Firstmate revision `1f3e769616fdf9f31f85f4c3e6a9f71606634238` after Grain 2 is canonical.
 
-Use Docling-derived parsing architecture for PDF, DOCX, PPTX, XLSX, HTML, images, OCR, tables, reading order, formulas, and document structure. Convert into a Lilac import IR rather than making Docling's document model canonical inside Lilac.
+Deliver:
+- worker leases and one-worker-per-worktree ownership;
+- event-driven wake/reconciliation queue;
+- liveness vs useful-progress classification;
+- declared waits/holds vs genuine wedge detection;
+- bounded stale escalation;
+- restart-safe reconciliation;
+- local process/worktree backend first.
 
-Heavy local models must remain optional; baseline document import must not require paid cloud services.
+Do not import the whole shell distro, Relay, secondmate/SSH topology, or nautical UX.
 
-### 6. Design intelligence
+## Grain 5 — Collaboration
 
-Use Impeccable-derived deterministic detector patterns as the initial Lilac design-quality rule engine. Keep rules inspectable and separable from LLM critique.
+Build Lilac-native collaboration from Paper evidence plus clean-room Doop behavioral study at `d99c8b157d5afd4192b356f89a2b19adc28c75a5`.
 
-Use Appllama skills as a methodology donor for design research, native/mobile interaction quality, motion review, anti-slop discipline, and simulator/preview verification. Paid Appllama MCP access must remain optional; Lilac cannot require it for core functionality.
+Deliver:
+- presence/cursors;
+- per-node/frame edit state;
+- comments and activity attribution;
+- agent status and streaming mutation visibility;
+- access-controlled realtime subscriptions;
+- local-first persistence path.
 
-Use `design-resources` as a curated discovery taxonomy. Individual linked assets retain their own licenses; the catalog does not grant blanket rights to third-party resources.
+Doop raw HTML frames do not replace the Lilac document graph.
 
-### 7. Retrieval and source discovery
+## Grain 6 — Import Stack
 
-`jev_search` is useful as a small reference for candidate-file prioritization, chunking, and decision-based filtering. It is explicitly marked by its upstream README as AI-generated and not production-ready, so Lilac should reuse ideas selectively and harden them with tests rather than adopt it as a production dependency.
+Order:
+1. recovered Paper-compatible DOM/style snapshot semantics;
+2. source-aware local app instrumentation;
+3. isolated local Playwright capture for JS-heavy pages;
+4. Docling revision `0cd61e0050a9ef68e5e10495b87e41d31acd79c9` as an optional local document sidecar;
+5. bounded static mirror fallback using selected Website-downloader lifecycle patterns from `130ad63d7163c19df64322556ca9c260eef353be`;
+6. optional UI-TARS visual operator;
+7. optional external Firecrawl connector / architecture reference from `4244638a7041bae8b99bdd42e3c44520f9e62da1`.
 
-Classifier/Jev-style classification may be an optional accelerator. Local deterministic or user-selected model paths must exist so core Lilac operation does not depend on a hosted classification service.
+Every captured asset/node records source provenance. Executable imported content is untrusted and sandboxed/stripped by default.
 
-## Import sequence
+## Grain 7 — Decision Router
 
-### Grain A — agent/runtime foundation
+Use classifier-dev revision `a17bf2b6353f6234af6e977a463da7cd1975b68e` for schema/behavior guidance.
 
-1. Unreal Agent operation/session model study and bounded donor snapshot.
-2. Firstmate supervision/worktree orchestration extraction.
-3. Reconcile both into Lilac's existing `history`, `document-model`, and `mcp-protocol` packages.
+Deliver:
+- provider-neutral decision dimensions;
+- selected label + confidence + full label-score distribution;
+- limits and batching;
+- explicit abstention/threshold semantics;
+- uncertain-item review routing;
+- optional Jev/classifier adapter.
 
-### Grain B — collaboration and canvas parity
+Deterministic Design Assurance findings always outrank probabilistic recommendations.
 
-1. Doop multiplayer protocol and state boundaries.
-2. Comments/activity/presence model.
-3. Agent attribution integration with Lilac transactions.
+## Grain 8 — Delivery Governance
 
-### Grain C — intake stack
+Adapt No-Mistakes revision `0616eb4911845e2ba04faa17186ecd2686d7d579` for agent-authored repository changes.
 
-1. Docling document adapter.
-2. Web capture adapter using recovered Paper-compatible snapshot semantics.
-3. Firecrawl/Website-downloader patterns for crawl/assets.
-4. UI-TARS visual fallback operator.
+Deliver:
+- structured findings;
+- isolated validation worktrees;
+- exact-head proof before publish/merge;
+- repair ancestry checks;
+- rerun-after-fix rules;
+- explicit `ask-user` governance state;
+- evidence persistence outside disposable worktrees.
 
-### Grain D — quality/decision engine
+This is project/source delivery infrastructure, not a canvas-renderer dependency.
 
-1. Impeccable deterministic rule engine.
-2. No-mistakes guarded review lifecycle.
-3. Optional Jev/classifier decision router.
-4. Visual regression and accessibility gates.
+## Grain 9 — Design Method and Resources
 
-### Grain E — design research/resources
+Adapt:
+- Appllama skills revision `dd5caaec3d5d50ad7fc0324da238119c6b7c3707` into explainable mobile/native rule packs and agent review checklists;
+- design-resources revision `43fe2b5d801e34c21e22b5639711f7e250a798e5` into a provider taxonomy/registry only.
 
-1. Appllama skill patterns adapted into Lilac agent skills.
-2. Design-resources taxonomy as a link/reference registry with per-resource licensing metadata.
+The Appllama MCP is optional. Linked third-party resource assets retain their own licenses.
+
+## Retrieval helper boundary
+
+`caio0452/jev_search@ea073f6db48f5bff73ae4b9f2240d2d302fb9dc1` is reference-only. Reimplement useful criteria parsing, candidate prioritization, chunking, bounded concurrency, and progressive ranking in Lilac-owned code. Do not ship its upstream Python/OpenRouter implementation.
 
 ## Acceptance rules for every grain
 
 - exact donor revision recorded;
-- original license/NOTICE copied where applicable;
-- SHA-256 manifest for imported source subset;
-- imported code isolated from Lilac-written code until reviewed;
-- no donor telemetry/credentials/branding retained accidentally;
-- tests demonstrate the bounded capability;
-- Jev and Alibaba Open Code Review qualification before merge;
+- license/NOTICE/provenance preserved where applicable;
+- imported subset has a SHA-256 manifest when source is copied;
+- donor code isolated from Lilac-written code until qualified;
+- no unintended telemetry/credentials/branding/hosted-service coupling;
+- focused tests prove the bounded capability and failure paths;
+- Jev qualification;
+- Alibaba Open Code Review used where supported, with manual review against resolved rules for unsupported surfaces;
 - normal merge commit only;
-- exact-head CI and post-merge verification required.
+- exact-head CI before merge and post-merge CI on canonical main.
