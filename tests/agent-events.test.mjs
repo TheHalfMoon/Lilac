@@ -47,7 +47,6 @@ const assistant = {
   turnId: "turn-1",
   messageId: "message-1",
 };
-
 const tool = {
   ...assistant,
   toolCallId: "tool-call-1",
@@ -97,7 +96,7 @@ test("event logs require contiguous per-run sequence and valid lifecycle", () =>
   );
 });
 
-test("assistant streaming requires start, allows deltas, finalizes once, and rejects later deltas", () => {
+test("assistant streaming requires start, matches final content, and finalizes once", () => {
   let log = runningLog();
   assert.throws(
     () => appendAgentEvent(log, event(3, "assistant_message_delta", { delta: "x" }, assistant)),
@@ -106,6 +105,10 @@ test("assistant streaming requires start, allows deltas, finalizes once, and rej
   log = appendAgentEvent(log, event(3, "assistant_message_start", {}, assistant));
   log = appendAgentEvent(log, event(4, "assistant_message_delta", { delta: "hel" }, assistant));
   log = appendAgentEvent(log, event(5, "assistant_message_delta", { delta: "lo" }, assistant));
+  assert.throws(
+    () => appendAgentEvent(log, event(6, "assistant_message_final", { content: "HELLO" }, assistant)),
+    /differs from streamed deltas/u,
+  );
   log = appendAgentEvent(log, event(6, "assistant_message_final", { content: "hello" }, assistant));
   const replay = replayAgentEventLog(log);
   assert.deepEqual(replay.assistantMessages[assistant.messageId].deltas, ["hel", "lo"]);
@@ -116,7 +119,7 @@ test("assistant streaming requires start, allows deltas, finalizes once, and rej
   );
 });
 
-test("tool calls require finalized invocation before one terminal result", () => {
+test("tool argument deltas must form the same canonical JSON as final arguments", () => {
   let log = runningLog();
   log = appendAgentEvent(log, event(3, "assistant_message_start", {}, assistant));
   log = appendAgentEvent(log, event(4, "tool_call_start", { name: "write_html" }, tool));
@@ -124,7 +127,17 @@ test("tool calls require finalized invocation before one terminal result", () =>
     () => appendAgentEvent(log, event(5, "tool_result", { name: "write_html", result: {} }, tool)),
     EventCorrelationError,
   );
-  log = appendAgentEvent(log, event(5, "tool_call_arguments_delta", { delta: "{\"html\":" }, tool));
+  log = appendAgentEvent(
+    log,
+    event(5, "tool_call_arguments_delta", { delta: "{\"html\":\"<p>ok</p>\"}" }, tool),
+  );
+  assert.throws(
+    () => appendAgentEvent(
+      log,
+      event(6, "tool_call_final", { name: "write_html", arguments: { html: "different" } }, tool),
+    ),
+    /final arguments differ from streamed deltas/u,
+  );
   log = appendAgentEvent(
     log,
     event(6, "tool_call_final", { name: "write_html", arguments: { html: "<p>ok</p>" } }, {
@@ -144,11 +157,44 @@ test("tool calls require finalized invocation before one terminal result", () =>
   assert.equal(replay.toolCalls[tool.toolCallId].terminal, "result");
   assert.equal(replay.operationTransactions["operation-1"], "transaction-1");
   assert.throws(
-    () => appendAgentEvent(
-      log,
-      event(8, "tool_error", { name: "write_html", error: "late" }, tool),
-    ),
+    () => appendAgentEvent(log, event(8, "tool_error", { name: "write_html", error: "late" }, tool)),
     EventCorrelationError,
+  );
+});
+
+test("malformed accumulated tool deltas fail before finalization", () => {
+  let log = runningLog();
+  log = appendAgentEvent(log, event(3, "assistant_message_start", {}, assistant));
+  log = appendAgentEvent(log, event(4, "tool_call_start", { name: "write_html" }, tool));
+  log = appendAgentEvent(log, event(5, "tool_call_arguments_delta", { delta: "{\"html\":" }, tool));
+  assert.throws(
+    () => appendAgentEvent(log, event(6, "tool_call_final", { name: "write_html", arguments: {} }, tool)),
+    /do not form valid JSON/u,
+  );
+});
+
+test("run completion rejects unsettled assistant, tool, and plan state", () => {
+  let assistantLog = runningLog();
+  assistantLog = appendAgentEvent(assistantLog, event(3, "assistant_message_start", {}, assistant));
+  assert.throws(
+    () => appendAgentEvent(assistantLog, event(4, "run_completed", { summary: "too early" })),
+    /assistant message message-1 is not finalized/u,
+  );
+
+  let toolLog = runningLog();
+  toolLog = appendAgentEvent(toolLog, event(3, "assistant_message_start", {}, assistant));
+  toolLog = appendAgentEvent(toolLog, event(4, "assistant_message_final", { content: "" }, assistant));
+  toolLog = appendAgentEvent(toolLog, event(5, "tool_call_start", { name: "read" }, tool));
+  assert.throws(
+    () => appendAgentEvent(toolLog, event(6, "run_completed", { summary: "too early" })),
+    /tool call tool-call-1 is not finalized/u,
+  );
+
+  let planLog = runningLog();
+  planLog = appendAgentEvent(planLog, event(3, "plan_started", { title: "Plan" }));
+  assert.throws(
+    () => appendAgentEvent(planLog, event(4, "run_completed", { summary: "too early" })),
+    /active plan must finish/u,
   );
 });
 
@@ -262,6 +308,10 @@ test("event log serialization round-trips and filtered pagination is bounded", (
   const next = queryAgentEvents(log, { kinds: ["user_message"], afterSequence: page.nextAfter, limit: 1 });
   assert.equal(next.events[0].sequence, 4);
   assert.equal(next.more, false);
+  assert.throws(
+    () => queryAgentEvents(log, { kinds: ["not_an_event"] }),
+    /unsupported query event kind/u,
+  );
 });
 
 test("event bus freezes snapshots and isolates handler failures", async () => {
@@ -286,12 +336,16 @@ test("event bus freezes snapshots and isolates handler failures", async () => {
   assert.equal(committed.data.metadata.safe, true);
 });
 
-test("event bus registration is deterministic and identity-based", () => {
+test("event bus registration is deterministic, identity-based, and runtime-validates kinds", () => {
   const bus = new AgentEventBus();
   const handler = { id: "handler-a", kinds: ["run_created"], handle() {} };
   bus.register(handler);
   assert.deepEqual(bus.handlerIds(), ["handler-a"]);
   assert.throws(() => bus.register(handler), HandlerRegistrationError);
+  assert.throws(
+    () => bus.register({ id: "bad-kind", kinds: ["not_an_event"], handle() {} }),
+    HandlerRegistrationError,
+  );
   assert.equal(bus.unregister("handler-a"), true);
   assert.deepEqual(bus.handlerIds(), []);
 });
