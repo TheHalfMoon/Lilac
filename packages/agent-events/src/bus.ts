@@ -25,6 +25,7 @@ export interface EventDispatchResult {
 }
 
 const EVENT_KIND_SET = new Set<string>(AGENT_EVENT_KINDS);
+const UNPRINTABLE_HANDLER_ERROR = "handler threw an unprintable value";
 
 function deepFreeze<T>(value: T, seen = new Set<object>()): Readonly<T> {
   if (value === null || typeof value !== "object" || seen.has(value as object)) return value;
@@ -33,6 +34,15 @@ function deepFreeze<T>(value: T, seen = new Set<object>()): Readonly<T> {
     deepFreeze(child, seen);
   }
   return Object.freeze(value);
+}
+
+function safeErrorMessage(value: unknown): string {
+  try {
+    if (value instanceof Error && typeof value.message === "string") return value.message;
+    return String(value);
+  } catch {
+    return UNPRINTABLE_HANDLER_ERROR;
+  }
 }
 
 function validateHandler(handler: AgentEventHandler): void {
@@ -101,7 +111,7 @@ export class AgentEventBus {
           return {
             handlerId: handler.id,
             status: "failed",
-            error: error instanceof Error ? error.message : String(error),
+            error: safeErrorMessage(error),
           };
         }
       }),
