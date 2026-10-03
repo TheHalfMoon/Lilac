@@ -176,6 +176,13 @@ function assertToolArgumentsMatchDeltas(current: ToolCallReplayState, event: Age
   }
 }
 
+function terminalStatus(kind: AgentEventKind): ToolCallReplayState["terminal"] {
+  if (kind === "tool_result") return "result";
+  if (kind === "tool_error") return "error";
+  if (kind === "tool_canceled") return "canceled";
+  throw new AgentEventError(`event kind ${kind} is not a terminal tool event`);
+}
+
 function applyToolEvent(state: AgentEventReplayState, event: AgentEvent): void {
   if (!event.kind.startsWith("tool_")) return;
   const toolCallId = event.toolCallId as string;
@@ -238,11 +245,7 @@ function applyToolEvent(state: AgentEventReplayState, event: AgentEvent): void {
   }
   current.operationId = event.operationId ?? current.operationId;
   current.transactionId = event.transactionId ?? current.transactionId;
-  current.terminal = event.kind === "tool_result"
-    ? "result"
-    : event.kind === "tool_error"
-      ? "error"
-      : "canceled";
+  current.terminal = terminalStatus(event.kind);
 }
 
 function applyPlanEvent(state: AgentEventReplayState, event: AgentEvent): void {
