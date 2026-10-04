@@ -1,0 +1,79 @@
+name: Open Code Review Delegation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: open-code-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  delegate-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install pinned Alibaba Open Code Review
+        run: npm install --global @alibaba-group/open-code-review@1.12.9
+
+      - name: Resolve review files and rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          ocr --version
+          ocr delegate preview --format json --from origin/main --to HEAD > ocr-preview.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { spawnSync } = require('node:child_process');
+          const preview = JSON.parse(fs.readFileSync('ocr-preview.json', 'utf8'));
+          if (preview.schema_version !== '1') {
+            throw new Error(`Unsupported OCR delegation schema: ${preview.schema_version}`);
+          }
+          const entries = preview.reviewable_files ?? preview.reviewableFiles ?? [];
+          const paths = entries.map((entry) => typeof entry === 'string' ? entry : entry.path).filter(Boolean);
+          if (paths.length === 0) throw new Error('OCR found no reviewable files');
+          const result = spawnSync(
+            'ocr',
+            ['delegate', 'rule', '--format', 'json', ...paths],
+            { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+          );
+          if (result.status !== 0) {
+            process.stderr.write(result.stderr);
+            process.exit(result.status ?? 1);
+          }
+          fs.writeFileSync('ocr-rules.json', result.stdout);
+          console.log(`OCR_REVIEWABLE_COUNT=${paths.length}`);
+          console.log(`OCR_REVIEWABLE_FILES=${paths.join(',')}`);
+          NODE
+          echo '--- OCR PREVIEW ---'
+          cat ocr-preview.json
+          echo '--- OCR RULES ---'
+          cat ocr-rules.json
+
+      - name: Upload deterministic OCR evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-code-review-delegation-${{ github.event.pull_request.head.sha }}
+          path: |
+            ocr-preview.json
+            ocr-rules.json
+          if-no-files-found: error
+          retention-days: 7

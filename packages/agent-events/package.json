@@ -1,0 +1,10 @@
+{
+  "name": "@lilac/agent-events",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@lilac/agent-runtime": "0.0.0"
+  }
+}
