@@ -120,8 +120,14 @@ function safeUrl(raw: string, tag: string, attribute: string, baseUrl: string | 
   } else {
     return value;
   }
-  try { assertSafeProvenanceUrl(resolved, "imported URL"); } catch { return null; }
-  return resolved;
+  try {
+    const parsed = new URL(resolved);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    assertSafeProvenanceUrl(parsed.href, "imported URL");
+    return parsed.href;
+  } catch {
+    return null;
+  }
 }
 
 function elementKind(tag: string): ImportNode["kind"] {
