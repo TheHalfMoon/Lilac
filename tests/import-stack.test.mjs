@@ -86,6 +86,9 @@ test("HTML import removes scripts, privileged embeds, handlers, unsafe schemes, 
   assert.equal(serialized.includes("javascript:"), false);
   assert.equal(serialized.includes("data:text/html"), false);
   assert.equal(Object.values(proposal.nodes).some((node) => node.tag === "script" || node.tag === "iframe" || node.tag === "animate"), false);
+
+  const controlObfuscated = importHtmlSnapshot(request(), '<a href="java&#10;script:alert(1)">x</a>');
+  assert.equal(canonicalImportStringify(controlObfuscated).includes("javascript:"), false);
 });
 
 test("CSS sanitizer detects comments and escaped spellings and rejects hidden fetch authority", () => {
@@ -420,7 +423,8 @@ test("import job cleanup refuses paths outside configured work root", async () =
     await mkdir(root);
     await mkdir(outside);
     await assert.rejects(() => safeRemoveImportJobDirectory(root, outside), ImportSecurityError);
-    assert.equal((await readFile(join(outside, "..", "outside").replace(/outside\\\.\./u, "outside")).catch(() => null)) === null, true);
+    const info = await (await import("node:fs/promises")).stat(outside);
+    assert.equal(info.isDirectory(), true);
   });
 });
 
