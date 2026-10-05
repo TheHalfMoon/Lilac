@@ -7,7 +7,8 @@ import { dirname, join } from "node:path";
 import { createAssetRecord } from "./assets.ts";
 import { ImportConflictError, ImportSecurityError, ImportValidationError } from "./errors.ts";
 import { createImportJobDirectory, safeRemoveImportJobDirectory } from "./filesystem.ts";
-import { importHtmlSnapshot, sanitizeImportedCssText } from "./html.ts";
+import { importHtmlSnapshot } from "./html.ts";
+import { sanitizeImportedCssText } from "./security.ts";
 import { validateNavigationUrl, validateResolvedAddresses } from "./network.ts";
 import type {
   AdapterResult,
