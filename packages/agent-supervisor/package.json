@@ -1,0 +1,1 @@
+{"name":"@lilac/agent-supervisor","version":"0.0.0","private":true,"type":"module","exports":"./src/index.ts","dependencies":{"@lilac/agent-events":"0.0.0","@lilac/agent-runtime":"0.0.0"}}
