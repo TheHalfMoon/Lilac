@@ -83,7 +83,7 @@ The actual UI-TARS model and remote operator remain optional.
 
 ## Grain 4 — Agent Supervisor
 
-Port/adapt Firstmate revision `1f3e769616fdf9f31f85f4c3e6a9f71606634238` after Grain 2 is canonical.
+Port/adapt Firstmate revision `1f3e769616fdf9f31f85f4c3e6a9f71606634238` after Grain 3 is canonical.
 
 Deliver:
 - worker leases and one-worker-per-worktree ownership;

@@ -38,6 +38,19 @@ export const AGENT_EVENT_KINDS = Object.freeze([
   "plan_updated",
   "plan_step_updated",
   "plan_completed",
+  "worker_started",
+  "worker_stopped",
+  "worker_failed",
+  "runtime_endpoint_lost",
+  "progress_checkpoint_changed",
+  "worker_wait_started",
+  "worker_wait_ended",
+  "worker_wedge_suspected",
+  "worker_stale_escalated",
+  "worker_recovery_started",
+  "worker_recovery_completed",
+  "worker_recovery_refused",
+  "worker_retired",
 ] as const);
 
 export type AgentEventKind = (typeof AGENT_EVENT_KINDS)[number];
@@ -58,6 +71,19 @@ export interface PlanStep {
   content: string;
   status: "pending" | "active" | "completed" | "failed" | "canceled";
 }
+
+export const SUPERVISOR_STALE_EVENT_STATES = Object.freeze([
+  "healthy",
+  "stale-suspected",
+  "stale-confirmed",
+  "recovery-requested",
+  "recovering",
+  "recovered",
+  "recovery-refused",
+  "terminal-failure",
+] as const);
+
+export type SupervisorStaleEventState = (typeof SUPERVISOR_STALE_EVENT_STATES)[number];
 
 export interface AgentEventDataMap {
   run_created: { metadata?: JsonValue };
@@ -82,6 +108,19 @@ export interface AgentEventDataMap {
   plan_updated: { steps: PlanStep[] };
   plan_step_updated: { step: PlanStep };
   plan_completed: { summary: string };
+  worker_started: { taskId: string; supervisorGenerationId: string; endpointId: string; branch: string; worktreePath: string };
+  worker_stopped: { taskId: string; supervisorGenerationId: string; endpointId: string; reason?: string };
+  worker_failed: { taskId: string; supervisorGenerationId: string; endpointId?: string; error: string };
+  runtime_endpoint_lost: { taskId: string; supervisorGenerationId: string; endpointId: string; state: "missing" | "unknown" | "gone"; absenceProven: boolean };
+  progress_checkpoint_changed: { taskId: string; sourceHead: string; dirtyDigest: string; sourceSequence: number };
+  worker_wait_started: { taskId: string; waitId: string; operationId: string; reason: string; validUntil: string };
+  worker_wait_ended: { taskId: string; waitId: string; outcome: "completed" | "canceled" | "expired" | "failed" };
+  worker_wedge_suspected: { taskId: string; staleWindows: number; reason: string };
+  worker_stale_escalated: { taskId: string; from: SupervisorStaleEventState; to: SupervisorStaleEventState; staleWindows: number };
+  worker_recovery_started: { taskId: string; recoveryId: string; priorEndpointId?: string };
+  worker_recovery_completed: { taskId: string; recoveryId: string; endpointId: string };
+  worker_recovery_refused: { taskId: string; recoveryId: string; reason: string };
+  worker_retired: { taskId: string; reason?: string };
 }
 
 export interface AgentEvent<T extends AgentEventKind = AgentEventKind> {
@@ -138,6 +177,7 @@ const CORRELATION_KEYS = [
   "transactionId",
 ] as const;
 const TOOL_TERMINAL_CORRELATIONS = new Set<string>(CORRELATION_KEYS);
+const SUPERVISOR_CORRELATIONS = new Set<string>(["operationId"]);
 const DATA_KEYS: Record<AgentEventKind, ReadonlySet<string>> = {
   run_created: new Set(["metadata"]),
   run_started: new Set(["metadata"]),
@@ -161,6 +201,19 @@ const DATA_KEYS: Record<AgentEventKind, ReadonlySet<string>> = {
   plan_updated: new Set(["steps"]),
   plan_step_updated: new Set(["step"]),
   plan_completed: new Set(["summary"]),
+  worker_started: new Set(["taskId", "supervisorGenerationId", "endpointId", "branch", "worktreePath"]),
+  worker_stopped: new Set(["taskId", "supervisorGenerationId", "endpointId", "reason"]),
+  worker_failed: new Set(["taskId", "supervisorGenerationId", "endpointId", "error"]),
+  runtime_endpoint_lost: new Set(["taskId", "supervisorGenerationId", "endpointId", "state", "absenceProven"]),
+  progress_checkpoint_changed: new Set(["taskId", "sourceHead", "dirtyDigest", "sourceSequence"]),
+  worker_wait_started: new Set(["taskId", "waitId", "operationId", "reason", "validUntil"]),
+  worker_wait_ended: new Set(["taskId", "waitId", "outcome"]),
+  worker_wedge_suspected: new Set(["taskId", "staleWindows", "reason"]),
+  worker_stale_escalated: new Set(["taskId", "from", "to", "staleWindows"]),
+  worker_recovery_started: new Set(["taskId", "recoveryId", "priorEndpointId"]),
+  worker_recovery_completed: new Set(["taskId", "recoveryId", "endpointId"]),
+  worker_recovery_refused: new Set(["taskId", "recoveryId", "reason"]),
+  worker_retired: new Set(["taskId", "reason"]),
 };
 const CORRELATION_KEYS_BY_KIND: Record<AgentEventKind, ReadonlySet<string>> = {
   run_created: new Set(),
@@ -185,6 +238,19 @@ const CORRELATION_KEYS_BY_KIND: Record<AgentEventKind, ReadonlySet<string>> = {
   plan_updated: new Set(["turnId"]),
   plan_step_updated: new Set(["turnId"]),
   plan_completed: new Set(["turnId"]),
+  worker_started: SUPERVISOR_CORRELATIONS,
+  worker_stopped: SUPERVISOR_CORRELATIONS,
+  worker_failed: SUPERVISOR_CORRELATIONS,
+  runtime_endpoint_lost: SUPERVISOR_CORRELATIONS,
+  progress_checkpoint_changed: SUPERVISOR_CORRELATIONS,
+  worker_wait_started: SUPERVISOR_CORRELATIONS,
+  worker_wait_ended: SUPERVISOR_CORRELATIONS,
+  worker_wedge_suspected: SUPERVISOR_CORRELATIONS,
+  worker_stale_escalated: SUPERVISOR_CORRELATIONS,
+  worker_recovery_started: SUPERVISOR_CORRELATIONS,
+  worker_recovery_completed: SUPERVISOR_CORRELATIONS,
+  worker_recovery_refused: SUPERVISOR_CORRELATIONS,
+  worker_retired: SUPERVISOR_CORRELATIONS,
 };
 
 function eventError(error: unknown): never {
@@ -231,6 +297,21 @@ function assertOptionalId(value: unknown, label: string): void {
 function assertFiniteNonNegative(value: unknown, label: string): void {
   if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
     throw new AgentEventError(`${label} must be a finite non-negative number`);
+  }
+}
+function assertRequiredNonNegativeInteger(value: unknown, label: string): void {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new AgentEventError(`${label} must be a non-negative safe integer`);
+  }
+}
+
+function assertBoolean(value: unknown, label: string): void {
+  if (typeof value !== "boolean") throw new AgentEventError(`${label} must be boolean`);
+}
+
+function assertEnum(value: unknown, allowed: readonly string[], label: string): void {
+  if (typeof value !== "string" || !allowed.includes(value)) {
+    throw new AgentEventError(`${label} is unsupported`);
   }
 }
 
@@ -371,6 +452,83 @@ function validateData(kind: AgentEventKind, data: unknown): void {
       return;
     case "plan_completed":
       assertString(data.summary, `${label}.summary`);
+      return;
+    case "worker_started":
+      assertId(data.taskId, `${label}.taskId`);
+      assertId(data.supervisorGenerationId, `${label}.supervisorGenerationId`);
+      assertId(data.endpointId, `${label}.endpointId`);
+      assertString(data.branch, `${label}.branch`, 1024);
+      assertString(data.worktreePath, `${label}.worktreePath`, 4096);
+      return;
+    case "worker_stopped":
+      assertId(data.taskId, `${label}.taskId`);
+      assertId(data.supervisorGenerationId, `${label}.supervisorGenerationId`);
+      assertId(data.endpointId, `${label}.endpointId`);
+      if (data.reason !== undefined) assertString(data.reason, `${label}.reason`, 4096);
+      return;
+    case "worker_failed":
+      assertId(data.taskId, `${label}.taskId`);
+      assertId(data.supervisorGenerationId, `${label}.supervisorGenerationId`);
+      if (data.endpointId !== undefined) assertId(data.endpointId, `${label}.endpointId`);
+      assertString(data.error, `${label}.error`, 4096);
+      return;
+    case "runtime_endpoint_lost":
+      assertId(data.taskId, `${label}.taskId`);
+      assertId(data.supervisorGenerationId, `${label}.supervisorGenerationId`);
+      assertId(data.endpointId, `${label}.endpointId`);
+      assertEnum(data.state, ["missing", "unknown", "gone"], `${label}.state`);
+      assertBoolean(data.absenceProven, `${label}.absenceProven`);
+      if (data.state !== "gone" && data.absenceProven === true) {
+        throw new AgentEventError(`${label}.absenceProven may only be true for gone state`);
+      }
+      return;
+    case "progress_checkpoint_changed":
+      assertId(data.taskId, `${label}.taskId`);
+      assertString(data.sourceHead, `${label}.sourceHead`, 256);
+      assertString(data.dirtyDigest, `${label}.dirtyDigest`, 512);
+      assertRequiredNonNegativeInteger(data.sourceSequence, `${label}.sourceSequence`);
+      return;
+    case "worker_wait_started":
+      assertId(data.taskId, `${label}.taskId`);
+      assertId(data.waitId, `${label}.waitId`);
+      assertId(data.operationId, `${label}.operationId`);
+      assertString(data.reason, `${label}.reason`, 4096);
+      assertTimestamp(data.validUntil, `${label}.validUntil`);
+      return;
+    case "worker_wait_ended":
+      assertId(data.taskId, `${label}.taskId`);
+      assertId(data.waitId, `${label}.waitId`);
+      assertEnum(data.outcome, ["completed", "canceled", "expired", "failed"], `${label}.outcome`);
+      return;
+    case "worker_wedge_suspected":
+      assertId(data.taskId, `${label}.taskId`);
+      assertRequiredNonNegativeInteger(data.staleWindows, `${label}.staleWindows`);
+      assertString(data.reason, `${label}.reason`, 4096);
+      return;
+    case "worker_stale_escalated":
+      assertId(data.taskId, `${label}.taskId`);
+      assertEnum(data.from, SUPERVISOR_STALE_EVENT_STATES, `${label}.from`);
+      assertEnum(data.to, SUPERVISOR_STALE_EVENT_STATES, `${label}.to`);
+      assertRequiredNonNegativeInteger(data.staleWindows, `${label}.staleWindows`);
+      return;
+    case "worker_recovery_started":
+      assertId(data.taskId, `${label}.taskId`);
+      assertId(data.recoveryId, `${label}.recoveryId`);
+      if (data.priorEndpointId !== undefined) assertId(data.priorEndpointId, `${label}.priorEndpointId`);
+      return;
+    case "worker_recovery_completed":
+      assertId(data.taskId, `${label}.taskId`);
+      assertId(data.recoveryId, `${label}.recoveryId`);
+      assertId(data.endpointId, `${label}.endpointId`);
+      return;
+    case "worker_recovery_refused":
+      assertId(data.taskId, `${label}.taskId`);
+      assertId(data.recoveryId, `${label}.recoveryId`);
+      assertString(data.reason, `${label}.reason`, 4096);
+      return;
+    case "worker_retired":
+      assertId(data.taskId, `${label}.taskId`);
+      if (data.reason !== undefined) assertString(data.reason, `${label}.reason`, 4096);
       return;
   }
 }
