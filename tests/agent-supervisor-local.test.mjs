@@ -418,6 +418,39 @@ test("local process runtime persists endpoint identity, avoids implicit credenti
 });
 
 
+test("local process stop waits for an owned child that exited before stop to finish closing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lilac-local-runtime-self-exit-"));
+  const runtimeDir = join(root, "runtime");
+  const endpoint = { endpointId: "endpoint-self-exit", backend: "local-process", attachedAt: T0 };
+  const adapter = new LocalProcessRuntimeAdapter(runtimeDir, {
+    once: {
+      executable: process.execPath,
+      args: ["-e", "setTimeout(() => process.exit(0), 25)"],
+      environment: {},
+    },
+  }, { stopTimeoutMs: 3000, pollMs: 5 });
+  try {
+    assert.equal((await adapter.launch({
+      taskId: "task-self-exit",
+      runtimeProfileId: "once",
+      worktreePath: root,
+      endpoint,
+      supervisorGenerationId: "generation-a",
+    })).state, "alive");
+    let observed = await adapter.inspect(endpoint);
+    for (let index = 0; index < 200 && observed.state === "alive"; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      observed = await adapter.inspect(endpoint);
+    }
+    assert.notEqual(observed.state, "alive");
+    const stopped = await adapter.stop(endpoint);
+    assert.equal(stopped.state, "dead");
+  } finally {
+    try { await adapter.stop(endpoint); } catch { /* test cleanup only */ }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("task-set lock and durable task registry prevent different task ids from sharing one active worktree", async () => {
   const root = await mkdtemp(join(tmpdir(), "lilac-worktree-owner-"));
   const state = join(root, "state");

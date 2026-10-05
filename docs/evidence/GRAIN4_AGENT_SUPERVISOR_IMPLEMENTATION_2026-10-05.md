@@ -58,6 +58,7 @@ The candidate provides:
 - A live PID seen after adapter restart is `unknown` unless this adapter instance launched and owns that process identity; this avoids guessing across PID reuse/restart.
 - Worktree symlinks, non-root paths, repository identity mismatch, branch mismatch, and unreadable Git state fail closed.
 - Runtime stop/relaunch preserves tracked edits, untracked bytes, HEAD, and dirty-state fingerprint.
+- For locally owned processes, `stop` waits for child-process `close` after termination evidence, including the already-exited-before-stop case, before publishing a durable dead result; timeout remains fail-closed as `unknown`.
 - Another live supervisor generation cannot mutate task state, leases, cursors, or endpoints.
 - Runtime profiles launch with `shell: false`; environment is explicit rather than implicitly inherited.
 - Ordinary stop/relaunch/retire never deletes the worktree.
@@ -77,13 +78,13 @@ The highest-ranked risk surfaces for the Grain 4 query were `assertMutationAutho
 
 Focused Grain 4 suite:
 
-- 66 tests passed;
+- 67 tests passed;
 - 0 failed;
 - includes spawn races, stale lease reclamation, authority loss across awaits, queue cursor crash recovery, runtime restart ambiguity, dirty worktree preservation, typed lifecycle verbs, progress/wedge logic, and reconciliation.
 
 Repository `npm run check`:
 
-- 144 tests passed;
+- 145 tests passed;
 - 0 failed;
 - Node test-file concurrency is fixed at 1 because concurrent repository test files independently launch Git/Impeccable/subprocess workloads and produced reproducible host resource contention while each failing test passed in isolation. No test was removed, skipped, or weakened.
 

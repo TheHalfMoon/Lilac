@@ -756,32 +756,32 @@ export class LocalProcessRuntimeAdapter implements RuntimeAdapter {
     if (profile === undefined) throw new SupervisorRuntimeError(`unknown local runtime profile ${record.runtimeProfileId}`);
     const before = processLiveness(record.pid);
     if (before === "unknown") return { state: "unknown", endpointId: record.endpointId, cwd: record.cwd, absenceProven: false };
+    const child = this.launchedChildren.get(record.endpointId);
+    let closed = child === undefined;
+    const closePromise = child === undefined ? null : new Promise<void>((resolve) => {
+      child.once("close", () => { closed = true; resolve(); });
+    });
+    const deadline = Date.now() + this.stopTimeoutMs;
     if (before === "live") {
       if (this.launchedPids.get(record.endpointId) !== record.pid) {
         return { state: "unknown", endpointId: record.endpointId, cwd: record.cwd, absenceProven: false };
       }
-      const child = this.launchedChildren.get(record.endpointId);
-      let closed = child === undefined;
-      const closePromise = child === undefined ? null : new Promise<void>((resolve) => {
-        child.once("close", () => { closed = true; resolve(); });
-      });
       try { process.kill(record.pid, profile.stopSignal ?? "SIGTERM"); } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
       }
-      const deadline = Date.now() + this.stopTimeoutMs;
       while (processLiveness(record.pid) === "live" && Date.now() < deadline) await delay(this.pollMs);
       const after = processLiveness(record.pid);
       if (after === "live") return { state: "alive", endpointId: record.endpointId, cwd: record.cwd, absenceProven: false };
       if (after === "unknown") return { state: "unknown", endpointId: record.endpointId, cwd: record.cwd, absenceProven: false };
-      if (closePromise !== null && !closed) {
-        const remaining = Math.max(0, deadline - Date.now());
-        const closeCompleted = await Promise.race([
-          closePromise.then(() => true),
-          delay(remaining).then(() => false),
-        ]);
-        if (!closeCompleted) {
-          return { state: "unknown", endpointId: record.endpointId, cwd: record.cwd, absenceProven: false };
-        }
+    }
+    if (closePromise !== null && !closed) {
+      const remaining = Math.max(0, deadline - Date.now());
+      const closeCompleted = await Promise.race([
+        closePromise.then(() => true),
+        delay(remaining).then(() => false),
+      ]);
+      if (!closeCompleted) {
+        return { state: "unknown", endpointId: record.endpointId, cwd: record.cwd, absenceProven: false };
       }
     }
     const stopped: LocalEndpointRecord = { ...record, state: "stopped" };
