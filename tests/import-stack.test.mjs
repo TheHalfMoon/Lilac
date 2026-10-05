@@ -70,7 +70,11 @@ test("HTML snapshots are deterministic and preserve semantic structure", () => {
   assert.equal(left.proposalId, right.proposalId);
   assert.equal(left.rootIds.length, 1);
   assert.equal(Object.values(left.nodes).some((node) => node.kind === "text" && node.text === "Hello"), true);
-  assert.equal(left.resources.some((resource) => resource.kind === "image" && resource.uri === "https://example.com/hero.png"), true);
+  const imageResource = left.resources.find((resource) => resource.kind === "image" && resource.uri === "https://example.com/hero.png");
+  assert.equal(Boolean(imageResource), true);
+  assert.equal(imageResource?.attribute, "src");
+  const imageNode = Object.values(left.nodes).find((node) => node.kind === "image");
+  assert.equal(Object.hasOwn(imageNode?.attributes ?? {}, "src"), false, "remote URL must remain non-authoritative resource data");
 });
 
 test("HTML import removes scripts, privileged embeds, handlers, unsafe schemes, and active SVG elements", () => {
@@ -132,11 +136,24 @@ test("HTML import enforces byte and DOM limits without silent truncation", () =>
   );
 });
 
-test("proposal validation rejects unknown fields and broken graph identity", () => {
+test("proposal validation rejects executable tags, unsafe CSS, external URL authority, unknown fields, and broken graph identity", () => {
   const proposal = importHtmlSnapshot(request(), "<div><span>Hello</span></div>");
   assert.throws(() => validateImportProposal({ ...proposal, hiddenAuthority: true }), /unsupported field hiddenAuthority/u);
   const root = proposal.rootIds[0];
-  const child = proposal.nodes[root].children[0];
+  const scripted = structuredClone(proposal);
+  scripted.nodes[root].tag = "script";
+  assert.throws(() => validateImportProposal(scripted), /tag is not allowed/u);
+
+  const externalUrl = structuredClone(proposal);
+  externalUrl.nodes[root].attributes.href = "https://evil.test/x";
+  assert.throws(() => validateImportProposal(externalUrl), /external fetch authority/u);
+
+  const unsafeStyle = structuredClone(proposal);
+  unsafeStyle.nodes[root].style.cssText = "background:url(https://evil.test/x.png)";
+  assert.throws(() => validateImportProposal(unsafeStyle), /unsafe/u);
+
+  const root2 = proposal.rootIds[0];
+  const child = proposal.nodes[root2].children[0];
   const bad = structuredClone(proposal);
   bad.nodes[child].parentId = "missing-parent";
   assert.throws(() => validateImportProposal(bad), /missing parent/u);

@@ -1,4 +1,5 @@
 import { ImportConflictError, ImportValidationError } from "./errors.ts";
+import { isForbiddenImportTag, isSafeStoredUrlReference, sanitizeImportedCssText, STORED_URL_ATTRIBUTES } from "./security.ts";
 import {
   IMPORT_SCHEMA_VERSION,
   type AssetRecord,
@@ -37,7 +38,12 @@ function normalizeNode(value: unknown, expectedId: string, policy: ImportProposa
     return child;
   });
   if (new Set(children).size !== children.length) throw new ImportValidationError(`import.nodes.${expectedId}.children contains duplicates`);
-  if (value.tag !== undefined) assertBoundedString(value.tag, `import.nodes.${expectedId}.tag`, 128);
+  if (value.tag !== undefined) {
+    assertBoundedString(value.tag, `import.nodes.${expectedId}.tag`, 128);
+    if (isForbiddenImportTag(value.tag as string)) {
+      throw new ImportValidationError(`import.nodes.${expectedId}.tag is not allowed`);
+    }
+  }
   if (value.text !== undefined && typeof value.text !== "string") throw new ImportValidationError(`import.nodes.${expectedId}.text must be a string`);
   if (value.text !== undefined && bytes(value.text as string) > policy.maxTextBytes) throw new ImportValidationError(`import.nodes.${expectedId}.text exceeds policy`);
   assertPlainObject(value.attributes, `import.nodes.${expectedId}.attributes`);
@@ -49,6 +55,13 @@ function normalizeNode(value: unknown, expectedId: string, policy: ImportProposa
     assertBoundedString(key, `import.nodes.${expectedId}.attribute key`, 256);
     const entry = value.attributes[key];
     if (typeof entry !== "string") throw new ImportValidationError(`import.nodes.${expectedId}.attributes.${key} must be a string`);
+    const normalizedKey = key.toLowerCase();
+    if (normalizedKey.startsWith("on") || normalizedKey === "srcdoc" || normalizedKey === "srcset" || normalizedKey === "action" || normalizedKey === "formaction") {
+      throw new ImportValidationError(`import.nodes.${expectedId}.attributes.${key} carries executable or navigation authority`);
+    }
+    if (STORED_URL_ATTRIBUTES.has(normalizedKey) && !isSafeStoredUrlReference(entry)) {
+      throw new ImportValidationError(`import.nodes.${expectedId}.attributes.${key} must not retain external fetch authority`);
+    }
     attributeBytes += bytes(key) + bytes(entry);
     attributes[key] = entry;
   }
@@ -56,10 +69,14 @@ function normalizeNode(value: unknown, expectedId: string, policy: ImportProposa
   const style: Record<string, string> = Object.create(null);
   for (const key of Object.keys(value.style).sort()) {
     assertBoundedString(key, `import.nodes.${expectedId}.style key`, 256);
+    if (key !== "cssText") throw new ImportValidationError(`import.nodes.${expectedId}.style.${key} is unsupported`);
     const entry = value.style[key];
     if (typeof entry !== "string") throw new ImportValidationError(`import.nodes.${expectedId}.style.${key} must be a string`);
-    if (bytes(entry) > policy.maxCssBytes) throw new ImportValidationError(`import.nodes.${expectedId}.style.${key} exceeds CSS policy`);
-    style[key] = entry;
+    const sanitized = sanitizeImportedCssText(entry, policy.maxCssBytes);
+    if (sanitized.unsafe || sanitized.cssText !== entry.trim()) {
+      throw new ImportValidationError(`import.nodes.${expectedId}.style.${key} is unsafe or non-canonical`);
+    }
+    style[key] = sanitized.cssText;
   }
   return {
     id: expectedId,
@@ -92,11 +109,17 @@ function normalizeAsset(value: unknown): AssetRecord {
 
 function normalizeResource(value: unknown): ResourceReference {
   assertPlainObject(value, "import.resource");
-  assertAllowedKeys(value, ["kind", "uri", "nodeId"], "import.resource");
+  assertAllowedKeys(value, ["kind", "uri", "nodeId", "attribute"], "import.resource");
   if (!RESOURCE_KINDS.has(value.kind as string)) throw new ImportValidationError("import resource kind is invalid");
   assertBoundedString(value.uri, "import.resource.uri", 4096);
   assertSafeProvenanceUrl(value.uri as string, "import.resource.uri");
   if (value.nodeId !== undefined) assertBoundedString(value.nodeId, "import.resource.nodeId", 256);
+  if (value.attribute !== undefined) {
+    if (!["href", "src", "poster", "cite", "background", "xlink:href"].includes(value.attribute as string)) {
+      throw new ImportValidationError("import resource attribute is invalid");
+    }
+    if (value.nodeId === undefined) throw new ImportValidationError("import resource attribute requires nodeId");
+  }
   return structuredClone(value) as ResourceReference;
 }
 
@@ -104,12 +127,14 @@ function normalizeStylesheet(value: unknown, policy: ImportProposal["policy"]): 
   assertPlainObject(value, "import.stylesheet");
   assertAllowedKeys(value, ["id", "cssText", "sourceBinding"], "import.stylesheet");
   assertBoundedString(value.id, "import.stylesheet.id", 256);
-  if (typeof value.cssText !== "string" || bytes(value.cssText) > policy.maxCssBytes) {
-    throw new ImportValidationError("import stylesheet exceeds CSS policy");
+  if (typeof value.cssText !== "string") throw new ImportValidationError("import stylesheet cssText must be a string");
+  const sanitized = sanitizeImportedCssText(value.cssText, policy.maxCssBytes);
+  if (sanitized.unsafe || sanitized.cssText !== value.cssText.trim()) {
+    throw new ImportValidationError("import stylesheet is unsafe or non-canonical");
   }
   return {
     id: value.id,
-    cssText: value.cssText,
+    cssText: sanitized.cssText,
     ...(value.sourceBinding === undefined ? {} : { sourceBinding: normalizeSourceBinding(value.sourceBinding) }),
   };
 }
@@ -212,6 +237,11 @@ export function validateImportProposal(proposal: ImportProposal): ImportProposal
 
   if (!Array.isArray(proposal.resources) || proposal.resources.length > policy.maxAssets) throw new ImportValidationError("resource collection is invalid");
   const resources = proposal.resources.map(normalizeResource);
+  for (const resource of resources) {
+    if (resource.nodeId !== undefined && !nodes[resource.nodeId]) {
+      throw new ImportValidationError(`import resource references missing node ${resource.nodeId}`);
+    }
+  }
   if (!Array.isArray(proposal.diagnostics) || proposal.diagnostics.length > policy.maxDiagnostics) throw new ImportValidationError("diagnostic collection is invalid");
   const diagnostics = proposal.diagnostics.map(normalizeDiagnostic);
 

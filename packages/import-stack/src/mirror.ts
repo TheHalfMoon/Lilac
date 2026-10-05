@@ -293,17 +293,18 @@ export async function proposalFromStaticMirror(requestInput: ImportRequest, resu
     source: { ...request.source, uri: result.manifest.entryUrl, baseUrl: result.manifest.entryUrl },
   }, decodeUtf8(bytes, "mirrored entry"));
   for (const node of Object.values(proposal.nodes)) {
-    for (const key of ["src", "href", "poster", "xlink:href"]) {
-      const current = node.attributes[key];
-      if (!current) continue;
-      const logical = result.manifest.rewrites[current];
-      if (logical) node.attributes[key] = `./${logical}`;
-    }
+    // External URL attributes are absent until bytes have been captured.
   }
-  proposal.resources = proposal.resources.map((resource) => ({
-    ...resource,
-    uri: result.manifest.rewrites[resource.uri] ? `./${result.manifest.rewrites[resource.uri]}` : resource.uri,
-  }));
+  proposal.resources = proposal.resources.map((resource) => {
+    const logical = result.manifest.rewrites[resource.uri];
+    if (logical && resource.nodeId && resource.attribute && proposal.nodes[resource.nodeId]) {
+      proposal.nodes[resource.nodeId].attributes[resource.attribute] = `./${logical}`;
+    }
+    return {
+      ...resource,
+      uri: logical ? `./${logical}` : resource.uri,
+    };
+  });
   proposal.assets = result.manifest.resources.map((resource) => ({
     assetId: `asset:${resource.sha256}`,
     sha256: resource.sha256,

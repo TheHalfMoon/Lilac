@@ -98,6 +98,7 @@ export interface ResourceReference {
   kind: "stylesheet" | "image" | "media" | "link";
   uri: string;
   nodeId?: string;
+  attribute?: "href" | "src" | "poster" | "cite" | "background" | "xlink:href";
 }
 
 export interface ImportDiagnostic {

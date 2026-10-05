@@ -1,5 +1,6 @@
 import { parseFragment } from "parse5";
 import { ImportSecurityError, ImportValidationError } from "./errors.ts";
+import { isForbiddenImportTag, sanitizeImportedCssText } from "./security.ts";
 import {
   IMPORT_SCHEMA_VERSION,
   type ImportDiagnostic,
@@ -48,44 +49,6 @@ function nodeId(proposalId: string, domPath: string): string {
 
 function styleId(proposalId: string, domPath: string): string {
   return `import-style:${sha256Text(`${proposalId}:${domPath}`).slice(0, 32)}`;
-}
-
-function cssSecurityView(css: string): string {
-  return css
-    .replace(/\/\*[\s\S]*?\*\//gu, "")
-    .replace(/\\([0-9a-fA-F]{1,6})\s?/gu, (_match, hex: string) => {
-      const codePoint = Number.parseInt(hex, 16);
-      return Number.isFinite(codePoint) && codePoint > 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : "";
-    })
-    .replace(/\\([^\r\n0-9a-fA-F])/gu, "$1")
-    .toLowerCase();
-}
-
-function unsafeCss(css: string): boolean {
-  const view = cssSecurityView(css);
-  return (
-    /@import\b/u.test(view)
-    || /expression\s*\(/u.test(view)
-    || /url\s*\(/u.test(view)
-    || /(?:javascript|vbscript):/u.test(view)
-    || /-moz-binding\s*:/u.test(view)
-    || /(?:^|[;{])\s*behavior\s*:/u.test(view)
-  );
-}
-
-function sanitizeCss(css: string, label: string, maxBytes: number, onUnsafe: () => void): string | null {
-  if (byteLength(css) > maxBytes) throw new ImportSecurityError(`${label} exceeds maxCssBytes`);
-  if (unsafeCss(css)) {
-    onUnsafe();
-    return null;
-  }
-  return css.trim();
-}
-
-export function sanitizeImportedCssText(css: string, maxBytes: number): { cssText: string | null; unsafe: boolean } {
-  let unsafe = false;
-  const cssText = sanitizeCss(css, "imported stylesheet", maxBytes, () => { unsafe = true; });
-  return { cssText, unsafe };
 }
 
 function baseUrlFor(request: ImportRequest): string | undefined {
@@ -209,7 +172,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
 
     const rawTag = String(node?.tagName ?? node?.nodeName ?? "").toLowerCase();
     if (!rawTag || rawTag === "#document-fragment") return null;
-    if (DROP_SUBTREE.has(rawTag)) {
+    if (DROP_SUBTREE.has(rawTag) || isForbiddenImportTag(rawTag)) {
       if (rawTag === "script") security.scriptsRemoved += 1;
       else security.dangerousElementsRemoved += 1;
       diagnostic({
@@ -226,7 +189,8 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     }
     if (rawTag === "style") {
       const rawCss = directText(node);
-      const css = sanitizeCss(rawCss, "style element", request.policy.maxCssBytes, () => {
+      const sanitized = sanitizeImportedCssText(rawCss, request.policy.maxCssBytes);
+      if (sanitized.unsafe) {
         security.unsafeStylesRemoved += 1;
         diagnostic({
           code: "unsafe-stylesheet-removed",
@@ -234,11 +198,11 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
           message: "Removed stylesheet containing executable or external-loading CSS",
           sourceBinding: binding(request, domPath, node.sourceCodeLocation),
         });
-      });
-      if (css !== null && css !== "") {
-        cssBytes += byteLength(css);
+      }
+      if (sanitized.cssText !== null && sanitized.cssText !== "") {
+        cssBytes += byteLength(sanitized.cssText);
         if (cssBytes > request.policy.maxCssBytes) throw new ImportSecurityError("stylesheets exceed maxCssBytes");
-        stylesheets.push({ id: styleId(proposalId, domPath), cssText: css, sourceBinding: binding(request, domPath, node.sourceCodeLocation) });
+        stylesheets.push({ id: styleId(proposalId, domPath), cssText: sanitized.cssText, sourceBinding: binding(request, domPath, node.sourceCodeLocation) });
       }
       return null;
     }
@@ -287,15 +251,16 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
         continue;
       }
       if (name === "style") {
-        const css = sanitizeCss(rawValue, "inline style", request.policy.maxCssBytes, () => {
+        const sanitized = sanitizeImportedCssText(rawValue, request.policy.maxCssBytes);
+        if (sanitized.unsafe) {
           security.unsafeStylesRemoved += 1;
           diagnostic({
             code: "unsafe-inline-style-removed", severity: "warning",
             message: "Removed inline style containing executable or external-loading CSS", nodeId: id,
             sourceBinding: binding(request, domPath, node.sourceCodeLocation),
           });
-        });
-        if (css !== null && css !== "") style.cssText = css;
+        }
+        if (sanitized.cssText !== null && sanitized.cssText !== "") style.cssText = sanitized.cssText;
         continue;
       }
       if (URL_ATTRIBUTES.has(name)) {
@@ -313,11 +278,17 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
           });
           continue;
         }
-        attributes[name] = resolved;
-        const kind = RESOURCE_TAGS.get(rawTag);
-        if (kind && (name === "src" || name === "href" || name === "poster" || name === "xlink:href")) {
-          resource({ kind, uri: resolved, nodeId: id });
+        if (resolved.startsWith("#")) {
+          attributes[name] = resolved;
+          continue;
         }
+        const kind = RESOURCE_TAGS.get(rawTag) ?? "link";
+        resource({
+          kind,
+          uri: resolved,
+          nodeId: id,
+          attribute: name as ResourceReference["attribute"],
+        });
         continue;
       }
       attributes[name] = rawValue;
