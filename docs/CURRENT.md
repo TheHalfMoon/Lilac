@@ -1,100 +1,110 @@
 # Lilac — Canonical Program State
 
-Last updated: 2026-10-03
+Last updated: 2026-10-06
 
 ## Program
 
-**LILAC-P00 — Foundation and authorized-source intake**
+**LILAC-P00 — Foundation, authorized-source intake, and staged product implementation**
 
-Status: ACTIVE — recovery baseline proven; Grain 1 Design Assurance and Grain 2 Durable Agent Kernel are canonical; Grain 3 Agent Event Protocol is the next implementation frontier
+Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–5 are `CLOSED_CANONICAL`; repository-side Graft context policy is canonical; Grain 6 Import Stack is the next implementation frontier.
+
+## Canonical main
+
+`d6eb3be46e9d608b2071b80be0f6911ba5bf0c9b`
+
+This is the normal merge commit for PR #8 after the Grain 5 closeout.
+
+Post-merge CI run `37329841174` completed `SUCCESS` on that exact SHA.
+
+## Canonical implementation chain
+
+| Grain | Capability | State | Canonical evidence |
+|---:|---|---|---|
+| 1 | Design Assurance | CLOSED_CANONICAL | PR #19 implementation + PR #20 closeout; canonical closeout merge `8b444dbf96a4f064a8d0dd21ba19dc2b7d28cd5e` |
+| 2 | Durable Agent Kernel | CLOSED_CANONICAL | PR #21 merged at `943a0727b9e15abbe7e47d8d7aa99adc6b0c3434` |
+| 3 | Agent Event Protocol | CLOSED_CANONICAL | PR #24 merged at `47bd4f7f95e99b3e7f7f8c2700f87fb367288a73`; post-merge CI `37229773645` succeeded on the exact merge SHA |
+| 4 | Agent Supervisor | CLOSED_CANONICAL | PR #31 merged at `9ab8b55eb319939c560646f640f444ed9a19916b`; post-merge CI `37313871378` succeeded |
+| 5 | Local-first Collaboration | CLOSED_CANONICAL | PR #32 merged at `007e829fdc6e4a28f7fb5089277e6e535840f317`; post-merge CI `37327594078` succeeded |
+| Tooling | Graft context/navigation policy | CANONICAL | PR #8 merged at `d6eb3be46e9d608b2071b80be0f6911ba5bf0c9b`; post-merge CI `37329841174` succeeded |
 
 ## Canonical facts
 
-- Repository: `TheHalfMoon/Lilac`
-- Product name: **Lilac**
-- Paper.design is an authorized donor/source according to the project owner's explicit attestation.
-- Bootstrap PR #1 merged at `d60ad17833ce658b7ba09b87c1865e700151dc53`.
-- Paper Desktop 0.5.14 recovery evidence was merged in PR #4 at canonical `main` SHA `a469c151a38c4129406ee0e9639a6e2a1511267f`.
-- Public/shipped recovery census PR #5 merged at canonical `main` SHA `2685a526d714ff2fe5b5cb2e602dea38d0b8a8cd`; post-merge CI run `36784889241` succeeded on that exact SHA.
-- Expanded 21-release recovery PR #6 merged at canonical `main` SHA `961e9eb54abf40bb41bcc0da25ed04d756217f15`; post-merge Foundation check run `36786708837` succeeded on that exact SHA.
-- Deep MCP/CLI recovery PR #7 merged at canonical `main` SHA `480e198be3be23b5d401b739a2c0bfd9b7c4acd1`; post-merge Foundation check run `36790000118` succeeded on that exact SHA.
-- Donor deep-study/final intake plan PR #18 merged at `dc3fd11f2776aff5183bf60bae0fc8d1f6352f6a`; post-merge CI run `37135354302` succeeded on that exact SHA.
-- Grain 1 Design Assurance PR #19 merged at `240a20f0ef131c614139ab452e7e5c7cead84524`; exact-head PR CI run `37140203005` and post-merge CI run `37140267250` both succeeded.
-- Grain 1 canonical closeout PR #20 merged at `8b444dbf96a4f064a8d0dd21ba19dc2b7d28cd5e`; post-merge CI run `37143328607` succeeded.
-- Grain 2 Durable Agent Kernel PR #21 merged at `943a0727b9e15abbe7e47d8d7aa99adc6b0c3434`; exact-head PR CI run `37144809927` and post-merge CI run `37144857504` both succeeded.
-- Issue #17 and Issue #16 are `CLOSED_CANONICAL`.
-- Issue #22 is the next authorized implementation grain: typed Lilac Agent Event Protocol from UI-TARS taxonomy.
-- The pinned Grain 3 donor revision `bytedance/UI-TARS-desktop@2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a` exists and the repository LICENSE at that exact revision is Apache-2.0.
-- The complete Paper private monorepo is **not** available through the connected GitHub source and has not been recovered from any public or end-user-shipped artifact.
-- Private GitHub access is no longer a hard prerequisite for product progress: publicly downloadable, end-user-shipped, and user-authorized local runtime artifacts expose substantial exact first-party source and high-confidence compatibility contracts.
-- Current Desktop 0.5.14 packages expose exact `@paper/desktop` TypeScript source. Cross-platform packaging confirms the same current Desktop source surface with platform-specific native artifacts.
-- The expanded public Desktop corpus spans **21 observed builds**, from early 0.1.x/0.2.x/0.3.x/0.4.x releases through every recovered 0.5.0–0.5.14 release in the lineage.
-- The Desktop lineage contains **87 unique first-party source paths**; **46 paths have multiple distinct content hashes** across releases.
-- Source maps are present through Paper Desktop **0.5.9** and disappear at the observed `0.5.9 → 0.5.10` boundary: 0.5.9 ships 1,450 maps; 0.5.10 ships zero.
-- Historical source maps include embedded `sourcesContent`. Separately verified exact internal-package recovery covers **16 TypeScript files plus `cli/package.json`** across `models`, `assets`, `cli`, and `client-desktop-types`.
-- Three high-value internal declaration/source targets remain unrecovered as exact original text: `assets/src/types.ts`, `models/src/mcp/mcp-types.ts`, and `client-desktop-types/src/desktop-bridge.ts`.
-- Those three client-side contracts are now `COMPATIBILITY_RECONSTRUCTED_VALIDATED`: exact current Desktop call sites, live renderer state/contracts, public MCP schemas, and shipped runtime behavior were used to reconstruct their material compatibility surfaces, then validate them with strict TypeScript and structural comparison.
-- Reconstruction validation passed with **27/27 Desktop bridge top-level keys**, **6/6 AppIcon values**, **4/4 MCP bridge methods**, and zero missing/extra structural members across those checks.
-- Paper Snapshot 0.4.4 was recovered from the official Chrome CRX distribution endpoint; its shipped bundle contains 3 JavaScript files totaling 243,920 bytes.
-- A separate public MIT project, `vcashwin/paper-snapshot`, provides a readable TypeScript implementation of a Paper-compatible DOM capture/serialization pipeline. It is tracked as an independent external donor/reference, not as official Paper source.
-- Paper Desktop 0.5.14 ships a native Go CLI whose runtime/build metadata proves module `github.com/paper-design/paper/cli` and current source paths `cmd/paper.go`, `internal/config.go`, `internal/relay.go`, plus platform-specific connection-reset files.
-- The Go CLI exposes and consumes the public Paper Desktop MCP configuration endpoint `https://app.paper.design/mcp/desktop/config.json`.
-- The 2026-10-01 public MCP census recorded 35 tools. A 2026-10-03 live/public recensus records **36 tools**, demonstrating contract drift and adding current resource-oriented surface including `list_resources` and `rename_resource`.
-- User-authorized local Electron DevTools Protocol capture recovered a newer production renderer build than the earlier web census. Sixteen exact shipped JavaScript assets totaling **4,971,280 bytes** were retained locally with immutable hashes; raw bundles are not committed publicly.
-- The current web runtime exposes editor state surfaces for camera, selection, editor context, files/resources, pages, layer tree, undo/redo, tokens, multiplayer/Yjs awareness, comments, vector editing, Tailwind styles, DOM, gradients, images, navigation, typography, and UI state.
-- Current web AST analysis records 343 class declarations, 5,296 function declarations, 445 filtered semantic strings, and 1,200 retained semantic property signals in the main shipped bundle.
-- Current web code directly references internal package identities including `@paper/assets`, `@paper/client-desktop-types`, `@paper/client-signals`, `@paper/models`, `@paper/svg-parser`, and `@paper/vector-graph`.
-- A final public GitHub/web/package sweep did not locate an independent exact copy of the three unresolved original TypeScript files or a public mirror/fork of the complete `paper-design/paper` monorepo.
-- Public Paper repositories remain separate independently licensed sources and must retain their own license/NOTICE obligations.
-- Raw proprietary Paper source recovered from shipped/local artifacts is not committed to the public Lilac repository. Public evidence records contain hashes, paths, counts, contract metadata, validation results, and architectural findings only.
-- Grain 1 uses the published `impeccable@4.1.0` local runtime. The studied source revision `e103efe779e2dd01274dabae83531fef00bf2563` records `ENGINE_VERSION=0.1.11`, while the actually published platform runtime dependency is `0.1.5`; Lilac records these separately and does not claim byte identity.
-- Grain 1 provides deterministic source/static/browser/snapshot/document assurance, namespaced Lilac rule packs, invariant policy controls, source-binding checks, token-registry checks, private-target guards, bounded inputs/outputs/runtime, and explicit Apache-2.0 provenance.
-- Grain 2 provides append-only replayable sessions, deterministic input idempotency, immutable-parent forks, versioned operation envelopes, validated lifecycle transitions, cancellation/failure/recovery, synchronous tool translation, explicit authority attribution, transaction binding only through `@lilac/history`, and hardened canonical JSON handling.
-- Detailed recovery/integration evidence:
-  - `docs/evidence/PAPER_PUBLIC_SHIPPED_RECOVERY_CENSUS_2026-10-01.md`
-  - `docs/evidence/PAPER_DESKTOP_HISTORY_EXPANSION_2026-10-01.md`
-  - `docs/evidence/PAPER_DEEP_RECOVERY_2026-10-01.md`
-  - `docs/evidence/PAPER_PUBLIC_MCP_CONFIG_CENSUS_2026-10-01.json`
-  - `docs/evidence/PAPER_LINUX_CLI_CENSUS_2026-10-01.json`
-  - `docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-03.md`
-  - `docs/evidence/IMPECCABLE_GRAIN1_INTEGRATION_2026-10-03.md`
-  - `docs/evidence/GRAIN1_CLOSEOUT_2026-10-03.md`
-  - `docs/evidence/UNREAL_AGENT_GRAIN2_PORT_2026-10-03.md`
-  - `docs/evidence/GRAIN2_CLOSEOUT_2026-10-03.md`
-- Source-intake tracking issue #2 remains open for opportunistic evidence recovery only; it is not an implementation blocker.
+- Repository: `TheHalfMoon/Lilac`.
+- Product name: **Lilac**.
+- Paper.design remains an authorized donor/source according to the project owner's explicit attestation.
+- The complete Paper private monorepo has not been recovered and must not be claimed as recovered.
+- Public, shipped, and user-authorized local Paper evidence is sufficient for continued product implementation.
+- Paper source recovery Issue #2 remains open for genuinely new marginal evidence only; it is not an implementation blocker.
+- PR #27 preserved unique historical Paper recovery evidence and merged canonically at `06614e96227826b8324f723125076018a0f58247`.
+- Stale Paper recovery PRs #9, #10, and #13 were closed as superseded only after their unique evidence was preserved canonically.
+- Grain 1 provides deterministic local design assurance with Impeccable-backed adapters and Lilac-owned rule boundaries.
+- Grain 2 provides durable replayable agent sessions, operation authority, idempotency, recovery/forks, and the document transaction boundary.
+- Grain 3 provides the Lilac-owned typed event/replay protocol with deterministic sequencing, correlation, streaming/tool lifecycle, and handler isolation.
+- Grain 4 provides local process/worktree supervision, one-owner mutation authority, leases, restart reconciliation, explicit lifecycle verbs, wake cursors, and bounded stale/wedge handling.
+- Grain 5 provides local-first collaboration, a single authorization oracle, bounded presence, deterministic durable facts, comments, activity, agent attribution, reconnect/revocation semantics, and history-only document mutation.
+- Graft `0.21.1` was qualified as a zero-cost local context/navigation layer. Its graph is local cache only, telemetry must remain disabled, and Graft is not correctness or qualification evidence.
+- Jev + Alibaba Open Code Review remain qualification tools where applicable. Cubic, CodeRabbit, and Qodo are not qualification evidence.
+- Normal merge commits remain mandatory; no rebase, force-push, or history rewriting is allowed.
+- Core Lilac remains local-first/privacy-first with no mandatory paid cloud, model, API, or compute dependency.
 
-## Active gates
+## Program gates
 
-| Gate | State | Exit evidence |
-|---|---|---|
-| P00-G01 Repository bootstrap | PROVEN | PR #1 merged; post-merge CI `36759529733` SUCCESS |
-| P00-G02 Donor rights/provenance ledger | PROVEN_BASELINE | `docs/DONORS.md` + authorization record merged and maintained |
-| P00-G03 Authorized Paper source intake | PARTIAL_RECOVERY_PROVEN | Exact current/historical Desktop source, 21-build lineage, historical internal-package source fragments, native CLI metadata, current web bundles/runtime architecture, public MCP schemas, validated client-side compatibility reconstruction, and Snapshot evidence; full original monorepo not recovered |
-| P00-G04 Reproducible upstream build | PARTIAL_NOT_STARTED | Recovered Desktop source can be qualified independently; full original product clean build remains unavailable without the complete original source tree |
-| P00-G05 Transformation plan | PROVEN_BASELINE | `docs/MASTER_PLAN.md` and `docs/ARCHITECTURE.md` merged |
-| I01 Design Assurance Foundation | PROVEN | PR #19 merged at `240a20f0ef131c614139ab452e7e5c7cead84524`; exact-head and post-merge CI SUCCESS; Issue #17 closed canonical |
-| I02 Durable Agent Kernel | PROVEN | PR #21 merged at `943a0727b9e15abbe7e47d8d7aa99adc6b0c3434`; exact-head and post-merge CI SUCCESS; Issue #16 closed canonical |
-| I03 Agent Event Protocol | ACTIVE_NEXT | Issue #22; adapt the pinned UI-TARS event taxonomy into a Lilac-owned typed event protocol |
+| Gate | State |
+|---|---|
+| P00-G01 Repository bootstrap | PROVEN |
+| P00-G02 Donor rights/provenance ledger | PROVEN_BASELINE |
+| P00-G03 Authorized Paper source intake | PARTIAL_RECOVERY_PROVEN / OPPORTUNISTIC |
+| P00-G04 Reproducible complete upstream Paper build | PARTIAL_NOT_AVAILABLE |
+| P00-G05 Transformation plan | PROVEN_BASELINE |
+| I01 Design Assurance Foundation | PROVEN |
+| I02 Durable Agent Kernel | PROVEN |
+| I03 Agent Event Protocol | PROVEN |
+| I04 Agent Supervisor | PROVEN |
+| I05 Collaboration | PROVEN |
+| I06 Import Stack | ACTIVE_NEXT |
+| I07 Decision Router | BLOCKED_BY_I06 |
+| I08 Delivery Governance | BLOCKED_BY_I07 |
+| I09 Design Method and Resources | BLOCKED_BY_I08 |
 
-## Next canonical action
+## Grain 6 — next canonical action
 
-Paper recovery is opportunistic rather than an implementation blocker. Accept only genuinely new artifacts with marginal evidence value, preserve immutable provenance, and never relabel compatibility reconstruction as original source.
+Grain 6 is the **Import Stack** defined by `docs/DONOR_INTEGRATION_MAP.md`.
 
-Implementation now proceeds from **Issue #22 — Agent Event Protocol**:
+The implementation order is:
 
-1. Study only the high-value typed event/emitter surfaces at `bytedance/UI-TARS-desktop@2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a`.
-2. Build `packages/agent-events` as a Lilac-owned provider-neutral protocol for run, message/streaming, tool-call, environment, plan, operation, and transaction-correlated events.
-3. Require caller-supplied timestamps and monotonic per-run sequence identities; replay must deterministically reconstruct canonical state.
-4. Isolate event handlers so one handler failure cannot corrupt bus state or prevent unrelated delivery.
-5. Keep event records observational: they may correlate to `@lilac/agent-runtime` operation/transaction IDs but may not mutate the document directly.
-6. Keep the UI-TARS model, remote operator, and browser-automation stack optional and outside this grain.
+1. recovered Paper-compatible DOM/style snapshot semantics;
+2. source-aware local app instrumentation;
+3. isolated local Playwright capture for JavaScript-heavy pages;
+4. optional local Docling adapter pinned to `docling-project/docling@0cd61e0050a9ef68e5e10495b87e41d31acd79c9`;
+5. bounded static mirror fallback using selected lifecycle patterns from `AhmadIbrahiim/Website-downloader@130ad63d7163c19df64322556ca9c260eef353be`;
+6. optional UI-TARS visual operator;
+7. optional external Firecrawl connector/reference pinned to `firecrawl/firecrawl@4244638a7041bae8b99bdd42e3c44520f9e62da1`.
 
-After Issue #22, continue with Firstmate-derived supervision, Lilac-native collaboration, import stack, decision router, delivery governance, and design-method/resource layers defined in `docs/DONOR_INTEGRATION_MAP.md`.
+Before implementation:
 
-The canonical donor rationale and exact studied revisions live in `docs/DONOR_DEEP_STUDY_2026-10-03.md`.
+- study the exact pinned donor surfaces;
+- freeze a Grain 6 issue with authority boundaries, provenance, security limits, required tests, and qualification gates;
+- create the implementation branch only from the exact canonical `main` after that specification is frozen.
 
-The full Paper monorepo is no longer a prerequisite for Lilac implementation, but it remains a missing artifact for any claim of complete original-source recovery.
+## Grain 6 authority boundaries
+
+- Imported content is untrusted input.
+- Import never bypasses `document-model` + `history` for canonical document mutation.
+- Source provenance must survive capture and conversion.
+- Executable page content is stripped or sandboxed by default.
+- Local/private operation is the required baseline.
+- Hosted crawlers, remote models, and paid providers are optional connectors only and never core prerequisites.
+- Import adapters may create normalized proposals/IR, but they do not become a second document authority.
+
+## Later sequence
+
+After Grain 6 becomes `CLOSED_CANONICAL`:
+
+1. Grain 7 — provider-neutral Decision Router with confidence/abstention;
+2. Grain 8 — Delivery Governance for exact-head repository change qualification;
+3. Grain 9 — Design Method and Resources;
+4. continue broader Master Plan work: bidirectional code/design IR, native code components, Visual Git, parity disposition, product hardening, packaging, release, and reproducible smoke evidence.
 
 ## Integrity rule
 
-Never fabricate source availability, ownership, build success, parity, review results, or donor provenance. `PARTIAL_RECOVERY_PROVEN` is not equivalent to a complete Paper repository import, and semantic/compatibility ports must not be represented as recovered original source text.
+Never fabricate source availability, donor ownership, build success, parity, review results, CI, Jev/OCR outcomes, or provenance. `PARTIAL_RECOVERY_PROVEN` is not a complete Paper source recovery claim, and behavioral/compatibility ports must not be represented as recovered original source text.
