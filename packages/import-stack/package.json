@@ -1,0 +1,14 @@
+{
+  "name": "@lilac/import-stack",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "@lilac/history": "0.0.0",
+    "parse5": "8.0.1"
+  }
+}
