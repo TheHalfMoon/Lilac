@@ -234,12 +234,25 @@ export function validateImportProposal(proposal: ImportProposal): ImportProposal
     assetBytes += asset.byteLength;
   }
   if (assetBytes > policy.maxTotalBytes) throw new ImportValidationError("asset bytes exceed policy maxTotalBytes");
+  const assetHashes = new Set(assets.map((asset) => asset.sha256));
+  for (const node of Object.values(nodes)) {
+    for (const value of Object.values(node.attributes)) {
+      const match = /^\.\/objects\/([a-f0-9]{64})$/u.exec(value);
+      if (match && !assetHashes.has(match[1])) {
+        throw new ImportValidationError(`import node ${node.id} references an unproven local asset`);
+      }
+    }
+  }
 
   if (!Array.isArray(proposal.resources) || proposal.resources.length > policy.maxAssets) throw new ImportValidationError("resource collection is invalid");
   const resources = proposal.resources.map(normalizeResource);
   for (const resource of resources) {
     if (resource.nodeId !== undefined && !nodes[resource.nodeId]) {
       throw new ImportValidationError(`import resource references missing node ${resource.nodeId}`);
+    }
+    const match = /^\.\/objects\/([a-f0-9]{64})$/u.exec(resource.uri);
+    if (match && !assetHashes.has(match[1])) {
+      throw new ImportValidationError("import resource references an unproven local asset");
     }
   }
   if (!Array.isArray(proposal.diagnostics) || proposal.diagnostics.length > policy.maxDiagnostics) throw new ImportValidationError("diagnostic collection is invalid");

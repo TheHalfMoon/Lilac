@@ -9,7 +9,7 @@ interface RequestLike { url(): string; isNavigationRequest(): boolean; }
 interface ApiResponseLike { headers(): Record<string, string>; body(): Promise<Uint8Array>; }
 interface RouteLike {
   request(): RequestLike;
-  fetch(options: { maxRedirects: number; timeout: number }): Promise<ApiResponseLike>;
+  fetch(options: { maxRedirects: number; timeout: number; headers?: Record<string, string> }): Promise<ApiResponseLike>;
   fulfill(options: { response: ApiResponseLike; body: Uint8Array }): Promise<void>;
   abort(): Promise<void>;
 }
@@ -132,7 +132,11 @@ export async function captureDynamicHtml(
           navigationRequests += 1;
           if (navigationRequests > request.policy.maxRedirects + 1) throw new ImportSecurityError("dynamic capture exceeds maxRedirects");
         }
-        const response = await route.fetch({ maxRedirects: 0, timeout: remaining() });
+        const response = await route.fetch({
+          maxRedirects: 0,
+          timeout: remaining(),
+          headers: { "accept-encoding": "identity" },
+        });
         const encoding = (response.headers()["content-encoding"] ?? "identity").toLowerCase();
         if (encoding !== "identity") throw new ImportSecurityError("dynamic response encoding must be identity");
         const declared = Number.parseInt(response.headers()["content-length"] ?? "", 10);

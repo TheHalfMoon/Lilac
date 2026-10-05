@@ -172,7 +172,10 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
 
     const rawTag = String(node?.tagName ?? node?.nodeName ?? "").toLowerCase();
     if (!rawTag || rawTag === "#document-fragment") return null;
-    if (DROP_SUBTREE.has(rawTag) || isForbiddenImportTag(rawTag)) {
+    if (
+      DROP_SUBTREE.has(rawTag)
+      || (isForbiddenImportTag(rawTag) && !["meta", "style", "link", "form"].includes(rawTag))
+    ) {
       if (rawTag === "script") security.scriptsRemoved += 1;
       else security.dangerousElementsRemoved += 1;
       diagnostic({
@@ -327,8 +330,8 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
 
   const uniqueResources = [...new Map(
     resources
-      .sort((a, b) => `${a.kind}:${a.uri}:${a.nodeId ?? ""}`.localeCompare(`${b.kind}:${b.uri}:${b.nodeId ?? ""}`))
-      .map((entry) => [`${entry.kind}:${entry.uri}:${entry.nodeId ?? ""}`, entry]),
+      .sort((a, b) => `${a.kind}:${a.uri}:${a.nodeId ?? ""}:${a.attribute ?? ""}`.localeCompare(`${b.kind}:${b.uri}:${b.nodeId ?? ""}:${b.attribute ?? ""}`))
+      .map((entry) => [`${entry.kind}:${entry.uri}:${entry.nodeId ?? ""}:${entry.attribute ?? ""}`, entry]),
   ).values()];
 
   return {

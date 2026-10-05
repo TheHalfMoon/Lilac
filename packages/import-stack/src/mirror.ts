@@ -48,30 +48,48 @@ async function defaultFetchResource(url: URL, options: MirrorFetchOptions): Prom
       path: `${url.pathname}${url.search}`,
       method: "GET",
       headers: { accept: "*/*", "accept-encoding": "identity", "user-agent": "LilacImportStack/1" },
-      lookup: (_hostname, _options, callback) => callback(null, selected, selected.includes(":") ? 6 : 4),
+      lookup: (_hostname, lookupOptions, callback) => {
+        const family = selected.includes(":") ? 6 : 4;
+        if (lookupOptions && typeof lookupOptions === "object" && lookupOptions.all) {
+          callback(null, [{ address: selected, family }]);
+        } else {
+          callback(null, selected, family);
+        }
+      },
       signal: options.signal,
     }, (response) => {
+      const failResponse = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        response.destroy();
+        rejectPromise(error);
+      };
+      response.on("error", (error) => {
+        if (!settled) {
+          settled = true;
+          rejectPromise(error);
+        }
+      });
       const encoding = String(response.headers["content-encoding"] ?? "identity").toLowerCase();
       if (encoding !== "identity") {
-        response.destroy(new ImportSecurityError("mirror response encoding must be identity"));
+        failResponse(new ImportSecurityError("mirror response encoding must be identity"));
         return;
       }
       const chunks: Uint8Array[] = [];
       let total = 0;
       const declared = Number.parseInt(String(response.headers["content-length"] ?? ""), 10);
       if (Number.isFinite(declared) && declared > options.maxBytes) {
-        response.destroy(new ImportSecurityError("mirror response exceeds maxAssetBytes"));
+        failResponse(new ImportSecurityError("mirror response exceeds maxAssetBytes"));
         return;
       }
       response.on("data", (chunk: Uint8Array) => {
         total += chunk.byteLength;
         if (total > options.maxBytes) {
-          response.destroy(new ImportSecurityError("mirror response exceeds maxAssetBytes"));
+          failResponse(new ImportSecurityError("mirror response exceeds maxAssetBytes"));
           return;
         }
         chunks.push(Uint8Array.from(chunk));
       });
-      response.on("error", (error) => { if (!settled) { settled = true; rejectPromise(error); } });
       response.on("end", () => {
         if (settled) return;
         settled = true;
@@ -293,9 +311,6 @@ export async function proposalFromStaticMirror(requestInput: ImportRequest, resu
     ...request,
     source: { ...request.source, uri: result.manifest.entryUrl, baseUrl: result.manifest.entryUrl },
   }, decodeUtf8(bytes, "mirrored entry"));
-  for (const node of Object.values(proposal.nodes)) {
-    // External URL attributes are absent until bytes have been captured.
-  }
   proposal.resources = proposal.resources.map((resource) => {
     const logical = result.manifest.rewrites[resource.uri];
     if (logical && resource.nodeId && resource.attribute && proposal.nodes[resource.nodeId]) {

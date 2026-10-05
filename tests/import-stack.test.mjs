@@ -122,6 +122,7 @@ test("HTML import strips srcset, form navigation, secret-bearing resource URLs, 
   assert.equal(nodes.some((node) => Object.hasOwn(node.attributes, "srcset")), false);
   assert.equal(nodes.some((node) => Object.hasOwn(node.attributes, "action") || Object.hasOwn(node.attributes, "formaction")), false);
   assert.equal(nodes.some((node) => node.tag === "form"), false);
+  assert.equal(nodes.some((node) => node.tag === "div"), true, "form must be deactivated rather than becoming executable authority");
   assert.equal(nodes.some((node) => Object.values(node.attributes).some((value) => value.includes("token=secret"))), false);
 });
 
@@ -151,6 +152,10 @@ test("proposal validation rejects executable tags, unsafe CSS, external URL auth
   const unsafeStyle = structuredClone(proposal);
   unsafeStyle.nodes[root].style.cssText = "background:url(https://evil.test/x.png)";
   assert.throws(() => validateImportProposal(unsafeStyle), /unsafe/u);
+
+  const unprovenAsset = structuredClone(proposal);
+  unprovenAsset.nodes[root].attributes.src = "./objects/" + "a".repeat(64);
+  assert.throws(() => validateImportProposal(unprovenAsset), /unproven local asset/u);
 
   const root2 = proposal.rootIds[0];
   const child = proposal.nodes[root2].children[0];
@@ -492,9 +497,11 @@ test("static mirror captures bounded same-origin resources, no-parent pages, and
     assert.equal(result.status, "ok");
     assert.equal(calls.includes("https://example.com/outside.html"), false);
     assert.equal(calls.includes("https://example.com/docs/next.html"), true);
+    assert.equal(calls.includes("https://example.com/styles.css"), true);
     const proposal = await proposalFromStaticMirror(req, result.value);
     assert.equal(proposal.assets.length, result.value.manifest.resources.length);
     assert.equal(Object.values(proposal.nodes).some((node) => Object.values(node.attributes).some((value) => value.startsWith("./objects/"))), true);
+    validateImportProposal(proposal);
     assert.equal(proposal.stylesheets.some((style) => style.cssText.includes("color: red")), true);
     await disposeStaticMirror(join(dir, "work"), result.value);
   });
