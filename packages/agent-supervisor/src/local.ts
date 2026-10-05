@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
@@ -595,6 +595,7 @@ export class LocalProcessRuntimeAdapter implements RuntimeAdapter {
   private readonly stopTimeoutMs: number;
   private readonly pollMs: number;
   private readonly launchedPids = new Map<string, number>();
+  private readonly launchedChildren = new Map<string, ChildProcess>();
 
   constructor(
     directory: string,
@@ -696,8 +697,10 @@ export class LocalProcessRuntimeAdapter implements RuntimeAdapter {
     }
     const childPid = child.pid as number;
     this.launchedPids.set(input.endpoint.endpointId, childPid);
-    child.once("exit", () => {
+    this.launchedChildren.set(input.endpoint.endpointId, child);
+    child.once("close", () => {
       if (this.launchedPids.get(input.endpoint.endpointId) === childPid) this.launchedPids.delete(input.endpoint.endpointId);
+      if (this.launchedChildren.get(input.endpoint.endpointId) === child) this.launchedChildren.delete(input.endpoint.endpointId);
     });
     child.unref();
     const record: LocalEndpointRecord = {
@@ -757,6 +760,11 @@ export class LocalProcessRuntimeAdapter implements RuntimeAdapter {
       if (this.launchedPids.get(record.endpointId) !== record.pid) {
         return { state: "unknown", endpointId: record.endpointId, cwd: record.cwd, absenceProven: false };
       }
+      const child = this.launchedChildren.get(record.endpointId);
+      let closed = child === undefined;
+      const closePromise = child === undefined ? null : new Promise<void>((resolve) => {
+        child.once("close", () => { closed = true; resolve(); });
+      });
       try { process.kill(record.pid, profile.stopSignal ?? "SIGTERM"); } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
       }
@@ -765,10 +773,21 @@ export class LocalProcessRuntimeAdapter implements RuntimeAdapter {
       const after = processLiveness(record.pid);
       if (after === "live") return { state: "alive", endpointId: record.endpointId, cwd: record.cwd, absenceProven: false };
       if (after === "unknown") return { state: "unknown", endpointId: record.endpointId, cwd: record.cwd, absenceProven: false };
+      if (closePromise !== null && !closed) {
+        const remaining = Math.max(0, deadline - Date.now());
+        const closeCompleted = await Promise.race([
+          closePromise.then(() => true),
+          delay(remaining).then(() => false),
+        ]);
+        if (!closeCompleted) {
+          return { state: "unknown", endpointId: record.endpointId, cwd: record.cwd, absenceProven: false };
+        }
+      }
     }
     const stopped: LocalEndpointRecord = { ...record, state: "stopped" };
     await this.write(stopped);
     this.launchedPids.delete(record.endpointId);
+    this.launchedChildren.delete(record.endpointId);
     return { state: "dead", endpointId: stopped.endpointId, cwd: stopped.cwd, absenceProven: false };
   }
 }

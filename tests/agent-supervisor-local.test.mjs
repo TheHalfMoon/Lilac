@@ -87,7 +87,8 @@ test("Git worktree inspector reports the current Lilac worktree as its own immut
   assert.equal(evidence.isWorktreeRoot, true);
   assert.match(evidence.head, /^[a-f0-9]{40}$/u);
   assert.match(evidence.dirtyDigest, /^[a-f0-9]{64}$/u);
-  assert.ok(evidence.branch.length > 0);
+  const currentBranch = (await execFileAsync("git", ["branch", "--show-current"], { encoding: "utf8", windowsHide: true })).stdout.trim();
+  assert.equal(evidence.branch, currentBranch);
 });
 test("task mutation mutex serializes lifecycle actions for the same durable task", async () => {
   const mutex = new TaskMutationMutex("generation-a", async (lease) => ({
