@@ -61,7 +61,7 @@ export function classifyLiveness(previous: StaleState, signals: LivenessSignals)
   if (age <= signals.staleAfterMs || !signals.activeOperation) {
     return { state: "healthy", staleWindows: 0, changed: previous.state !== "healthy", reason: "progress is within the allowed window" };
   }
-  if (age <= signals.confirmAfterMs) {
+  if (age <= signals.confirmAfterMs || (previous.state !== "stale-suspected" && previous.state !== "stale-confirmed")) {
     return { state: "stale-suspected", staleWindows: Math.max(1, previous.staleWindows), changed: previous.state !== "stale-suspected", reason: "runtime is alive but useful progress is stale" };
   }
   return {

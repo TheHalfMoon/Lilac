@@ -77,13 +77,13 @@ The highest-ranked risk surfaces for the Grain 4 query were `assertMutationAutho
 
 Focused Grain 4 suite:
 
-- 64 tests passed;
+- 66 tests passed;
 - 0 failed;
 - includes spawn races, stale lease reclamation, authority loss across awaits, queue cursor crash recovery, runtime restart ambiguity, dirty worktree preservation, typed lifecycle verbs, progress/wedge logic, and reconciliation.
 
 Repository `npm run check`:
 
-- 142 tests passed;
+- 144 tests passed;
 - 0 failed;
 - Node test-file concurrency is fixed at 1 because concurrent repository test files independently launch Git/Impeccable/subprocess workloads and produced reproducible host resource contention while each failing test passed in isolation. No test was removed, skipped, or weakened.
 

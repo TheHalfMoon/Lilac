@@ -85,6 +85,14 @@ test("task records serialize deterministically and fail closed on schema drift",
   assert.throws(() => serializeTaskRecord({ ...task, source: { ...task.source, worktreePath: "" } }), /non-empty string/u);
 });
 
+test("active and retired durable task records enforce cross-field ownership invariants", () => {
+  const base = taskRecord();
+  assert.throws(() => serializeTaskRecord({ ...base, lease: null }), /running requires a mutation lease/u);
+  assert.throws(() => serializeTaskRecord({ ...base, endpoint: null }), /running requires an attached runtime endpoint/u);
+  assert.throws(() => serializeTaskRecord({ ...base, lifecycle: "waiting", declaredWait: null }), /waiting requires declaredWait/u);
+  assert.throws(() => serializeTaskRecord({ ...base, declaredWait: { waitId: "w", operationId: "op", reason: "x", startedAt: T0, validUntil: T1 } }), /declaredWait requires waiting lifecycle/u);
+  assert.throws(() => serializeTaskRecord({ ...base, lifecycle: "retired", endpoint: null, lease: base.lease }), /retired task must not retain/u);
+});
 test("lease transfer is same-generation idempotent and foreign ownership is fail-closed", () => {
   const current = { ownerId: "owner-a", generationId: "gen-a", claimedAt: T0 };
   assert.deepEqual(acquireLease(current, { ownerId: "owner-a", generationId: "gen-a", claimedAt: T1 }, null), {
@@ -179,7 +187,19 @@ test("declared waits suppress stale escalation until expiry, then progress clear
     previousProgress: null,
     declaredWait: wait,
   });
-  assert.equal(expired.state, "stale-confirmed");
+  assert.equal(expired.state, "stale-suspected");
+  const confirmed = classifyLiveness({ ...previous, state: "stale-suspected", staleWindows: 1 }, {
+    runtime: "alive",
+    activeOperation: true,
+    now: T3,
+    staleAfterMs: 10_000,
+    confirmAfterMs: 30_000,
+    lastProgressAt: T0,
+    currentProgress: null,
+    previousProgress: null,
+    declaredWait: wait,
+  });
+  assert.equal(confirmed.state, "stale-confirmed");
   const progress = { sourceHead: "def456", dirtyDigest: "dirty-b", eventSequence: 5, recordedAt: T3 };
   const cleared = classifyLiveness({ ...previous, state: "stale-confirmed", staleWindows: 2 }, {
     runtime: "alive",
@@ -211,6 +231,20 @@ test("declared wait never masks a dead or ambiguous runtime", () => {
   assert.equal(unknown.state, "stale-suspected");
 });
 
+test("a delayed first stale poll cannot skip suspected and requires repeated evidence for confirmation", () => {
+  const previous = { state: "healthy", staleWindows: 0, lastTransitionAt: T0, lastEmittedState: null };
+  const first = classifyLiveness(previous, {
+    runtime: "alive", activeOperation: true, now: T3, staleAfterMs: 10_000, confirmAfterMs: 30_000,
+    lastProgressAt: T0, currentProgress: null, previousProgress: null, declaredWait: null,
+  });
+  assert.equal(first.state, "stale-suspected");
+  const second = classifyLiveness({ ...previous, state: "stale-suspected", staleWindows: 1 }, {
+    runtime: "alive", activeOperation: true, now: T3, staleAfterMs: 10_000, confirmAfterMs: 30_000,
+    lastProgressAt: T0, currentProgress: null, previousProgress: null, declaredWait: null,
+  });
+  assert.equal(second.state, "stale-confirmed");
+  assert.equal(second.staleWindows, 2);
+});
 test("stale-state emission is bounded and repeated classification does not duplicate escalation", () => {
   const previous = { state: "healthy", staleWindows: 0, lastTransitionAt: T0, lastEmittedState: null };
   const classification = { state: "stale-suspected", staleWindows: 1, changed: true, reason: "stale" };

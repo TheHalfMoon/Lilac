@@ -179,11 +179,21 @@ export function validateTaskRecord(value: unknown): asserts value is SupervisedT
   if (Date.parse(updatedAt) < Date.parse(createdAt)) fail("task.updatedAt precedes task.createdAt");
   source(input.source);
   checkpoint(input.checkpoint);
-  endpoint(input.endpoint);
-  lease(input.lease);
+  const normalizedEndpoint = endpoint(input.endpoint);
+  const normalizedLease = lease(input.lease);
   progress(input.lastProgress);
-  declaredWait(input.declaredWait);
+  const normalizedWait = declaredWait(input.declaredWait);
   stale(input.stale);
+  const activeLifecycle = ["starting", "running", "waiting", "recovering"].includes(lifecycle as string);
+  if (activeLifecycle && normalizedLease === null) fail(`task.lifecycle ${String(lifecycle)} requires a mutation lease`);
+  if (["starting", "running", "waiting"].includes(lifecycle as string) && normalizedEndpoint === null) {
+    fail(`task.lifecycle ${String(lifecycle)} requires an attached runtime endpoint`);
+  }
+  if (lifecycle === "waiting" && normalizedWait === null) fail("task.lifecycle waiting requires declaredWait");
+  if (lifecycle !== "waiting" && normalizedWait !== null) fail("task.declaredWait requires waiting lifecycle");
+  if (lifecycle === "retired" && (normalizedEndpoint !== null || normalizedLease !== null || normalizedWait !== null)) {
+    fail("retired task must not retain endpoint, lease, or declared wait");
+  }
   string(input.taskId, "task.taskId");
   string(input.runtimeProfileId, "task.runtimeProfileId");
   nonNegativeInteger(input.wakeCursor, "task.wakeCursor");
