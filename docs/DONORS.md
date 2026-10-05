@@ -52,9 +52,37 @@ Primary recovery evidence:
 - Intended Lilac use: donor/reference for Lilac's website/app intake and snapshot subsystem, subject to preserving the MIT copyright and permission notice in substantial copied portions.
 - Provenance rule: any code imported from this repository must retain its own donor record and must never be mislabeled as recovered proprietary Paper source.
 
-## External reference: Doop
+## Authorized external donor expansion — 2026-10-03
 
-`kgoedecke/doop` is a public Paper alternative and was reviewed only as a competitive/architectural reference. Its public repository is AGPL-3.0. **Do not copy Doop code into Lilac** unless a separate explicit licensing decision is made. Reading public behavior/architecture for interoperability and product analysis is not a donor import.
+The project owner explicitly states that they have permission to use, copy, modify, combine, and adapt source code from the following projects for Lilac. The governing attestation is recorded in `docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03.md`.
+
+| Donor | Intended Lilac use | Intake note |
+|---|---|---|
+| `kunchenguid/firstmate` | multi-agent orchestration, isolated worktrees, supervision, restart reconciliation | bounded extraction; do not import product identity |
+| `kunchenguid/no-mistakes` | guarded review/test/PR delivery state machine | adapt pipeline concepts to Lilac governance; no automatic force-push policy |
+| `kgoedecke/doop` | multiplayer canvas, MCP collaboration, comments/activity, presence | authorized donor; public repo identifies AGPL-3.0, so preserve license/provenance and record any separate permission basis |
+| `classifier.dev` public surfaces | decision/classification routing, retrieval pruning, uncertainty-aware escalation | hosted use optional only; core Lilac must not require paid service |
+| `caio0452/jev_search` | code/directory candidate search and decision-based filtering | upstream warns it is AI-generated/not production-ready; ideas require hardening/tests |
+| `unreallabsai/unreal-agent` | durable async agent sessions, idempotency, serializable operations, recovery/forks | high-value agent-runtime donor |
+| `AhmadIbrahiim/Website-downloader` | recursive website/asset capture fallback | sandbox, quotas, SSRF/network policy required |
+| `Appllama/appllama-skills` | design research/build methodology, mobile/native quality and simulator verification | MIT skills observed; paid MCP must remain optional |
+| `docling-project/docling` | local document/PDF/layout/table/OCR parsing | MIT codebase observed; model-specific licenses remain separate |
+| `reinaldosimoes/design-resources` | design-resource taxonomy and discovery catalog | linked third-party assets retain independent licenses; catalog is not blanket asset permission |
+| `firecrawl/firecrawl` | resilient crawl/scrape/action architecture and structured web extraction | extract self-hostable patterns; hosted API is not a required dependency |
+| `pbakaus/impeccable` | deterministic design detectors and critique/polish/harden workflows | design-quality/decision-assurance donor |
+| `bytedance/UI-TARS-desktop` | multimodal GUI/browser operator, event stream, local/remote operator architecture | visual fallback and computer-use architecture donor |
+
+The integration allocation and sequence are defined in `docs/DONOR_INTEGRATION_MAP.md`.
+
+### Authorization does not erase upstream obligations
+
+Owner authorization permits Lilac project use but does not automatically redefine third-party dependency licenses, contributor rights, trademark rights, or attribution requirements. Before importing code from any donor:
+
+- pin the exact revision;
+- preserve license/NOTICE/copyright files applicable to the imported portion;
+- inventory material third-party dependencies;
+- record any separate permission basis when it differs from the public license;
+- keep donor branding and hosted-service credentials out of Lilac identity.
 
 ## Intake requirements for every donor snapshot
 

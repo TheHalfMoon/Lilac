@@ -1,8 +1,8 @@
 # Lilac Capability / Parity Matrix
 
-Baseline date: 2026-09-30.
+Baseline date: 2026-09-30. Runtime evidence refreshed: 2026-10-03.
 
-This matrix distinguishes **shipped Paper capabilities**, **Paper roadmap capabilities**, and **Lilac-native requirements**. Public references are used only to shape the initial map; exact donor-source behavior must be verified after source intake.
+This matrix distinguishes **shipped Paper capabilities**, **Paper roadmap capabilities**, and **Lilac-native requirements**. Public references shape the initial map; shipped/runtime evidence may establish a baseline, but only Lilac implementation tests may establish Lilac parity.
 
 Paper references:
 - https://paper.design/
@@ -16,27 +16,29 @@ Paper references:
 
 | Area | Capability | Reference state | Lilac disposition | Evidence state |
 |---|---|---:|---|---|
-| Canvas | Infinite/large design canvas, pan/zoom | shipped | preserve/improve | NOT TESTED |
-| Canvas | selection, resize, move, grouping, clipping | shipped | preserve | NOT TESTED |
-| Layout | real CSS-oriented layout semantics | shipped/core positioning | preserve | NOT TESTED |
+| Canvas | Infinite/large design canvas, pan/zoom | shipped | preserve/improve | BASELINE_CAPTURED |
+| Canvas | selection, resize, move, grouping, clipping | shipped | preserve | BASELINE_CAPTURED |
+| Layout | real CSS-oriented layout semantics | shipped/core positioning | preserve | BASELINE_CAPTURED |
 | Layout | constraints during parent resize | shipped | preserve | NOT TESTED |
-| Typography | local fonts + OpenType features | shipped | preserve | NOT TESTED |
-| Visual effects | filters/backdrop filters | shipped | preserve | NOT TESTED |
-| Shaders | editable/runtime shader effects | shipped/public package | preserve as optional module | NOT TESTED |
-| Code export | React + CSS | shipped | preserve, then round-trip | NOT TESTED |
-| Code export | Tailwind | shipped | preserve, then native Tailwind sync | NOT TESTED |
-| Image export | PNG/image export | shipped | preserve | NOT TESTED |
-| Web intake | Snapshot extension → editable layers | shipped | replace/extend with importer framework | NOT TESTED |
-| MCP | local agent read/write | shipped | preserve with stronger policy/transactions | NOT TESTED |
-| Agent setup | in-app harness connection | shipped | preserve | NOT TESTED |
-| Data | live data through agents/MCP | shipped | preserve | NOT TESTED |
-| Desktop | desktop editor + local MCP | shipped | preserve/rebrand | NOT TESTED |
-| Tokens | CSS-variable-oriented design tokens | shipped | preserve/extend | NOT TESTED |
+| Typography | local fonts + OpenType features | shipped | preserve | BASELINE_CAPTURED |
+| Visual effects | filters/backdrop filters | shipped | preserve | BASELINE_CAPTURED |
+| Shaders | editable/runtime shader effects | shipped/public package | preserve as optional module | BASELINE_CAPTURED |
+| Code export | React + CSS | shipped | preserve, then round-trip | BASELINE_CAPTURED |
+| Code export | Tailwind | shipped | preserve, then native Tailwind sync | BASELINE_CAPTURED |
+| Image export | PNG/image export | shipped | preserve | BASELINE_CAPTURED |
+| Web intake | Snapshot extension → editable layers | shipped | replace/extend with importer framework | BASELINE_CAPTURED |
+| MCP | local agent read/write | shipped | preserve with stronger policy/transactions | BASELINE_CAPTURED |
+| Agent setup | in-app harness connection | shipped | preserve | BASELINE_CAPTURED |
+| Data | live data through agents/MCP | shipped | preserve | BASELINE_CAPTURED |
+| Desktop | desktop editor + local MCP | shipped | preserve/rebrand | BASELINE_CAPTURED |
+| Tokens | CSS-variable-oriented design tokens | shipped | preserve/extend | BASELINE_CAPTURED |
 | Performance | large-file pan/zoom/memory optimization | shipped work | establish Lilac budgets | NOT TESTED |
+
+`BASELINE_CAPTURED` means the Paper reference surface is evidence-backed through exact shipped source, shipped bundles, public contracts, or user-authorized runtime inspection. It does **not** mean Lilac parity has been implemented or proven.
 
 ## Paper roadmap/reference items
 
-These are design references, not automatic parity gates unless present in the authorized donor source.
+These are design references, not automatic parity gates unless present in the authorized donor/runtime evidence.
 
 | Capability | Public roadmap state on baseline date | Lilac target |
 |---|---:|---|
@@ -78,4 +80,4 @@ These are design references, not automatic parity gates unless present in the au
 - `INTENTIONALLY_DROPPED`
 - `NOT_APPLICABLE`
 
-No row may be marked proven from marketing/docs alone.
+No row may be marked proven from marketing/docs, source inspection, or runtime inspection alone. Proven states require Lilac-side executable acceptance evidence.
