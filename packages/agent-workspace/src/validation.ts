@@ -25,7 +25,7 @@ export function canonicalWorkspaceStringify(value: unknown): string {
   }
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record).sort();
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalWorkspaceStringify(record[key])}`).join(",")}}}`;
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalWorkspaceStringify(record[key])}`).join(",")}}`;
 }
 
 export function assertPlainObject(value: unknown, label: string): asserts value is Record<string, unknown> {
