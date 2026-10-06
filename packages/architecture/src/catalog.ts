@@ -227,6 +227,14 @@ const SUBSYSTEMS = [
     dependsOn: [],
   },
   {
+    id: "network-policy",
+    title: "Network capability policy and providers",
+    owner: "@lilac/network-policy",
+    status: "implemented",
+    boundary: "Default-deny network capability policy (offline, local-only, allowlist grants) with two-phase URL and resolved-address decisions, the single owner of address classification, a bring-your-own provider registry holding credential references only, and offline readiness reporting. Decides only; never opens connections, resolves names, or stores credential values.",
+    dependsOn: [],
+  },
+  {
     id: "desktop-bridge",
     title: "Desktop bridge",
     owner: "@lilac/desktop",
