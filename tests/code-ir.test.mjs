@@ -202,6 +202,8 @@ test("bounds and malformed inputs fail closed", () => {
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "x".repeat(300 * 1024) }]), /maxSourceBytes/u);
   assert.throws(() => parseJsxFile("E.jsx", "<div>" + "a ".repeat(9000) + "</div>"), /token budget/u);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<i />".repeat(1100) }]), /maxSymbols/u);
+  const hugeNumber = "<div n={" + "9".repeat(400) + "} />";
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: hugeNumber }]), /finite|no supported elements/u);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: '<div a="1" a="2" />' }]), /duplicate props/u);
   assert.throws(() => designToCode({ componentName: "card", root: { tag: "div", props: {} } }), CodeIrValidationError);
   assert.throws(() => designToCode({ componentName: "Card", root: { tag: "9div", props: {} } }), CodeIrValidationError);

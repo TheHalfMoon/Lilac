@@ -132,7 +132,9 @@ function parseExpressionLiteral(state: ParserState): { literal: SymbolProp["lite
   }
   if (token.type === "text" && /^-?\d+(\.\d+)?$/u.test(token.value.trim()) && token.value.trim() !== "") {
     next(state);
-    return { literal: { kind: "number", value: Number(token.value.trim()) }, end: token.end };
+    const numeric = Number(token.value.trim());
+    if (!Number.isFinite(numeric)) throw new CodeIrValidationError("JSX numeric literal must be finite");
+    return { literal: { kind: "number", value: numeric }, end: token.end };
   }
   return null;
 }
