@@ -5,14 +5,17 @@ import { PROVIDER_CAPABILITIES, type FeatureRequirement, type ReadinessReport } 
 
 /**
  * The core workflow and what each step needs from providers. Required features need no
- * provider at all; optional ones degrade (or are unavailable) without one. Only features
- * that exist in Lilac today are listed.
+ * provider; that declaration is not self-proving, so every required feature here is
+ * exercised one-for-one, with all network primitives trapped, by
+ * tests/offline-guarantee.test.mjs. Optional features degrade (or are unavailable) without
+ * a provider. Only features that exist in Lilac today are listed; the local MCP endpoint
+ * is not implemented yet (#82).
  */
 export const CORE_FEATURES: readonly FeatureRequirement[] = Object.freeze([
   { feature: "document.edit", required: true, needs: [] },
   { feature: "history.undo-redo", required: true, needs: [] },
+  { feature: "collaboration.agent-edit", required: true, needs: [] },
   { feature: "project.save-reopen", required: true, needs: [] },
-  { feature: "design.assurance", required: true, needs: [] },
   { feature: "design.method-review", required: true, needs: [] },
   { feature: "decision.assurance", required: true, needs: [] },
   { feature: "import.offline-html", required: true, needs: [] },

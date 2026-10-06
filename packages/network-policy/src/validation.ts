@@ -6,7 +6,7 @@ import { NETWORK_LIMITS } from "./types.ts";
 // tracked in #64): controls, format characters, separators, and blank fillers are refused.
 const HIDDEN_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{34f}\u{115f}\u{1160}\u{2800}\u{3164}\u{ffa0}]/u;
 
-export const STABLE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const STABLE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 
 function shown(path: string): string {
   return path.length > 120 ? `${path.slice(0, 120)}...` : path;

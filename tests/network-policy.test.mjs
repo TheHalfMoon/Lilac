@@ -173,3 +173,45 @@ test("malformed, hostile, and oversized configuration fails closed", () => {
   rejects(getter);
   assert.throws(() => evaluateUrl(base, { capability: "telemetry", url: "https://api.example.com" }), NetworkPolicyValidationError);
 });
+
+test("unspecified addresses are never valid targets in any mode", () => {
+  for (const address of ["0.0.0.0", "0.1.2.3", "::", "::ffff:0.0.0.0"]) assert.equal(classifyAddress(address), "unspecified", address);
+  const lan = evaluateUrl(allowlist([grant({ id: "lan", host: "nas.home.arpa", allowPrivateNetwork: true })]), { capability: "provider.inference", url: "https://nas.home.arpa" });
+  for (const rebound of [["0.0.0.0"], ["::"], ["::ffff:0.0.0.0"]]) assert.equal(evaluateResolved(lan, rebound).allowed, false, rebound[0]);
+  assert.throws(() => normalizeNetworkPolicy(allowlist([grant({ host: "0.0.0.0", allowPrivateNetwork: true })])), /unspecified/);
+  const local = { schemaVersion: 1, mode: "local-only", grants: [] };
+  assert.equal(evaluateUrl(local, { capability: "provider.inference", url: "http://0.0.0.0:11434" }).allowed, false);
+  assert.equal(evaluateUrl(local, { capability: "provider.inference", url: "http://[::]:11434" }).allowed, false);
+});
+
+test("deprecated IPv6 forms that can hide private or loopback targets are forbidden", () => {
+  for (const address of ["::7f00:1", "::a00:1", "fec0::1", "feff::1"]) assert.equal(classifyAddress(address), "forbidden", address);
+});
+
+test("only decisions issued by evaluateUrl are honored, and they cannot be widened", () => {
+  const forged = { allowed: true, capability: "provider.inference", url: "https://x", host: "x", grantId: "g1", loopbackOnly: false, allowPrivateNetwork: true };
+  assert.equal(evaluateResolved(forged, ["10.0.0.1"]).allowed, false);
+  assert.equal(evaluateResolved({ ...forged, allowPrivateNetwork: "no" }, ["10.0.0.1"]).allowed, false);
+  const real = evaluateUrl(allowlist([grant()]), { capability: "provider.inference", url: "https://api.example.com" });
+  assert.ok(Object.isFrozen(real));
+  assert.throws(() => { real.allowPrivateNetwork = true; }, TypeError);
+  assert.equal(evaluateResolved(real, ["10.0.0.1"]).allowed, false);
+  assert.equal(evaluateResolved({ ...real }, ["93.184.216.34"]).allowed, false, "copies are not issued decisions");
+});
+
+test("wildcard grants cover DNS names only, never IP literals", () => {
+  assert.throws(() => normalizeNetworkPolicy(allowlist([grant({ host: "*.168.1.1", allowPrivateNetwork: true })])), /numeric/);
+  assert.throws(() => normalizeNetworkPolicy(allowlist([grant({ host: "*.8.8" })])), /numeric/);
+  const policy = allowlist([grant({ host: "*.example.com" })]);
+  assert.equal(evaluateUrl(policy, { capability: "provider.inference", url: "https://a.example.com" }).allowed, true);
+});
+
+test("provider endpoints refuse secret-shaped paths and plaintext credentials", () => {
+  const remote = (endpoint, credentialRef = null) => registry([{ id: "p", kind: "remote-http", capabilities: ["inference.text"], endpoint, credentialRef }]);
+  assert.throws(() => normalizeProviderRegistry(remote("https://api.example.com/key/sk-ant-SECRET123")), /secret/);
+  assert.throws(() => normalizeProviderRegistry(remote("https://api.example.com/v1/AbCdEfGhIjKlMnOpQrStUvWxYz012345")), /secret/);
+  assert.throws(() => normalizeProviderRegistry(remote("http://api.example.com/v1", { store: "env", name: "LILAC_KEY" })), /https/);
+  assert.throws(() => normalizeProviderRegistry(remote("https://0.0.0.0/v1")), /unspecified/);
+  assert.doesNotThrow(() => normalizeProviderRegistry(remote("https://api.example.com/v1/chat/completions", { store: "env", name: "LILAC_KEY" })));
+  assert.doesNotThrow(() => normalizeProviderRegistry(remote("http://api.example.com/v1")));
+});

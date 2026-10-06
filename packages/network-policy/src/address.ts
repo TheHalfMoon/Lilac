@@ -1,7 +1,8 @@
 import { isIP } from "node:net";
 
-// Moved verbatim from @lilac/import-stack (Grain 6, qualified in PR #35) so that one package
-// owns address classification for every network decision in Lilac.
+// Moved from @lilac/import-stack (Grain 6, qualified in PR #35) so that one package owns
+// address classification for every network decision in Lilac. P05 D6b additionally forbids
+// site-local fec0::/10 and IPv4-compatible ::/96 (strictly safer than Grain 6).
 
 function ipv4(address: string): number[] | null {
   if (isIP(address) !== 4) return null;
@@ -84,7 +85,10 @@ export function isForbiddenRemoteAddress(address: string): boolean {
   if (v6.every((value) => value === 0) || isLoopbackAddress(address)) return true;
   if ((v6[0] & 0xfe00) === 0xfc00) return true;
   if ((v6[0] & 0xffc0) === 0xfe80) return true;
+  if ((v6[0] & 0xffc0) === 0xfec0) return true; // deprecated site-local fec0::/10
   if ((v6[0] & 0xff00) === 0xff00) return true;
+  // Deprecated IPv4-compatible ::/96 can embed any IPv4 destination, including loopback.
+  if (v6.slice(0, 6).every((value) => value === 0)) return true;
 
   // IPv4 translation/transition prefixes can otherwise hide forbidden IPv4 destinations.
   if (v6[0] === 0x0064 && v6[1] === 0xff9b && (v6[2] === 0 || v6[2] === 1)) return true;
@@ -97,11 +101,27 @@ export function isForbiddenRemoteAddress(address: string): boolean {
   return false;
 }
 
-export type AddressClass = "loopback" | "forbidden" | "public" | "invalid";
+export type AddressClass = "unspecified" | "loopback" | "forbidden" | "public" | "invalid";
+
+/**
+ * Unspecified addresses (0.0.0.0/8, ::, ::ffff:0.0.0.0/104) are never a legitimate
+ * destination; on common stacks connecting to them reaches local services, so they get
+ * their own class and are denied in every mode.
+ */
+function isUnspecifiedAddress(address: string): boolean {
+  const v4 = ipv4(address);
+  if (v4) return v4[0] === 0;
+  const v6 = expandIpv6(address);
+  if (!v6) return false;
+  if (v6.every((value) => value === 0)) return true;
+  const mapped = mappedIpv4(v6);
+  return mapped !== null && mapped[0] === 0;
+}
 
 /** Classify a literal IP address; anything that is not an IP literal is "invalid". */
 export function classifyAddress(address: string): AddressClass {
   if (typeof address !== "string" || isIP(address) === 0) return "invalid";
+  if (isUnspecifiedAddress(address)) return "unspecified";
   if (isLoopbackAddress(address)) return "loopback";
   return isForbiddenRemoteAddress(address) ? "forbidden" : "public";
 }

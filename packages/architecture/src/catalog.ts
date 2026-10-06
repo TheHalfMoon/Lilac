@@ -112,7 +112,7 @@ const SUBSYSTEMS = [
     owner: "@lilac/import-stack",
     status: "implemented",
     boundary: "Provenance-preserving untrusted intake producing proposals; canonical mutation only through history. Export side planned.",
-    dependsOn: ["document-model", "history"],
+    dependsOn: ["document-model", "history", "network-policy"],
   },
   {
     id: "code-ir",
@@ -158,8 +158,8 @@ const SUBSYSTEMS = [
     id: "mcp-surface",
     title: "Agent runtime MCP surface",
     owner: "@lilac/mcp-protocol",
-    status: "implemented",
-    boundary: "Capability-scoped local MCP endpoint for project discovery, inspection, queries, and transaction-aware edits.",
+    status: "stub",
+    boundary: "MCP contract validation (client, tool, server-config, and Paper tool-set compatibility) exists. The capability-scoped local MCP endpoint for project discovery, inspection, queries, and transaction-aware edits is planned (#82).",
     dependsOn: ["agent-runtime", "document-model", "history"],
   },
   {

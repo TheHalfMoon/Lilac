@@ -1,5 +1,5 @@
 import { isIP } from "node:net";
-import { isLoopbackAddress } from "./address.ts";
+import { classifyAddress, isLoopbackAddress } from "./address.ts";
 import { NetworkPolicyValidationError } from "./errors.ts";
 import { evaluateUrl, normalizeNetworkPolicy } from "./policy.ts";
 import {
@@ -9,7 +9,6 @@ import {
   PROVIDER_CAPABILITIES,
   PROVIDER_KINDS,
   type CredentialRef,
-  type ProviderCapability,
   type ProviderDescriptor,
   type ProviderRegistry,
   type ProviderResolution,
@@ -17,6 +16,8 @@ import {
 import { assertOneOf, assertRecord, assertStableId, inertCopy } from "./validation.ts";
 
 const ENV_NAME = /^[A-Z][A-Z0-9_]{0,63}$/u;
+// Path segments that look like API keys or tokens: common key prefixes or long opaque runs.
+const SECRET_SEGMENT = /^(?:sk|pk|rk|ak)[-_]|^[A-Za-z0-9+/=_-]{32,}$/u;
 
 function normalizeCredentialRef(value: unknown, label: string): CredentialRef | null {
   if (value === undefined || value === null) return null;
@@ -42,7 +43,13 @@ function endpointHost(endpoint: string, label: string): string {
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new NetworkPolicyValidationError(`${label} must be http or https`);
   if (url.username !== "" || url.password !== "") throw new NetworkPolicyValidationError(`${label} must not embed credentials; use credentialRef`);
   if (url.search !== "" || url.hash !== "") throw new NetworkPolicyValidationError(`${label} must not carry a query or fragment (they often hold secrets)`);
-  return url.hostname.toLowerCase().replace(/\.$/u, "").replace(/^\[|\]$/gu, "");
+  const segments = url.pathname.split("/");
+  if (segments.some((segment) => SECRET_SEGMENT.test(segment))) {
+    throw new NetworkPolicyValidationError(`${label} path looks like it embeds a secret; use credentialRef`);
+  }
+  const host = url.hostname.toLowerCase().replace(/\.$/u, "").replace(/^\[|\]$/gu, "");
+  if (isIP(host) !== 0 && classifyAddress(host) === "unspecified") throw new NetworkPolicyValidationError(`${label} must not be an unspecified address`);
+  return host;
 }
 
 function normalizeProvider(value: unknown, index: number): ProviderDescriptor {
@@ -69,6 +76,9 @@ function normalizeProvider(value: unknown, index: number): ProviderDescriptor {
     const loopback = host === "localhost" || host.endsWith(".localhost") || (isIP(host) !== 0 && isLoopbackAddress(host));
     if (value.kind === "loopback-http" && !loopback) throw new NetworkPolicyValidationError(`${label}.endpoint must be a loopback host for loopback-http`);
     if (value.kind === "remote-http" && loopback) throw new NetworkPolicyValidationError(`${label}.endpoint must not be loopback for remote-http; use loopback-http`);
+    if (value.kind === "remote-http" && value.credentialRef != null && !endpoint.startsWith("https:")) {
+      throw new NetworkPolicyValidationError(`${label}.endpoint must use https when a credential is attached`);
+    }
   } else if (endpoint !== null) {
     throw new NetworkPolicyValidationError(`${label}.endpoint must be null for ${value.kind} providers`);
   }
@@ -98,8 +108,10 @@ export function normalizeProviderRegistry(input: unknown): ProviderRegistry {
 /**
  * Pick the first registered provider for `capability` whose network needs the policy
  * permits. In-process and local-process providers need no network; HTTP providers need an
- * allowed `provider.inference` decision for their endpoint. Every skipped provider is
- * reported with a reason.
+ * allowed decision for their endpoint under the single `provider.inference` network
+ * capability, which gates every provider capability (text, image, embedding, OCR, ...).
+ * Every skipped provider is reported with a reason. Callers must still pass the addresses
+ * they actually connect to through `evaluateResolved`.
  */
 export function resolveProvider(registryInput: unknown, policyInput: unknown, capability: unknown): ProviderResolution {
   const registry = normalizeProviderRegistry(registryInput);
@@ -117,5 +129,3 @@ export function resolveProvider(registryInput: unknown, policyInput: unknown, ca
   }
   return { capability, provider: null, decision: null, rejected };
 }
-
-export type { ProviderCapability };
