@@ -6,6 +6,7 @@ export * from "./security.ts";
 export * from "./assets.ts";
 export * from "./ledger.ts";
 export * from "./network.ts";
+export * from "./transport.ts";
 export * from "./proposal.ts";
 export * from "./html.ts";
 export * from "./commit.ts";

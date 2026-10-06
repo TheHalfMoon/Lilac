@@ -2,15 +2,19 @@ import { lookup } from "node:dns/promises";
 import { ImportSecurityError, ImportValidationError } from "./errors.ts";
 import { importHtmlSnapshot } from "./html.ts";
 import { validateNavigationUrl, validateResolvedAddresses } from "./network.ts";
+import { fetchPinnedHttp, sanitizeReadOnlyRequestHeaders, type PinnedHttpResponse } from "./transport.ts";
 import type { AdapterResult, ImportProposal, ImportRequest } from "./types.ts";
 import { normalizeImportRequest } from "./validation.ts";
 
-interface RequestLike { url(): string; isNavigationRequest(): boolean; }
-interface ApiResponseLike { headers(): Record<string, string>; body(): Promise<Uint8Array>; }
+interface RequestLike {
+  url(): string;
+  isNavigationRequest(): boolean;
+  method(): string;
+  allHeaders(): Promise<Record<string, string>>;
+}
 interface RouteLike {
   request(): RequestLike;
-  fetch(options: { maxRedirects: number; timeout: number; headers?: Record<string, string> }): Promise<ApiResponseLike>;
-  fulfill(options: { response: ApiResponseLike; body: Uint8Array }): Promise<void>;
+  fulfill(options: { status: number; headers: Record<string, string>; body: Uint8Array }): Promise<void>;
   abort(): Promise<void>;
 }
 interface WebSocketRouteLike { close(): void; }
@@ -39,6 +43,16 @@ interface PlaywrightLike { chromium: { launch(options: { headless: boolean }): P
 export interface PlaywrightCaptureDependencies {
   loadPlaywright?: () => Promise<PlaywrightLike>;
   resolveHost?: (hostname: string) => Promise<string[]>;
+  fetchHttp?: (
+    url: URL,
+    options: {
+      addresses: string[];
+      timeoutMs: number;
+      maxBytes: number;
+      method: "GET" | "HEAD";
+      headers: Record<string, string>;
+    },
+  ) => Promise<PinnedHttpResponse>;
   now?: () => number;
 }
 
@@ -58,10 +72,15 @@ function unavailablePlaywright(error: unknown): boolean {
   return code === "ERR_MODULE_NOT_FOUND" || /cannot find (?:package|module).*playwright/iu.test(error.message);
 }
 
-async function validateTarget(url: URL, request: ImportRequest, resolveHost: (hostname: string) => Promise<string[]>): Promise<void> {
+async function validatedAddresses(
+  url: URL,
+  request: ImportRequest,
+  resolveHost: (hostname: string) => Promise<string[]>,
+): Promise<string[]> {
   const literal = url.hostname.replace(/^\[|\]$/gu, "");
   const addresses = /^[0-9.]+$/u.test(literal) || literal.includes(":") ? [literal] : await resolveHost(url.hostname);
   validateResolvedAddresses(url, addresses, request.policy);
+  return addresses;
 }
 
 export async function captureDynamicHtml(
@@ -80,11 +99,12 @@ export async function captureDynamicHtml(
   }
 
   const resolveHost = dependencies.resolveHost ?? defaultResolveHost;
+  const fetchHttp = dependencies.fetchHttp ?? fetchPinnedHttp;
   const now = dependencies.now ?? Date.now;
   let initial: URL;
   try {
     initial = validateNavigationUrl(rawUrl, request.policy);
-    await validateTarget(initial, request, resolveHost);
+    await validatedAddresses(initial, request, resolveHost);
   } catch (error) {
     return { status: "failed", reason: error instanceof Error ? error.message : String(error) };
   }
@@ -107,6 +127,7 @@ export async function captureDynamicHtml(
   let totalResponseBytes = 0;
   let interceptedRequests = 0;
   let navigationRequests = 0;
+  let blockedWriteRequests = 0;
   let routeFailure: Error | null = null;
 
   try {
@@ -124,28 +145,37 @@ export async function captureDynamicHtml(
     await context.route("**/*", async (route) => {
       if (routeFailure) { await route.abort(); return; }
       try {
-        const target = validateNavigationUrl(route.request().url(), request.policy);
-        await validateTarget(target, request, resolveHost);
+        const browserRequest = route.request();
+        const target = validateNavigationUrl(browserRequest.url(), request.policy);
+        const addresses = await validatedAddresses(target, request, resolveHost);
         interceptedRequests += 1;
         if (interceptedRequests > request.policy.maxAssets + 1) throw new ImportSecurityError("dynamic capture exceeds bounded request count");
-        if (route.request().isNavigationRequest()) {
+        if (browserRequest.isNavigationRequest()) {
           navigationRequests += 1;
           if (navigationRequests > request.policy.maxRedirects + 1) throw new ImportSecurityError("dynamic capture exceeds maxRedirects");
         }
-        const response = await route.fetch({
-          maxRedirects: 0,
-          timeout: remaining(),
-          headers: { "accept-encoding": "identity" },
+
+        const method = browserRequest.method().toUpperCase();
+        if (method !== "GET" && method !== "HEAD") {
+          blockedWriteRequests += 1;
+          await route.abort();
+          if (browserRequest.isNavigationRequest()) {
+            routeFailure = new ImportSecurityError("dynamic capture blocks write-capable navigation requests");
+          }
+          return;
+        }
+
+        const response = await fetchHttp(target, {
+          addresses,
+          timeoutMs: remaining(),
+          maxBytes: request.policy.maxAssetBytes,
+          method,
+          headers: sanitizeReadOnlyRequestHeaders(await browserRequest.allHeaders()),
         });
-        const encoding = (response.headers()["content-encoding"] ?? "identity").toLowerCase();
-        if (encoding !== "identity") throw new ImportSecurityError("dynamic response encoding must be identity");
-        const declared = Number.parseInt(response.headers()["content-length"] ?? "", 10);
-        if (Number.isFinite(declared) && declared > request.policy.maxAssetBytes) throw new ImportSecurityError("dynamic response exceeds maxAssetBytes");
-        const body = await response.body();
-        if (body.byteLength > request.policy.maxAssetBytes) throw new ImportSecurityError("dynamic response exceeds maxAssetBytes");
-        totalResponseBytes += body.byteLength;
+        remaining();
+        totalResponseBytes += response.body.byteLength;
         if (totalResponseBytes > request.policy.maxTotalBytes) throw new ImportSecurityError("dynamic capture exceeds maxTotalBytes");
-        await route.fulfill({ response, body });
+        await route.fulfill({ status: response.status, headers: response.headers, body: response.body });
       } catch (error) {
         routeFailure = error instanceof Error ? error : new Error(String(error));
         await route.abort();
@@ -156,7 +186,7 @@ export async function captureDynamicHtml(
     await page.goto(initial.href, { waitUntil: "domcontentloaded", timeout: remaining() });
     if (routeFailure) throw routeFailure;
     const finalUrl = validateNavigationUrl(page.url(), request.policy);
-    await validateTarget(finalUrl, request, resolveHost);
+    await validatedAddresses(finalUrl, request, resolveHost);
     const html = await page.content();
     if (routeFailure) throw routeFailure;
 
@@ -168,7 +198,7 @@ export async function captureDynamicHtml(
       proposal.diagnostics.push({
         code: "dynamic-capture-completed",
         severity: "info",
-        message: `Captured isolated dynamic HTML after ${interceptedRequests} bounded requests and ${totalResponseBytes} response bytes`,
+        message: `Captured isolated dynamic HTML after ${interceptedRequests} bounded requests, ${blockedWriteRequests} blocked write requests, and ${totalResponseBytes} response bytes`,
       });
     }
     return { status: "ok", value: proposal };

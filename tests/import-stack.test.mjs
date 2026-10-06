@@ -280,19 +280,20 @@ test("Playwright adapter uses isolated bounded context and sanitizes captured HT
   let contextOptions = null;
   let routeHandler = null;
   let wsHandler = null;
+  let pinnedFetch = null;
   const context = {
     async route(_pattern, handler) { routeHandler = handler; },
     async routeWebSocket(_pattern, handler) { wsHandler = handler; },
     async newPage() {
       return {
         async goto(url) {
-          const response = {
-            headers: () => ({ "content-length": "25", "content-encoding": "identity" }),
-            body: async () => new TextEncoder().encode("<html><body>ok</body></html>"),
-          };
           await routeHandler({
-            request: () => ({ url: () => url, isNavigationRequest: () => true }),
-            fetch: async () => response,
+            request: () => ({
+              url: () => url,
+              isNavigationRequest: () => true,
+              method: () => "GET",
+              allHeaders: async () => ({ "user-agent": "LilacTest", cookie: "must-not-forward" }),
+            }),
             fulfill: async () => {},
             abort: async () => {},
           });
@@ -310,6 +311,14 @@ test("Playwright adapter uses isolated bounded context and sanitizes captured HT
   const result = await captureDynamicHtml(req, "http://localhost:3000", {
     resolveHost: async () => ["127.0.0.1"],
     loadPlaywright: async () => ({ chromium: { launch: async () => browser } }),
+    fetchHttp: async (url, options) => {
+      pinnedFetch = { url: url.href, options };
+      return {
+        status: 200,
+        headers: { "content-type": "text/html" },
+        body: new TextEncoder().encode("<html><body>ok</body></html>"),
+      };
+    },
   });
   assert.equal(result.status, "ok");
   assert.deepEqual(contextOptions, {
@@ -319,8 +328,53 @@ test("Playwright adapter uses isolated bounded context and sanitizes captured HT
     ignoreHTTPSErrors: false,
   });
   assert.equal(typeof wsHandler, "function");
+  assert.equal(pinnedFetch.url, "http://localhost:3000/");
+  assert.deepEqual(pinnedFetch.options.addresses, ["127.0.0.1"]);
+  assert.equal(pinnedFetch.options.method, "GET");
+  assert.equal(pinnedFetch.options.headers.cookie, undefined);
+  assert.equal(pinnedFetch.options.headers["accept-encoding"], "identity");
   assert.equal(result.value.security.scriptsRemoved, 1);
   assert.equal(result.value.security.eventHandlersRemoved, 1);
+});
+
+test("Playwright adapter blocks write-capable navigation before any outbound fetch", async () => {
+  const req = request({
+    source: { kind: "local-app", uri: "http://localhost:3000", baseUrl: "http://localhost:3000" },
+    policy: defaultImportPolicy("local-app"),
+  });
+  let routeHandler = null;
+  let fetched = false;
+  const context = {
+    async route(_pattern, handler) { routeHandler = handler; },
+    async routeWebSocket() {},
+    async newPage() {
+      return {
+        async goto(url) {
+          await routeHandler({
+            request: () => ({
+              url: () => url,
+              isNavigationRequest: () => true,
+              method: () => "POST",
+              allHeaders: async () => ({}),
+            }),
+            fulfill: async () => {},
+            abort: async () => {},
+          });
+        },
+        async content() { return "<main>should not succeed</main>"; },
+        url() { return "http://localhost:3000/"; },
+      };
+    },
+    async close() {},
+  };
+  const result = await captureDynamicHtml(req, "http://localhost:3000", {
+    resolveHost: async () => ["127.0.0.1"],
+    loadPlaywright: async () => ({ chromium: { launch: async () => ({ newContext: async () => context, close: async () => {} }) } }),
+    fetchHttp: async () => { fetched = true; throw new Error("must not fetch"); },
+  });
+  assert.equal(result.status, "failed");
+  assert.equal(fetched, false);
+  assert.match(result.reason, /write-capable navigation/u);
 });
 
 test("Playwright adapter blocks DNS resolution that escapes local-app loopback", async () => {
