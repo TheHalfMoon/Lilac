@@ -1,6 +1,6 @@
 # Lilac — Canonical Program State
 
-Last updated: 2026-10-06
+Last updated: 2026-10-07
 
 ## Program
 
@@ -10,11 +10,11 @@ Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 
 
 ## Canonical main
 
-`c95acf6f6dfa7d1001ff2aa2ceb1a8f060ebdd4d`
+`1d3f4a9445fd5c087287dbe5729135853432f01d`
 
-This is the normal merge commit for PR #81 (P05 D6b network capability policy, provider registry, and offline guarantee, Issue #80).
+This is the normal merge commit for PR #87 (P05 D7a intake review, web semantics, project commit, and network gate, Issue #85).
 
-Post-merge CI run `37530142189` completed `SUCCESS` on that exact SHA (383/383 tests).
+Post-merge CI run `37533643617` completed `SUCCESS` on that exact SHA (397/397 tests).
 
 ## Post-grain program state
 
@@ -31,7 +31,9 @@ Post-merge CI run `37530142189` completed `SUCCESS` on that exact SHA (383/383 t
 - P05 D6a local project persistence: complete via PR #75 (merge `83c195e`), Issue #74 closed. `packages/persistence` (workspace deps `@lilac/document-model`, `@lilac/history` only) stores projects under `<root>/.lilac` with content-addressed objects, a SHA-256 hash-chained append-only journal of history transactions, atomic writes, atomic project creation, crash recovery (unterminated tails recovered; all other damage fails closed), a nonce-bound single-writer lock with recorded stale-lock override, manifest migration, and a journal pin (device, inode, ctime) checked before every append. Document state is only produced by replaying history transactions. Catalog status `stub` (agent-state persistence planned). Qualification drove three repair cycles plus one fix from exact-head Linux CI (inode reuse); residual risks are recorded in the evidence file.
 - Parity matrix refresh: PR #77 (merge `bbc3f69`). LILAC-D1, D4, D5 cite delivered P05 evidence; LILAC-D2 and D8 stay pending with tracked owners (#78 component states source binding, #79 tokens subsystem); LILAC-D6 was withdrawn from an unsupported earlier PARITY_PROVEN.
 - P05 D6b network policy and offline guarantee: complete via PR #81 (merge `c95acf6`), Issue #80 closed. `packages/network-policy` (no dependencies) is the single owner of address classification (moved from import-stack and tightened: unspecified addresses denied everywhere, deprecated IPv6 forms forbidden), provides a default-deny capability policy (offline / local-only / allowlist grants) with pre-DNS and post-DNS decisions honored only when issued by the policy, a credential-reference-only provider registry, and offline readiness. `tests/offline-guarantee.test.mjs` proves the core workflow (create, edit, undo/redo, agent-attributed collaboration edit, save, reopen, method review, decision assurance, offline import) makes zero network attempts with every network and process primitive trapped; LILAC-D6 is PARITY_PROVEN on that basis. Not yet: the local MCP endpoint (#82; catalog `mcp-surface` corrected to stub) and import-stack enforcement through the new policy (#83).
-- Next: P05 D7 (website/app intake product experience).
+- P05 D7a intake: complete via PR #87 (merge `1d3f4a9`), Issue #85 closed. `packages/intake` (workspace deps `@lilac/import-stack`, `@lilac/network-policy`, `@lilac/persistence`, `@lilac/history`) adds a deterministic pre-commit review of Grain 6 proposals (counts, sanitization summary, severity-ordered bounded diagnostics, source-binding coverage, commit verdict), markup-only web semantics recorded as `OBSERVED` evidence with their source (HTML-AAM native mappings with landmark scoping, ARIA role-token precedence, bounded accessible names), a single-snapshot commit into a persisted project through `ProjectStore.commit`, and a network gate that maps `import.fetch` decisions to import-stack policies without loosening them. The offline-guarantee test now includes intake. Qualification drove three delta repair cycles; parked items are in #89.
+- D6a residual correction (open, #88): in-session detection of a same-size in-place journal rewrite depends on the ctime tick, which is milliseconds rather than the nanoseconds stated in the D6a evidence; reopen still fails closed. Found during D7a qualification as an intermittent Windows test failure.
+- Next: #88 persistence repair, then the remaining D7 follow-ups (#83 import-stack enforcement through the network policy, #86 form-removal diagnostics), then P06 hardening.
 - Open, non-blocking: #64 (review-panel hardening follow-ups, including a shared hidden-text and input-hygiene policy across packages).
 
 ## Canonical implementation chain
@@ -150,7 +152,7 @@ The remaining product program, in working order:
 6. P05 D4 - Visual Git (complete; #61 and #63 also closed);
 7. P05 D5 - Decision assurance (complete; #71 router hardening also closed);
 8. P05 D6 - Local/private mode (complete for what exists today: D6a persistence, D6b network policy and offline guarantee; local MCP endpoint #82 and import-stack enforcement #83 open);
-9. P05 D7 - Website/app intake product experience;
+9. P05 D7 - Website/app intake product experience (D7a review, semantics, commit, and network gate complete; #83 and #86 open);
 10. P06 - Product hardening;
 11. P07 - Release program with signed evidence and clean-machine verification.
 
