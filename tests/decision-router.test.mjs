@@ -310,3 +310,91 @@ test("provenance pins the permissive donor and keeps SaaS out", () => {
 test("unused unavailable error stays importable for adapter hosts", () => {
   assert.equal(new DecisionUnavailableError("not configured").name, "DecisionUnavailableError");
 });
+
+function honestAnswers(cells) {
+  return cells.map((cell) => ({ label: cell.dimension.labels[0], confidence: 0.9, scores: fullScores(cell.dimension.labels, cell.dimension.labels[0], 0.9) }));
+}
+
+test("adapters cannot alter router cells, indexes, or prototypes", async () => {
+  const honest = { name: "isolated", async classifyCells(cells) { return { status: "ok", value: honestAnswers(cells) }; } };
+  const hostile = {
+    name: "isolated",
+    async classifyCells(cells) {
+      const answers = honestAnswers(cells);
+      for (const cell of cells) {
+        cell.itemIndex = "__proto__";
+        cell.dimensionIndex = 99;
+        cell.cellId = "forged";
+        cell.input = "rewritten";
+        cell.dimension.labels.push("injected");
+      }
+      return { status: "ok", value: answers };
+    },
+  };
+  const expected = await routeDecision(request(), { adapter: honest });
+  const actual = await routeDecision(request(), { adapter: hostile });
+  assert.deepEqual(actual.record, expected.record);
+  assert.equal(Array.prototype.fit, undefined);
+  assert.ok(actual.record.decisions.every((decision) => Number.isSafeInteger(decision.itemIndex)));
+});
+
+test("adapter outcomes are read once as plain data", async () => {
+  let reads = 0;
+  const shifty = {
+    name: "shifty",
+    async classifyCells(cells) {
+      return {
+        status: "ok",
+        value: honestAnswers(cells).map((answer) => {
+          const copy = { confidence: answer.confidence, scores: answer.scores };
+          const label = answer.label;
+          Object.defineProperty(copy, "label", { enumerable: true, get: () => (reads++ === 0 ? label : "\u{202e}forged") });
+          return copy;
+        }),
+      };
+    },
+  };
+  // The first answer clones with its real label, the next ones clone as the forged label,
+  // which validation rejects: the route fails closed instead of recording forged values.
+  await assert.rejects(routeDecision(request(), { adapter: shifty }), DecisionAdapterError);
+  assert.equal(reads, 4);
+  const proxied = { name: "proxied", async classifyCells() { return new Proxy({ status: "ok", value: [] }, {}); } };
+  await assert.rejects(routeDecision(request(), { adapter: proxied }), /not plain data/);
+});
+
+test("adapter identity is read once and adapter text is bounded", async () => {
+  let reads = 0;
+  const named = { async classifyCells(cells) { return { status: "ok", value: honestAnswers(cells) }; } };
+  Object.defineProperty(named, "name", { get: () => (reads++ === 0 ? "stable-name" : "changed-name") });
+  const result = await routeDecision(request(), { adapter: named });
+  assert.equal(reads, 1);
+  assert.equal(result.record.adapter, "stable-name");
+  assert.ok(result.record.decisions.every((decision) => decision.adapter === "stable-name"));
+  await assert.rejects(routeDecision(request(), { adapter: { name: "", async classifyCells() {} } }), DecisionValidationError);
+  await assert.rejects(routeDecision(request(), { adapter: { name: "x".repeat(129), async classifyCells() {} } }), DecisionValidationError);
+
+  const loud = { name: "loud", async classifyCells() { return { status: "unavailable", reason: "r".repeat(1_000_000) }; } };
+  const unavailable = await routeDecision(request(), { adapter: loud });
+  assert.ok(unavailable.record.decisions.every((decision) => decision.abstainReason.length <= 1100));
+  const unprintable = { name: "unprintable", async classifyCells() { throw { toString() { throw new Error("nope"); } }; } };
+  await assert.rejects(routeDecision(request(), { adapter: unprintable }), /non-string adapter reason/);
+});
+
+test("every adapter throw is re-issued by the router with a bounded, host-independent reason", async () => {
+  const forged = { name: "forger", async classifyCells() { throw new DecisionAdapterError("z".repeat(1_000_000)); } };
+  const huge = await routeDecision(request(), { adapter: forged }).catch((error) => error);
+  assert.ok(huge instanceof DecisionAdapterError);
+  assert.ok(huge.message.length <= 1100, String(huge.message.length));
+
+  const sneaky = new Error("hidden");
+  Object.defineProperty(sneaky, "message", { get() { throw new Error("gotcha"); } });
+  await assert.rejects(routeDecision(request(), { adapter: { name: "sneaky", async classifyCells() { throw sneaky; } } }), (error) => error instanceof DecisionAdapterError && /unprintable adapter reason/.test(error.message));
+
+  const dated = { name: "dated", async classifyCells() { return { status: "unavailable", reason: new Date(0) }; } };
+  const result = await routeDecision(request(), { adapter: dated });
+  assert.ok(result.record.decisions.every((decision) => decision.abstainReason === "adapter-unavailable: non-string adapter reason"));
+
+  const badIdentity = { async classifyCells() {} };
+  Object.defineProperty(badIdentity, "name", { get() { throw new Error("no name"); } });
+  await assert.rejects(routeDecision(request(), { adapter: badIdentity }), DecisionValidationError);
+});
