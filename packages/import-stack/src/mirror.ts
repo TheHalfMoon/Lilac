@@ -273,8 +273,10 @@ export async function mirrorStaticSite(
       } else if (looksCss(current, type)) {
         if (response.body.byteLength > request.policy.maxCssBytes) throw new ImportSecurityError("mirrored CSS exceeds maxCssBytes");
         const css = decodeUtf8(response.body, "mirrored CSS");
+        // Like HTML references, cross-origin CSS references are skipped without contact; queued
+        // same-origin assets are validated against both policies when dequeued.
         for (const raw of discoverCssUrls(css, current)) {
-          const discovered = validateNavigationUrl(raw, request.policy, request.networkPolicy);
+          const discovered = new URL(raw);
           if (discovered.origin === entry.origin) enqueue(discovered, item.depth, "asset");
         }
       }

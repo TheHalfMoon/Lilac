@@ -68,7 +68,8 @@ export interface ImportRequest {
   /**
    * Project network policy (`@lilac/network-policy`). Network contacts need an allowed
    * `import.fetch` decision from it in addition to `policy`; when absent, the default
-   * offline policy applies, so network-mode imports are refused.
+   * offline policy applies, so network-mode imports are refused. Normalized requests always
+   * carry it as an own property.
    */
   networkPolicy?: NetworkPolicy;
 }

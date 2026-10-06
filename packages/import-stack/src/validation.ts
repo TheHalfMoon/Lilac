@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { normalizeNetworkPolicy, type NetworkPolicy } from "@lilac/network-policy";
+import { defaultNetworkPolicy, normalizeNetworkPolicy, type NetworkPolicy } from "@lilac/network-policy";
 import { ImportValidationError } from "./errors.ts";
 import {
   IMPORT_HARD_LIMITS,
@@ -179,12 +179,14 @@ export function normalizeImportRequest(value: unknown): ImportRequest {
   assertBoundedString(value.actorId, "import.actorId", 256);
   assertBoundedString(value.intent, "import.intent", 2048);
   assertTimestamp(value.at, "import.at");
-  let networkPolicy: NetworkPolicy | undefined;
-  if (value.networkPolicy !== undefined) {
+  // Own property only, and always set on the normalized request (default: offline), so no later
+  // read of request.networkPolicy can fall through to a polluted prototype and inherit a grant.
+  let networkPolicy: NetworkPolicy = defaultNetworkPolicy();
+  if (Object.hasOwn(value, "networkPolicy") && value.networkPolicy !== undefined) {
     try {
       networkPolicy = normalizeNetworkPolicy(value.networkPolicy);
     } catch (error) {
-      throw new ImportValidationError(`import.networkPolicy is invalid: ${(error as Error).message.slice(0, 200)}`);
+      throw new ImportValidationError(`import.networkPolicy is invalid: ${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`);
     }
   }
   return {
@@ -195,7 +197,7 @@ export function normalizeImportRequest(value: unknown): ImportRequest {
     at: value.at,
     source: normalizeSourceIdentity(value.source),
     policy: normalizeImportPolicy(value.policy),
-    ...(networkPolicy === undefined ? {} : { networkPolicy }),
+    networkPolicy,
   };
 }
 

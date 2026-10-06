@@ -59,6 +59,71 @@ async function mirror(req, url) {
 
 const REMOTE_SOURCE = { kind: "remote-url", uri: "https://example.com/a.html" };
 
+test("a mirror redirect to a port outside the grant is refused before it is followed", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "lilac-netpol-redirect-"));
+  const fetched = [];
+  try {
+    const result = await mirrorStaticSite(
+      request("remote", REMOTE_SOURCE, allowlist(grant("g-example", "https", "example.com"))),
+      "https://example.com/a.html",
+      { jobId: "netpol-redirect", workRoot: join(dir, "work") },
+      {
+        resolveHost: async () => ["93.184.216.34"],
+        fetchResource: async (url) => {
+          fetched.push(url.href);
+          return { status: 302, headers: { location: "https://example.com:8443/x", "content-encoding": "identity" }, body: new Uint8Array() };
+        },
+      },
+    );
+    assert.equal(result.status, "failed");
+    assert.match(result.reason, /network policy denied import\.fetch: no import\.fetch grant covers https:\/\/example\.com:8443/u);
+    assert.deepEqual(fetched, ["https://example.com/a.html"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a network policy is never inherited from the prototype chain", async () => {
+  Object.prototype.networkPolicy = allowlist(grant("g-example", "https", "example.com"));
+  try {
+    const { result, resolves, fetches } = await mirror(request("remote", REMOTE_SOURCE), "https://example.com/a.html");
+    assert.equal(result.status, "failed");
+    assert.match(result.reason, /offline mode/u);
+    assert.equal(resolves + fetches, 0);
+  } finally {
+    delete Object.prototype.networkPolicy;
+  }
+});
+
+test("cross-origin references in mirrored CSS are skipped, not fatal, and never contacted", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "lilac-netpol-css-"));
+  const fetched = [];
+  const bodies = {
+    "https://example.com/a.html": ["text/html", '<link rel="stylesheet" href="/site.css"><main>ok</main>'],
+    "https://example.com/site.css": ["text/css", "@font-face { src: url(https://fonts.gstatic.com/f.woff2); } main { background: url(/bg.png); }"],
+    "https://example.com/bg.png": ["image/png", "png"],
+  };
+  try {
+    const result = await mirrorStaticSite(
+      request("remote", REMOTE_SOURCE, allowlist(grant("g-example", "https", "example.com"))),
+      "https://example.com/a.html",
+      { jobId: "netpol-css", workRoot: join(dir, "work") },
+      {
+        resolveHost: async () => ["93.184.216.34"],
+        fetchResource: async (url) => {
+          fetched.push(url.href);
+          const [type, body] = bodies[url.href] ?? ["text/plain", ""];
+          return { status: 200, headers: { "content-type": type, "content-encoding": "identity" }, body: new TextEncoder().encode(body) };
+        },
+      },
+    );
+    assert.equal(result.status, "ok", result.reason);
+    assert.deepEqual(fetched.sort(), ["https://example.com/a.html", "https://example.com/bg.png", "https://example.com/site.css"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("without a network policy, network-mode imports are refused before any resolve or fetch", async () => {
   const { result, resolves, fetches } = await mirror(request("remote", REMOTE_SOURCE), "https://example.com/a.html");
   assert.equal(result.status, "failed");
@@ -93,7 +158,10 @@ test("local-app imports need local-only mode or an explicit loopback grant", () 
   assert.throws(() => validateNavigationUrl("http://localhost:3000/", local), /offline mode/u);
 });
 
-test("both policies must accept the resolved addresses; a private-network grant does not widen remote mode", () => {
+// Resolution needs an allowed policy decision. The policy's own address rules (evaluateResolved)
+// are defence in depth: Grain 6's address checks are at least as strict in every mode, so a
+// rebind is refused by Grain 6 first and the policy layer is never the sole refusal.
+test("resolved addresses need an allowed policy decision; a private-network grant does not widen remote mode", () => {
   const remote = defaultImportPolicy("remote");
   const privateGrant = allowlist(grant("g-private", "https", "example.com", null, true));
   const url = validateNavigationUrl("https://example.com/", remote, privateGrant);
