@@ -178,6 +178,16 @@ test("evidence writer refuses disposable worktree destinations", async () => {
   }
 });
 
+test("evidence writer rejects malformed bundles with typed errors", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "lilac-delivery-malformed-"));
+  try {
+    await assert.rejects(writeEvidenceBundle(dir, null, {}), DeliveryValidationError);
+    await assert.rejects(writeEvidenceBundle(dir, { records: "nope", askUserRequests: [] }, {}), DeliveryValidationError);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("oversized collections fail closed", () => {
   const findings = Array.from({ length: 257 }, (_, index) => ({ severity: "info", surface: `s${index}`, message: "m", tool: "t" }));
   assert.throws(() => normalizeQualificationRecord(record({ gates: [{ name: "g", verdict: "pass", findings }] })), DeliveryValidationError);

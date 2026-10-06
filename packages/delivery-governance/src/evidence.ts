@@ -9,6 +9,7 @@ import {
 } from "./types.ts";
 import {
   canonicalDeliveryStringify,
+  assertPlainObject,
   normalizeAskUserRequest,
   normalizeQualificationRecord,
   sha256Text,
@@ -55,6 +56,10 @@ export async function writeEvidenceBundle(
 ): Promise<{ path: string; bundleId: string }> {
   if (typeof destinationDir !== "string" || destinationDir.trim() === "") {
     throw new DeliveryValidationError("evidence destination must be a non-empty string");
+  }
+  assertPlainObject(bundleInput, "evidence.bundle");
+  if (!Array.isArray(bundleInput.records) || !Array.isArray(bundleInput.askUserRequests)) {
+    throw new DeliveryValidationError("evidence bundle records and askUserRequests must be arrays");
   }
   const records = (bundleInput.records as unknown[]).map(normalizeQualificationRecord);
   const askUserRequests = (bundleInput.askUserRequests as unknown[]).map(normalizeAskUserRequest);
