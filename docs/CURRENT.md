@@ -6,15 +6,15 @@ Last updated: 2026-10-06
 
 **LILAC-P00 — Foundation, authorized-source intake, and staged product implementation**
 
-Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–6 are `CLOSED_CANONICAL`; repository-side Graft context policy is canonical; Grain 7 Decision Router is the next implementation frontier.
+Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–7 are `CLOSED_CANONICAL`; repository-side Graft context policy is canonical; Grain 8 Delivery Governance is the next implementation frontier.
 
 ## Canonical main
 
-`c3841a19e7d1d8c348e5ed114f101351725c6578`
+`723e7b067d95e3d600bf47c8b952adf4520d8c99`
 
-This is the normal merge commit for PR #35 (Grain 6 Import Stack) onto the PR #33 canonical state refresh.
+This is the normal merge commit for PR #38 (Grain 7 Decision Router).
 
-Post-merge CI run `37405576580` completed `SUCCESS` on that exact SHA (204/204 tests, 0 vulnerabilities).
+Post-merge CI run `37407426329` completed `SUCCESS` on that exact SHA (219/219 tests, 0 vulnerabilities).
 
 ## Canonical implementation chain
 
@@ -26,6 +26,7 @@ Post-merge CI run `37405576580` completed `SUCCESS` on that exact SHA (204/204 t
 | 4 | Agent Supervisor | CLOSED_CANONICAL | PR #31 merged at `9ab8b55eb319939c560646f640f444ed9a19916b`; post-merge CI `37313871378` succeeded |
 | 5 | Local-first Collaboration | CLOSED_CANONICAL | PR #32 merged at `007e829fdc6e4a28f7fb5089277e6e535840f317`; post-merge CI `37327594078` succeeded |
 | 6 | Import Stack | CLOSED_CANONICAL | PR #35 merged at `c3841a19e7d1d8c348e5ed114f101351725c6578` (qualified head `3955007ca055708bdb7efc0b4601cbd2df8bff6e`); post-merge CI `37405576580` succeeded |
+| 7 | Decision Router | CLOSED_CANONICAL | PR #38 merged at `723e7b067d95e3d600bf47c8b952adf4520d8c99` (qualified head `9e25bd787b2e874120f6183beea1dfe07b1afba4`); post-merge CI `37407426329` succeeded |
 | Tooling | Graft context/navigation policy | CANONICAL | PR #8 merged at `d6eb3be46e9d608b2071b80be0f6911ba5bf0c9b`; post-merge CI `37329841174` succeeded |
 
 ## Canonical facts
@@ -63,8 +64,8 @@ Post-merge CI run `37405576580` completed `SUCCESS` on that exact SHA (204/204 t
 | I04 Agent Supervisor | PROVEN |
 | I05 Collaboration | PROVEN |
 | I06 Import Stack | PROVEN |
-| I07 Decision Router | ACTIVE_NEXT |
-| I08 Delivery Governance | BLOCKED_BY_I07 |
+| I07 Decision Router | PROVEN |
+| I08 Delivery Governance | ACTIVE_NEXT |
 | I09 Design Method and Resources | BLOCKED_BY_I08 |
 
 ## Grain 6 — closed canonical
@@ -83,9 +84,15 @@ Delivered scope (per `docs/DONOR_INTEGRATION_MAP.md` and Issue #34):
 6. optional UI-TARS visual operator seam;
 7. optional external Firecrawl connector/reference pinned to `firecrawl/firecrawl@4244638a7041bae8b99bdd42e3c44520f9e62da1` (AGPL, reference-only).
 
-## Grain 7 — next canonical action
+## Grain 7 — closed canonical
 
-Grain 7 is the **Decision Router** defined by `docs/DONOR_INTEGRATION_MAP.md`: a provider-neutral decision router with explicit uncertainty and abstention, guided by `mrmps/classifier-dev` at `a17bf2b6353f6234af6e977a463da7cd1975b68e`. Freeze a dedicated Grain 7 Issue/spec before implementation, branch from the exact canonical `main`, and close only after post-merge CI.
+Grain 7 (Decision Router, `packages/decision-router`, Issue #37) is `CLOSED_CANONICAL` via PR #38, merged normally at `723e7b067d95e3d600bf47c8b952adf4520d8c99` with post-merge CI `37407426329` green on the exact merge SHA. Exact-head qualification on `9e25bd787b2e874120f6183beea1dfe07b1afba4` covered 219/219 tests, zero vulnerabilities, Jev 9/9 cells below threshold 0.70, Alibaba Open Code Review delegation SUCCESS (v1.12.9, 11 reviewable files), Graft blast-radius inspection, and manual review of the adapter contract, threshold/abstention semantics, batching, ledger idempotency, and dependency closure (zero new runtime dependencies). One elevated Jev cell drove a concrete hardening (bounded definition sizing before serialization with a nesting cap). Full evidence is recorded on Issue #37.
+
+Delivered scope (per `docs/DONOR_INTEGRATION_MAP.md` and Issue #37): typed decision dimensions with label schemas; selected label plus confidence plus complete label-score distributions; bounded inputs and batching; provider-neutral adapter contract with strict output validation; deterministic prechecks that always outrank probabilistic output; explicit unsure-below threshold semantics with abstention; bounded manual-review routing; offline rule adapter; optional Jev adapter seam; idempotent request ledger; decision provenance records. Guidance donor `mrmps/classifier-dev@a17bf2b6353f6234af6e977a463da7cd1975b68e` (MIT); no SaaS, billing, gateway, or analytics code imported.
+
+## Grain 8 — next canonical action
+
+Grain 8 is **Delivery Governance** defined by `docs/DONOR_INTEGRATION_MAP.md`: Lilac's exact-head agent-authored source delivery and qualification layer, guided by `kunchenguid/no-mistakes@0616eb4911845e2ba04faa17186ecd2686d7d579`. Freeze a dedicated Grain 8 Issue/spec before implementation, branch from the exact canonical `main`, and close only after post-merge CI.
 
 ## Grain 6 authority boundaries
 
@@ -99,10 +106,9 @@ Grain 7 is the **Decision Router** defined by `docs/DONOR_INTEGRATION_MAP.md`: a
 
 ## Later sequence
 
-After Grain 6 becomes `CLOSED_CANONICAL`:
+Grain 8 and Grain 9 remain, then the broader Master Plan work:
 
-1. Grain 7 — provider-neutral Decision Router with confidence/abstention;
-2. Grain 8 — Delivery Governance for exact-head repository change qualification;
+1. Grain 8 — Delivery Governance for exact-head repository change qualification;
 3. Grain 9 — Design Method and Resources;
 4. continue broader Master Plan work: bidirectional code/design IR, native code components, Visual Git, parity disposition, product hardening, packaging, release, and reproducible smoke evidence.
 
