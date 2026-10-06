@@ -6,15 +6,15 @@ Last updated: 2026-10-06
 
 **LILAC-P00 — Foundation, authorized-source intake, and staged product implementation**
 
-Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–5 are `CLOSED_CANONICAL`; repository-side Graft context policy is canonical; Grain 6 Import Stack is the next implementation frontier.
+Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–6 are `CLOSED_CANONICAL`; repository-side Graft context policy is canonical; Grain 7 Decision Router is the next implementation frontier.
 
 ## Canonical main
 
-`d6eb3be46e9d608b2071b80be0f6911ba5bf0c9b`
+`c3841a19e7d1d8c348e5ed114f101351725c6578`
 
-This is the normal merge commit for PR #8 after the Grain 5 closeout.
+This is the normal merge commit for PR #35 (Grain 6 Import Stack) onto the PR #33 canonical state refresh.
 
-Post-merge CI run `37329841174` completed `SUCCESS` on that exact SHA.
+Post-merge CI run `37405576580` completed `SUCCESS` on that exact SHA (204/204 tests, 0 vulnerabilities).
 
 ## Canonical implementation chain
 
@@ -25,6 +25,7 @@ Post-merge CI run `37329841174` completed `SUCCESS` on that exact SHA.
 | 3 | Agent Event Protocol | CLOSED_CANONICAL | PR #24 merged at `47bd4f7f95e99b3e7f7f8c2700f87fb367288a73`; post-merge CI `37229773645` succeeded on the exact merge SHA |
 | 4 | Agent Supervisor | CLOSED_CANONICAL | PR #31 merged at `9ab8b55eb319939c560646f640f444ed9a19916b`; post-merge CI `37313871378` succeeded |
 | 5 | Local-first Collaboration | CLOSED_CANONICAL | PR #32 merged at `007e829fdc6e4a28f7fb5089277e6e535840f317`; post-merge CI `37327594078` succeeded |
+| 6 | Import Stack | CLOSED_CANONICAL | PR #35 merged at `c3841a19e7d1d8c348e5ed114f101351725c6578` (qualified head `3955007ca055708bdb7efc0b4601cbd2df8bff6e`); post-merge CI `37405576580` succeeded |
 | Tooling | Graft context/navigation policy | CANONICAL | PR #8 merged at `d6eb3be46e9d608b2071b80be0f6911ba5bf0c9b`; post-merge CI `37329841174` succeeded |
 
 ## Canonical facts
@@ -61,30 +62,30 @@ Post-merge CI run `37329841174` completed `SUCCESS` on that exact SHA.
 | I03 Agent Event Protocol | PROVEN |
 | I04 Agent Supervisor | PROVEN |
 | I05 Collaboration | PROVEN |
-| I06 Import Stack | ACTIVE_NEXT |
-| I07 Decision Router | BLOCKED_BY_I06 |
+| I06 Import Stack | PROVEN |
+| I07 Decision Router | ACTIVE_NEXT |
 | I08 Delivery Governance | BLOCKED_BY_I07 |
 | I09 Design Method and Resources | BLOCKED_BY_I08 |
 
-## Grain 6 — next canonical action
+## Grain 6 — closed canonical
 
-Grain 6 is the **Import Stack** defined by `docs/DONOR_INTEGRATION_MAP.md`.
+Grain 6 (Import Stack, `packages/import-stack`, Issue #34) is `CLOSED_CANONICAL` via PR #35, merged normally at `c3841a19e7d1d8c348e5ed114f101351725c6578` with post-merge CI `37405576580` green on the exact merge SHA. Exact-head qualification on `3955007ca055708bdb7efc0b4601cbd2df8bff6e` covered 204/204 tests, zero vulnerabilities, Jev 22/22 cells below threshold 0.70, Alibaba Open Code Review delegation SUCCESS (v1.12.9, 24 reviewable files), Graft blast-radius inspection, and manual review of all security-sensitive surfaces. Three import-boundary defects found during qualification (CSS continuation-split keywords, image-set fetch functions, fragment serialization breakouts) were repaired with forward commits and red-green tests. Full evidence is recorded on Issue #34.
 
-The implementation order is:
+The authority boundaries below held through implementation and remain in force for import-stack evolution:
+
+Delivered scope (per `docs/DONOR_INTEGRATION_MAP.md` and Issue #34):
 
 1. recovered Paper-compatible DOM/style snapshot semantics;
 2. source-aware local app instrumentation;
 3. isolated local Playwright capture for JavaScript-heavy pages;
 4. optional local Docling adapter pinned to `docling-project/docling@0cd61e0050a9ef68e5e10495b87e41d31acd79c9`;
 5. bounded static mirror fallback using selected lifecycle patterns from `AhmadIbrahiim/Website-downloader@130ad63d7163c19df64322556ca9c260eef353be`;
-6. optional UI-TARS visual operator;
-7. optional external Firecrawl connector/reference pinned to `firecrawl/firecrawl@4244638a7041bae8b99bdd42e3c44520f9e62da1`.
+6. optional UI-TARS visual operator seam;
+7. optional external Firecrawl connector/reference pinned to `firecrawl/firecrawl@4244638a7041bae8b99bdd42e3c44520f9e62da1` (AGPL, reference-only).
 
-Before implementation:
+## Grain 7 — next canonical action
 
-- study the exact pinned donor surfaces;
-- freeze a Grain 6 issue with authority boundaries, provenance, security limits, required tests, and qualification gates;
-- create the implementation branch only from the exact canonical `main` after that specification is frozen.
+Grain 7 is the **Decision Router** defined by `docs/DONOR_INTEGRATION_MAP.md`: a provider-neutral decision router with explicit uncertainty and abstention, guided by `mrmps/classifier-dev` at `a17bf2b6353f6234af6e977a463da7cd1975b68e`. Freeze a dedicated Grain 7 Issue/spec before implementation, branch from the exact canonical `main`, and close only after post-merge CI.
 
 ## Grain 6 authority boundaries
 
