@@ -1,6 +1,6 @@
 import { parseFragment } from "parse5";
 import { ImportSecurityError, ImportValidationError } from "./errors.ts";
-import { isForbiddenImportTag, isSafeStoredUrlReference, PRESENTATION_URL_ATTRIBUTES, sanitizeImportedCssText } from "./security.ts";
+import { FORM_AUTHORITY_ATTRIBUTES, isForbiddenImportTag, isSafeStoredUrlReference, PRESENTATION_URL_ATTRIBUTES, sanitizeImportedCssText } from "./security.ts";
 import {
   IMPORT_SCHEMA_VERSION,
   type ImportDiagnostic,
@@ -24,7 +24,7 @@ const DROP_SUBTREE = new Set([
   "base", "template", "foreignobject", "animate", "animatemotion",
   "animatetransform", "set", "discard",
 ]);
-const URL_ATTRIBUTES = new Set(["href", "src", "poster", "cite", "background", "action", "formaction", "xlink:href"]);
+const URL_ATTRIBUTES = new Set(["href", "src", "poster", "cite", "background", "xlink:href"]);
 const RESOURCE_TAGS = new Map<string, "image" | "media" | "link">([
   ["img", "image"], ["image", "image"], ["video", "media"], ["audio", "media"],
   ["source", "media"], ["a", "link"],
@@ -148,6 +148,17 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     if (diagnostics.length >= request.policy.maxDiagnostics) throw new ImportSecurityError("import diagnostics exceed maxDiagnostics");
     diagnostics.push(entry);
   };
+  // Forbidden elements that are neutralized or dropped without a per-element
+  // diagnostic are reported once per class after the walk, with the first
+  // occurrence's node context, so the diagnostic count stays bounded.
+  type SourceLocation = { startOffset?: number; endOffset?: number } | undefined;
+  const removalClasses = new Map<"form" | "link" | "meta", { count: number; domPath: string; location: SourceLocation; nodeId?: string }>();
+  const recordRemoval = (tag: "form" | "link" | "meta", domPath: string, location: SourceLocation, removedNodeId?: string) => {
+    security.dangerousElementsRemoved += 1;
+    const existing = removalClasses.get(tag);
+    if (existing) existing.count += 1;
+    else removalClasses.set(tag, { count: 1, domPath, location, ...(removedNodeId === undefined ? {} : { nodeId: removedNodeId }) });
+  };
   const resource = (entry: ResourceReference) => {
     if (resources.length >= request.policy.maxAssets) throw new ImportSecurityError("resource references exceed maxAssets");
     resources.push(entry);
@@ -189,7 +200,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
       return null;
     }
     if (rawTag === "meta") {
-      security.dangerousElementsRemoved += 1;
+      recordRemoval("meta", domPath, node.sourceCodeLocation);
       return null;
     }
     if (rawTag === "style") {
@@ -216,17 +227,21 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     if (attrs.length > request.policy.maxAttributesPerNode) throw new ImportSecurityError(`<${rawTag}> exceeds maxAttributesPerNode`);
 
     if (rawTag === "link") {
-      const attrMap = Object.fromEntries(attrs.map((attr: any) => [String(attr.name).toLowerCase(), String(attr.value ?? "")]));
+      const attrMap: Record<string, string> = Object.create(null);
+      for (const attr of attrs) attrMap[String(attr.name).toLowerCase()] = String(attr.value ?? "");
       if ((attrMap.rel ?? "").toLowerCase().split(/\s+/u).includes("stylesheet") && attrMap.href) {
         const href = safeUrl(attrMap.href, rawTag, "href", baseUrl);
         if (href) resource({ kind: "stylesheet", uri: href });
         else security.dangerousUrlsRemoved += 1;
+      } else {
+        recordRemoval("link", domPath, node.sourceCodeLocation);
       }
       return null;
     }
 
     const tag = rawTag === "form" ? "div" : rawTag;
     const id = nodeId(proposalId, domPath);
+    if (rawTag === "form") recordRemoval("form", domPath, node.sourceCodeLocation, id);
     const attributes: Record<string, string> = Object.create(null);
     const style: Record<string, string> = Object.create(null);
     let attributeBytes = 0;
@@ -237,6 +252,10 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
       attributeBytes += byteLength(name) + byteLength(rawValue);
       if (attributeBytes > request.policy.maxAttributeBytes) throw new ImportSecurityError(`<${rawTag}> attributes exceed maxAttributeBytes`);
 
+      if (FORM_AUTHORITY_ATTRIBUTES.has(name)) {
+        security.dangerousUrlsRemoved += 1;
+        continue;
+      }
       if (name.startsWith("on") || name === "srcdoc") {
         security.eventHandlersRemoved += 1;
         diagnostic({
@@ -286,10 +305,6 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
         }
       }
       if (URL_ATTRIBUTES.has(name)) {
-        if (name === "action" || name === "formaction") {
-          security.dangerousUrlsRemoved += 1;
-          continue;
-        }
         const resolved = safeUrl(rawValue, rawTag, name, baseUrl);
         if (resolved === null) {
           security.dangerousUrlsRemoved += 1;
@@ -347,6 +362,26 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     if (id) rootIds.push(id);
   }
   if (rootIds.length === 0) throw new ImportValidationError("HTML snapshot produced no importable semantic nodes");
+
+  for (const tag of ["form", "link", "meta"] as const) {
+    const entry = removalClasses.get(tag);
+    if (!entry) continue;
+    const plural = entry.count === 1 ? "" : "s";
+    diagnostic(tag === "form"
+      ? {
+        code: "form-element-neutralized",
+        severity: "warning",
+        message: `Neutralized ${entry.count} <form> element${plural} into <div>; children kept, submission removed`,
+        nodeId: entry.nodeId,
+        sourceBinding: binding(request, entry.domPath, entry.location),
+      }
+      : {
+        code: "forbidden-element-removed",
+        severity: "info",
+        message: `Removed ${entry.count} <${tag}> element${plural}`,
+        sourceBinding: binding(request, entry.domPath, entry.location),
+      });
+  }
 
   const uniqueResources = [...new Map(
     resources
