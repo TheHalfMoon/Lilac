@@ -1,5 +1,5 @@
 import { lstat, mkdir, realpath, rm } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { ImportConflictError, ImportSecurityError, ImportValidationError } from "./errors.ts";
 import { sha256Text } from "./validation.ts";
 
@@ -24,7 +24,11 @@ export async function canonicalFileWithinRoots(path: string, roots: string[], la
   throw new ImportSecurityError(`${label} escapes authorized roots`);
 }
 
-export async function createImportJobDirectory(workRootInput: string, prefix: string, jobId: string): Promise<{ workRoot: string; jobDirectory: string }> {
+export async function createImportJobDirectory(
+  workRootInput: string,
+  prefix: string,
+  jobId: string,
+): Promise<{ workRoot: string; jobDirectory: string }> {
   if (!/^[a-zA-Z0-9._:-]{1,256}$/u.test(jobId)) throw new ImportValidationError("jobId must be a bounded safe identifier");
   if (!/^[a-z][a-z0-9-]{0,31}$/u.test(prefix)) throw new ImportValidationError("job prefix is invalid");
   const workRoot = await canonicalDirectory(workRootInput, "import work root", true);
@@ -39,17 +43,21 @@ export async function createImportJobDirectory(workRootInput: string, prefix: st
 }
 
 export async function safeRemoveImportJobDirectory(workRootInput: string, jobDirectoryInput: string): Promise<void> {
-  const root = resolve(workRootInput);
-  const target = resolve(jobDirectoryInput);
-  if (target === root || !target.startsWith(root + sep)) {
-    throw new ImportSecurityError("refusing to remove import job path outside the configured work root");
-  }
+  const root = await canonicalDirectory(workRootInput, "import work root");
+  let info;
   try {
-    const info = await lstat(target);
-    if (info.isSymbolicLink()) throw new ImportSecurityError("refusing to remove a symlinked import job directory");
+    info = await lstat(jobDirectoryInput);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
     throw error;
+  }
+  if (info.isSymbolicLink() || !info.isDirectory()) {
+    throw new ImportSecurityError("refusing to remove a non-directory or symlinked import job path");
+  }
+  const target = await realpath(jobDirectoryInput);
+  const rel = relative(root, target);
+  if (rel === "" || rel === ".." || rel.startsWith(".." + sep) || isAbsolute(rel)) {
+    throw new ImportSecurityError("refusing to remove import job path outside the configured work root");
   }
   await rm(target, { recursive: true, force: true });
 }

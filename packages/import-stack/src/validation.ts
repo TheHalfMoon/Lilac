@@ -63,6 +63,7 @@ export function defaultImportPolicy(mode: ImportNetworkMode = "offline"): Import
     allowLoopback: mode === "local-app",
     maxHtmlBytes: 2 * 1024 * 1024,
     maxDomNodes: 10_000,
+    maxDomDepth: 128,
     maxTextBytes: 2 * 1024 * 1024,
     maxAttributesPerNode: 64,
     maxAttributeBytes: 16 * 1024,
@@ -102,6 +103,7 @@ export function normalizeImportPolicy(value: unknown): ImportPolicy {
     allowLoopback: value.allowLoopback,
     maxHtmlBytes: boundedInteger(value.maxHtmlBytes, "maxHtmlBytes", IMPORT_HARD_LIMITS.maxHtmlBytes),
     maxDomNodes: boundedInteger(value.maxDomNodes, "maxDomNodes", IMPORT_HARD_LIMITS.maxDomNodes),
+    maxDomDepth: boundedInteger(value.maxDomDepth, "maxDomDepth", IMPORT_HARD_LIMITS.maxDomDepth),
     maxTextBytes: boundedInteger(value.maxTextBytes, "maxTextBytes", IMPORT_HARD_LIMITS.maxTextBytes),
     maxAttributesPerNode: boundedInteger(value.maxAttributesPerNode, "maxAttributesPerNode", IMPORT_HARD_LIMITS.maxAttributesPerNode),
     maxAttributeBytes: boundedInteger(value.maxAttributeBytes, "maxAttributeBytes", IMPORT_HARD_LIMITS.maxAttributeBytes),
@@ -127,6 +129,15 @@ export function assertSafeProvenanceUrl(raw: string, label: string): void {
     const normalized = key.toLowerCase().replace(/[-_.]/gu, "");
     if (SENSITIVE_QUERY_KEYS.has(normalized)) {
       throw new ImportValidationError(`${label} contains a secret-bearing query parameter`);
+    }
+  }
+  if (url.hash.length > 1) {
+    const fragment = new URLSearchParams(url.hash.slice(1).replace(/^\?/u, ""));
+    for (const key of fragment.keys()) {
+      const normalized = key.toLowerCase().replace(/[-_.]/gu, "");
+      if (SENSITIVE_QUERY_KEYS.has(normalized)) {
+        throw new ImportValidationError(`${label} contains a secret-bearing URL fragment`);
+      }
     }
   }
 }

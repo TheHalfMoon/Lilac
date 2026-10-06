@@ -3,6 +3,7 @@ export const IMPORT_SCHEMA_VERSION = 1;
 export const IMPORT_HARD_LIMITS = Object.freeze({
   maxHtmlBytes: 4 * 1024 * 1024,
   maxDomNodes: 25_000,
+  maxDomDepth: 256,
   maxTextBytes: 4 * 1024 * 1024,
   maxAttributesPerNode: 128,
   maxAttributeBytes: 64 * 1024,
@@ -31,6 +32,7 @@ export interface ImportPolicy {
   allowLoopback: boolean;
   maxHtmlBytes: number;
   maxDomNodes: number;
+  maxDomDepth: number;
   maxTextBytes: number;
   maxAttributesPerNode: number;
   maxAttributeBytes: number;

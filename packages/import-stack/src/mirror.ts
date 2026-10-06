@@ -298,7 +298,11 @@ export async function mirrorStaticSite(
     return { status: "failed", reason: error instanceof Error ? error.message : String(error) };
   } finally {
     if (!completed && jobDirectory !== null && workRoot !== null) {
-      try { await safeRemoveImportJobDirectory(workRoot, jobDirectory); } catch {}
+      try {
+        await safeRemoveImportJobDirectory(workRoot, jobDirectory);
+      } catch {
+        return { status: "failed", reason: "static mirror sandbox cleanup failed" };
+      }
     }
   }
 }

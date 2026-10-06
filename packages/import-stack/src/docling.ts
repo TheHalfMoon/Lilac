@@ -30,6 +30,8 @@ async function defaultExecute(command: string, args: string[], options: DoclingC
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let forcedError: unknown = null;
+    let stopGrace: ReturnType<typeof setTimeout> | null = null;
     const child = spawn(command, args, {
       cwd: options.cwd,
       env: options.env,
@@ -37,26 +39,42 @@ async function defaultExecute(command: string, args: string[], options: DoclingC
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill();
-      rejectPromise(new ImportAdapterError("Docling process exceeded maxWallClockMs"));
-    }, options.timeoutMs);
-    const fail = (error: unknown) => {
+    const finishError = (error: unknown) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (stopGrace) clearTimeout(stopGrace);
       rejectPromise(error);
     };
-    child.on("error", fail);
-    child.stdout?.on("data", (chunk: Uint8Array) => { try { stdout = appendBounded(stdout, chunk); } catch (error) { child.kill(); fail(error); } });
-    child.stderr?.on("data", (chunk: Uint8Array) => { try { stderr = appendBounded(stderr, chunk); } catch (error) { child.kill(); fail(error); } });
+    const requestStop = (error: unknown) => {
+      if (settled || forcedError !== null) return;
+      forcedError = error;
+      clearTimeout(timer);
+      child.kill();
+      stopGrace = setTimeout(() => finishError(error), 5_000);
+    };
+    const timer = setTimeout(
+      () => requestStop(new ImportAdapterError("Docling process exceeded maxWallClockMs")),
+      options.timeoutMs,
+    );
+    child.on("error", (error) => {
+      if (forcedError === null) finishError(error);
+    });
+    child.stdout?.on("data", (chunk: Uint8Array) => {
+      try { stdout = appendBounded(stdout, chunk); }
+      catch (error) { requestStop(error); }
+    });
+    child.stderr?.on("data", (chunk: Uint8Array) => {
+      try { stderr = appendBounded(stderr, chunk); }
+      catch (error) { requestStop(error); }
+    });
     child.on("close", (code) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolvePromise({ exitCode: code ?? -1, stdout, stderr });
+      if (stopGrace) clearTimeout(stopGrace);
+      if (forcedError !== null) rejectPromise(forcedError);
+      else resolvePromise({ exitCode: code ?? -1, stdout, stderr });
     });
   });
 }
@@ -68,7 +86,10 @@ function processEnvironment(workRoot: string): Record<string, string> {
     if (value) env[key] = value;
   }
   env.HF_HUB_OFFLINE = "1";
+  env.HF_HUB_DISABLE_TELEMETRY = "1";
   env.TRANSFORMERS_OFFLINE = "1";
+  env.DO_NOT_TRACK = "1";
+  env.PYTHONDONTWRITEBYTECODE = "1";
   env.DOCLING_CACHE_DIR = join(workRoot, "docling-cache");
   return env;
 }
@@ -87,6 +108,13 @@ function countPages(document: unknown): number {
   if (Array.isArray(pages)) return pages.length;
   if (pages !== null && typeof pages === "object") return Object.keys(pages).length;
   return 0;
+}
+
+function safeFailureReason(error: unknown): string {
+  if (error instanceof ImportAdapterError || error instanceof ImportSecurityError || error instanceof ImportValidationError) {
+    return error.message;
+  }
+  return "Docling local adapter failed";
 }
 
 export async function runLocalDocling(
@@ -128,7 +156,7 @@ export async function runLocalDocling(
       throw error;
     }
     if (result.exitCode !== 0) {
-      return { status: "failed", reason: `Docling exited with code ${result.exitCode}: ${result.stderr.slice(-2048)}` };
+      return { status: "failed", reason: `Docling exited with code ${result.exitCode}` };
     }
     const outputStat = await stat(outputPath);
     if (!outputStat.isFile() || outputStat.size === 0 || outputStat.size > policy.maxDocumentOutputBytes) {
@@ -148,10 +176,14 @@ export async function runLocalDocling(
     if (countPages(object) > policy.maxDocumentPages) throw new ImportSecurityError("Docling output exceeds maxDocumentPages");
     return { status: "ok", value: { format: "docling-json", document: normalized } };
   } catch (error) {
-    return { status: "failed", reason: error instanceof Error ? error.message : String(error) };
+    return { status: "failed", reason: safeFailureReason(error) };
   } finally {
     if (jobDirectory !== null && workRoot !== null) {
-      try { await safeRemoveImportJobDirectory(workRoot, jobDirectory); } catch {}
+      try {
+        await safeRemoveImportJobDirectory(workRoot, jobDirectory);
+      } catch {
+        return { status: "failed", reason: "Docling sandbox cleanup failed" };
+      }
     }
   }
 }

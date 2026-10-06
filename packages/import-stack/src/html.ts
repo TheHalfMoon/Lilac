@@ -116,6 +116,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
   const htmlBytes = byteLength(html);
   if (htmlBytes === 0) throw new ImportValidationError("html snapshot must not be empty");
   if (htmlBytes > request.policy.maxHtmlBytes) throw new ImportSecurityError("html snapshot exceeds maxHtmlBytes");
+  if (htmlBytes > request.policy.maxTotalBytes) throw new ImportSecurityError("html snapshot exceeds maxTotalBytes");
 
   const inputSha256 = sha256Text(html);
   const proposalId = `import-proposal:${sha256Text(canonicalImportStringify({
@@ -152,7 +153,8 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     resources.push(entry);
   };
 
-  const walk = (node: any, parentId: string | null, domPath: string): string | null => {
+  const walk = (node: any, parentId: string | null, domPath: string, depth: number): string | null => {
+    if (depth > request.policy.maxDomDepth) throw new ImportSecurityError("DOM exceeds maxDomDepth");
     visitedNodes += 1;
     if (visitedNodes > request.policy.maxDomNodes) throw new ImportSecurityError("DOM exceeds maxDomNodes");
     if (node?.nodeName === "#comment" || node?.nodeName === "#documentType") return null;
@@ -314,7 +316,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     for (let index = 0; index < children.length; index += 1) {
       const child = children[index];
       const childTag = child?.nodeName === "#text" ? "#text" : String(child?.tagName ?? child?.nodeName ?? "node").toLowerCase();
-      const childId = walk(child, id, `${domPath}/${childTag}[${index + 1}]`);
+      const childId = walk(child, id, `${domPath}/${childTag}[${index + 1}]`, depth + 1);
       if (childId) imported.children.push(childId);
     }
     return id;
@@ -324,7 +326,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
   for (let index = 0; index < roots.length; index += 1) {
     const root = roots[index];
     const tag = root?.nodeName === "#text" ? "#text" : String(root?.tagName ?? root?.nodeName ?? "node").toLowerCase();
-    const id = walk(root, null, `/${tag}[${index + 1}]`);
+    const id = walk(root, null, `/${tag}[${index + 1}]`, 0);
     if (id) rootIds.push(id);
   }
   if (rootIds.length === 0) throw new ImportValidationError("HTML snapshot produced no importable semantic nodes");

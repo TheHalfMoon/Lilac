@@ -183,12 +183,28 @@ export function validateImportProposal(proposal: ImportProposal): ImportProposal
   if (entries.length === 0 || entries.length > policy.maxDomNodes) throw new ImportValidationError("import.nodes count is invalid");
   const nodes: Record<string, ImportNode> = Object.create(null);
   let totalTextBytes = 0;
+  let totalCssBytes = 0;
+  let totalSemanticBytes = 0;
   for (const [id, value] of entries.sort(([a], [b]) => a.localeCompare(b))) {
     const normalized = normalizeNode(value, id, policy);
-    if (normalized.text) totalTextBytes += bytes(normalized.text);
+    if (normalized.text) {
+      const length = bytes(normalized.text);
+      totalTextBytes += length;
+      totalSemanticBytes += length;
+    }
+    for (const [key, entry] of Object.entries(normalized.attributes)) {
+      totalSemanticBytes += bytes(key) + bytes(entry);
+    }
+    for (const entry of Object.values(normalized.style)) {
+      const length = bytes(entry);
+      totalCssBytes += length;
+      totalSemanticBytes += length;
+    }
+    if (totalSemanticBytes > policy.maxTotalBytes) throw new ImportValidationError("import proposal semantic bytes exceed maxTotalBytes");
     nodes[id] = normalized;
   }
   if (totalTextBytes > policy.maxTextBytes) throw new ImportValidationError("import proposal text exceeds policy");
+  if (totalCssBytes > policy.maxCssBytes) throw new ImportValidationError("import proposal CSS exceeds policy");
 
   const roots = new Set(rootIds);
   for (const rootId of rootIds) {
@@ -211,20 +227,28 @@ export function validateImportProposal(proposal: ImportProposal): ImportProposal
 
   const visited = new Set<string>();
   const visiting = new Set<string>();
-  const visit = (id: string) => {
+  const visit = (id: string, depth: number) => {
+    if (depth > policy.maxDomDepth) throw new ImportValidationError("import graph exceeds maxDomDepth");
     if (visiting.has(id)) throw new ImportValidationError(`import graph cycle detected at ${id}`);
     if (visited.has(id)) return;
     visiting.add(id);
-    for (const child of nodes[id].children) visit(child);
+    for (const child of nodes[id].children) visit(child, depth + 1);
     visiting.delete(id);
     visited.add(id);
   };
-  for (const rootId of rootIds) visit(rootId);
+  for (const rootId of rootIds) visit(rootId, 0);
   if (visited.size !== Object.keys(nodes).length) throw new ImportConflictError("import proposal contains unreachable nodes");
 
   if (!Array.isArray(proposal.stylesheets) || proposal.stylesheets.length > policy.maxAssets) throw new ImportValidationError("stylesheet collection is invalid");
   const stylesheets = proposal.stylesheets.map((entry) => normalizeStylesheet(entry, policy));
   if (new Set(stylesheets.map((entry) => entry.id)).size !== stylesheets.length) throw new ImportValidationError("stylesheet ids must be unique");
+  for (const stylesheet of stylesheets) {
+    const length = bytes(stylesheet.cssText);
+    totalCssBytes += length;
+    totalSemanticBytes += length;
+  }
+  if (totalCssBytes > policy.maxCssBytes) throw new ImportValidationError("import proposal CSS exceeds policy");
+  if (totalSemanticBytes > policy.maxTotalBytes) throw new ImportValidationError("import proposal semantic bytes exceed maxTotalBytes");
 
   if (!Array.isArray(proposal.assets) || proposal.assets.length > policy.maxAssets) throw new ImportValidationError("asset collection is invalid");
   const assets = proposal.assets.map(normalizeAsset);

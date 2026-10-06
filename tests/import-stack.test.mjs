@@ -137,6 +137,19 @@ test("HTML import enforces byte and DOM limits without silent truncation", () =>
   );
 });
 
+test("HTML and proposal validation enforce explicit DOM nesting depth", () => {
+  const policy = { ...defaultImportPolicy("offline"), maxDomDepth: 2 };
+  assert.throws(
+    () => importHtmlSnapshot(request({ policy }), "<div><section><span><b>too deep</b></span></section></div>"),
+    /maxDomDepth/u,
+  );
+
+  const proposal = importHtmlSnapshot(request(), "<div><section><span>ok</span></section></div>");
+  const constrained = structuredClone(proposal);
+  constrained.policy.maxDomDepth = 1;
+  assert.throws(() => validateImportProposal(constrained), /maxDomDepth/u);
+});
+
 test("proposal validation rejects executable tags, unsafe CSS, external URL authority, unknown fields, and broken graph identity", () => {
   const proposal = importHtmlSnapshot(request(), "<div><span>Hello</span></div>");
   assert.throws(() => validateImportProposal({ ...proposal, hiddenAuthority: true }), /unsupported field hiddenAuthority/u);
@@ -195,6 +208,10 @@ test("remote URL policy rejects local, reserved, credential, and secret-bearing 
     "file:///etc/passwd",
     "https://user:pass@example.com",
     "https://example.com/path?token=secret",
+    "https://example.com/path#access_token=secret",
+    "http://2130706433/",
+    "http://0x7f000001/",
+    "http://127.1/",
   ]) assert.throws(() => validateNavigationUrl(url, remote));
   assert.equal(validateNavigationUrl("https://example.com/a", remote).hostname, "example.com");
 
@@ -221,9 +238,12 @@ test("forbidden address classifier covers private, link-local, documentation, an
     "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.1.1", "100.64.0.1",
     "192.0.2.1", "198.51.100.1", "203.0.113.1", "224.0.0.1",
     "::1", "fc00::1", "fe80::1", "ff02::1", "2001:db8::1",
+    "::ffff:7f00:1", "0:0:0:0:0:ffff:7f00:1",
+    "64:ff9b::7f00:1", "2002:7f00:1::1", "3fff::1",
   ]) assert.equal(isForbiddenRemoteAddress(address), true, address);
   assert.equal(isForbiddenRemoteAddress("93.184.216.34"), false);
   assert.equal(isForbiddenRemoteAddress("2606:4700:4700::1111"), false);
+  assert.equal(isForbiddenRemoteAddress("::ffff:5db8:d822"), false);
 });
 
 test("import proposal commit mutates only through history with exact attribution", () => {
