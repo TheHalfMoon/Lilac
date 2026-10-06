@@ -148,6 +148,16 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     if (diagnostics.length >= request.policy.maxDiagnostics) throw new ImportSecurityError("import diagnostics exceed maxDiagnostics");
     diagnostics.push(entry);
   };
+  // Forbidden elements that are neutralized or dropped without a per-element
+  // diagnostic are reported once per class after the walk, with the first
+  // occurrence's node context, so the diagnostic count stays bounded.
+  const removalClasses = new Map<"form" | "link" | "meta", { count: number; domPath: string; location?: { startOffset?: number; endOffset?: number }; nodeId?: string }>();
+  const recordRemoval = (tag: "form" | "link" | "meta", domPath: string, location: any, removedNodeId?: string) => {
+    security.dangerousElementsRemoved += 1;
+    const existing = removalClasses.get(tag);
+    if (existing) existing.count += 1;
+    else removalClasses.set(tag, { count: 1, domPath, location, ...(removedNodeId === undefined ? {} : { nodeId: removedNodeId }) });
+  };
   const resource = (entry: ResourceReference) => {
     if (resources.length >= request.policy.maxAssets) throw new ImportSecurityError("resource references exceed maxAssets");
     resources.push(entry);
@@ -189,7 +199,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
       return null;
     }
     if (rawTag === "meta") {
-      security.dangerousElementsRemoved += 1;
+      recordRemoval("meta", domPath, node.sourceCodeLocation);
       return null;
     }
     if (rawTag === "style") {
@@ -221,12 +231,15 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
         const href = safeUrl(attrMap.href, rawTag, "href", baseUrl);
         if (href) resource({ kind: "stylesheet", uri: href });
         else security.dangerousUrlsRemoved += 1;
+      } else {
+        recordRemoval("link", domPath, node.sourceCodeLocation);
       }
       return null;
     }
 
     const tag = rawTag === "form" ? "div" : rawTag;
     const id = nodeId(proposalId, domPath);
+    if (rawTag === "form") recordRemoval("form", domPath, node.sourceCodeLocation, id);
     const attributes: Record<string, string> = Object.create(null);
     const style: Record<string, string> = Object.create(null);
     let attributeBytes = 0;
@@ -347,6 +360,26 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     if (id) rootIds.push(id);
   }
   if (rootIds.length === 0) throw new ImportValidationError("HTML snapshot produced no importable semantic nodes");
+
+  for (const tag of ["form", "link", "meta"] as const) {
+    const entry = removalClasses.get(tag);
+    if (!entry) continue;
+    const plural = entry.count === 1 ? "" : "s";
+    diagnostic(tag === "form"
+      ? {
+        code: "form-element-neutralized",
+        severity: "warning",
+        message: `Neutralized ${entry.count} <form> element${plural} into <div>; children kept, submission removed`,
+        nodeId: entry.nodeId,
+        sourceBinding: binding(request, entry.domPath, entry.location),
+      }
+      : {
+        code: "forbidden-element-removed",
+        severity: "info",
+        message: `Removed ${entry.count} <${tag}> element${plural}`,
+        sourceBinding: binding(request, entry.domPath, entry.location),
+      });
+  }
 
   const uniqueResources = [...new Map(
     resources
