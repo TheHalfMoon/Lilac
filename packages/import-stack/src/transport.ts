@@ -148,8 +148,7 @@ export async function fetchPinnedHttp(url: URL, options: PinnedHttpOptions): Pro
           const name = rawName.toLowerCase();
           if (DROP_RESPONSE_HEADERS.has(name) || rawValue === undefined) continue;
           const value = Array.isArray(rawValue) ? rawValue.join(", ") : String(rawValue);
-          if (/[
-]/u.test(value)) continue;
+          if (/[\r\n]/u.test(value)) continue;
           responseHeaders[name] = value;
         }
         resolvePromise({
