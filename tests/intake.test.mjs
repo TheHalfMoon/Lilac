@@ -1,0 +1,158 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { createDocument } from "../packages/document-model/src/index.mjs";
+import { IMPORT_SCHEMA_VERSION, defaultImportPolicy, importHtmlSnapshot } from "../packages/import-stack/src/index.ts";
+import { PROJECT_FILES, createProject, openProject } from "../packages/persistence/src/index.ts";
+import {
+  INTAKE_PROVENANCE,
+  IntakeNotReadyError,
+  IntakeValidationError,
+  commitIntake,
+  inferSemantics,
+  planNetworkImport,
+  reviewImport,
+} from "../packages/intake/src/index.ts";
+
+const AT = "2026-10-07T09:00:00.000Z";
+const PAGE = `<header><nav aria-label="Main"><ul><li><a href="https://example.com/x">Home</a></li></ul></nav></header>
+<main><h2>Title</h2><button type="submit">Go</button><div role="button" aria-label="Fake">x</div>
+<input type="checkbox" name="c"><input type="email"><textarea></textarea><select><option>a</option></select>
+<img src="https://cdn.example.com/a.png" alt="Logo"><img src="https://cdn.example.com/b.png">
+<span role="link">s</span><div role="banana">b</div><button role="tab">Tab</button><ul role="presentation"><li>p</li></ul>
+<div role="heading" aria-level="3">H</div><section aria-label="Promo">p</section><section>plain</section></main>
+<footer>f</footer><script>alert(1)</script>`;
+
+function proposal(html = PAGE, requestId = "intake-1") {
+  return importHtmlSnapshot({
+    schemaVersion: IMPORT_SCHEMA_VERSION, requestId, actorId: "user-1", intent: "Import a page", at: AT,
+    source: { kind: "html-snapshot", uri: "https://example.com/page", baseUrl: "https://example.com/page" },
+    policy: defaultImportPolicy("offline"),
+  }, html);
+}
+
+function byTag(prop, tag, predicate = () => true) {
+  return Object.values(prop.nodes).filter((node) => node.tag === tag && predicate(node)).map((node) => node.id);
+}
+
+function withProject(callback) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-intake-")));
+  try {
+    createProject(root, { projectId: "intake-proj", document: createDocument({ id: "doc-1", nodes: [] }), createdAt: AT });
+    return callback(root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("provenance and dependencies are composition-only", () => {
+  assert.match(INTAKE_PROVENANCE.posture, /creates no second document authority/i);
+  const manifest = JSON.parse(readFileSync(new URL("../packages/intake/package.json", import.meta.url), "utf8"));
+  assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["@lilac/document-model", "@lilac/history", "@lilac/import-stack", "@lilac/network-policy", "@lilac/persistence"]);
+});
+
+test("web semantics come only from markup and carry OBSERVED evidence", () => {
+  const p = proposal();
+  const report = inferSemantics(p);
+  const roleOf = (id) => report.records.find((record) => record.nodeId === id);
+  assert.ok(report.records.every((record) => record.evidence === "OBSERVED" && record.source.length > 0));
+  const nav = roleOf(byTag(p, "nav")[0]);
+  assert.deepEqual([nav.role, nav.name, nav.source], ["navigation", "Main", "tag:nav"]);
+  assert.equal(roleOf(byTag(p, "header")[0]).role, "banner");
+  assert.equal(roleOf(byTag(p, "main")[0]).role, "main");
+  assert.equal(roleOf(byTag(p, "footer")[0]).role, "contentinfo");
+  assert.equal(roleOf(byTag(p, "a")[0]).role, "link");
+  assert.deepEqual([roleOf(byTag(p, "h2")[0]).role, roleOf(byTag(p, "h2")[0]).level], ["heading", 2]);
+  assert.equal(roleOf(byTag(p, "button", (node) => !node.attributes.role)[0]).source, "tag:button");
+  const fake = roleOf(byTag(p, "div", (node) => node.attributes.role === "button")[0]);
+  assert.deepEqual([fake.role, fake.source, fake.name], ["button", "aria-role:button", "Fake"]);
+  assert.equal(roleOf(byTag(p, "input", (node) => node.attributes.type === "checkbox")[0]).role, "checkbox");
+  assert.equal(roleOf(byTag(p, "input", (node) => node.attributes.type === "email")[0]).source, "input-type:email");
+  assert.equal(roleOf(byTag(p, "textarea")[0]).role, "textbox");
+  assert.equal(roleOf(byTag(p, "select")[0]).role, "combobox");
+  const images = Object.values(p.nodes).filter((node) => node.kind === "image").map((node) => roleOf(node.id));
+  assert.deepEqual(images.map((record) => record.hasAlt).sort(), [false, true]);
+  assert.equal(images.find((record) => record.hasAlt).name, "Logo");
+  assert.equal(roleOf(byTag(p, "span", (node) => node.attributes.role === "link")[0]).source, "aria-role:link");
+  const headingDiv = roleOf(byTag(p, "div", (node) => node.attributes.role === "heading")[0]);
+  assert.deepEqual([headingDiv.role, headingDiv.level], ["heading", 3]);
+  const sections = byTag(p, "section");
+  assert.deepEqual(sections.map((id) => roleOf(id)?.role ?? null).sort(), [null, "region"].sort());
+  assert.equal(roleOf(byTag(p, "ul", (node) => node.attributes.role === "presentation")[0]), undefined, "presentation removes the role");
+  assert.deepEqual(report.unknownRoles.map((entry) => entry.role), ["banana"]);
+  assert.deepEqual(report.overrides.map((entry) => [entry.native, entry.aria]), [["button", "tab"]]);
+});
+
+test("an anchor without an href resource is not a link", () => {
+  const p = proposal("<p><a>not a link</a></p>");
+  assert.equal(inferSemantics(p).records.some((record) => record.role === "link"), false);
+});
+
+test("review summarizes the proposal and blocks on errors", () => {
+  const p = proposal();
+  const review = reviewImport(p);
+  assert.equal(review.commitReady, true);
+  assert.deepEqual(review.blockingReasons, []);
+  assert.equal(review.counts.nodes, Object.keys(p.nodes).length);
+  assert.equal(review.counts.roots, p.rootIds.length);
+  assert.equal(review.security.scriptsRemoved, 1);
+  assert.ok(review.diagnostics.warning >= 1);
+  assert.equal(review.semantics.byRole.navigation, 1);
+  assert.equal(review.semantics.unknownRoles, 1);
+  assert.equal(review.source.uri, "https://example.com/page");
+  assert.deepEqual(reviewImport(p), review, "deterministic");
+  const blocked = structuredClone(p);
+  blocked.diagnostics.push({ code: "test-error", severity: "error", message: "blocked for test" });
+  const blockedReview = reviewImport(blocked);
+  assert.equal(blockedReview.commitReady, false);
+  assert.match(blockedReview.blockingReasons[0], /1 error diagnostic/);
+});
+
+test("reviewed imports commit into a persisted project with semantics and survive reopen", () => withProject((root) => {
+  const p = proposal();
+  const store = openProject(root, { owner: "user-1", at: AT });
+  const result = commitIntake(store, p, { transactionId: "tx-import-1", at: AT });
+  assert.equal(result.revision, 1);
+  assert.ok(result.semanticNodes > 10);
+  store.close();
+  const reopened = openProject(root, { owner: "user-1", at: AT });
+  const navId = byTag(p, "nav")[0];
+  assert.deepEqual(reopened.document.nodes[navId].props.semantics, { role: "navigation", evidence: "OBSERVED", source: "tag:nav", name: "Main" });
+  assert.equal(reopened.document.rootIds.length, p.rootIds.length);
+  reopened.close();
+}));
+
+test("not-ready, stale, and duplicate commits write nothing", () => withProject((root) => {
+  const store = openProject(root, { owner: "user-1", at: AT });
+  const journal = join(root, PROJECT_FILES.directory, PROJECT_FILES.journal);
+  const blocked = structuredClone(proposal());
+  blocked.diagnostics.push({ code: "test-error", severity: "error", message: "blocked" });
+  assert.throws(() => commitIntake(store, blocked, { transactionId: "tx-bad", at: AT }), IntakeNotReadyError);
+  assert.equal(readFileSync(journal).length, 0);
+  commitIntake(store, proposal(), { transactionId: "tx-1", at: AT });
+  const after = readFileSync(journal);
+  assert.throws(() => commitIntake(store, proposal(), { transactionId: "tx-2", at: AT }));
+  assert.deepEqual(readFileSync(journal), after);
+  assert.equal(store.revision, 1);
+  assert.throws(() => commitIntake({}, proposal(), { transactionId: "tx-3", at: AT }), IntakeValidationError);
+  store.close();
+}));
+
+test("network imports are decided by the project network policy", () => {
+  const offline = planNetworkImport({ schemaVersion: 1, mode: "offline", grants: [] }, "https://example.com");
+  assert.equal(offline.allowed, false);
+  const local = planNetworkImport({ schemaVersion: 1, mode: "local-only", grants: [] }, "http://localhost:5173/");
+  assert.equal(local.allowed, true);
+  assert.equal(local.importPolicy.mode, "local-app");
+  assert.equal(planNetworkImport({ schemaVersion: 1, mode: "local-only", grants: [] }, "https://example.com").allowed, false);
+  const grant = { id: "site", capability: "import.fetch", scheme: "https", host: "example.com", port: null, allowPrivateNetwork: false, purpose: "import the marketing site" };
+  const remote = planNetworkImport({ schemaVersion: 1, mode: "allowlist", grants: [grant] }, "https://example.com/page");
+  assert.equal(remote.allowed, true);
+  assert.equal(remote.importPolicy.mode, "remote");
+  assert.equal(remote.decision.grantId, "site");
+  const wrongCapability = planNetworkImport({ schemaVersion: 1, mode: "allowlist", grants: [{ ...grant, capability: "provider.inference" }] }, "https://example.com/page");
+  assert.equal(wrongCapability.allowed, false);
+});
