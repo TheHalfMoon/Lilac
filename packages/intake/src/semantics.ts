@@ -5,13 +5,21 @@ const ROLE_SET: ReadonlySet<string> = new Set(SEMANTIC_ROLES);
 const PRESENTATIONAL = new Set(["presentation", "none"]);
 const TEXTBOX_INPUT_TYPES = new Set(["text", "email", "tel", "url"]);
 const BUTTON_INPUT_TYPES = new Set(["button", "submit", "reset", "image"]);
+// Types with their own semantics; any other (or invalid) type falls back to the Text state.
+const KNOWN_INPUT_TYPES = new Set([
+  "text", "email", "tel", "url", "search", "number", "password", "checkbox", "radio", "button", "submit", "reset",
+  "image", "hidden", "file", "range", "color", "date", "datetime-local", "month", "time", "week",
+]);
 // header/footer are page landmarks only when not scoped inside sectioning content (HTML-AAM).
 const SCOPING_TAGS = new Set(["article", "aside", "main", "nav", "section"]);
 const SCOPING_ROLES = new Set(["main", "navigation", "complementary", "region"]);
+// ARIA tokens that scope header/footer even though intake does not record them as roles.
+const SCOPING_ARIA_TOKENS = new Set(["article"]);
 const MAX_NAME_CODE_POINTS = 200;
-// Accessible names are display text; controls, format characters (bidi, zero-width, tags),
-// and separators are removed before a name is persisted.
-const HIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+// Accessible names are display text: format characters (bidi, zero-width, tags) are removed;
+// controls, separators, and whitespace runs become a single space.
+const FORMAT = /\p{Cf}/gu;
+const BREAKING = /[\p{Cc}\p{Zl}\p{Zp}\s]+/gu;
 
 type Native = { role: SemanticRole; source: string; level?: number } | null;
 
@@ -42,17 +50,20 @@ function nativeRole(node: ImportNode, linkNodes: ReadonlySet<string>, context: W
     case "section":
       return node.attributes["aria-label"] || node.attributes["aria-labelledby"] ? { role: "region", source: "tag:section+label" } : null;
     case "ul":
-    case "ol": return { role: "list", source: `tag:${tag}` };
+    case "ol":
+    case "menu": return { role: "list", source: `tag:${tag}` };
     case "li": return context.parentRole === "list" ? { role: "listitem", source: "tag:li" } : null;
     case "textarea": return { role: "textbox", source: "tag:textarea" };
     case "select": {
-      const size = Number(node.attributes.size);
-      const listbox = Object.hasOwn(node.attributes, "multiple") || (Number.isInteger(size) && size > 1);
-      return listbox ? { role: "listbox", source: "tag:select+multiple" } : { role: "combobox", source: "tag:select" };
+      if (Object.hasOwn(node.attributes, "multiple")) return { role: "listbox", source: "tag:select+multiple" };
+      // HTML non-negative integer parsing: leading digits after optional whitespace.
+      const size = Number.parseInt((node.attributes.size ?? "").trim(), 10);
+      return Number.isInteger(size) && size > 1 ? { role: "listbox", source: "tag:select+size" } : { role: "combobox", source: "tag:select" };
     }
     case "dialog": return { role: "dialog", source: "tag:dialog" };
     case "input": {
-      const type = (node.attributes.type ?? "text").toLowerCase();
+      const declared = (node.attributes.type ?? "text").toLowerCase();
+      const type = KNOWN_INPUT_TYPES.has(declared) ? declared : "text";
       if (type === "checkbox" || type === "radio") return { role: type, source: `input-type:${type}` };
       if (BUTTON_INPUT_TYPES.has(type)) return { role: "button", source: `input-type:${type}` };
       if (Object.hasOwn(node.attributes, "list") && (TEXTBOX_INPUT_TYPES.has(type) || type === "search")) {
@@ -70,7 +81,7 @@ function nativeRole(node: ImportNode, linkNodes: ReadonlySet<string>, context: W
 
 function cleanName(value: string | undefined): string | undefined {
   if (typeof value !== "string") return undefined;
-  const visible = value.toWellFormed().replace(HIDDEN, "").trim();
+  const visible = value.toWellFormed().replace(FORMAT, "").replace(BREAKING, " ").trim();
   if (visible === "") return undefined;
   return Array.from(visible).slice(0, MAX_NAME_CODE_POINTS).join("");
 }
@@ -126,7 +137,8 @@ export function inferSemantics(proposalInput: ImportProposal): SemanticReport {
         if (native && native.role !== chosen) overrides.push({ nodeId: id, native: native.role, aria: chosen as SemanticRole });
         role = chosen as SemanticRole;
         source = `aria-role:${chosen}`;
-        level = chosen === "heading" ? headingLevel(node, native?.role === "heading" ? native.level : undefined) : undefined;
+        // ARIA's default heading level is 2.
+        level = chosen === "heading" ? headingLevel(node, native?.role === "heading" ? native.level : 2) : undefined;
       }
     } else if (role === "heading") {
       level = headingLevel(node, level);
@@ -140,8 +152,10 @@ export function inferSemantics(proposalInput: ImportProposal): SemanticReport {
       records.push(record);
     }
     const tag = node.tag?.toLowerCase();
+    const ariaTokens = typeof node.attributes.role === "string" ? node.attributes.role.toLowerCase().split(/\s+/u) : [];
     const childContext: WalkContext = {
-      scoped: context.scoped || (tag !== undefined && SCOPING_TAGS.has(tag)) || (role !== null && SCOPING_ROLES.has(role)),
+      scoped: context.scoped || (tag !== undefined && SCOPING_TAGS.has(tag)) || (role !== null && SCOPING_ROLES.has(role))
+        || ariaTokens.some((token) => SCOPING_ARIA_TOKENS.has(token)),
       parentRole: role,
     };
     for (const child of [...node.children].reverse()) stack.push({ id: child, context: childContext });

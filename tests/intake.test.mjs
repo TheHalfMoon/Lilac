@@ -227,3 +227,18 @@ test("review lists errors first and reports truncation", () => {
   assert.equal(review.diagnostics.items[0].severity, "error");
   assert.equal(review.diagnostics.truncated, p.diagnostics.length - 200);
 });
+
+test("semantics cover invalid input types, menu lists, article scoping, select size, and default heading level", () => {
+  const p = proposal(`<div role="article"><header>h</header></div><main><input type="foo"><menu><li>m</li></menu>
+<select size="2x"><option>o</option></select><div role="heading">h</div><nav aria-label="Main
+Menu   wide">n</nav></main>`);
+  const report = inferSemantics(p);
+  const roleOf = (id) => report.records.find((record) => record.nodeId === id) ?? null;
+  assert.equal(roleOf(byTag(p, "header")[0]), null, "role=article scopes header");
+  assert.equal(roleOf(byTag(p, "input")[0]).role, "textbox");
+  assert.equal(roleOf(byTag(p, "menu")[0]).role, "list");
+  assert.equal(roleOf(byTag(p, "li")[0]).role, "listitem");
+  assert.deepEqual([roleOf(byTag(p, "select")[0]).role, roleOf(byTag(p, "select")[0]).source], ["listbox", "tag:select+size"]);
+  assert.equal(roleOf(byTag(p, "div", (node) => node.attributes.role === "heading")[0]).level, 2);
+  assert.equal(roleOf(byTag(p, "nav")[0]).name, "Main Menu wide");
+});
