@@ -166,6 +166,7 @@ test("evidence writer refuses disposable worktree destinations", async () => {
       await symlink(aliasedRoot, alias, "junction");
       try {
         await assert.rejects(writeEvidenceBundle(join(alias, "sub"), bundle, { disposableRoots: [aliasedRoot] }), DeliveryValidationError);
+        await assert.rejects(writeEvidenceBundle(join(aliasedRoot, "sub"), bundle, { disposableRoots: [alias] }), DeliveryValidationError);
       } finally {
         await rm(alias, { recursive: true, force: true });
       }

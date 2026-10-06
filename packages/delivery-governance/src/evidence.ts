@@ -78,7 +78,13 @@ export async function writeEvidenceBundle(
     throw new DeliveryValidationError(`evidence destination cannot be resolved: ${error instanceof Error ? error.message : String(error)}`);
   }
   for (const root of options.disposableRoots ?? []) {
-    const canonicalRoot = resolve(root);
+    let canonicalRoot: string | null;
+    try {
+      canonicalRoot = await realpath(root);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      continue;
+    }
     if (insideDirectory(canonicalDir, canonicalRoot)) {
       throw new DeliveryValidationError(`evidence must persist outside disposable worktree ${root}`);
     }
