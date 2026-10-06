@@ -237,6 +237,7 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
       const last = textParts[textParts.length - 1];
       textParts.length = 0;
       if (value.trim() === "") return;
+      if (value.length > 4096) throw new CodeIrValidationError(`JSX text in ${name} exceeds 4096 characters`);
       texts.push({
         value,
         range: makeRange(state.file, state.source, state.starts, first.start, last.end),

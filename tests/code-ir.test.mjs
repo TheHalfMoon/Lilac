@@ -201,6 +201,7 @@ test("bounds and malformed inputs fail closed", () => {
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "" }]), CodeIrValidationError);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "x".repeat(300 * 1024) }]), /maxSourceBytes/u);
   assert.throws(() => parseJsxFile("E.jsx", "<div>" + "a ".repeat(9000) + "</div>"), /token budget/u);
+  assert.throws(() => parseJsxFile("E.jsx", "<div>" + "b".repeat(5000) + "</div>"), /exceeds 4096/u);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<i />".repeat(1100) }]), /maxSymbols/u);
   const hugeNumber = "<div n={" + "9".repeat(400) + "} />";
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: hugeNumber }]), /finite|no supported elements/u);
