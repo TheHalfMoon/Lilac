@@ -94,8 +94,8 @@ const SUBSYSTEMS = [
     id: "persistence",
     title: "Persistence",
     owner: "@lilac/persistence",
-    status: "planned",
-    boundary: "Local project persistence, crash recovery, migration, and versioning for documents and agent state.",
+    status: "stub",
+    boundary: "Local project persistence for documents: content-addressed objects, a hash-chained append-only journal of history transactions, atomic writes, crash recovery, single-writer locking, and manifest migration (P05 D6a). Agent-state persistence is planned. Document state is only produced by replaying history transactions.",
     dependsOn: ["document-model", "history"],
   },
   {

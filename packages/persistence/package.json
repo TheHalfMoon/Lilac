@@ -1,0 +1,14 @@
+{
+  "name": "@lilac/persistence",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "@lilac/document-model": "0.0.0",
+    "@lilac/history": "0.0.0"
+  }
+}
