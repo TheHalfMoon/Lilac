@@ -12,6 +12,7 @@ import {
   DeliveryValidationError,
   canonicalDeliveryStringify,
   createAskUserRequest,
+  createEvidenceStore,
   createQualificationId,
   evaluateQualification,
   normalizeAskUserRequest,
@@ -22,7 +23,6 @@ import {
   verifyCiChecks,
   verifyExactHead,
   verifyWorktreeHeads,
-  writeEvidenceBundle,
 } from "../packages/delivery-governance/src/index.ts";
 
 const AT = "2026-10-06T00:00:00.000Z";
@@ -145,7 +145,7 @@ test("ask-user creation and explicit resolution round-trip", () => {
   assert.throws(() => normalizeAskUserRequest({ ...request, status: "open", resolvedBy: "x" }), DeliveryValidationError);
 });
 
-test("evidence writer refuses disposable worktree destinations", async () => {
+test("evidence store pins one root outside disposable worktrees", async () => {
   const dir = await mkdtemp(join(tmpdir(), "lilac-delivery-outside-"));
   try {
     const bundle = {
@@ -155,18 +155,21 @@ test("evidence writer refuses disposable worktree destinations", async () => {
       records: [record()],
       askUserRequests: [],
     };
-    const first = await writeEvidenceBundle(dir, bundle, { disposableRoots: ["/tmp/disposable-wt"] });
+    const store = await createEvidenceStore({ evidenceRoot: dir, disposableRoots: ["/tmp/disposable-wt"] });
+    assert.equal(store.root, dir);
+    const first = await store.writeBundle(bundle);
     assert.match(first.bundleId, /^evidence-bundle:[a-f0-9]{32}$/u);
-    await assert.rejects(writeEvidenceBundle(dir, bundle, {}), DeliveryValidationError);
-    await assert.rejects(writeEvidenceBundle(join("/tmp/disposable-wt", "sub"), bundle, { disposableRoots: ["/tmp/disposable-wt"] }), DeliveryValidationError);
-    await assert.rejects(writeEvidenceBundle("/tmp/disposable-wt", bundle, { disposableRoots: ["/tmp/disposable-wt"] }), DeliveryValidationError);
+    await assert.rejects(store.writeBundle(bundle), DeliveryValidationError);
+    await assert.rejects(createEvidenceStore({ evidenceRoot: join("/tmp/disposable-wt", "sub"), disposableRoots: ["/tmp/disposable-wt"] }), DeliveryValidationError);
+    await assert.rejects(createEvidenceStore({ evidenceRoot: "/tmp/disposable-wt", disposableRoots: ["/tmp/disposable-wt"] }), DeliveryValidationError);
+    await assert.rejects(createEvidenceStore({ evidenceRoot: "" }), DeliveryValidationError);
     const aliasedRoot = await mkdtemp(join(tmpdir(), "lilac-delivery-root-"));
     try {
       const alias = join(tmpdir(), `lilac-delivery-alias-${Date.now()}`);
       await symlink(aliasedRoot, alias, "junction");
       try {
-        await assert.rejects(writeEvidenceBundle(join(alias, "sub"), bundle, { disposableRoots: [aliasedRoot] }), DeliveryValidationError);
-        await assert.rejects(writeEvidenceBundle(join(aliasedRoot, "sub"), bundle, { disposableRoots: [alias] }), DeliveryValidationError);
+        await assert.rejects(createEvidenceStore({ evidenceRoot: join(alias, "sub"), disposableRoots: [aliasedRoot] }), DeliveryValidationError);
+        await assert.rejects(createEvidenceStore({ evidenceRoot: join(aliasedRoot, "sub"), disposableRoots: [alias] }), DeliveryValidationError);
       } finally {
         await rm(alias, { recursive: true, force: true });
       }
@@ -178,11 +181,12 @@ test("evidence writer refuses disposable worktree destinations", async () => {
   }
 });
 
-test("evidence writer rejects malformed bundles with typed errors", async () => {
+test("evidence store rejects malformed bundles with typed errors", async () => {
   const dir = await mkdtemp(join(tmpdir(), "lilac-delivery-malformed-"));
   try {
-    await assert.rejects(writeEvidenceBundle(dir, null, {}), DeliveryValidationError);
-    await assert.rejects(writeEvidenceBundle(dir, { records: "nope", askUserRequests: [] }, {}), DeliveryValidationError);
+    const store = await createEvidenceStore({ evidenceRoot: dir });
+    await assert.rejects(store.writeBundle(null), DeliveryValidationError);
+    await assert.rejects(store.writeBundle({ records: "nope", askUserRequests: [] }), DeliveryValidationError);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
