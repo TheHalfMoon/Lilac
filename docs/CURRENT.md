@@ -10,11 +10,11 @@ Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 
 
 ## Canonical main
 
-`efc4b7de448470e417260c394db83b504d991feb`
+`a4bb361b90c7a100205c913b924c565153f2afea`
 
-This is the normal merge commit for PR #58 (P05 D3 multi-agent workspace).
+This is the normal merge commit for PR #62 (P05 D4 Visual Git).
 
-Post-merge CI run `37418162220` completed `SUCCESS` on that exact SHA (273/273 tests, 0 vulnerabilities).
+Post-merge CI run `37493917822` completed `SUCCESS` on that exact SHA (299/299 tests, 0 vulnerabilities).
 
 ## Post-grain program state
 
@@ -23,6 +23,8 @@ Post-merge CI run `37418162220` completed `SUCCESS` on that exact SHA (273/273 t
 - P05 D1 code/design IR slice: complete via PR #52, Issue #51 closed. `packages/code-ir` provides bounded JSX/TSX, CSS, and Tailwind adapters, range-anchored patches, hunk-based three-way reconciliation, and golden round-trip fixpoints with zero new runtime dependencies.
 - P05 D2 native design components: complete via PR #55, Issue #54 closed. `packages/design-components` provides contracts with typed props/slots/states/variants, strict binding to D1 symbols, verified-patch variants with drift refusal, source-linked previews, drift detection, and system membership with only the `@lilac/code-ir` workspace dependency.
 - P05 D3 multi-agent workspace: complete via PR #58, Issue #57 closed. `packages/agent-workspace` provides the program role registry with capability scopes, role assignment, out-of-scope rejection, an append-only action ledger with full attribution, cancellation, and reversal marking with zero new runtime dependencies.
+- P05 D4 Visual Git: complete via PR #62, Issue #60 closed. `packages/visual-git` provides design snapshots bound to branch and source commit, stable identity and tree validation, structural diffs, anchored review comments and design/code links, three-way conflict reports (node-level plus structural cycle, nesting, depth, and size conflicts; never a merged snapshot), exact-head acceptance gates, and provenance records with zero runtime dependencies. Qualification drove four forward repairs (merge-structure conflicts, getter/proxy and array-species input forgery, merge limits, hidden-text characters). Parked panel follow-ups: #64.
+- Open before P05 D5: #61 (canonical serializers in seven packages emit malformed JSON) and #63 (P03 architecture catalog drift after D1-D4).
 
 ## Canonical implementation chain
 
@@ -56,6 +58,8 @@ Post-merge CI run `37418162220` completed `SUCCESS` on that exact SHA (273/273 t
 - Grain 5 provides local-first collaboration, a single authorization oracle, bounded presence, deterministic durable facts, comments, activity, agent attribution, reconnect/revocation semantics, and history-only document mutation.
 - Graft `0.21.1` was qualified as a zero-cost local context/navigation layer. Its graph is local cache only, telemetry must remain disabled, and Graft is not correctness or qualification evidence.
 - Jev + Alibaba Open Code Review remain qualification tools where applicable. Cubic, CodeRabbit, and Qodo are not qualification evidence.
+- The Open Code Review CI workflow runs `ocr delegate` (preview + resolved rule groups, no LLM); it produces no findings by itself. Qualification records the host agent applying those rule groups to every reviewable file.
+- pstack is `phthomas/pstack` v2.3.1 (`faa4e9f`) at `~/.tooling/pstack`: a SKILL.md skill pack, not a CLI. Its review step is `ps-review` (fresh-context judge panel over the exact diff, security judge on trigger surfaces, delta re-reviews capped at 3 cycles). First used as qualification evidence on P05 D4.
 - Normal merge commits remain mandatory; no rebase, force-push, or history rewriting is allowed.
 - Core Lilac remains local-first/privacy-first with no mandatory paid cloud, model, API, or compute dependency.
 
@@ -135,7 +139,7 @@ The remaining product program, in working order:
 3. P05 D1 - Bidirectional code/design engine (round-trip React/JSX/TSX, CSS, Tailwind with AST-aware patches);
 4. P05 D2 - Code components as native design primitives;
 5. P05 D3 - Multi-agent workspace product surface;
-6. P05 D4 - Visual Git;
+6. P05 D4 - Visual Git (complete; #61 and #63 follow before D5);
 7. P05 D5 - Decision assurance product surface;
 8. P05 D6 - Local/private mode product guarantees;
 9. P05 D7 - Website/app intake product experience;
