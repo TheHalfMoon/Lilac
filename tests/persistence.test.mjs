@@ -511,6 +511,7 @@ test("an in-place rewrite of the journal with identical size and inode is detect
 }));
 
 test("appendDurable refuses a same-size, same-inode journal whose content differs from the pin", async () => {
+  // appendDurable is internal (not exported from the package index); this unit test pins its content check directly.
   const { appendDurable, fileIdentity } = await import("../packages/persistence/src/fsio.ts");
   const { createHash } = await import("node:crypto");
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "lilac-append-")));
@@ -524,6 +525,10 @@ test("appendDurable refuses a same-size, same-inode journal whose content differ
       (error) => error instanceof PersistenceCorruptionError && /replaced or modified outside this writer/.test(error.message),
     );
     assert.equal(readFileSync(path, "utf8"), "line-A\n", "nothing is written on a content mismatch");
+    assert.throws(
+      () => appendDurable(path, "line-B\n", "journal", { size: 6, identity, sha256: sha256("line-A\n") }),
+      /changed outside this writer \(expected 6 bytes, found 7\)/,
+    );
     appendDurable(path, "line-B\n", "journal", { size: 7, identity, sha256: sha256("line-A\n") });
     assert.equal(readFileSync(path, "utf8"), "line-A\nline-B\n");
   } finally {
