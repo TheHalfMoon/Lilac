@@ -27,6 +27,7 @@ export const IMPLEMENTED_PACKAGES = [
   "@lilac/agent-workspace",
   "@lilac/visual-git",
   "@lilac/decision-assurance",
+  "@lilac/persistence",
 ] as const;
 
 export function sha256Text(value: string): string {
