@@ -285,7 +285,8 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
           attributes[name] = resolved;
           continue;
         }
-        const kind = RESOURCE_TAGS.get(rawTag) ?? "link";
+        const kind = RESOURCE_TAGS.get(rawTag)
+          ?? (["src", "poster", "background", "xlink:href"].includes(name) ? "image" : "link");
         resource({
           kind,
           uri: resolved,

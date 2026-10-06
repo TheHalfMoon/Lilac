@@ -507,6 +507,36 @@ test("static mirror captures bounded same-origin resources, no-parent pages, and
   });
 });
 
+test("static mirror proposal re-verifies manifest paths and object hashes before promotion", async () => {
+  await withTemp(async (dir) => {
+    const req = request({
+      source: { kind: "remote-url", uri: "https://example.com/docs/page.html" },
+      policy: defaultImportPolicy("remote"),
+    });
+    const result = await mirrorStaticSite(req, "https://example.com/docs/page.html", {
+      jobId: "mirror-verify",
+      workRoot: join(dir, "work"),
+    }, {
+      resolveHost: async () => ["93.184.216.34"],
+      fetchResource: async () => ({
+        status: 200,
+        headers: { "content-type": "text/html", "content-encoding": "identity" },
+        body: new TextEncoder().encode("<p>trusted</p>"),
+      }),
+    });
+    assert.equal(result.status, "ok");
+
+    const forged = structuredClone(result.value);
+    forged.manifest.entryLogicalPath = "../../outside";
+    await assert.rejects(() => proposalFromStaticMirror(req, forged), /content-addressed mirror object path/u);
+
+    const objectPath = join(result.value.jobDirectory, result.value.manifest.entryLogicalPath);
+    await writeFile(objectPath, "<p>tampered</p>");
+    await assert.rejects(() => proposalFromStaticMirror(req, result.value), /no longer match the captured manifest/u);
+    await disposeStaticMirror(join(dir, "work"), result.value);
+  });
+});
+
 test("static mirror rejects cross-origin redirects before following them", async () => {
   await withTemp(async (dir) => {
     const req = request({

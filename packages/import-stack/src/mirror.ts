@@ -6,7 +6,7 @@ import { request as httpsRequest } from "node:https";
 import { dirname, join } from "node:path";
 import { createAssetRecord } from "./assets.ts";
 import { ImportConflictError, ImportSecurityError, ImportValidationError } from "./errors.ts";
-import { createImportJobDirectory, safeRemoveImportJobDirectory } from "./filesystem.ts";
+import { canonicalDirectory, canonicalFileWithinRoots, createImportJobDirectory, safeRemoveImportJobDirectory } from "./filesystem.ts";
 import { importHtmlSnapshot } from "./html.ts";
 import { sanitizeImportedCssText } from "./security.ts";
 import { validateNavigationUrl, validateResolvedAddresses } from "./network.ts";
@@ -18,7 +18,7 @@ import type {
   StaticMirrorResource,
   StaticMirrorResult,
 } from "./types.ts";
-import { canonicalImportStringify, normalizeImportRequest, sha256Text } from "./validation.ts";
+import { assertAllowedKeys, assertBoundedString, assertPlainObject, canonicalImportStringify, normalizeImportRequest, sha256Text } from "./validation.ts";
 
 export interface MirrorFetchResult { status: number; headers: Record<string, string>; body: Uint8Array; }
 export interface MirrorFetchOptions { addresses: string[]; timeoutMs: number; maxBytes: number; signal?: AbortSignal; }
@@ -303,16 +303,142 @@ export async function mirrorStaticSite(
   }
 }
 
+
+interface VerifiedStaticMirror {
+  jobDirectory: string;
+  manifest: StaticMirrorManifest;
+  bytesByLogicalPath: Map<string, Uint8Array>;
+}
+
+function assertMirrorObjectPath(value: unknown, label: string): asserts value is string {
+  assertBoundedString(value, label, 128);
+  if (!/^objects\/[a-f0-9]{64}$/u.test(value)) {
+    throw new ImportValidationError(`${label} must be a content-addressed mirror object path`);
+  }
+}
+
+async function verifyStaticMirrorResult(
+  request: ImportRequest,
+  result: StaticMirrorResult,
+): Promise<VerifiedStaticMirror> {
+  assertPlainObject(result, "static mirror result");
+  assertAllowedKeys(result, ["jobDirectory", "manifest"], "static mirror result");
+  assertBoundedString(result.jobDirectory, "static mirror jobDirectory", 4096);
+  const jobDirectory = await canonicalDirectory(result.jobDirectory, "static mirror job directory");
+
+  assertPlainObject(result.manifest, "static mirror manifest");
+  assertAllowedKeys(
+    result.manifest,
+    ["schemaVersion", "requestId", "entryUrl", "entryLogicalPath", "totalBytes", "resources", "rewrites"],
+    "static mirror manifest",
+  );
+  const manifest = result.manifest;
+  if (manifest.schemaVersion !== 1) throw new ImportValidationError("unsupported static mirror manifest schema version");
+  if (manifest.requestId !== request.requestId) throw new ImportConflictError("static mirror request identity does not match import request");
+  assertBoundedString(manifest.entryUrl, "static mirror entryUrl", 4096);
+  const entryUrl = fetchCanonical(validateNavigationUrl(manifest.entryUrl, request.policy));
+  if (request.source.uri !== undefined) {
+    const expected = fetchCanonical(validateNavigationUrl(request.source.uri, request.policy));
+    if (expected.href !== entryUrl.href) throw new ImportConflictError("static mirror entry URL does not match import request source");
+  }
+  assertMirrorObjectPath(manifest.entryLogicalPath, "static mirror entryLogicalPath");
+  if (!Number.isSafeInteger(manifest.totalBytes) || manifest.totalBytes <= 0 || manifest.totalBytes > request.policy.maxTotalBytes) {
+    throw new ImportValidationError("static mirror totalBytes is outside import policy");
+  }
+  if (!Array.isArray(manifest.resources) || manifest.resources.length === 0 || manifest.resources.length > request.policy.maxAssets) {
+    throw new ImportValidationError("static mirror resources collection is invalid");
+  }
+
+  const resources: StaticMirrorResource[] = [];
+  const bytesByLogicalPath = new Map<string, Uint8Array>();
+  let totalBytes = 0;
+  for (const [index, raw] of manifest.resources.entries()) {
+    assertPlainObject(raw, `static mirror resource[${index}]`);
+    assertAllowedKeys(raw, ["sourceUri", "finalUri", "mediaType", "sha256", "byteLength", "logicalPath", "depth"], `static mirror resource[${index}]`);
+    assertBoundedString(raw.sourceUri, `static mirror resource[${index}].sourceUri`, 4096);
+    assertBoundedString(raw.finalUri, `static mirror resource[${index}].finalUri`, 4096);
+    validateNavigationUrl(raw.sourceUri, request.policy);
+    validateNavigationUrl(raw.finalUri, request.policy);
+    assertBoundedString(raw.mediaType, `static mirror resource[${index}].mediaType`, 256);
+    assertBoundedString(raw.sha256, `static mirror resource[${index}].sha256`, 64);
+    if (!/^[a-f0-9]{64}$/u.test(raw.sha256)) throw new ImportValidationError("static mirror resource sha256 is invalid");
+    if (!Number.isSafeInteger(raw.byteLength) || raw.byteLength <= 0 || raw.byteLength > request.policy.maxAssetBytes) {
+      throw new ImportValidationError("static mirror resource byteLength is outside import policy");
+    }
+    if (!Number.isSafeInteger(raw.depth) || raw.depth < 0 || raw.depth > request.policy.maxMirrorDepth) {
+      throw new ImportValidationError("static mirror resource depth is outside import policy");
+    }
+    assertMirrorObjectPath(raw.logicalPath, `static mirror resource[${index}].logicalPath`);
+    if (raw.logicalPath !== `objects/${raw.sha256}`) {
+      throw new ImportValidationError("static mirror logicalPath does not match resource sha256");
+    }
+
+    let bytes = bytesByLogicalPath.get(raw.logicalPath);
+    if (bytes === undefined) {
+      const path = await canonicalFileWithinRoots(
+        join(jobDirectory, raw.logicalPath),
+        [jobDirectory],
+        "static mirror object",
+      );
+      bytes = await readFile(path);
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
+      if (sha256 !== raw.sha256 || bytes.byteLength !== raw.byteLength) {
+        throw new ImportConflictError("static mirror object bytes no longer match the captured manifest");
+      }
+      bytesByLogicalPath.set(raw.logicalPath, bytes);
+    } else if (bytes.byteLength !== raw.byteLength) {
+      throw new ImportConflictError("static mirror duplicate object metadata conflicts");
+    }
+    totalBytes += raw.byteLength;
+    if (totalBytes > request.policy.maxTotalBytes) throw new ImportSecurityError("static mirror verified bytes exceed maxTotalBytes");
+    resources.push(structuredClone(raw) as StaticMirrorResource);
+  }
+  if (totalBytes !== manifest.totalBytes) throw new ImportConflictError("static mirror totalBytes does not match verified resources");
+  if (!bytesByLogicalPath.has(manifest.entryLogicalPath)) throw new ImportConflictError("static mirror entry object is missing from resources");
+
+  assertPlainObject(manifest.rewrites, "static mirror rewrites");
+  const rewriteEntries = Object.entries(manifest.rewrites);
+  if (rewriteEntries.length > request.policy.maxAssets * 2) throw new ImportValidationError("static mirror rewrite count exceeds policy");
+  const rewrites: Record<string, string> = Object.create(null);
+  for (const [from, to] of rewriteEntries.sort(([a], [b]) => a.localeCompare(b))) {
+    assertBoundedString(from, "static mirror rewrite source", 4096);
+    validateNavigationUrl(from, request.policy);
+    assertMirrorObjectPath(to, "static mirror rewrite target");
+    if (!bytesByLogicalPath.has(to)) throw new ImportConflictError("static mirror rewrite points to an unverified object");
+    rewrites[from] = to;
+  }
+  const entryResource = resources.find(
+    (resource) => resource.logicalPath === manifest.entryLogicalPath
+      && (resource.sourceUri === entryUrl.href || resource.finalUri === entryUrl.href),
+  );
+  if (!entryResource) throw new ImportConflictError("static mirror entry URL is not bound to the entry object");
+
+  return {
+    jobDirectory,
+    manifest: {
+      schemaVersion: 1,
+      requestId: request.requestId,
+      entryUrl: entryUrl.href,
+      entryLogicalPath: manifest.entryLogicalPath,
+      totalBytes,
+      resources,
+      rewrites,
+    },
+    bytesByLogicalPath,
+  };
+}
+
 export async function proposalFromStaticMirror(requestInput: ImportRequest, result: StaticMirrorResult): Promise<ImportProposal> {
   const request = normalizeImportRequest(requestInput);
-  const bytes = await readFile(join(result.jobDirectory, result.manifest.entryLogicalPath));
+  const verified = await verifyStaticMirrorResult(request, result);
+  const bytes = verified.bytesByLogicalPath.get(verified.manifest.entryLogicalPath)!;
   if (bytes.byteLength > request.policy.maxHtmlBytes) throw new ImportSecurityError("mirrored entry exceeds maxHtmlBytes");
   const proposal = importHtmlSnapshot({
     ...request,
-    source: { ...request.source, uri: result.manifest.entryUrl, baseUrl: result.manifest.entryUrl },
+    source: { ...request.source, uri: verified.manifest.entryUrl, baseUrl: verified.manifest.entryUrl },
   }, decodeUtf8(bytes, "mirrored entry"));
   proposal.resources = proposal.resources.map((resource) => {
-    const logical = result.manifest.rewrites[resource.uri];
+    const logical = verified.manifest.rewrites[resource.uri];
     if (logical && resource.nodeId && resource.attribute && proposal.nodes[resource.nodeId]) {
       proposal.nodes[resource.nodeId].attributes[resource.attribute] = `./${logical}`;
     }
@@ -321,7 +447,7 @@ export async function proposalFromStaticMirror(requestInput: ImportRequest, resu
       uri: logical ? `./${logical}` : resource.uri,
     };
   });
-  proposal.assets = result.manifest.resources.map((resource) => ({
+  proposal.assets = verified.manifest.resources.map((resource) => ({
     assetId: `asset:${resource.sha256}`,
     sha256: resource.sha256,
     byteLength: resource.byteLength,
@@ -329,9 +455,9 @@ export async function proposalFromStaticMirror(requestInput: ImportRequest, resu
     logicalName: resource.logicalPath,
     sourceUri: resource.finalUri,
   }));
-  for (const resource of result.manifest.resources) {
+  for (const resource of verified.manifest.resources) {
     if (resource.mediaType !== "text/css") continue;
-    const stylesheetBytes = await readFile(join(result.jobDirectory, resource.logicalPath));
+    const stylesheetBytes = verified.bytesByLogicalPath.get(resource.logicalPath)!;
     if (stylesheetBytes.byteLength > proposal.policy.maxCssBytes) throw new ImportSecurityError("mirrored stylesheet exceeds maxCssBytes");
     const sanitized = sanitizeImportedCssText(decodeUtf8(stylesheetBytes, "mirrored stylesheet"), proposal.policy.maxCssBytes);
     if (sanitized.cssText !== null && sanitized.cssText !== "") {
