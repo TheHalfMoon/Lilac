@@ -370,7 +370,7 @@ test("merges that exceed depth or node limits are not mergeable", () => {
 
 test("boundary hardening: empty ranges, bidi text, git-hostile paths, malformed provenance records", () => {
   assert.deepEqual(evaluateAcceptance(gateInput({ baseCommit: HEAD_COMMIT })).blocks, [{ reason: "empty-range", check: null }]);
-  assert.throws(() => normalizeSnapshot(snapshot({ nodes: replaceNode(baseNodes(), "frame-1", { name: "safe‮txt.exe" }) })), /control characters/);
+  assert.throws(() => normalizeSnapshot(snapshot({ nodes: replaceNode(baseNodes(), "frame-1", { name: "safe\u202etxt.exe" }) })), /control characters/);
   assert.throws(() => normalizeSnapshot(snapshot({ nodes: replaceNode(baseNodes(), "frame-1", { name: "c1\u0085" }) })), /control characters/);
   const link = { linkId: "link-x", snapshotId: "snap-base", nodeId: "button-1", file: "src/Button.tsx", symbol: "Button", sourceCommit: BASE_COMMIT, range: null };
   assert.equal(linkDesignToCode(snapshot(), link).file, "src/Button.tsx");
@@ -379,4 +379,40 @@ test("boundary hardening: empty ranges, bidi text, git-hostile paths, malformed 
   }
   assert.throws(() => verifyProvenance(null, snapshot()), VisualGitValidationError);
   assert.throws(() => verifyProvenance({ recordId: "../x" }, snapshot()), VisualGitValidationError);
+});
+
+test("array inputs must be dense plain arrays so map, iteration, and species cannot be forged", () => {
+  const link = { linkId: "link-x", snapshotId: "snap-base", nodeId: "button-1", file: "src/Button.tsx", symbol: "Button", sourceCommit: BASE_COMMIT, range: null };
+  const forged = [link];
+  Object.setPrototypeOf(forged, { map: () => [{ ...link, file: "../../.git/hooks/x" }] });
+  assert.throws(() => linkDesignToCodeAll(snapshot(), forged), /plain array/);
+  const species = [link];
+  species.constructor = { [Symbol.species]: function Forged() {} };
+  assert.throws(() => linkDesignToCodeAll(snapshot(), species), /extra properties/);
+  assert.throws(() => anchorComments(snapshot(), new Array(3)), /dense array/);
+  assert.throws(() => linkDesignToCodeAll(snapshot(), [, ]), /dense array/);
+  const holeAndExtra = [, ];
+  holeAndExtra.extra = link;
+  assert.throws(() => linkDesignToCodeAll(snapshot(), holeAndExtra), /dense array/);
+  const { proxy, revoke } = Proxy.revocable([], {});
+  revoke();
+  assert.throws(() => linkDesignToCodeAll(snapshot(), proxy), VisualGitValidationError);
+  assert.throws(() => normalizeSnapshot(new Proxy({}, { getPrototypeOf() { throw new Error("trap"); } })), VisualGitValidationError);
+});
+
+test("invisible direction marks and Windows-normalized git paths are rejected", () => {
+  for (const mark of ["\u200e", "\u200f", "\u061c", "\u2028", "\ufeff", "\u200b"]) {
+    assert.throws(() => normalizeSnapshot(snapshot({ nodes: replaceNode(baseNodes(), "frame-1", { name: `a${mark}b` }) })), /control characters/);
+  }
+  const link = { linkId: "link-x", snapshotId: "snap-base", nodeId: "button-1", file: "src/Button.tsx", symbol: "Button", sourceCommit: BASE_COMMIT, range: null };
+  assert.throws(() => linkDesignToCode(snapshot(), { ...link, file: "a/.git./x" }), /normalized repository-relative path/);
+});
+
+test("visual-git source is ASCII-only so no invisible or bidi characters hide in code", async () => {
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const dir = new URL("../packages/visual-git/src/", import.meta.url);
+  for (const file of readdirSync(dir)) {
+    assert.doesNotMatch(readFileSync(new URL(file, dir), "utf8"), /[^\x00-\x7f]/u, file);
+  }
+  assert.doesNotMatch(readFileSync(new URL(import.meta.url), "utf8"), /[^\x00-\x7f]/u, "visual-git.test.mjs");
 });

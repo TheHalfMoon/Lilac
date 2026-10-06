@@ -33,7 +33,7 @@ export function assertRepoRelativePath(value: unknown, label: string): asserts v
   for (const segment of segments) {
     if (
       segment === "" || segment === "." || segment === ".." || segment.startsWith("-") ||
-      segment.toLowerCase() === ".git" || !PATH_SEGMENT.test(segment)
+      segment.endsWith(".") || segment.toLowerCase() === ".git" || !PATH_SEGMENT.test(segment)
     ) {
       throw new VisualGitValidationError(`${label} must be a normalized repository-relative path`);
     }

@@ -36,7 +36,15 @@ export function canonicalVisualGitStringify(value: unknown): string {
   return `{${body}}`;
 }
 
+// Checked before any other operation on the value, so no proxy trap ever runs.
+function assertNotProxy(value: unknown, label: string): void {
+  if (value !== null && typeof value === "object" && types.isProxy(value)) {
+    throw new VisualGitValidationError(`${label} must not be a proxy`);
+  }
+}
+
 export function assertPlainObject(value: unknown, label: string): asserts value is Record<string, unknown> {
+  assertNotProxy(value, label);
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new VisualGitValidationError(`${label} must be a plain object`);
   }
@@ -50,7 +58,6 @@ export function assertPlainObject(value: unknown, label: string): asserts value 
 // Fields are read more than once (validate, then copy). Proxies and accessors could
 // answer differently per read, so only inert own data properties are accepted.
 function assertDataOnly(value: object, label: string): void {
-  if (types.isProxy(value)) throw new VisualGitValidationError(`${label} must not be a proxy`);
   if (Object.getOwnPropertySymbols(value).length > 0) {
     throw new VisualGitValidationError(`${label} must not have symbol keys`);
   }
@@ -71,7 +78,7 @@ export function assertBoundedString(value: unknown, label: string, max = 4096): 
     throw new VisualGitValidationError(`${label} must be a non-empty string`);
   }
   if (value.length > max) throw new VisualGitValidationError(`${label} exceeds ${max} characters`);
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]/u.test(value)) {
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u061c\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/u.test(value)) {
     throw new VisualGitValidationError(`${label} must not contain control characters`);
   }
 }
@@ -113,9 +120,21 @@ export function assertBranch(value: unknown, label: string): asserts value is st
 }
 
 export function assertBoundedArray(value: unknown, label: string, max: number): asserts value is unknown[] {
+  assertNotProxy(value, label);
   if (!Array.isArray(value)) throw new VisualGitValidationError(`${label} must be an array`);
+  // A foreign prototype or own constructor would let map/iteration/species skip validation.
+  if (Object.getPrototypeOf(value) !== Array.prototype) {
+    throw new VisualGitValidationError(`${label} must be a plain array`);
+  }
   if (value.length > max) throw new VisualGitValidationError(`${label} exceeds its bounded budget of ${max}`);
   assertDataOnly(value, label);
+  // Exactly the dense indices plus length: no holes and no extra own keys.
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index)) throw new VisualGitValidationError(`${label} must be a dense array`);
+  }
+  if (Object.getOwnPropertyNames(value).length !== value.length + 1) {
+    throw new VisualGitValidationError(`${label} must not have extra properties`);
+  }
 }
 
 export function normalizeNode(value: unknown): DesignNode {
