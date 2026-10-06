@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -160,6 +160,18 @@ test("evidence writer refuses disposable worktree destinations", async () => {
     await assert.rejects(writeEvidenceBundle(dir, bundle, {}), DeliveryValidationError);
     await assert.rejects(writeEvidenceBundle(join("/tmp/disposable-wt", "sub"), bundle, { disposableRoots: ["/tmp/disposable-wt"] }), DeliveryValidationError);
     await assert.rejects(writeEvidenceBundle("/tmp/disposable-wt", bundle, { disposableRoots: ["/tmp/disposable-wt"] }), DeliveryValidationError);
+    const aliasedRoot = await mkdtemp(join(tmpdir(), "lilac-delivery-root-"));
+    try {
+      const alias = join(tmpdir(), `lilac-delivery-alias-${Date.now()}`);
+      await symlink(aliasedRoot, alias, "junction");
+      try {
+        await assert.rejects(writeEvidenceBundle(join(alias, "sub"), bundle, { disposableRoots: [aliasedRoot] }), DeliveryValidationError);
+      } finally {
+        await rm(alias, { recursive: true, force: true });
+      }
+    } finally {
+      await rm(aliasedRoot, { recursive: true, force: true });
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -1,5 +1,5 @@
 import { lstat, mkdir, realpath, writeFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { DeliveryValidationError } from "./errors.ts";
 import {
   DELIVERY_SCHEMA_VERSION,
@@ -16,6 +16,31 @@ import {
 
 function insideDirectory(candidate: string, root: string): boolean {
   return candidate === root || candidate.startsWith(root + sep);
+}
+
+/**
+ * Resolve a possibly non-existent destination against the nearest existing
+ * ancestor so symlinked parents cannot dodge confinement: lexical resolve()
+ * alone never sees through them.
+ */
+async function resolveDestination(destinationDir: string): Promise<string> {
+  const segments: string[] = [];
+  let cursor = resolve(destinationDir);
+  for (let depth = 0; depth < 64; depth += 1) {
+    let stat;
+    try {
+      stat = await lstat(cursor);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      segments.unshift(cursor.slice(dirname(cursor).length + 1));
+      cursor = dirname(cursor);
+      continue;
+    }
+    if (stat.isSymbolicLink()) throw new DeliveryValidationError("evidence destination must not traverse a symbolic link");
+    const canonical = await realpath(cursor);
+    return segments.length === 0 ? canonical : join(canonical, ...segments);
+  }
+  throw new DeliveryValidationError("evidence destination is nested too deeply");
 }
 
 /**
@@ -47,12 +72,10 @@ export async function writeEvidenceBundle(
   }
   let canonicalDir: string;
   try {
-    const stat = await lstat(destinationDir);
-    if (stat.isSymbolicLink()) throw new DeliveryValidationError("evidence destination must not be a symbolic link");
-    canonicalDir = await realpath(destinationDir);
+    canonicalDir = await resolveDestination(destinationDir);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    canonicalDir = resolve(destinationDir);
+    if (error instanceof DeliveryValidationError) throw error;
+    throw new DeliveryValidationError(`evidence destination cannot be resolved: ${error instanceof Error ? error.message : String(error)}`);
   }
   for (const root of options.disposableRoots ?? []) {
     const canonicalRoot = resolve(root);
