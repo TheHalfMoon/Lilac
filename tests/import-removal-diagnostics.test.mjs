@@ -115,3 +115,46 @@ test("intake review reflects removal counts and class diagnostics", () => {
   assert.deepEqual(review.diagnostics.items.map((entry) => entry.code), ["form-element-neutralized", "forbidden-element-removed"]);
   assert.equal(review.commitReady, true);
 });
+
+test("neutralized forms keep inert attributes and the class message states the neutralization", () => {
+  const proposal = snapshot('<form class="signup" id="f"><p>x</p></form>');
+  const div = Object.values(proposal.nodes).find((node) => node.tag === "div");
+  assert.equal(div.attributes.class, "signup");
+  assert.equal(div.attributes.id, "f");
+  assert.equal(byCode(proposal, "form-element-neutralized")[0].message, "Neutralized 1 <form> element into <div>; children kept, submission removed");
+});
+
+test("form-owner and submission override attributes are stripped from every element and rejected at validation", () => {
+  const proposal = snapshot(
+    '<div><form method="post"><button form="hostform" formmethod="post" formtarget="_top" formenctype="text/plain" formnovalidate>b</button>'
+    + '<input form="hostform" name="q"></form><input FORM="hostform"></div>',
+  );
+  const authority = ["form", "formaction", "formmethod", "formtarget", "formenctype", "formnovalidate", "action"];
+  for (const node of Object.values(proposal.nodes)) {
+    for (const name of authority) assert.equal(Object.hasOwn(node.attributes, name), false, `${node.tag} kept ${name}`);
+  }
+  assert.equal(proposal.security.dangerousUrlsRemoved, 7);
+  const input = Object.values(proposal.nodes).find((node) => node.tag === "input" && node.attributes.name === "q");
+  assert.ok(input, "the control itself is kept");
+
+  for (const name of authority) {
+    const forged = structuredClone(snapshot("<div><button>b</button></div>"));
+    const button = Object.values(forged.nodes).find((node) => node.tag === "button");
+    button.attributes[name] = "hostform";
+    assert.throws(() => validateImportProposal(forged), /authority/u, name);
+  }
+});
+
+test("link attribute lookup ignores a polluted prototype", () => {
+  Object.prototype.rel = "stylesheet";
+  Object.prototype.href = "https://evil.test/a.css";
+  let proposal;
+  try {
+    proposal = snapshot("<div><link><p>x</p></div>");
+  } finally {
+    delete Object.prototype.rel;
+    delete Object.prototype.href;
+  }
+  assert.equal(proposal.resources.some((entry) => entry.uri.includes("evil.test")), false);
+  assert.equal(proposal.security.dangerousElementsRemoved, 1);
+});

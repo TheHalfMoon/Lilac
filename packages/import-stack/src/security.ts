@@ -10,6 +10,12 @@ export const STORED_URL_ATTRIBUTES = new Set([
   "href", "src", "poster", "cite", "background", "action", "formaction", "xlink:href", "srcset",
 ]);
 
+// Attributes that carry form submission authority: a submission target, or a
+// form-owner association that could attach an imported control to a host form.
+export const FORM_AUTHORITY_ATTRIBUTES = new Set([
+  "action", "formaction", "form", "formmethod", "formtarget", "formenctype", "formnovalidate",
+]);
+
 export const PRESENTATION_URL_ATTRIBUTES = new Set([
   "fill", "stroke", "filter", "clip-path", "mask",
   "marker-start", "marker-mid", "marker-end", "cursor",

@@ -1,6 +1,6 @@
 import { parseFragment } from "parse5";
 import { ImportSecurityError, ImportValidationError } from "./errors.ts";
-import { isForbiddenImportTag, isSafeStoredUrlReference, PRESENTATION_URL_ATTRIBUTES, sanitizeImportedCssText } from "./security.ts";
+import { FORM_AUTHORITY_ATTRIBUTES, isForbiddenImportTag, isSafeStoredUrlReference, PRESENTATION_URL_ATTRIBUTES, sanitizeImportedCssText } from "./security.ts";
 import {
   IMPORT_SCHEMA_VERSION,
   type ImportDiagnostic,
@@ -24,7 +24,7 @@ const DROP_SUBTREE = new Set([
   "base", "template", "foreignobject", "animate", "animatemotion",
   "animatetransform", "set", "discard",
 ]);
-const URL_ATTRIBUTES = new Set(["href", "src", "poster", "cite", "background", "action", "formaction", "xlink:href"]);
+const URL_ATTRIBUTES = new Set(["href", "src", "poster", "cite", "background", "xlink:href"]);
 const RESOURCE_TAGS = new Map<string, "image" | "media" | "link">([
   ["img", "image"], ["image", "image"], ["video", "media"], ["audio", "media"],
   ["source", "media"], ["a", "link"],
@@ -227,7 +227,8 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     if (attrs.length > request.policy.maxAttributesPerNode) throw new ImportSecurityError(`<${rawTag}> exceeds maxAttributesPerNode`);
 
     if (rawTag === "link") {
-      const attrMap = Object.fromEntries(attrs.map((attr: any) => [String(attr.name).toLowerCase(), String(attr.value ?? "")]));
+      const attrMap: Record<string, string> = Object.create(null);
+      for (const attr of attrs) attrMap[String(attr.name).toLowerCase()] = String(attr.value ?? "");
       if ((attrMap.rel ?? "").toLowerCase().split(/\s+/u).includes("stylesheet") && attrMap.href) {
         const href = safeUrl(attrMap.href, rawTag, "href", baseUrl);
         if (href) resource({ kind: "stylesheet", uri: href });
@@ -251,6 +252,10 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
       attributeBytes += byteLength(name) + byteLength(rawValue);
       if (attributeBytes > request.policy.maxAttributeBytes) throw new ImportSecurityError(`<${rawTag}> attributes exceed maxAttributeBytes`);
 
+      if (FORM_AUTHORITY_ATTRIBUTES.has(name)) {
+        security.dangerousUrlsRemoved += 1;
+        continue;
+      }
       if (name.startsWith("on") || name === "srcdoc") {
         security.eventHandlersRemoved += 1;
         diagnostic({
@@ -300,10 +305,6 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
         }
       }
       if (URL_ATTRIBUTES.has(name)) {
-        if (name === "action" || name === "formaction") {
-          security.dangerousUrlsRemoved += 1;
-          continue;
-        }
         const resolved = safeUrl(rawValue, rawTag, name, baseUrl);
         if (resolved === null) {
           security.dangerousUrlsRemoved += 1;
