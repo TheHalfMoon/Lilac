@@ -45,6 +45,8 @@ export function sanitizeImportedCssText(
     /@import\b/u.test(view)
     || /expression\s*\(/u.test(view)
     || /url\s*\(/u.test(view)
+    || /image-set\s*\(/u.test(view)
+    || /image\s*\(/u.test(view)
     || /(?:javascript|vbscript):/u.test(view)
     || /-moz-binding\s*:/u.test(view)
     || /(?:^|[;{])\s*behavior\s*:/u.test(view)
