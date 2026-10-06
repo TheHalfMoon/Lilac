@@ -22,6 +22,10 @@ export const IMPLEMENTED_PACKAGES = [
   "@lilac/delivery-governance",
   "@lilac/design-method",
   "@lilac/architecture",
+  "@lilac/code-ir",
+  "@lilac/design-components",
+  "@lilac/agent-workspace",
+  "@lilac/visual-git",
 ] as const;
 
 export function sha256Text(value: string): string {
@@ -97,8 +101,8 @@ export function normalizeSubsystem(value: unknown, index: number): SubsystemReco
     boundary: value.boundary as string,
     dependsOn: [...value.dependsOn as string[]],
   };
-  if (record.status === "implemented" && !(IMPLEMENTED_PACKAGES as readonly string[]).includes(record.owner)) {
-    throw new ArchitectureValidationError(`${label} claims implemented status for unknown package ${record.owner}`);
+  if (record.status !== "planned" && !(IMPLEMENTED_PACKAGES as readonly string[]).includes(record.owner)) {
+    throw new ArchitectureValidationError(`${label} claims ${record.status} status for unknown package ${record.owner}`);
   }
   return record;
 }
