@@ -131,6 +131,10 @@ test("AST-aware patches apply by range and reject mismatches", () => {
   assert.ok(files[0].content.includes(">Do click<"));
   assert.ok(files[0].content.includes('title="Hi"'));
   assert.ok(!files[0].content.includes("Don't click"));
+  // Unrelated-code preservation: everything outside the two patched ranges is byte-identical.
+  assert.equal(CARD.split("Don't click").length, 2);
+  assert.equal(CARD.split('title="Hello"').length, 2);
+  assert.equal(files[0].content, CARD.replace("Don't click", "Do click").replace('title="Hello"', 'title="Hi"'));
   assert.throws(() => applyPatch(ir, [{ path: "Card.jsx", content: CARD }], [
     {
       op: "update-text",
