@@ -132,9 +132,13 @@ export function assertSafeProvenanceUrl(raw: string, label: string): void {
     }
   }
   if (url.hash.length > 1) {
-    const fragment = new URLSearchParams(url.hash.slice(1).replace(/^\?/u, ""));
-    for (const key of fragment.keys()) {
-      const normalized = key.toLowerCase().replace(/[-_.]/gu, "");
+    let fragmentText = url.hash.slice(1);
+    try { fragmentText = decodeURIComponent(fragmentText); } catch {}
+    for (const segment of fragmentText.split(/[?&;]/u)) {
+      const equals = segment.indexOf("=");
+      if (equals < 0) continue;
+      const rawKey = segment.slice(0, equals).trim();
+      const normalized = rawKey.toLowerCase().replace(/[-_.]/gu, "");
       if (SENSITIVE_QUERY_KEYS.has(normalized)) {
         throw new ImportValidationError(`${label} contains a secret-bearing URL fragment`);
       }

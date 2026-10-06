@@ -10,6 +10,11 @@ export const STORED_URL_ATTRIBUTES = new Set([
   "href", "src", "poster", "cite", "background", "action", "formaction", "xlink:href", "srcset",
 ]);
 
+export const PRESENTATION_URL_ATTRIBUTES = new Set([
+  "fill", "stroke", "filter", "clip-path", "mask",
+  "marker-start", "marker-mid", "marker-end", "cursor",
+]);
+
 function cssSecurityView(css: string): string {
   return css
     .replace(/\/\*[\s\S]*?\*\//gu, "")

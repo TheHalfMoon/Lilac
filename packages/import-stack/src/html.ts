@@ -1,6 +1,6 @@
 import { parseFragment } from "parse5";
 import { ImportSecurityError, ImportValidationError } from "./errors.ts";
-import { isForbiddenImportTag, sanitizeImportedCssText } from "./security.ts";
+import { isForbiddenImportTag, PRESENTATION_URL_ATTRIBUTES, sanitizeImportedCssText } from "./security.ts";
 import {
   IMPORT_SCHEMA_VERSION,
   type ImportDiagnostic,
@@ -267,6 +267,23 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
         }
         if (sanitized.cssText !== null && sanitized.cssText !== "") style.cssText = sanitized.cssText;
         continue;
+      }
+      if (PRESENTATION_URL_ATTRIBUTES.has(name)) {
+        const sanitized = sanitizeImportedCssText(
+          rawValue,
+          Math.min(request.policy.maxAttributeBytes, request.policy.maxCssBytes),
+        );
+        if (sanitized.unsafe) {
+          security.dangerousUrlsRemoved += 1;
+          diagnostic({
+            code: "presentation-url-removed",
+            severity: "warning",
+            message: `Removed presentation attribute ${name} containing URL or executable CSS authority`,
+            nodeId: id,
+            sourceBinding: binding(request, domPath, node.sourceCodeLocation),
+          });
+          continue;
+        }
       }
       if (URL_ATTRIBUTES.has(name)) {
         if (name === "action" || name === "formaction") {

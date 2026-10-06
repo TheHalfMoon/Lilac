@@ -1,5 +1,5 @@
 import { ImportConflictError, ImportValidationError } from "./errors.ts";
-import { isForbiddenImportTag, isSafeStoredUrlReference, sanitizeImportedCssText, STORED_URL_ATTRIBUTES } from "./security.ts";
+import { isForbiddenImportTag, isSafeStoredUrlReference, PRESENTATION_URL_ATTRIBUTES, sanitizeImportedCssText, STORED_URL_ATTRIBUTES } from "./security.ts";
 import {
   IMPORT_SCHEMA_VERSION,
   type AssetRecord,
@@ -61,6 +61,15 @@ function normalizeNode(value: unknown, expectedId: string, policy: ImportProposa
     }
     if (STORED_URL_ATTRIBUTES.has(normalizedKey) && !isSafeStoredUrlReference(entry)) {
       throw new ImportValidationError(`import.nodes.${expectedId}.attributes.${key} must not retain external fetch authority`);
+    }
+    if (PRESENTATION_URL_ATTRIBUTES.has(normalizedKey)) {
+      const sanitized = sanitizeImportedCssText(
+        entry,
+        Math.min(policy.maxAttributeBytes, policy.maxCssBytes),
+      );
+      if (sanitized.unsafe) {
+        throw new ImportValidationError(`import.nodes.${expectedId}.attributes.${key} must not retain presentation fetch authority`);
+      }
     }
     attributeBytes += bytes(key) + bytes(entry);
     attributes[key] = entry;

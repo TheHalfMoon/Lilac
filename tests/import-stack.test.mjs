@@ -126,6 +126,25 @@ test("HTML import strips srcset, form navigation, secret-bearing resource URLs, 
   assert.equal(nodes.some((node) => Object.values(node.attributes).some((value) => value.includes("token=secret"))), false);
 });
 
+test("SVG presentation attributes cannot retain hidden URL fetch authority", () => {
+  const proposal = importHtmlSnapshot(
+    request(),
+    '<svg><defs><linearGradient id="g"><stop offset="0%"/></linearGradient></defs><rect fill="url(https://evil.test/g.svg#g)" filter="url(#local)"/></svg>',
+  );
+  const rect = Object.values(proposal.nodes).find((node) => node.tag === "rect");
+  assert.equal(Object.hasOwn(rect?.attributes ?? {}, "fill"), false);
+  assert.equal(Object.hasOwn(rect?.attributes ?? {}, "filter"), false);
+  assert.equal(proposal.security.dangerousUrlsRemoved >= 2, true);
+
+  const safe = importHtmlSnapshot(request(), '<svg><rect fill="red"/></svg>');
+  const safeRect = Object.values(safe.nodes).find((node) => node.tag === "rect");
+  safeRect.attributes.filter = "url(https://evil.test/filter.svg#x)";
+  assert.throws(
+    () => validateImportProposal(safe),
+    /presentation fetch authority/u,
+  );
+});
+
 test("HTML import enforces byte and DOM limits without silent truncation", () => {
   assert.throws(
     () => importHtmlSnapshot(request({ policy: { ...defaultImportPolicy("offline"), maxHtmlBytes: 20 } }), "<div>This input is longer than twenty bytes</div>"),
@@ -209,6 +228,8 @@ test("remote URL policy rejects local, reserved, credential, and secret-bearing 
     "https://user:pass@example.com",
     "https://example.com/path?token=secret",
     "https://example.com/path#access_token=secret",
+    "https://example.com/#/callback?access_token=secret",
+    "https://example.com/#%61ccess_token=secret",
     "http://2130706433/",
     "http://0x7f000001/",
     "http://127.1/",
