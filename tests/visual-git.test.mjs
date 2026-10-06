@@ -416,3 +416,13 @@ test("visual-git source is ASCII-only so no invisible or bidi characters hide in
   }
   assert.doesNotMatch(readFileSync(new URL(import.meta.url), "utf8"), /[^\x00-\x7f]/u, "visual-git.test.mjs");
 });
+
+test("hidden text is rejected while visible joiners and line breaks stay legal", () => {
+  const named = (name) => snapshot({ nodes: replaceNode(baseNodes(), "frame-1", { name }) });
+  for (const hidden of ["\u{E0041}\u{E0042}", "\u{2060}", "\u{180e}", "\u{2062}", "\u{206a}", "\u{fff9}", "\u{ad}", "\u{34f}", "\u{3164}", "\u{115f}", "\ud800"]) {
+    assert.throws(() => normalizeSnapshot(named(`a${hidden}b`)), /control characters/);
+  }
+  for (const visible of ["family \u{1F468}\u{200d}\u{1F469}", "\u{915}\u{94d}\u{200c}\u{937}", "line\nbreak\tand\rcr", "\u{644}\u{64a}\u{644}\u{643}"]) {
+    assert.equal(normalizeSnapshot(named(visible)).nodes.find((entry) => entry.id === "frame-1").name, visible);
+  }
+});

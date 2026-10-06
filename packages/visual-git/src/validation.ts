@@ -14,6 +14,11 @@ const STABLE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const SHA256 = /^[0-9a-f]{64}$/u;
 const BRANCH = /^[A-Za-z0-9._/-]{1,255}$/u;
+// Text is shown to people and read by agents: controls, format characters (bidi,
+// zero-width, tag "smuggling" characters), separators, and blank-looking fillers could
+// hide or reorder content. Tab/newline/CR and ZWNJ/ZWJ (emoji, Indic scripts) stay legal.
+const HIDDEN_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u034f\u115f\u1160\u3164\uffa0]/u;
+const VISIBLE_FORMAT = /[\t\n\r\u200c\u200d]/gu;
 
 export function sha256Text(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -78,7 +83,7 @@ export function assertBoundedString(value: unknown, label: string, max = 4096): 
     throw new VisualGitValidationError(`${label} must be a non-empty string`);
   }
   if (value.length > max) throw new VisualGitValidationError(`${label} exceeds ${max} characters`);
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u061c\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/u.test(value)) {
+  if (!value.isWellFormed() || HIDDEN_TEXT.test(value.replace(VISIBLE_FORMAT, ""))) {
     throw new VisualGitValidationError(`${label} must not contain control characters`);
   }
 }
