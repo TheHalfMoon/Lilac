@@ -2,6 +2,7 @@ import { CodeIrUnsupportedError } from "./errors.ts";
 import { parseCssFile } from "./css.ts";
 import { parseJsxFile } from "./jsx.ts";
 import {
+  CODE_IR_HARD_LIMITS,
   CODE_IR_SCHEMA_VERSION,
   type CodeIr,
   type SourceSymbol,
@@ -59,6 +60,9 @@ export function buildCodeIr(files: SourceFileInput[]): CodeIr {
     } else {
       throw new CodeIrUnsupportedError(`code file ${path} has an unsupported extension`);
     }
+  }
+  if (Object.keys(symbols).length > CODE_IR_HARD_LIMITS.maxSymbols) {
+    throw new CodeIrUnsupportedError("code IR symbols exceed the bounded budget");
   }
   return normalizeCodeIr({
     schemaVersion: CODE_IR_SCHEMA_VERSION,

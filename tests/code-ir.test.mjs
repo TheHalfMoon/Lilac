@@ -201,8 +201,17 @@ test("bounds and malformed inputs fail closed", () => {
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "" }]), CodeIrValidationError);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "x".repeat(300 * 1024) }]), /maxSourceBytes/u);
   assert.throws(() => parseJsxFile("E.jsx", "<div>" + "a ".repeat(9000) + "</div>"), /token budget/u);
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<i />".repeat(1100) }]), /maxSymbols/u);
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: '<div a="1" a="2" />' }]), /duplicate props/u);
   assert.throws(() => designToCode({ componentName: "card", root: { tag: "div", props: {} } }), CodeIrValidationError);
   assert.throws(() => designToCode({ componentName: "Card", root: { tag: "9div", props: {} } }), CodeIrValidationError);
+  assert.throws(() => designToCode({ componentName: "Card", root: { tag: "div", props: { title: "a\nb" } } }), /must not span lines/u);
+  const bigBase = Array.from({ length: 1200 }, (_, index) => `line${index}`).join("\n");
+  const bigOurs = `${bigBase}\nours-extra`;
+  const bigTheirs = `${bigBase}\ntheirs-extra`;
+  const budgeted = threeWayMerge(bigBase, bigOurs, bigTheirs);
+  assert.equal(budgeted.merged, null);
+  assert.match(budgeted.conflicts[0].reason, /quadratic diff budget/u);
 });
 
 test("provenance marks the package as project-owned", () => {

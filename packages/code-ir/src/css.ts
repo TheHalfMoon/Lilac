@@ -143,7 +143,7 @@ export function parseCssFile(file: string, source: string): CssParseResult {
       continue;
     }
     ruleCount += 1;
-    if (ruleCount > CODE_IR_HARD_LIMITS.maxCssRules) {
+  if (ruleCount > CODE_IR_HARD_LIMITS.maxCssRules) {
       throw new CodeIrValidationError("CSS rules exceed maxCssRules");
     }
     const id = symbolId(file, "style-rule", selector, map[selectorStart] ?? 0);

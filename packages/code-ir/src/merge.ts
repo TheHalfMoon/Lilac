@@ -122,15 +122,20 @@ function sameLines(a: string[], b: string[]): boolean {
 }
 
 /**
- * Bounded three-way merge over Myers diffs. Hunks changed on exactly one
- * side reconcile automatically; hunks changed on both sides reconcile only
- * when identical, otherwise they are conflicts surfaced as data with merged
- * null, so ambiguity never overwrites.
+ * Bounded three-way merge over Myers diffs. Trivial cases reconcile without
+ * diffing; inputs whose pairwise product exceeds the quadratic budget become
+ * a whole-file conflict instead of an unbounded allocation. Hunks changed on
+ * exactly one side reconcile automatically; hunks changed on both sides
+ * reconcile only when identical, otherwise they are conflicts surfaced as
+ * data with merged null, so ambiguity never overwrites.
  */
 export function threeWayMerge(base: string, ours: string, theirs: string): MergeResult {
   for (const [label, text] of [["base", base], ["ours", ours], ["theirs", theirs]] as const) {
     if (typeof text !== "string") throw new CodeIrValidationError(`three-way ${label} must be a string`);
   }
+  if (ours === theirs) return { merged: ours, conflicts: [] };
+  if (ours === base) return { merged: theirs, conflicts: [] };
+  if (theirs === base) return { merged: ours, conflicts: [] };
   const baseLines = splitLines(base);
   const ourLines = splitLines(ours);
   const theirLines = splitLines(theirs);
@@ -138,6 +143,16 @@ export function threeWayMerge(base: string, ours: string, theirs: string): Merge
     if (lines.length > CODE_IR_HARD_LIMITS.maxMergeLines) {
       throw new CodeIrValidationError("three-way input exceeds maxMergeLines");
     }
+  }
+  if (baseLines.length * ourLines.length > 1000000 || baseLines.length * theirLines.length > 1000000) {
+    return {
+      merged: null,
+      conflicts: [normalizeMergeConflict({
+        startLine: 1,
+        endLineBase: baseLines.length,
+        reason: "three-way inputs exceed the quadratic diff budget; manual reconciliation required",
+      }, 0)],
+    };
   }
   const oursHunks = toHunks(diffLines(baseLines, ourLines));
   const theirsHunks = toHunks(diffLines(baseLines, theirLines));

@@ -284,6 +284,9 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
   if (props.length > CODE_IR_HARD_LIMITS.maxPropsPerSymbol) {
     throw new CodeIrValidationError(`JSX element ${name} exceeds maxPropsPerSymbol`);
   }
+  if (new Set(props.map((prop) => prop.name)).size !== props.length) {
+    throw new CodeIrValidationError(`JSX element ${name} declares duplicate props`);
+  }
   if (children.length > CODE_IR_HARD_LIMITS.maxChildrenPerSymbol) {
     throw new CodeIrValidationError(`JSX element ${name} exceeds maxChildrenPerSymbol`);
   }
@@ -366,6 +369,9 @@ export function parseJsxFile(file: string, source: string): JsxParseResult {
   if (roots.length === 0) {
     const reason = state.unsupported.length > 0 ? `: ${state.unsupported[0].reason}` : "";
     throw new CodeIrValidationError(`JSX source contains no supported elements${reason}`);
+  }
+  if (state.symbols.length > CODE_IR_HARD_LIMITS.maxSymbols) {
+    throw new CodeIrValidationError("JSX symbols exceed maxSymbols");
   }
   return {
     symbols: state.symbols,

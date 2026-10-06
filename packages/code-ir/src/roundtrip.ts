@@ -15,6 +15,11 @@ function escapeAttr(value: string | number | boolean): string {
 }
 
 function emitNode(node: DesignDocNode, indent: string): string {
+  for (const [key, value] of Object.entries(node.props)) {
+    if (typeof value === "string" && /[\r\n]/u.test(value)) {
+      throw new CodeIrValidationError(`design prop ${key} must not span lines`);
+    }
+  }
   const props = Object.entries(node.props)
     .map(([key, value]) => {
       if (typeof value === "boolean") return ` ${key}={${value ? "true" : "false"}}`;
