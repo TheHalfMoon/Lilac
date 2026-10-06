@@ -21,7 +21,7 @@ function cssSecurityView(css: string): string {
   // across a continuation (for example `u\<LF>rl(`) must be visible here.
   const withoutContinuations = (value: string): string =>
     value.replace(/\\(?:\r\n|[\r\n\f])/gu, "");
-  return withoutContinuations(withoutContinuations(css)
+  const decoded = withoutContinuations(css)
     .replace(/\/\*[\s\S]*?\*\//gu, "")
     .replace(/\\([0-9a-fA-F]{1,6})\s?/gu, (_match, hex: string) => {
       const codePoint = Number.parseInt(hex, 16);
@@ -29,8 +29,8 @@ function cssSecurityView(css: string): string {
         ? String.fromCodePoint(codePoint)
         : "";
     })
-    .replace(/\\([^\r\n0-9a-fA-F])/gu, "$1"))
-    .toLowerCase();
+    .replace(/\\([^\r\n0-9a-fA-F])/gu, "$1");
+  return withoutContinuations(decoded).toLowerCase();
 }
 
 export function sanitizeImportedCssText(
@@ -60,5 +60,10 @@ export function isForbiddenImportTag(tag: string): boolean {
 }
 
 export function isSafeStoredUrlReference(value: string): boolean {
-  return /^#[^\s]*$/u.test(value) || /^\.\/objects\/[a-f0-9]{64}$/u.test(value);
+  // Fragment-only references stay inert only when they cannot break out of
+  // a downstream serialized attribute or carry control characters: reject
+  // quotes, angle brackets, backticks, backslashes, and C0/C1 controls while
+  // still allowing internationalized fragment text.
+  if (/^#[^\s]*$/u.test(value) && !/["'<>`\\\u0000-\u001f\u007f-\u009f]/u.test(value)) return true;
+  return /^\.\/objects\/[a-f0-9]{64}$/u.test(value);
 }

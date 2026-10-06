@@ -1,6 +1,6 @@
 import { parseFragment } from "parse5";
 import { ImportSecurityError, ImportValidationError } from "./errors.ts";
-import { isForbiddenImportTag, PRESENTATION_URL_ATTRIBUTES, sanitizeImportedCssText } from "./security.ts";
+import { isForbiddenImportTag, isSafeStoredUrlReference, PRESENTATION_URL_ATTRIBUTES, sanitizeImportedCssText } from "./security.ts";
 import {
   IMPORT_SCHEMA_VERSION,
   type ImportDiagnostic,
@@ -64,7 +64,7 @@ function baseUrlFor(request: ImportRequest): string | undefined {
 function safeUrl(raw: string, tag: string, attribute: string, baseUrl: string | undefined): string | null {
   const value = raw.trim();
   if (value === "" || value.length > 4096) return null;
-  if (value.startsWith("#")) return value;
+  if (value.startsWith("#")) return isSafeStoredUrlReference(value) ? value : null;
   let resolved: string;
   const scheme = /^([a-z][a-z0-9+.-]*):/iu.exec(value)?.[1]?.toLowerCase();
   if (scheme) {

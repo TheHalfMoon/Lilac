@@ -28,6 +28,7 @@ import {
   readAuthorizedLocalSource,
   recordImportRequest,
   runLocalDocling,
+  isSafeStoredUrlReference,
   safeRemoveImportJobDirectory,
   sanitizeImportedCssText,
   validateImportProposal,
@@ -132,6 +133,25 @@ test("HTML import strips srcset, form navigation, secret-bearing resource URLs, 
   assert.equal(nodes.some((node) => node.tag === "form"), false);
   assert.equal(nodes.some((node) => node.tag === "div"), true, "form must be deactivated rather than becoming executable authority");
   assert.equal(nodes.some((node) => Object.values(node.attributes).some((value) => value.includes("token=secret"))), false);
+});
+
+test("stored fragment references keep inert anchors but reject serialization breakouts", () => {
+  const proposal = importHtmlSnapshot(
+    request(),
+    '<a href="#section">ok</a><a href="#/route/path">also ok</a><a href="#x&quot;y">breakout</a>',
+  );
+  const hrefs = Object.values(proposal.nodes)
+    .filter((node) => node.tag === "a")
+    .map((node) => node.attributes.href)
+    .filter((href) => href !== undefined);
+  assert.deepEqual(hrefs.sort(), ["#/route/path", "#section"]);
+  assert.equal(proposal.security.dangerousUrlsRemoved >= 1, true);
+
+  assert.equal(isSafeStoredUrlReference("#section"), true);
+  assert.equal(isSafeStoredUrlReference("#/route/path"), true);
+  for (const hostile of ['#x"y', "#x'y", "#x<y", "#x>y", "#x`y", "#x\\y", "#x\x01y"]) {
+    assert.equal(isSafeStoredUrlReference(hostile), false, JSON.stringify(hostile));
+  }
 });
 
 test("SVG presentation attributes cannot retain hidden URL fetch authority", () => {
