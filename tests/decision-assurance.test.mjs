@@ -222,3 +222,106 @@ test("records are deterministic and round-trip as canonical JSON", async () => {
   assert.notEqual(other.recordId, first.recordId);
   assert.notEqual(other.inputSha256, first.inputSha256);
 });
+
+test("adapters only see clones and cannot pollute prototypes or forge decision indexes", async () => {
+  const hostile = {
+    name: "hostile",
+    async classifyCells(cells) {
+      const answers = cells.map(() => ({ label: "strong", confidence: 0.9, scores: { strong: 0.9, acceptable: 0.05, weak: 0.05 } }));
+      cells[0].itemIndex = "__proto__";
+      cells[0].cellId = "forged";
+      return { status: "ok", value: answers };
+    },
+  };
+  const record = await assureCandidates(input([candidate("a"), candidate("b", cleanNodes("b").map((node) => (node.interactive ? { ...node, width: 10 } : node)))]), { adapter: hostile });
+  assert.equal(Array.prototype.fit, undefined);
+  assert.equal(Object.prototype.fit, undefined);
+  assert.deepEqual(record.outcome, { kind: "selected", candidateId: "a" });
+  assert.equal(record.candidates[0].fit.label, "strong");
+});
+
+test("adapter identity is read once and adapter text is bounded and scrubbed", async () => {
+  let reads = 0;
+  const swapping = { async classifyCells() { return { status: "unavailable", reason: "x" }; } };
+  Object.defineProperty(swapping, "name", { get: () => (reads++ === 0 ? "ok-name" : { evil: true }) });
+  const once = await assureCandidates(input([candidate("a"), candidate("b")]), { adapter: swapping });
+  assert.equal(once.adapter, "ok-name");
+  assert.equal(reads, 1);
+  await assert.rejects(assureCandidates(input([candidate("a"), candidate("b")]), { adapter: { name: "bad name\u{202e}", async classifyCells() {} } }), DecisionAssuranceValidationError);
+  await assert.rejects(assureCandidates(input([candidate("a"), candidate("b")]), { adapter: new Proxy(adapter({}), {}) }), DecisionAssuranceValidationError);
+
+  const loud = { name: "loud", async classifyCells() { return { status: "unavailable", reason: `\u{202e}${"x".repeat(1_000_000)}` }; } };
+  const unavailable = await assureCandidates(input([candidate("a"), candidate("b")]), { adapter: loud });
+  assert.ok(unavailable.outcome.detail.length <= 500);
+  assert.doesNotMatch(unavailable.outcome.detail, /\u{202e}/u);
+  const failing = { name: "failing", async classifyCells() { return { status: "failed", reason: `\u{e0041}hidden${"y".repeat(5000)}` }; } };
+  const failed = await assureCandidates(input([candidate("a"), candidate("b")]), { adapter: failing });
+  assert.equal(failed.outcome.reason, "adapter-failed");
+  assert.ok(failed.outcome.detail.length <= 500);
+  assert.doesNotMatch(failed.outcome.detail, /[\u{e0000}-\u{e007f}]/u);
+});
+
+test("worst-case valid inputs never produce a router request the router rejects", async () => {
+  const packs = Array.from({ length: ASSURANCE_HARD_LIMITS.maxRulePacks }, (_, index) => ({ ...LILAC_MOBILE_METHOD_PACK, id: `pack-${index}-${"p".repeat(110)}` }));
+  const nodes = [
+    { id: "tiny", kind: "button", x: 1, y: 1, width: 10, height: 10, interactive: true },
+    { id: "photo", kind: "image", x: 2, y: 2, width: 101, height: 101 },
+    { id: "h1", kind: "text", x: 3, y: 3, width: 101, height: 41, text: "A", textSize: 31 },
+    { id: "h2", kind: "text", x: 3, y: 50, width: 101, height: 41, text: "B", textSize: 33 },
+  ];
+  const quoted = '"'.repeat(ASSURANCE_HARD_LIMITS.maxRationaleLength);
+  const inputs = [];
+  const recorder = {
+    name: "recorder",
+    async classifyCells(cells) {
+      for (const cell of cells) inputs.push(cell.input);
+      return { status: "ok", value: cells.map(() => ({ label: "acceptable", confidence: 0.9, scores: { strong: 0.05, acceptable: 0.9, weak: 0.05 } })) };
+    },
+  };
+  const record = await assureCandidates(
+    input([candidate("x", nodes, quoted), candidate("y", cleanNodes("y"), quoted)], { intent: '"'.repeat(2048), rulePacks: packs }),
+    { adapter: recorder },
+  );
+  assert.ok(record.recordId);
+  assert.ok(inputs.length > 0);
+  for (const text of inputs) assert.ok(text.length <= 8000, String(text.length));
+});
+
+test("hidden-text policy covers selector smuggling while keeping real emoji", async () => {
+  const named = (rationale) => input([candidate("a", cleanNodes("a"), rationale), candidate("b")]);
+  for (const hidden of ["\u{fe0f}leading", "a\u{fe00}\u{fe01}\u{fe02}", "x\u{e0100}\u{e0101}", "blank\u{2800}"]) {
+    await assert.rejects(assureCandidates(named(hidden)), /hidden/);
+  }
+  const record = await assureCandidates(named("love \u{2764}\u{fe0f} and \u{1f468}\u{200d}\u{1f469}"));
+  assert.equal(record.candidates[0].rationale, "love \u{2764}\u{fe0f} and \u{1f468}\u{200d}\u{1f469}");
+});
+
+test("timestamps must be calendar-valid", async () => {
+  for (const at of ["2026-02-30T00:00:00Z", "2026-01-01T24:00:00Z", "2026-13-01T00:00:00Z", "2026-01-01T00:00:00+24:00"]) {
+    await assert.rejects(assureCandidates(input([candidate("a"), candidate("b")], { at })), /calendar-valid/);
+  }
+  await assert.doesNotReject(assureCandidates(input([candidate("a"), candidate("b")], { at: "2024-02-29T23:59:59.5+05:30" })));
+});
+
+test("geometry and naming edge cases are judged correctly", async () => {
+  const nodes = [
+    { id: "neg", kind: "container", x: 400, y: 10, width: -40, height: 20 },
+    { id: "spaced", kind: "button", x: 16, y: 100, width: 48, height: 48, label: "   ", text: "Pay", interactive: true },
+    { id: "floaty", kind: "text", x: 12.000000000000002, y: 200, width: 100, height: 20, text: "t", textSize: 16 },
+  ];
+  const record = await assureCandidates(input([candidate("g", nodes), candidate("h")], { policy: { spacingGrid: 4 } }));
+  const ids = ruleIds(record, "g");
+  assert.ok(ids.includes("layout.invalid-geometry"));
+  assert.ok(!ids.includes("a11y.accessible-name"));
+  assert.ok(!record.candidates[0].findings.some((finding) => finding.nodeId === "floaty"));
+});
+
+test("exotic and huge containers are rejected before enumeration with bounded messages", async () => {
+  const valid = input([candidate("a"), candidate("b")]);
+  const started = performance.now();
+  await assert.rejects(assureCandidates({ ...valid, policy: new Uint8Array(1_000_000) }), /plain object/);
+  await assert.rejects(assureCandidates({ ...valid, rulePacks: new Array(ASSURANCE_HARD_LIMITS.maxInputValues + 10).fill(0) }), /exceeds/);
+  assert.ok(performance.now() - started < 5000);
+  const longKey = "k".repeat(5_000_000);
+  await assert.rejects(assureCandidates({ ...valid, [longKey]: 1 }), (error) => error instanceof DecisionAssuranceValidationError && error.message.length < 400);
+});

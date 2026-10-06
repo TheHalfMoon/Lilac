@@ -1,4 +1,6 @@
+import { types } from "node:util";
 import {
+  DECISION_HARD_LIMITS,
   DECISION_SCHEMA_VERSION,
   DecisionAdapterError,
   defaultDecisionPolicy,
@@ -18,31 +20,68 @@ import {
   type CandidateAssessment,
   type FitLabel,
 } from "./types.ts";
-import { canonicalAssuranceStringify, normalizeAssuranceInput, sha256Text } from "./validation.ts";
+import { canonicalAssuranceStringify, normalizeAssuranceInput, scrubText, sha256Text } from "./validation.ts";
 
 export interface AssureOptions {
   adapter?: DecisionAdapter;
   ledger?: DecisionRequestLedger;
 }
 
-export const FIT_DIMENSION: DecisionDimension = {
+export const FIT_DIMENSION: Readonly<DecisionDimension> = Object.freeze({
   name: "fit",
-  labels: [...FIT_LABELS],
+  labels: Object.freeze([...FIT_LABELS]) as unknown as string[],
   instructions: "Judge how well this deterministically screened design candidate serves the stated intent. Its findings are already scored; judge fit, not rule compliance.",
-};
+});
 
-const MAX_RULE_IDS_IN_ROUTER_INPUT = 16;
+const ADAPTER_NAME = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/u;
+const MAX_ADAPTER_TEXT = 500;
 
-function routerInput(intent: string, assessment: CandidateAssessment): string {
-  const ruleIds = [...new Set(assessment.findings.map((finding) => finding.ruleId))].sort();
-  return canonicalAssuranceStringify({
-    intent: intent.slice(0, 1000),
+// The router hands adapters its own cell objects and reads them back afterwards. The real
+// adapter only ever sees structured clones, so it cannot alter router state; name and
+// classifyCells are read exactly once.
+function isolateAdapter(adapter: unknown): DecisionAdapter {
+  if (adapter === null || typeof adapter !== "object" || types.isProxy(adapter)) {
+    throw new DecisionAssuranceValidationError("options.adapter must be a plain decision-router adapter object");
+  }
+  const record = adapter as Record<string, unknown>;
+  const name = record.name;
+  const classify = record.classifyCells;
+  if (typeof name !== "string" || !ADAPTER_NAME.test(name)) {
+    throw new DecisionAssuranceValidationError("options.adapter.name must be a short stable identifier");
+  }
+  if (typeof classify !== "function") throw new DecisionAssuranceValidationError("options.adapter.classifyCells must be a function");
+  return Object.freeze({
+    name,
+    classifyCells: (cells, policy) => classify.call(adapter, structuredClone(cells), structuredClone(policy)),
+  } satisfies DecisionAdapter);
+}
+
+// Router inputs are bounded by the router's own policy; a valid assurance input must never
+// produce a request the router rejects. Rule ids are dropped first, then rationale halves.
+function routerInput(intent: string, assessment: CandidateAssessment, maxChars: number): string {
+  const allRuleIds = [...new Set(assessment.findings.map((finding) => finding.ruleId))].sort();
+  let ruleIds = allRuleIds.slice(0, ASSURANCE_HARD_LIMITS.maxFindingRuleIdsInRouterInput);
+  let rationale = assessment.rationale;
+  const build = (): string => canonicalAssuranceStringify({
+    intent: intent.slice(0, 1000).toWellFormed(),
     candidateId: assessment.candidateId,
-    rationale: assessment.rationale,
+    rationale,
+    rationaleTruncated: rationale.length < assessment.rationale.length,
     penalty: assessment.penalty,
-    findingRuleIds: ruleIds.slice(0, MAX_RULE_IDS_IN_ROUTER_INPUT),
+    findingRuleIds: ruleIds,
+    omittedRuleIds: allRuleIds.length - ruleIds.length,
     findingCount: assessment.findings.length + assessment.truncatedFindings,
   });
+  let text = build();
+  while (text.length > maxChars && ruleIds.length > 0) {
+    ruleIds = ruleIds.slice(0, -1);
+    text = build();
+  }
+  while (text.length > maxChars && rationale.length > 0) {
+    rationale = rationale.slice(0, Math.floor(rationale.length / 2)).toWellFormed();
+    text = build();
+  }
+  return text;
 }
 
 function labelRank(assessment: CandidateAssessment): number {
@@ -51,6 +90,8 @@ function labelRank(assessment: CandidateAssessment): number {
   return FIT_LABELS.indexOf(fit.label);
 }
 
+// Deterministic penalty ranks before fit: the adapter orders candidates only within equal
+// penalty, so model preference never outweighs a deterministic finding of any severity.
 function compareCandidates(left: CandidateAssessment, right: CandidateAssessment): number {
   return Number(right.eligible) - Number(left.eligible)
     || left.penalty - right.penalty
@@ -96,8 +137,9 @@ function decideOutcome(
 
 /**
  * Assure a set of agent-generated alternatives. Deterministic checks run first and decide
- * eligibility; an optional decision-router adapter only orders eligible candidates and can
- * cause abstention, never selection of an ineligible one. Returns a record; never mutates.
+ * eligibility; an optional decision-router adapter only orders eligible candidates of equal
+ * penalty and can cause abstention, never selection of an ineligible one. Returns a record;
+ * never mutates.
  */
 export async function assureCandidates(inputValue: unknown, options: AssureOptions = {}): Promise<AssuranceRecord> {
   const input = normalizeAssuranceInput(inputValue);
@@ -107,39 +149,46 @@ export async function assureCandidates(inputValue: unknown, options: AssureOptio
   let adapterName: string | null = null;
   let routerRecordId: string | null = null;
   let adapterFailure: string | null = null;
-  const adapter = options.adapter;
-  if (adapter !== undefined) {
-    if (adapter === null || typeof adapter !== "object" || typeof adapter.name !== "string" || typeof adapter.classifyCells !== "function") {
-      throw new DecisionAssuranceValidationError("options.adapter must be a decision-router adapter");
-    }
+  if (options.adapter !== undefined) {
+    const adapter = isolateAdapter(options.adapter);
     adapterName = adapter.name;
+    const policy = defaultDecisionPolicy({ unsureBelow: input.policy.unsureBelow });
     const request = {
       schemaVersion: DECISION_SCHEMA_VERSION,
       requestId: `assurance:${input.decisionId}:${inputSha256.slice(0, 16)}`,
       actorId: input.actorId,
       intent: input.intent,
       at: input.at,
-      inputs: assessments.map((assessment) => routerInput(input.intent, assessment)),
+      inputs: assessments.map((assessment) => routerInput(input.intent, assessment, Math.min(policy.maxInputChars, DECISION_HARD_LIMITS.maxInputChars))),
       dimensions: [FIT_DIMENSION],
-      policy: defaultDecisionPolicy({ unsureBelow: input.policy.unsureBelow }),
+      policy,
     };
     const prechecks = assessments.flatMap((assessment, itemIndex) => (assessment.eligible
       ? []
       : [{ itemIndex, verdict: { kind: "abstain", reason: "deterministically-ineligible" } }]));
     try {
       const result = await routeDecision(request, { adapter, prechecks, ledger: options.ledger });
-      routerRecordId = result.record.recordId;
+      const seen = new Set<number>();
+      for (const decision of result.record.decisions) {
+        const index = decision.itemIndex;
+        if (!Number.isSafeInteger(index) || index < 0 || index >= assessments.length || seen.has(index)) {
+          throw new DecisionAdapterError("router returned an out-of-range or duplicate decision index");
+        }
+        seen.add(index);
+      }
       for (const decision of result.record.decisions) {
         assessments[decision.itemIndex].fit = {
           label: decision.label as FitLabel | null,
           confidence: decision.confidence,
           abstained: decision.abstained,
-          abstainReason: decision.abstainReason,
+          abstainReason: decision.abstainReason === null ? null : scrubText(decision.abstainReason, MAX_ADAPTER_TEXT),
         };
       }
+      routerRecordId = result.record.recordId;
     } catch (error) {
       if (!(error instanceof DecisionAdapterError)) throw error;
-      adapterFailure = error.message.slice(0, 1000);
+      for (const assessment of assessments) assessment.fit = null;
+      adapterFailure = scrubText(error.message, MAX_ADAPTER_TEXT);
     }
   }
 

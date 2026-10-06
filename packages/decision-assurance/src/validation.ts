@@ -14,8 +14,20 @@ const STABLE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 // Text is shown to people and read by agents: controls, format characters (bidi,
 // zero-width, tag "smuggling" characters), separators, and blank-looking fillers could
 // hide or reorder content. Tab/newline/CR and ZWNJ/ZWJ (emoji, complex scripts) stay legal.
-const HIDDEN_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{34f}\u{115f}\u{1160}\u{3164}\u{ffa0}]/u;
+const HIDDEN_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{34f}\u{115f}\u{1160}\u{2800}\u{3164}\u{ffa0}]/u;
+const HIDDEN_TEXT_GLOBAL = new RegExp(HIDDEN_TEXT.source, "gu");
 const VISIBLE_FORMAT = /[\t\n\r\u{200c}\u{200d}]/gu;
+const VISIBLE_FORMAT_CHAR = /^[\t\n\r\u{200c}\u{200d}]$/u;
+// Variation selectors are legitimate after a base character (emoji, CJK variants), but a
+// leading selector or a run of them can carry hidden data.
+const VARIATION_SELECTORS = /[\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}]/gu;
+const SELECTOR_SMUGGLING = /(?:^|[\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}])[\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}]/u;
+const MAX_KEY_LENGTH = 128;
+const MAX_PATH_IN_MESSAGE = 160;
+
+function shown(path: string): string {
+  return path.length > MAX_PATH_IN_MESSAGE ? `${path.slice(0, MAX_PATH_IN_MESSAGE)}...` : path;
+}
 
 export function sha256Text(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -37,9 +49,18 @@ export function canonicalAssuranceStringify(value: unknown): string {
 }
 
 export function assertVisibleText(value: string, label: string): void {
-  if (!value.isWellFormed() || HIDDEN_TEXT.test(value.replace(VISIBLE_FORMAT, ""))) {
-    throw new DecisionAssuranceValidationError(`${label} must not contain control or hidden characters`);
+  if (!value.isWellFormed() || HIDDEN_TEXT.test(value.replace(VISIBLE_FORMAT, "")) || SELECTOR_SMUGGLING.test(value)) {
+    throw new DecisionAssuranceValidationError(`${shown(label)} must not contain control or hidden characters`);
   }
+}
+
+/** Bound and neutralize text that came from an adapter rather than from validated input. */
+export function scrubText(value: string, max: number): string {
+  return String(value)
+    .slice(0, max)
+    .toWellFormed()
+    .replace(HIDDEN_TEXT_GLOBAL, (char) => (VISIBLE_FORMAT_CHAR.test(char) ? char : "?"))
+    .replace(VARIATION_SELECTORS, "?");
 }
 
 // One read of the untrusted input. Proxies, accessors, foreign prototypes, symbol keys,
@@ -50,42 +71,48 @@ export function inertCopy(value: unknown, label = "input"): unknown {
   const walk = (entry: unknown, path: string, depth: number): unknown => {
     budget -= 1;
     if (budget < 0) throw new DecisionAssuranceValidationError(`${label} exceeds ${ASSURANCE_HARD_LIMITS.maxInputValues} values`);
-    if (depth > ASSURANCE_HARD_LIMITS.maxInputDepth) throw new DecisionAssuranceValidationError(`${path} is nested too deeply`);
+    if (depth > ASSURANCE_HARD_LIMITS.maxInputDepth) throw new DecisionAssuranceValidationError(`${shown(path)} is nested too deeply`);
     if (entry === null || typeof entry === "boolean") return entry;
     if (typeof entry === "string") {
       assertVisibleText(entry, path);
       return entry;
     }
     if (typeof entry === "number") {
-      if (!Number.isFinite(entry)) throw new DecisionAssuranceValidationError(`${path} must be a finite number`);
+      if (!Number.isFinite(entry)) throw new DecisionAssuranceValidationError(`${shown(path)} must be a finite number`);
       return Object.is(entry, -0) ? 0 : entry;
     }
-    if (typeof entry !== "object") throw new DecisionAssuranceValidationError(`${path} has an unsupported value type`);
-    if (types.isProxy(entry)) throw new DecisionAssuranceValidationError(`${path} must not be a proxy`);
-    if (Object.getOwnPropertySymbols(entry).length > 0) throw new DecisionAssuranceValidationError(`${path} must not have symbol keys`);
-    const descriptors = Object.getOwnPropertyDescriptors(entry);
-    for (const [key, descriptor] of Object.entries(descriptors)) {
-      if (!("value" in descriptor)) throw new DecisionAssuranceValidationError(`${path}.${key} must not be an accessor`);
+    if (typeof entry !== "object") throw new DecisionAssuranceValidationError(`${shown(path)} has an unsupported value type`);
+    // Cheap identity checks first, so exotic or huge objects are rejected before enumeration.
+    if (types.isProxy(entry)) throw new DecisionAssuranceValidationError(`${shown(path)} must not be a proxy`);
+    const isArray = Array.isArray(entry);
+    const prototype = Object.getPrototypeOf(entry);
+    if (isArray ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) {
+      throw new DecisionAssuranceValidationError(`${shown(path)} must be a plain ${isArray ? "array" : "object"}`);
     }
-    if (Array.isArray(entry)) {
-      if (Object.getPrototypeOf(entry) !== Array.prototype) throw new DecisionAssuranceValidationError(`${path} must be a plain array`);
+    const ownKeys = Reflect.ownKeys(entry);
+    if (ownKeys.length > budget + 1) throw new DecisionAssuranceValidationError(`${label} exceeds ${ASSURANCE_HARD_LIMITS.maxInputValues} values`);
+    if (ownKeys.some((key) => typeof key === "symbol")) throw new DecisionAssuranceValidationError(`${shown(path)} must not have symbol keys`);
+    const descriptors = Object.getOwnPropertyDescriptors(entry);
+    for (const key of ownKeys as string[]) {
+      if (key.length > MAX_KEY_LENGTH) throw new DecisionAssuranceValidationError(`${shown(path)} has a key longer than ${MAX_KEY_LENGTH} characters`);
+      if (!("value" in descriptors[key])) throw new DecisionAssuranceValidationError(`${shown(`${path}.${key}`)} must not be an accessor`);
+    }
+    if (isArray) {
       const length = descriptors.length.value as number;
-      if (Object.keys(descriptors).length !== length + 1) throw new DecisionAssuranceValidationError(`${path} must be a dense array without extra properties`);
+      if (ownKeys.length !== length + 1) throw new DecisionAssuranceValidationError(`${shown(path)} must be a dense array without extra properties`);
       const copy: unknown[] = [];
       for (let index = 0; index < length; index += 1) {
         const item = descriptors[String(index)];
-        if (!item) throw new DecisionAssuranceValidationError(`${path} must be a dense array`);
+        if (!item) throw new DecisionAssuranceValidationError(`${shown(path)} must be a dense array`);
         copy.push(walk(item.value, `${path}[${index}]`, depth + 1));
       }
       return copy;
     }
-    const prototype = Object.getPrototypeOf(entry);
-    if (prototype !== Object.prototype && prototype !== null) throw new DecisionAssuranceValidationError(`${path} must be a plain object`);
     const copy: Record<string, unknown> = {};
-    for (const [key, descriptor] of Object.entries(descriptors)) {
-      if (key === "__proto__") throw new DecisionAssuranceValidationError(`${path} must not define __proto__`);
+    for (const key of ownKeys as string[]) {
+      if (key === "__proto__") throw new DecisionAssuranceValidationError(`${shown(path)} must not define __proto__`);
       assertVisibleText(key, `${path} key`);
-      copy[key] = walk(descriptor.value, `${path}.${key}`, depth + 1);
+      copy[key] = walk(descriptors[key].value, `${path}.${key}`, depth + 1);
     }
     return copy;
   };
@@ -112,11 +139,20 @@ function assertText(value: unknown, label: string, max: number): asserts value i
   if (value.length > max) throw new DecisionAssuranceValidationError(`${label} exceeds ${max} characters`);
 }
 
+const TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-](\d{2}):(\d{2}))$/u;
+
 function assertTimestamp(value: unknown, label: string): asserts value is string {
   assertText(value, label, 64);
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u.test(value) || Number.isNaN(Date.parse(value))) {
-    throw new DecisionAssuranceValidationError(`${label} must be an ISO-8601 timestamp`);
-  }
+  const match = TIMESTAMP.exec(value);
+  const fields = match ? match.slice(1).map((part) => (part === undefined ? 0 : Number(part))) : [];
+  const [year, month, day, hour, minute, second, offsetHour, offsetMinute] = fields;
+  const lastDay = new Date(0);
+  if (match) lastDay.setUTCFullYear(year, month, 0);
+  const daysInMonth = match ? lastDay.getUTCDate() : 0;
+  const valid = match !== null
+    && month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth
+    && hour <= 23 && minute <= 59 && second <= 59 && offsetHour <= 23 && offsetMinute <= 59;
+  if (!valid) throw new DecisionAssuranceValidationError(`${label} must be a calendar-valid ISO-8601 timestamp`);
 }
 
 function positiveNumber(value: unknown, label: string, integer = false): number {

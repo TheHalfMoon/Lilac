@@ -28,11 +28,20 @@ Target package:
 | `a11y.min-text-size` | major | text size vs policy minimum (default 12) |
 | `layout.out-of-bounds` | major | node box vs screen box |
 | `layout.interactive-overlap` | major | one finding per overlapping interactive node |
+| `layout.invalid-geometry` | major | negative width or height |
 | `layout.no-screen-bounds` | info | out-of-bounds checks skipped |
 | `ds.type-scale` | minor | text size vs allowed scale (opt-in) |
 | `ds.spacing-grid` | minor | box vs grid multiple (opt-in; screen nodes excluded) |
 
-Rule-pack findings are reported as `<packId>/<ruleId>`. Penalty weights: major 100, minor 10, info 1. Default blocking severity: major.
+Rule-pack findings are reported as `<packId>/<ruleId>`; their evidence is the pack's message (`measured`/`expected` are null because design-method review candidates carry no structured measurements). Penalty weights: major 100, minor 10, info 1. Default blocking severity: major.
+
+Built-in checks are the always-on, policy-configurable baseline. A pack rule overlapping a built-in (for example design-method `min-touch-target`) also reports; both are major, so eligibility is unchanged and only penalty magnitude grows.
+
+Deterministic penalty ranks before probabilistic fit: an adapter orders only eligible candidates of equal penalty, so model preference never outweighs a deterministic finding of any severity.
+
+Design-system invariants are the type scale and spacing grid. Token conformance is deferred until design snapshots carry token references.
+
+Candidate count: inputs accept 1..16 candidates; fewer than 2 yields the `insufficient-candidates` abstention (with a full record) rather than a validation error.
 
 ## Abstention reasons
 
@@ -40,7 +49,11 @@ Rule-pack findings are reported as `<packId>/<ruleId>`. Penalty weights: major 1
 
 ## Input hardening
 
-A single inert deep copy is taken before any validation: proxies, accessors, foreign prototypes, symbol keys, sparse or decorated arrays, `__proto__` keys, non-finite numbers, hidden or control text (category rule shared in spirit with `@lilac/visual-git`), depth over 32, and more than 600000 values are rejected. All later validators, including design-method's, read only the copy.
+A single inert deep copy is taken before any validation: proxies, foreign prototypes (typed arrays, Date, Map, other realms), and oversized containers are rejected before enumeration; then accessors, symbol keys, keys over 128 characters, sparse or decorated arrays, `__proto__` keys, non-finite numbers, hidden or control text (category rule shared in spirit with `@lilac/visual-git`, plus variation-selector smuggling and the braille blank), depth over 32, and more than 600000 values. Timestamps must be calendar-valid. Error messages truncate paths. All later validators, including design-method's, read only the copy.
+
+## Adapter isolation
+
+The adapter object's `name` and `classifyCells` are read exactly once; the name must be a short stable identifier and proxies are rejected. The real adapter receives structured clones of the router's cells and policy, so it cannot alter router state (a `decision-router` hardening issue tracks the router's own trust in post-call cell objects). Router decision indexes are validated (integer, in range, unique) before use. Adapter-supplied text (abstain reasons, failure messages) is bounded to 500 characters and scrubbed of hidden characters. Router inputs are bounded to the router's `maxInputChars` by dropping finding rule ids, then halving the rationale, with explicit `omittedRuleIds` and `rationaleTruncated` markers.
 
 ## Measured bound
 

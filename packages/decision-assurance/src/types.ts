@@ -7,14 +7,13 @@ export const ASSURANCE_HARD_LIMITS = {
   maxCandidates: 16,
   maxRulePacks: 8,
   maxRationaleLength: 2000,
-  maxIdLength: 128,
   maxIntentLength: 2048,
   maxFindingsPerCandidate: 512,
   maxAllowedTextSizes: 64,
   maxInputDepth: 32,
   // 16 candidates x 2048 snapshot nodes x (node + 12 fields), plus packs and policy headroom.
   maxInputValues: 600000,
-  maxFindingRuleIdsInRouterInput: 64,
+  maxFindingRuleIdsInRouterInput: 16,
 } as const;
 
 export const SEVERITY_PENALTY: Readonly<Record<RuleSeverity, number>> = { info: 1, minor: 10, major: 100 };

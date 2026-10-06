@@ -16,9 +16,16 @@ interface Box {
   height: number;
 }
 
+// Negative sizes are reported as invalid geometry and excluded from box arithmetic.
 function boxOf(node: SnapshotNode): Box | null {
   if (node.x === undefined || node.y === undefined || node.width === undefined || node.height === undefined) return null;
+  if (node.width < 0 || node.height < 0) return null;
   return { id: node.id, x: node.x, y: node.y, width: node.width, height: node.height };
+}
+
+function onGrid(value: number, grid: number): boolean {
+  const ratio = value / grid;
+  return Math.abs(ratio - Math.round(ratio)) < 1e-9;
 }
 
 function builtin(
@@ -32,15 +39,18 @@ function builtin(
   return { ruleId, source: "builtin", severity, nodeId, measured, expected, message };
 }
 
+// Built-in checks are the always-on, policy-configurable baseline. A rule pack with an
+// overlapping rule (for example design-method's min-touch-target) reports its own finding
+// too; both are major, so eligibility is unchanged and only penalty magnitude doubles.
 function accessibilityFindings(snapshot: DesignSnapshot, policy: AssurancePolicy): AssuranceFinding[] {
   const findings: AssuranceFinding[] = [];
   for (const node of snapshot.nodes) {
     if (node.interactive) {
       const smallest = Math.min(node.width ?? Infinity, node.height ?? Infinity);
       if (smallest < policy.minTouchTarget) {
-        findings.push(builtin("a11y.touch-target", "major", node.id, smallest, `>= ${policy.minTouchTarget}`, `interactive node ${node.id} is ${node.width}x${node.height}, below the ${policy.minTouchTarget} touch target`));
+        findings.push(builtin("a11y.touch-target", "major", node.id, smallest, `>= ${policy.minTouchTarget}`, `interactive node ${node.id} has a ${smallest} side, below the ${policy.minTouchTarget} touch target`));
       }
-      const name = (node.label ?? node.text ?? "").trim();
+      const name = (node.label?.trim() || node.text?.trim() || "");
       if (name === "") {
         findings.push(builtin("a11y.accessible-name", "major", node.id, null, "non-empty label or text", `interactive node ${node.id} has no accessible name`));
       }
@@ -58,6 +68,11 @@ function overlaps(left: Box, right: Box): boolean {
 
 function layoutFindings(snapshot: DesignSnapshot): AssuranceFinding[] {
   const findings: AssuranceFinding[] = [];
+  for (const node of snapshot.nodes) {
+    if ((node.width ?? 0) < 0 || (node.height ?? 0) < 0) {
+      findings.push(builtin("layout.invalid-geometry", "major", node.id, `${node.width}x${node.height}`, "non-negative width and height", `node ${node.id} has a negative size`));
+    }
+  }
   const screenNode = snapshot.nodes.find((node) => node.kind === "screen");
   const screen = screenNode ? boxOf({ ...screenNode, x: screenNode.x ?? 0, y: screenNode.y ?? 0 }) : null;
   if (!screen) {
@@ -111,7 +126,7 @@ function systemFindings(snapshot: DesignSnapshot, policy: AssurancePolicy): Assu
       if (node.kind === "screen") continue;
       const box = boxOf(node);
       if (!box) continue;
-      const off = [box.x, box.y, box.width, box.height].some((value) => !Number.isInteger(value / grid));
+      const off = [box.x, box.y, box.width, box.height].some((value) => !onGrid(value, grid));
       if (off) {
         findings.push(builtin("ds.spacing-grid", "minor", node.id, `${box.x},${box.y},${box.width}x${box.height}`, `multiples of ${grid}`, `node ${node.id} sits off the ${grid}-unit grid`));
       }
