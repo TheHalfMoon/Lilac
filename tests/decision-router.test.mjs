@@ -74,6 +74,10 @@ test("dimension and label bounds fail closed", () => {
   assert.throws(() => readDimensions([{ name: "tone", labels: ["a", "b"], extra: true }]), DecisionValidationError);
   const tooMany = Array.from({ length: 21 }, (_, index) => ({ name: `d${index}`, labels: ["a", "b"] }));
   assert.throws(() => readDimensions(tooMany), DecisionValidationError);
+  assert.throws(() => readDimensions([{ name: "tone", labels: ["a", "x".repeat(20000)] }]), DecisionValidationError);
+  let nested = ["a", "b"];
+  for (let depth = 0; depth < 12; depth += 1) nested = [nested];
+  assert.throws(() => readDimensions([{ name: "tone", labels: nested }]), DecisionValidationError);
 });
 
 test("threshold and policy bounds fail closed", () => {

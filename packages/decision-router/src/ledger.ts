@@ -1,5 +1,5 @@
 import { DecisionConflictError, DecisionValidationError } from "./errors.ts";
-import { DECISION_SCHEMA_VERSION, type DecisionRequest, type DecisionRequestLedger } from "./types.ts";
+import { DECISION_HARD_LIMITS, DECISION_SCHEMA_VERSION, type DecisionRequest, type DecisionRequestLedger } from "./types.ts";
 import { canonicalDecisionStringify, normalizeDecisionRequest, sha256Text } from "./validation.ts";
 
 export function createDecisionRequestLedger(): DecisionRequestLedger {
@@ -25,7 +25,7 @@ export function recordDecisionRequest(
     throw new DecisionValidationError("decision ledger is malformed");
   }
   const request = normalizeDecisionRequest(requestInput);
-  if (Object.keys(ledgerInput.entries).length >= 1024 && ledgerInput.entries[request.requestId] === undefined) {
+  if (Object.keys(ledgerInput.entries).length >= DECISION_HARD_LIMITS.maxLedgerEntries && ledgerInput.entries[request.requestId] === undefined) {
     throw new DecisionValidationError("decision ledger exceeds its bounded entry budget");
   }
   const normalized = structuredClone(ledgerInput);

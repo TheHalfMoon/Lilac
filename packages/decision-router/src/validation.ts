@@ -71,9 +71,31 @@ export function readDimensions(value: unknown): DecisionDimension[] {
   if (value.length === 0 || value.length > DECISION_HARD_LIMITS.maxDimensions) {
     throw new DecisionValidationError(`provide 1-${DECISION_HARD_LIMITS.maxDimensions} dimensions`);
   }
-  if (JSON.stringify(value).length > DECISION_HARD_LIMITS.maxDimensionDefinitionChars) {
-    throw new DecisionValidationError("dimension definitions exceed the combined character budget");
-  }
+  let definitionChars = 0;
+  const countChars = (entry: unknown, depth: number): void => {
+    if (depth > 8) throw new DecisionValidationError("dimension definitions are nested too deeply");
+    if (typeof entry === "string") {
+      definitionChars += entry.length;
+      if (definitionChars > DECISION_HARD_LIMITS.maxDimensionDefinitionChars) {
+        throw new DecisionValidationError("dimension definitions exceed the combined character budget");
+      }
+      return;
+    }
+    if (Array.isArray(entry)) {
+      for (const item of entry) countChars(item, depth + 1);
+      return;
+    }
+    if (entry !== null && typeof entry === "object") {
+      for (const key of Object.keys(entry)) {
+        definitionChars += key.length;
+        if (definitionChars > DECISION_HARD_LIMITS.maxDimensionDefinitionChars) {
+          throw new DecisionValidationError("dimension definitions exceed the combined character budget");
+        }
+        countChars((entry as Record<string, unknown>)[key], depth + 1);
+      }
+    }
+  };
+  countChars(value, 0);
   return value.map((entry, index) => {
     assertPlainObject(entry, `dimensions[${index}]`);
     assertAllowedKeys(entry, ["name", "labels", "instructions"], `dimensions[${index}]`);
