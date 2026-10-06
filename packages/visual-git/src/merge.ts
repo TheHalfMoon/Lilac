@@ -45,6 +45,72 @@ function orphanedChildren(
   return orphaned;
 }
 
+interface ProjectedNode {
+  kind: DesignNode["kind"];
+  parentId: string | null;
+}
+
+// Field-level projection of a clean merge for nodes without node-level conflicts:
+// each field takes whichever side changed it from base.
+function projectStructure(
+  ids: Set<string>,
+  base: Map<string, DesignNode>,
+  ours: Map<string, DesignNode>,
+  theirs: Map<string, DesignNode>,
+  conflicted: Set<string>,
+): Map<string, ProjectedNode> {
+  const projected = new Map<string, ProjectedNode>();
+  for (const id of ids) {
+    if (conflicted.has(id)) continue;
+    const before = base.get(id);
+    const left = ours.get(id);
+    const right = theirs.get(id);
+    if (before === undefined) {
+      const added = left ?? right;
+      if (added) projected.set(id, { kind: added.kind, parentId: added.parentId });
+      continue;
+    }
+    if (left === undefined || right === undefined) continue;
+    projected.set(id, {
+      kind: left.kind !== before.kind ? left.kind : right.kind,
+      parentId: left.parentId !== before.parentId ? left.parentId : right.parentId,
+    });
+  }
+  return projected;
+}
+
+// Structural invariants of the projected merge. Walks stop at conflicted nodes, whose
+// merged shape is undecided, so these kinds only flag otherwise-clean nodes.
+function structuralConflicts(
+  projected: Map<string, ProjectedNode>,
+  add: (id: string, kind: ConflictKind) => void,
+): void {
+  const settled = new Set<string>();
+  for (const start of projected.keys()) {
+    const path: string[] = [];
+    const onPath = new Set<string>();
+    let cursor: string | null = start;
+    while (cursor !== null && !settled.has(cursor) && projected.has(cursor)) {
+      if (onPath.has(cursor)) {
+        for (const id of path.slice(path.indexOf(cursor))) add(id, "cycle");
+        break;
+      }
+      onPath.add(cursor);
+      path.push(cursor);
+      cursor = (projected.get(cursor) as ProjectedNode).parentId;
+    }
+    for (const id of path) settled.add(id);
+  }
+  for (const [id, node] of projected) {
+    if ((node.kind === "page") !== (node.parentId === null)) {
+      add(id, "invalid-nesting");
+      continue;
+    }
+    const parent = node.parentId === null ? undefined : projected.get(node.parentId);
+    if (parent?.kind === "node" && node.kind !== "node") add(id, "invalid-nesting");
+  }
+}
+
 export function detectConflicts(baseInput: unknown, oursInput: unknown, theirsInput: unknown): ConflictReport {
   const base = normalizeSnapshot(baseInput);
   const ours = normalizeSnapshot(oursInput);
@@ -67,6 +133,7 @@ export function detectConflicts(baseInput: unknown, oursInput: unknown, theirsIn
   }
   for (const id of orphanedChildren(baseNodes, ourNodes, theirNodes)) add(id, "orphaned-child");
   for (const id of orphanedChildren(baseNodes, theirNodes, ourNodes)) add(id, "orphaned-child");
+  structuralConflicts(projectStructure(ids, baseNodes, ourNodes, theirNodes, new Set(kindsById.keys())), add);
   const conflicts: MergeConflict[] = [...kindsById.keys()].sort().map((id) => ({
     nodeId: id,
     kinds: CONFLICT_KINDS.filter((kind) => kindsById.get(id)?.has(kind)),

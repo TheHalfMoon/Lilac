@@ -227,6 +227,21 @@ test("delete-modify, parent, and orphaned-child conflicts are reported", () => {
   assert.deepEqual(detectConflicts(base, orphanOurs, orphanTheirs).conflicts.map((entry) => [entry.nodeId, entry.kinds]), [["child-new", ["orphaned-child"]]]);
 });
 
+test("individually clean edits that combine into an invalid tree are conflicts", () => {
+  const base = snapshot();
+  const crossOurs = snapshot({ snapshotId: "snap-o4", sourceCommit: HEAD_COMMIT, nodes: replaceNode(baseNodes(), "frame-1", { parentId: "frame-2" }) });
+  const crossTheirs = snapshot({ snapshotId: "snap-t4", sourceCommit: "c".repeat(40), nodes: replaceNode(baseNodes(), "frame-2", { parentId: "frame-1" }) });
+  const cross = detectConflicts(base, crossOurs, crossTheirs);
+  assert.equal(cross.mergeable, false);
+  assert.deepEqual(cross.conflicts.map((entry) => [entry.nodeId, entry.kinds]), [["frame-1", ["cycle"]], ["frame-2", ["cycle"]]]);
+
+  const kindOurs = snapshot({ snapshotId: "snap-o5", sourceCommit: HEAD_COMMIT, nodes: replaceNode(baseNodes(), "frame-2", { kind: "node" }) });
+  const kindTheirs = snapshot({ snapshotId: "snap-t5", sourceCommit: "c".repeat(40), nodes: [...baseNodes(), node("frame-new", "frame", "frame-2")] });
+  const nesting = detectConflicts(base, kindOurs, kindTheirs);
+  assert.equal(nesting.mergeable, false);
+  assert.deepEqual(nesting.conflicts.map((entry) => [entry.nodeId, entry.kinds]), [["frame-new", ["invalid-nesting"]]]);
+});
+
 test("independent and convergent edits are mergeable", () => {
   const base = snapshot();
   const ours = snapshot({ snapshotId: "snap-ours", sourceCommit: HEAD_COMMIT, nodes: replaceNode(baseNodes(), "frame-1", { name: "Hero" }) });

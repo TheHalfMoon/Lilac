@@ -85,7 +85,15 @@ export interface DesignCodeLink {
   range: SourceRange | null;
 }
 
-export const CONFLICT_KINDS = ["content", "parent", "delete-modify", "add-add", "orphaned-child"] as const;
+export const CONFLICT_KINDS = [
+  "content",
+  "parent",
+  "delete-modify",
+  "add-add",
+  "orphaned-child",
+  "cycle",
+  "invalid-nesting",
+] as const;
 export type ConflictKind = (typeof CONFLICT_KINDS)[number];
 
 export interface MergeConflict {
