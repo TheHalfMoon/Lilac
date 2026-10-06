@@ -16,10 +16,24 @@ import {
 import { assertOneOf, assertRecord, assertStableId, inertCopy } from "./validation.ts";
 
 const ENV_NAME = /^[A-Z][A-Z0-9_]{0,63}$/u;
-// Path segments shaped like well-known credentials (OpenAI/Anthropic-style keys, GitHub and
-// Slack tokens, AWS access key ids, JWTs). A heuristic, deliberately narrow so legitimate
-// endpoints (UUIDs, model ids, deployment names) are never refused.
-const SECRET_SEGMENT = /^(?:sk|rk)[-_][A-Za-z0-9_-]{16,}$|^(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}$|^xox[abpors]-[A-Za-z0-9-]{10,}$|^(?:AKIA|ASIA)[A-Z0-9]{16}$|^eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+$/u;
+// Path segments shaped like well-known credentials (GitHub and Slack tokens, AWS access key
+// ids, JWTs). A deliberately narrow heuristic so typical model, route, and deployment ids
+// are accepted; secrets in other shapes are not detected.
+const SECRET_SEGMENT = /^(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}$|^xox[abpors]-[A-Za-z0-9-]{10,}$|^(?:AKIA|ASIA)[A-Z0-9]{16}$|^eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+$/u;
+
+/**
+ * OpenAI/Anthropic-style keys (`sk-...`, `rk-...`): the prefix plus at least one opaque
+ * token of 16+ alphanumerics mixing letters and digits. Dash-separated word slugs such as
+ * `sk-classifier-model-v2-large` do not qualify.
+ */
+function looksLikePrefixedKey(segment: string): boolean {
+  if (!/^(?:sk|rk)[-_]/u.test(segment)) return false;
+  return segment.split(/[-_]/u).some((part) => part.length >= 16 && /[0-9]/u.test(part) && /[A-Za-z]/u.test(part));
+}
+
+function looksLikeSecret(segment: string): boolean {
+  return SECRET_SEGMENT.test(segment) || looksLikePrefixedKey(segment);
+}
 
 function normalizeCredentialRef(value: unknown, label: string): CredentialRef | null {
   if (value === undefined || value === null) return null;
@@ -52,7 +66,7 @@ function endpointHost(endpoint: string, label: string): string {
       return segment;
     }
   });
-  if (segments.some((segment) => SECRET_SEGMENT.test(segment))) {
+  if (segments.some((segment) => looksLikeSecret(segment))) {
     throw new NetworkPolicyValidationError(`${label} path looks like it embeds a secret; use credentialRef`);
   }
   const host = url.hostname.toLowerCase().replace(/\.$/u, "").replace(/^\[|\]$/gu, "");

@@ -230,7 +230,7 @@ test("the secret-path heuristic refuses known key shapes but accepts legitimate 
   for (const path of ["/v1/sk-proj-AbCdEf0123456789xyz", "/hooks/xoxb-1234567890-abcdef", "/u/ghp_0123456789abcdefghijABCDEFGHIJ", "/k/AKIAABCDEFGHIJKLMNOP", "/t/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl", "/v1/sk%2Dproj%2DAbCdEf0123456789xyz"]) {
     assert.throws(() => normalizeProviderRegistry(remote(`https://api.example.com${path}`)), /secret/, path);
   }
-  for (const path of ["/v1/chat/completions", "/projects/123e4567-e89b-12d3-a456-426614174000/models", "/models/sentence-transformers_all-MiniLM-L6-v2", "/deployments/0123456789abcdef0123456789abcdef", "/ak_prod/api"]) {
+  for (const path of ["/v1/chat/completions", "/projects/123e4567-e89b-12d3-a456-426614174000/models", "/models/sentence-transformers_all-MiniLM-L6-v2", "/deployments/0123456789abcdef0123456789abcdef", "/ak_prod/api", "/v1/models/sk-classifier-model-v2-large", "/rk-models-list-everything-v2"]) {
     assert.doesNotThrow(() => normalizeProviderRegistry(remote(`https://api.example.com${path}`)), path);
   }
 });
