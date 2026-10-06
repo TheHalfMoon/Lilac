@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@lilac/history": "0.0.0",
+    "@lilac/network-policy": "0.0.0",
     "parse5": "8.0.1"
   }
 }

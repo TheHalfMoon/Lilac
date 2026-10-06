@@ -112,7 +112,7 @@ const SUBSYSTEMS = [
     owner: "@lilac/import-stack",
     status: "implemented",
     boundary: "Provenance-preserving untrusted intake producing proposals; canonical mutation only through history. Export side planned.",
-    dependsOn: ["document-model", "history"],
+    dependsOn: ["document-model", "history", "network-policy"],
   },
   {
     id: "code-ir",
@@ -158,8 +158,8 @@ const SUBSYSTEMS = [
     id: "mcp-surface",
     title: "Agent runtime MCP surface",
     owner: "@lilac/mcp-protocol",
-    status: "implemented",
-    boundary: "Capability-scoped local MCP endpoint for project discovery, inspection, queries, and transaction-aware edits.",
+    status: "stub",
+    boundary: "MCP contract validation (client, tool, server-config, and Paper tool-set compatibility) exists. The capability-scoped local MCP endpoint for project discovery, inspection, queries, and transaction-aware edits is planned (#82).",
     dependsOn: ["agent-runtime", "document-model", "history"],
   },
   {
@@ -224,6 +224,14 @@ const SUBSYSTEMS = [
     owner: "@lilac/architecture",
     status: "implemented",
     boundary: "Machine-checked subsystem ownership catalog and its validation. Declarative only; owns no runtime behavior.",
+    dependsOn: [],
+  },
+  {
+    id: "network-policy",
+    title: "Network capability policy and providers",
+    owner: "@lilac/network-policy",
+    status: "implemented",
+    boundary: "Default-deny network capability policy (offline, local-only, allowlist grants) with two-phase URL and resolved-address decisions, the single owner of address classification, a bring-your-own provider registry holding credential references only, and offline readiness reporting. Decides only; never opens connections, resolves names, or stores credential values.",
     dependsOn: [],
   },
   {
