@@ -6,15 +6,15 @@ Last updated: 2026-10-06
 
 **LILAC-P00 — Foundation, authorized-source intake, and staged product implementation**
 
-Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–8 are `CLOSED_CANONICAL`; repository-side Graft context policy is canonical; Grain 9 Design Method and Resources is the next implementation frontier.
+Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–9 are `CLOSED_CANONICAL`; repository-side Graft context policy is canonical; the program continues with the broader Master Plan work (P03–P07).
 
 ## Canonical main
 
-`cf8dee827e79f175b79e61504dbc03c063fc2c17`
+`6c5031509b798a20cd57e7b693dc586eaccbbaeb`
 
-This is the normal merge commit for PR #41 (Grain 8 Delivery Governance).
+This is the normal merge commit for PR #44 (Grain 9 Design Method and Resources).
 
-Post-merge CI run `37409833005` completed `SUCCESS` on that exact SHA (232/232 tests, 0 vulnerabilities).
+Post-merge CI run `37411386981` completed `SUCCESS` on that exact SHA (241/241 tests, 0 vulnerabilities).
 
 ## Canonical implementation chain
 
@@ -28,6 +28,7 @@ Post-merge CI run `37409833005` completed `SUCCESS` on that exact SHA (232/232 t
 | 6 | Import Stack | CLOSED_CANONICAL | PR #35 merged at `c3841a19e7d1d8c348e5ed114f101351725c6578` (qualified head `3955007ca055708bdb7efc0b4601cbd2df8bff6e`); post-merge CI `37405576580` succeeded |
 | 7 | Decision Router | CLOSED_CANONICAL | PR #38 merged at `723e7b067d95e3d600bf47c8b952adf4520d8c99` (qualified head `9e25bd787b2e874120f6183beea1dfe07b1afba4`); post-merge CI `37407426329` succeeded |
 | 8 | Delivery Governance | CLOSED_CANONICAL | PR #41 merged at `cf8dee827e79f175b79e61504dbc03c063fc2c17` (qualified head `8cf830779e85c8f1bd50603d1a417422956168e5`); post-merge CI `37409833005` succeeded |
+| 9 | Design Method and Resources | CLOSED_CANONICAL | PR #44 merged at `6c5031509b798a20cd57e7b693dc586eaccbbaeb` (qualified head `8db81443cceba301a7e0c2d894507dbd3e572e47`); post-merge CI `37411386981` succeeded |
 | Tooling | Graft context/navigation policy | CANONICAL | PR #8 merged at `d6eb3be46e9d608b2071b80be0f6911ba5bf0c9b`; post-merge CI `37329841174` succeeded |
 
 ## Canonical facts
@@ -67,7 +68,7 @@ Post-merge CI run `37409833005` completed `SUCCESS` on that exact SHA (232/232 t
 | I06 Import Stack | PROVEN |
 | I07 Decision Router | PROVEN |
 | I08 Delivery Governance | PROVEN |
-| I09 Design Method and Resources | ACTIVE_NEXT |
+| I09 Design Method and Resources | PROVEN |
 
 ## Grain 6 — closed canonical
 
@@ -97,9 +98,15 @@ Grain 8 (Delivery Governance, `packages/delivery-governance`, Issue #40) is `CLO
 
 Delivered scope (per `docs/DONOR_INTEGRATION_MAP.md` and Issue #40): structured findings; worktree identity verification records shaped by the Grain 4 supervisor boundary; exact-head proof; base/head movement protection; CI qualification model; repair ancestry with rerun-after-fix; explicit ask-user state; evidence bundles confined to one pre-registered store root outside disposable worktrees; merge-strategy guard (normal merge only); qualification invalidation on mutation. Guidance donor `kunchenguid/no-mistakes@0616eb4911845e2ba04faa17186ecd2686d7d579` (MIT); no daemon, proxy, hooks, database, billing, or forge machinery imported.
 
-## Grain 9 — next canonical action
+## Grain 9 — closed canonical
 
-Grain 9 is **Design Method and Resources** defined by `docs/DONOR_INTEGRATION_MAP.md`: explainable mobile/native design rule packs, deterministic design-review candidates, agent review checklists, and a provider/resource taxonomy with registry, source/provenance fields, and license metadata, guided by `Appllama/appllama-skills@dd5caaec3d5d50ad7fc0324da238119c6b7c3707` and `reinaldosimoes/design-resources@43fe2b5d801e34c21e22b5639711f7e250a798e5`. Freeze a dedicated Grain 9 Issue/spec before implementation, branch from the exact canonical `main`, and close only after post-merge CI.
+Grain 9 (Design Method and Resources, `packages/design-method`, Issue #43) is `CLOSED_CANONICAL` via PR #44, merged normally at `6c5031509b798a20cd57e7b693dc586eaccbbaeb` with post-merge CI `37411386981` green on the exact merge SHA. Exact-head qualification on `8db81443cceba301a7e0c2d894507dbd3e572e47` covered 241/241 tests, zero vulnerabilities, Jev 9/9 cells below threshold 0.70 with no repairs required, Alibaba Open Code Review delegation SUCCESS (v1.12.9, 11 reviewable files), Graft blast-radius inspection, and manual review of rule-pack validation, snapshot evaluation, checklist binding, registry licensing, and dependency closure (zero new runtime dependencies). Full evidence is recorded on Issue #43.
+
+Delivered scope (per `docs/DONOR_INTEGRATION_MAP.md` and Issue #43): Lilac-authored mobile/native rule packs with deterministic snapshot evaluation producing rule- and node-referenced review candidates; agent review checklists bound to rule IDs; a versioned provider/resource taxonomy with a registry requiring explicit per-entry licensing. Guidance donors `Appllama/appllama-skills@dd5caaec3d5d50ad7fc0324da238119c6b7c3707` (MIT) and `reinaldosimoes/design-resources@43fe2b5d801e34c21e22b5639711f7e250a798e5` (CC0-1.0); no screens, assets, links, MCP wiring, models, or paid services imported.
+
+## Next program frontier
+
+All staged grains 1–9 are closed. The program continues with the broader Master Plan work:
 
 ## Grain 6 authority boundaries
 
@@ -113,10 +120,13 @@ Grain 9 is **Design Method and Resources** defined by `docs/DONOR_INTEGRATION_MA
 
 ## Later sequence
 
-Only Grain 9 remains of the staged grains, then the broader Master Plan work:
+The remaining product program, in working order:
 
-1. Grain 9 — Design Method and Resources;
-4. continue broader Master Plan work: bidirectional code/design IR, native code components, Visual Git, parity disposition, product hardening, packaging, release, and reproducible smoke evidence.
+1. P03 — Architecture completion (explicit typed subsystem ownership);
+2. P04 — Paper capability parity disposition;
+3. P05 D1-D7 - product differentiators (bidirectional code/design engine, native code components, multi-agent workspace, Visual Git, decision assurance, local/private mode, website/app intake);
+4. P06 - Product hardening;
+5. P07 - Release program with signed evidence and clean-machine verification.
 
 ## Integrity rule
 
