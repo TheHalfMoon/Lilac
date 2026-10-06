@@ -10,16 +10,17 @@ Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 
 
 ## Canonical main
 
-`3dfa66bfb02f02ec8c0367b3f21619fb2cc1983e`
+`db0b95e6ad0af93fb5c76363d8778ce7ed5b6e4b`
 
-This is the normal merge commit for PR #49 (P04 parity disposition).
+This is the normal merge commit for PR #52 (P05 D1 code/design IR vertical slice).
 
-Post-merge CI run `37412970724` completed `SUCCESS` on that exact SHA (241/241 tests, 0 vulnerabilities).
+Post-merge CI run `37415515531` completed `SUCCESS` on that exact SHA (255/255 tests, 0 vulnerabilities).
 
 ## Post-grain program state
 
 - P03 architecture ownership: complete via PR #47, Issue #46 closed. `packages/architecture` maps every required subsystem to exactly one owner with machine-checked validation; missing subsystems are declared as planned, not implemented.
 - P04 parity disposition: complete via PR #49, Issue #48 closed. Every `docs/PARITY_MATRIX.md` row carries a terminal disposition with evidence or a deferral pointer; nothing is intentionally dropped.
+- P05 D1 code/design IR slice: complete via PR #52, Issue #51 closed. `packages/code-ir` provides bounded JSX/TSX, CSS, and Tailwind adapters, range-anchored patches, hunk-based three-way reconciliation, and golden round-trip fixpoints with zero new runtime dependencies.
 
 ## Canonical implementation chain
 
