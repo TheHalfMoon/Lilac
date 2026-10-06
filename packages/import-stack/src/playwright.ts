@@ -79,7 +79,7 @@ async function validatedAddresses(
 ): Promise<string[]> {
   const literal = url.hostname.replace(/^\[|\]$/gu, "");
   const addresses = /^[0-9.]+$/u.test(literal) || literal.includes(":") ? [literal] : await resolveHost(url.hostname);
-  validateResolvedAddresses(url, addresses, request.policy);
+  validateResolvedAddresses(url, addresses, request.policy, request.networkPolicy);
   return addresses;
 }
 
@@ -103,7 +103,7 @@ export async function captureDynamicHtml(
   const now = dependencies.now ?? Date.now;
   let initial: URL;
   try {
-    initial = validateNavigationUrl(rawUrl, request.policy);
+    initial = validateNavigationUrl(rawUrl, request.policy, request.networkPolicy);
     await validatedAddresses(initial, request, resolveHost);
   } catch (error) {
     return { status: "failed", reason: error instanceof Error ? error.message : String(error) };
@@ -146,7 +146,7 @@ export async function captureDynamicHtml(
       if (routeFailure) { await route.abort(); return; }
       try {
         const browserRequest = route.request();
-        const target = validateNavigationUrl(browserRequest.url(), request.policy);
+        const target = validateNavigationUrl(browserRequest.url(), request.policy, request.networkPolicy);
         const addresses = await validatedAddresses(target, request, resolveHost);
         interceptedRequests += 1;
         if (interceptedRequests > request.policy.maxAssets + 1) throw new ImportSecurityError("dynamic capture exceeds bounded request count");
@@ -185,7 +185,7 @@ export async function captureDynamicHtml(
     const page = await context.newPage();
     await page.goto(initial.href, { waitUntil: "domcontentloaded", timeout: remaining() });
     if (routeFailure) throw routeFailure;
-    const finalUrl = validateNavigationUrl(page.url(), request.policy);
+    const finalUrl = validateNavigationUrl(page.url(), request.policy, request.networkPolicy);
     await validatedAddresses(finalUrl, request, resolveHost);
     const html = await page.content();
     if (routeFailure) throw routeFailure;

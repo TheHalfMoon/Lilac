@@ -37,8 +37,16 @@ import {
 } from "../packages/import-stack/src/index.ts";
 import { createDocument } from "../packages/document-model/src/index.mjs";
 import { createHistoryState } from "../packages/history/src/index.mjs";
+import { NETWORK_POLICY_SCHEMA_VERSION } from "../packages/network-policy/src/index.ts";
 
 const AT = "2026-10-06T00:00:00.000Z";
+
+// Network-mode imports also need the project network policy (#83). Grain 6 tests grant the
+// hosts they contact (evil.test too, so Grain 6's own cross-origin refusals stay exercised).
+const importGrant = (id, host) => ({ id, capability: "import.fetch", scheme: "https", host, port: null, allowPrivateNetwork: false, purpose: "Grain 6 test" });
+const NET_REMOTE = { schemaVersion: NETWORK_POLICY_SCHEMA_VERSION, mode: "allowlist", grants: [importGrant("grant-example", "example.com"), importGrant("grant-evil", "evil.test")] };
+const NET_LOCAL = { schemaVersion: NETWORK_POLICY_SCHEMA_VERSION, mode: "local-only", grants: [] };
+const NET_FOR_MODE = { offline: undefined, remote: NET_REMOTE, "local-app": NET_LOCAL };
 
 function request(overrides = {}) {
   const policy = overrides.policy ?? defaultImportPolicy("offline");
@@ -54,6 +62,10 @@ function request(overrides = {}) {
       baseUrl: "https://example.com/page",
     },
     policy,
+    ...(() => {
+      const networkPolicy = "networkPolicy" in overrides ? overrides.networkPolicy : NET_FOR_MODE[policy.mode];
+      return networkPolicy === undefined ? {} : { networkPolicy };
+    })(),
   };
 }
 
@@ -261,25 +273,25 @@ test("remote URL policy rejects local, reserved, credential, and secret-bearing 
     "http://2130706433/",
     "http://0x7f000001/",
     "http://127.1/",
-  ]) assert.throws(() => validateNavigationUrl(url, remote));
-  assert.equal(validateNavigationUrl("https://example.com/a", remote).hostname, "example.com");
+  ]) assert.throws(() => validateNavigationUrl(url, remote, NET_REMOTE));
+  assert.equal(validateNavigationUrl("https://example.com/a", remote, NET_REMOTE).hostname, "example.com");
 
   const local = defaultImportPolicy("local-app");
-  assert.equal(validateNavigationUrl("http://localhost:3000", local).hostname, "localhost");
-  assert.equal(validateNavigationUrl("http://127.0.0.1:3000", local).hostname, "127.0.0.1");
-  assert.throws(() => validateNavigationUrl("https://example.com", local), ImportSecurityError);
+  assert.equal(validateNavigationUrl("http://localhost:3000", local, NET_LOCAL).hostname, "localhost");
+  assert.equal(validateNavigationUrl("http://127.0.0.1:3000", local, NET_LOCAL).hostname, "127.0.0.1");
+  assert.throws(() => validateNavigationUrl("https://example.com", local, NET_LOCAL), ImportSecurityError);
 });
 
 test("resolved address validation closes DNS-rebinding escape paths", () => {
   const remote = defaultImportPolicy("remote");
-  const url = validateNavigationUrl("https://example.com", remote);
-  validateResolvedAddresses(url, ["93.184.216.34"], remote);
-  assert.throws(() => validateResolvedAddresses(url, ["93.184.216.34", "127.0.0.1"], remote), ImportSecurityError);
+  const url = validateNavigationUrl("https://example.com", remote, NET_REMOTE);
+  validateResolvedAddresses(url, ["93.184.216.34"], remote, NET_REMOTE);
+  assert.throws(() => validateResolvedAddresses(url, ["93.184.216.34", "127.0.0.1"], remote, NET_REMOTE), ImportSecurityError);
 
   const local = defaultImportPolicy("local-app");
-  const localUrl = validateNavigationUrl("http://localhost:5173", local);
-  validateResolvedAddresses(localUrl, ["127.0.0.1", "::1"], local);
-  assert.throws(() => validateResolvedAddresses(localUrl, ["127.0.0.1", "8.8.8.8"], local), ImportSecurityError);
+  const localUrl = validateNavigationUrl("http://localhost:5173", local, NET_LOCAL);
+  validateResolvedAddresses(localUrl, ["127.0.0.1", "::1"], local, NET_LOCAL);
+  assert.throws(() => validateResolvedAddresses(localUrl, ["127.0.0.1", "8.8.8.8"], local, NET_LOCAL), ImportSecurityError);
 });
 
 test("forbidden address classifier covers private, link-local, documentation, and multicast ranges", () => {

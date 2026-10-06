@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { defaultNetworkPolicy, normalizeNetworkPolicy, type NetworkPolicy } from "@lilac/network-policy";
 import { ImportValidationError } from "./errors.ts";
 import {
   IMPORT_HARD_LIMITS,
@@ -172,12 +173,22 @@ export function normalizeSourceIdentity(value: unknown): ImportSourceIdentity {
 
 export function normalizeImportRequest(value: unknown): ImportRequest {
   assertPlainObject(value, "import.request");
-  assertAllowedKeys(value, ["schemaVersion", "requestId", "actorId", "intent", "at", "source", "policy"], "import.request");
+  assertAllowedKeys(value, ["schemaVersion", "requestId", "actorId", "intent", "at", "source", "policy", "networkPolicy"], "import.request");
   if (value.schemaVersion !== IMPORT_SCHEMA_VERSION) throw new ImportValidationError("unsupported import request schema version");
   assertBoundedString(value.requestId, "import.requestId", 256);
   assertBoundedString(value.actorId, "import.actorId", 256);
   assertBoundedString(value.intent, "import.intent", 2048);
   assertTimestamp(value.at, "import.at");
+  // Own property only, and always set on the normalized request (default: offline), so no later
+  // read of request.networkPolicy can fall through to a polluted prototype and inherit a grant.
+  let networkPolicy: NetworkPolicy = defaultNetworkPolicy();
+  if (Object.hasOwn(value, "networkPolicy") && value.networkPolicy !== undefined) {
+    try {
+      networkPolicy = normalizeNetworkPolicy(value.networkPolicy);
+    } catch (error) {
+      throw new ImportValidationError(`import.networkPolicy is invalid: ${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`);
+    }
+  }
   return {
     schemaVersion: IMPORT_SCHEMA_VERSION,
     requestId: value.requestId,
@@ -186,6 +197,7 @@ export function normalizeImportRequest(value: unknown): ImportRequest {
     at: value.at,
     source: normalizeSourceIdentity(value.source),
     policy: normalizeImportPolicy(value.policy),
+    networkPolicy,
   };
 }
 
