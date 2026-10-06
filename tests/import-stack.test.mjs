@@ -106,9 +106,14 @@ test("CSS sanitizer detects comments and escaped spellings and rejects hidden fe
     '.a { background: u\\72l(https://evil.test/x.png); }',
     '.a { width: e\\78pression(alert(1)); }',
     '.a { be/**/havior: url(#x); }',
+    '.a { background: u\\\nrl(https://evil.test/x.png); }',
+    '.a { background: u\\\r\nrl(https://evil.test/x.png); }',
+    '@im\\\nport "https://evil.test/x.css";',
+    '.a { width: expres\\\nsion(alert(1)); }',
+    '.a { background: u\\5c \nrl(https://evil.test/x.png); }',
   ]) {
     const result = sanitizeImportedCssText(css, 4096);
-    assert.equal(result.unsafe, true, css);
+    assert.equal(result.unsafe, true, JSON.stringify(css));
     assert.equal(result.cssText, null);
   }
 });

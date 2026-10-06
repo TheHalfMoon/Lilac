@@ -16,7 +16,12 @@ export const PRESENTATION_URL_ATTRIBUTES = new Set([
 ]);
 
 function cssSecurityView(css: string): string {
-  return css
+  // Strip CSS line continuations (backslash + newline) before and after
+  // escape decoding: a real CSS engine ignores them, so keywords split
+  // across a continuation (for example `u\<LF>rl(`) must be visible here.
+  const withoutContinuations = (value: string): string =>
+    value.replace(/\\(?:\r\n|[\r\n\f])/gu, "");
+  return withoutContinuations(withoutContinuations(css)
     .replace(/\/\*[\s\S]*?\*\//gu, "")
     .replace(/\\([0-9a-fA-F]{1,6})\s?/gu, (_match, hex: string) => {
       const codePoint = Number.parseInt(hex, 16);
@@ -24,7 +29,7 @@ function cssSecurityView(css: string): string {
         ? String.fromCodePoint(codePoint)
         : "";
     })
-    .replace(/\\([^\r\n0-9a-fA-F])/gu, "$1")
+    .replace(/\\([^\r\n0-9a-fA-F])/gu, "$1"))
     .toLowerCase();
 }
 
