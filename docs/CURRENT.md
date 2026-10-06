@@ -10,11 +10,11 @@ Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 
 
 ## Canonical main
 
-`92072b95fb259c1c81d53217ea6bd32532e5d0b6`
+`efc4b7de448470e417260c394db83b504d991feb`
 
-This is the normal merge commit for PR #55 (P05 D2 native design components).
+This is the normal merge commit for PR #58 (P05 D3 multi-agent workspace).
 
-Post-merge CI run `37417106374` completed `SUCCESS` on that exact SHA (265/265 tests, 0 vulnerabilities).
+Post-merge CI run `37418162220` completed `SUCCESS` on that exact SHA (273/273 tests, 0 vulnerabilities).
 
 ## Post-grain program state
 
@@ -22,6 +22,7 @@ Post-merge CI run `37417106374` completed `SUCCESS` on that exact SHA (265/265 t
 - P04 parity disposition: complete via PR #49, Issue #48 closed. Every `docs/PARITY_MATRIX.md` row carries a terminal disposition with evidence or a deferral pointer; nothing is intentionally dropped.
 - P05 D1 code/design IR slice: complete via PR #52, Issue #51 closed. `packages/code-ir` provides bounded JSX/TSX, CSS, and Tailwind adapters, range-anchored patches, hunk-based three-way reconciliation, and golden round-trip fixpoints with zero new runtime dependencies.
 - P05 D2 native design components: complete via PR #55, Issue #54 closed. `packages/design-components` provides contracts with typed props/slots/states/variants, strict binding to D1 symbols, verified-patch variants with drift refusal, source-linked previews, drift detection, and system membership with only the `@lilac/code-ir` workspace dependency.
+- P05 D3 multi-agent workspace: complete via PR #58, Issue #57 closed. `packages/agent-workspace` provides the program role registry with capability scopes, role assignment, out-of-scope rejection, an append-only action ledger with full attribution, cancellation, and reversal marking with zero new runtime dependencies.
 
 ## Canonical implementation chain
 
