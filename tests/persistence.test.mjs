@@ -13,7 +13,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { chmodSync, linkSync } from "node:fs";
+import { chmodSync, linkSync, utimesSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
@@ -508,4 +508,50 @@ test("an in-place rewrite of the journal with identical size and inode is detect
   assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /replaced or modified outside this writer/);
   store.close();
   assert.throws(() => open(root), PersistenceCorruptionError);
+}));
+
+test("appendDurable refuses a same-size, same-inode journal whose content differs from the pin", async () => {
+  const { appendDurable, fileIdentity } = await import("../packages/persistence/src/fsio.ts");
+  const { createHash } = await import("node:crypto");
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "lilac-append-")));
+  try {
+    const path = join(dir, "journal.log");
+    writeFileSync(path, "line-A\n");
+    const identity = fileIdentity(path, "journal");
+    const sha256 = (text) => createHash("sha256").update(text).digest("hex");
+    assert.throws(
+      () => appendDurable(path, "line-B\n", "journal", { size: 7, identity, sha256: sha256("line-Z\n") }),
+      (error) => error instanceof PersistenceCorruptionError && /replaced or modified outside this writer/.test(error.message),
+    );
+    assert.equal(readFileSync(path, "utf8"), "line-A\n", "nothing is written on a content mismatch");
+    appendDurable(path, "line-B\n", "journal", { size: 7, identity, sha256: sha256("line-A\n") });
+    assert.equal(readFileSync(path, "utf8"), "line-A\nline-B\n");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a same-size rewrite after open and before the first commit is detected", () => withProject((root) => {
+  const first = open(root);
+  first.commit(setTitle("tx-1", 0, "One"));
+  first.close();
+  const store = open(root);
+  const journal = file(root, PROJECT_FILES.journal);
+  const altered = Buffer.from(readFileSync(journal));
+  altered[altered.indexOf(0x4f)] = 0x30;
+  writeFileSync(journal, altered);
+  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /replaced or modified outside this writer/);
+  store.close();
+}));
+
+test("metadata-only journal changes do not refuse commits", () => withProject((root) => {
+  const store = open(root);
+  store.commit(setTitle("tx-1", 0, "One"));
+  const journal = file(root, PROJECT_FILES.journal);
+  utimesSync(journal, new Date("2001-01-01T00:00:00Z"), new Date("2001-01-01T00:00:00Z"));
+  store.commit(setTitle("tx-2", 1, "Two"));
+  store.close();
+  const reopened = open(root);
+  assert.equal(reopened.revision, 2);
+  reopened.close();
 }));

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID, type Hash } from "node:crypto";
 import { lstatSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { cloneDocument, normalizeDocument, validateDocument } from "@lilac/document-model";
@@ -312,6 +312,8 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       seq: last?.entry.seq ?? 0,
       digest: last?.digest ?? genesis,
       journalBytes: parsed.validBytes,
+      // The content pin covers exactly the bytes validated above, so a change made after that read is caught.
+      journalContent: createHash("sha256").update(journalBytes.subarray(0, parsed.validBytes)),
       journalIdentity: fileIdentity(files.journal, "journal"),
       lock: lockRecord,
       recovery: { tornTailBytes: parsed.tornTailBytes, replayedEntries: replayed, migratedFrom, lockOverride },
@@ -326,6 +328,7 @@ interface StoreState {
   seq: number;
   digest: string;
   journalBytes: number;
+  journalContent: Hash;
   journalIdentity: FileIdentity;
   lock: LockRecord;
   recovery: RecoveryReport;
@@ -340,6 +343,7 @@ export class ProjectStore {
   #seq: number;
   #digest: string;
   #journalBytes: number;
+  #journalContent: Hash;
   #journalIdentity: FileIdentity;
   #lock: LockRecord;
   #closed = false;
@@ -354,6 +358,7 @@ export class ProjectStore {
     this.#seq = state.seq;
     this.#digest = state.digest;
     this.#journalBytes = state.journalBytes;
+    this.#journalContent = state.journalContent;
     this.#journalIdentity = state.journalIdentity;
     this.#lock = state.lock;
   }
@@ -412,7 +417,11 @@ export class ProjectStore {
       throw new PersistenceValidationError(`journal reached its ${PERSISTENCE_LIMITS.maxJournalBytes}-byte limit; journal rotation is not available in this release`);
     }
     try {
-      this.#journalIdentity = appendDurable(join(this.projectDir, PROJECT_FILES.journal), line, "journal", { size: this.#journalBytes, identity: this.#journalIdentity });
+      appendDurable(join(this.projectDir, PROJECT_FILES.journal), line, "journal", {
+        size: this.#journalBytes,
+        identity: this.#journalIdentity,
+        sha256: this.#journalContent.copy().digest("hex"),
+      });
     } catch (error) {
       // The file may now hold a partial line; only a reopen can reconcile it safely.
       this.#poisoned = true;
@@ -422,6 +431,7 @@ export class ProjectStore {
     this.#seq = entry.seq;
     this.#digest = digest;
     this.#journalBytes += bytes;
+    this.#journalContent.update(line, "utf8");
     return { revision: next.revision, seq: entry.seq, transactionId: String(stored.id) };
   }
 
