@@ -317,6 +317,45 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
   return symbol;
 }
 
+/**
+ * Repository component binding: match exported function and arrow components
+ * to the root element they render. Each definition claims the nearest
+ * following unclaimed root; the component symbol anchors at its rendered
+ * output range with copied literal props. Anonymous defaults cannot bind.
+ */
+function bindComponentDefinitions(state: ParserState, roots: SourceSymbol[]): void {
+  const pattern = /(?:export\s+default\s+)?(?:export\s+)?function\s+([A-Z][A-Za-z0-9]*)\s*\(|const\s+([A-Z][A-Za-z0-9]*)\s*=\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/gu;
+  const definitions: { name: string; offset: number }[] = [];
+  for (const match of state.source.matchAll(pattern)) {
+    if (definitions.length >= 64) break;
+    definitions.push({ name: (match[1] ?? match[2]) as string, offset: match.index ?? 0 });
+  }
+  const claimed = new Set<number>();
+  const orderedRoots = [...roots].sort((a, b) => a.range.startOffset - b.range.startOffset);
+  for (const root of orderedRoots) {
+    let chosen = -1;
+    for (let index = 0; index < definitions.length; index += 1) {
+      if (claimed.has(index)) continue;
+      if (definitions[index].offset < root.range.startOffset) chosen = index;
+      else break;
+    }
+    if (chosen === -1) continue;
+    claimed.add(chosen);
+    const id = symbolId(state.file, "component", definitions[chosen].name, root.range.startOffset);
+    state.symbols.push({
+      id,
+      kind: "component",
+      name: definitions[chosen].name,
+      range: { ...root.range },
+      props: root.props.map((prop) => ({ name: prop.name, literal: { ...prop.literal } as SourceSymbol["props"][number]["literal"], range: { ...prop.range } })),
+      children: [root.id],
+      texts: [],
+      ...(root.classTokens === undefined ? {} : { classTokens: [...root.classTokens] }),
+    });
+    state.relations.push({ from: id, to: root.id, kind: "renders" });
+  }
+}
+
 export function parseJsxFile(file: string, source: string): JsxParseResult {
   if (typeof source !== "string") throw new CodeIrValidationError("JSX source must be a string");
   if (source.length === 0) throw new CodeIrValidationError("JSX source must not be empty");
@@ -373,6 +412,10 @@ export function parseJsxFile(file: string, source: string): JsxParseResult {
     const reason = state.unsupported.length > 0 ? `: ${state.unsupported[0].reason}` : "";
     throw new CodeIrValidationError(`JSX source contains no supported elements${reason}`);
   }
+  if (state.symbols.length > CODE_IR_HARD_LIMITS.maxSymbols) {
+    throw new CodeIrValidationError("JSX symbols exceed maxSymbols");
+  }
+  bindComponentDefinitions(state, roots);
   if (state.symbols.length > CODE_IR_HARD_LIMITS.maxSymbols) {
     throw new CodeIrValidationError("JSX symbols exceed maxSymbols");
   }

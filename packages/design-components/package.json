@@ -1,0 +1,13 @@
+{
+  "name": "@lilac/design-components",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "@lilac/code-ir": "0.0.0"
+  }
+}
