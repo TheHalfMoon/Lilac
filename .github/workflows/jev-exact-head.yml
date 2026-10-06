@@ -38,19 +38,28 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Build exact candidate diff
+      - name: Build exact-head qualification state
         shell: bash
         run: |
           set -euo pipefail
           git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-          git diff --no-ext-diff --binary "origin/${{ github.event.pull_request.base.ref }}...HEAD" > jev-candidate.diff
-          if [ ! -s jev-candidate.diff ]; then
-            echo "Candidate diff is empty."
-            exit 1
-          fi
           printf "%s\n" "${{ github.event.pull_request.base.sha }}" > jev-base-sha.txt
           printf "%s\n" "${{ github.event.pull_request.head.sha }}" > jev-head-sha.txt
+          git diff --name-status "origin/${{ github.event.pull_request.base.ref }}...HEAD" > jev-changed-files.txt
+          git ls-tree -r HEAD .claude/skills > jev-vendored-skill-tree.txt
+          git diff --no-ext-diff --binary "origin/${{ github.event.pull_request.base.ref }}...HEAD" -- . ":(exclude).claude/skills/**" > jev-authored.diff
+          {
+            echo "BASE_SHA=${{ github.event.pull_request.base.sha }}"
+            echo "HEAD_SHA=${{ github.event.pull_request.head.sha }}"
+            echo "CHANGED_FILES"
+            cat jev-changed-files.txt
+            echo "VENDORED_SKILL_TREE"
+            cat jev-vendored-skill-tree.txt
+            echo "AUTHORED_DIFF"
+            cat jev-authored.diff
+          } > jev-candidate.txt
+          test -s jev-candidate.txt
 
       - name: Run Jev on exact candidate
         env:
@@ -61,7 +70,7 @@ jobs:
           set -euo pipefail
           test -n "${TYPESAFE_API_KEY:-}" || { echo "TYPESAFE_API_KEY repository secret is missing."; exit 1; }
           python .claude/skills/jev/scripts/jev --version
-          python .claude/skills/jev/scripts/jev run commit -s @jev-candidate.diff --json > jev-commit.json
+          python .claude/skills/jev/scripts/jev run commit -s @jev-candidate.txt --json > jev-commit.json
 
       - name: Validate Jev evidence and secret-leak judgment
         shell: bash
@@ -115,6 +124,9 @@ jobs:
           path: |
             jev-base-sha.txt
             jev-head-sha.txt
+            jev-changed-files.txt
+            jev-vendored-skill-tree.txt
+            jev-authored.diff
             jev-commit.json
             jev-evidence.json
           if-no-files-found: error

@@ -1,0 +1,3 @@
+.claude/** text eol=lf
+.github/workflows/*.yml text eol=lf
+CLAUDE.md text eol=lf
