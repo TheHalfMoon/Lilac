@@ -39,6 +39,19 @@ function oneHotScores(labels: string[], label: string): Record<string, number> {
   return scores;
 }
 
+const MAX_ADAPTER_NAME = 128;
+const MAX_ADAPTER_REASON = 1000;
+
+function adapterReason(value: unknown): string {
+  let text: string;
+  try {
+    text = typeof value === "string" ? value : String(value);
+  } catch {
+    text = "unprintable adapter reason";
+  }
+  return text.slice(0, MAX_ADAPTER_REASON).toWellFormed();
+}
+
 function uniformScores(labels: string[]): Record<string, number> {
   const scores: Record<string, number> = {};
   const uniform = 1 / labels.length;
@@ -51,10 +64,30 @@ export async function routeDecision(
   options: RouteDecisionOptions,
 ): Promise<RouteDecisionResult> {
   const request = normalizeDecisionRequest(requestInput);
-  if (!options || typeof options.adapter !== "object" || typeof options.adapter.classifyCells !== "function") {
+  if (!options || typeof options.adapter !== "object" || options.adapter === null) {
     throw new DecisionValidationError("routeDecision requires a decision adapter");
   }
-  const adapter = options.adapter;
+  // Adapters are untrusted. Read their identity once, hand them clones of router state, and
+  // read their outcome once as plain data, so nothing they do can change cells, indexes, or
+  // the values that validation approved.
+  const rawAdapter = options.adapter;
+  const adapterName: unknown = rawAdapter.name;
+  const classify: unknown = rawAdapter.classifyCells;
+  if (typeof adapterName !== "string" || adapterName.trim() === "" || adapterName.length > MAX_ADAPTER_NAME) {
+    throw new DecisionValidationError(`decision adapter name must be a non-empty string of at most ${MAX_ADAPTER_NAME} characters`);
+  }
+  if (typeof classify !== "function") throw new DecisionValidationError("routeDecision requires a decision adapter");
+  const adapter: DecisionAdapter = {
+    name: adapterName,
+    classifyCells: async (cells, policy) => {
+      const outcome = await classify.call(rawAdapter, structuredClone(cells), structuredClone(policy));
+      try {
+        return structuredClone(outcome);
+      } catch {
+        throw new DecisionAdapterError(`${adapterName} returned a result that is not plain data`);
+      }
+    },
+  };
   const prechecks = (options.prechecks ?? []).map((entry) => normalizeDecisionPrecheck(entry, request));
   const ledger = options.ledger ?? createDecisionRequestLedger();
 
@@ -130,7 +163,11 @@ export async function routeDecision(
     let results;
     try {
       const outcome = await adapter.classifyCells(batch, request.policy);
+      if (outcome === null || typeof outcome !== "object") {
+        throw new DecisionAdapterError(`${adapter.name} returned a malformed outcome`);
+      }
       if (outcome.status === "unavailable") {
+        const reason = adapterReason(outcome.reason);
         for (const cell of batch) {
           decisions.push({
             cellId: cell.cellId,
@@ -140,7 +177,7 @@ export async function routeDecision(
             confidence: null,
             scores: uniformScores(cell.dimension.labels),
             abstained: true,
-            abstainReason: `adapter-unavailable: ${outcome.reason}`,
+            abstainReason: `adapter-unavailable: ${reason}`,
             adapter: adapter.name,
             precheckApplied: false,
           });
@@ -148,7 +185,7 @@ export async function routeDecision(
             itemIndex: cell.itemIndex,
             dimensionIndex: cell.dimensionIndex,
             cellId: cell.cellId,
-            reason: `adapter-unavailable: ${outcome.reason}`,
+            reason: `adapter-unavailable: ${reason}`,
             threshold: request.policy.unsureBelow,
             confidence: null,
             requestId: request.requestId,
@@ -158,12 +195,12 @@ export async function routeDecision(
         continue;
       }
       if (outcome.status === "failed") {
-        throw new DecisionAdapterError(`${adapter.name} failed: ${outcome.reason}`);
+        throw new DecisionAdapterError(`${adapter.name} failed: ${adapterReason(outcome.reason)}`);
       }
       results = outcome.value;
     } catch (error) {
       if (error instanceof DecisionAdapterError) throw error;
-      throw new DecisionAdapterError(`${adapter.name} threw: ${error instanceof Error ? error.message : String(error)}`);
+      throw new DecisionAdapterError(`${adapter.name} threw: ${adapterReason(error instanceof Error ? error.message : error)}`);
     }
     if (!Array.isArray(results) || results.length !== batch.length) {
       throw new DecisionAdapterError(`${adapter.name} must return one result per cell`);
