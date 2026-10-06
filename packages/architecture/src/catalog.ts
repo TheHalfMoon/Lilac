@@ -235,6 +235,14 @@ const SUBSYSTEMS = [
     dependsOn: [],
   },
   {
+    id: "intake",
+    title: "Website and app intake product layer",
+    owner: "@lilac/intake",
+    status: "implemented",
+    boundary: "Review-before-commit summaries of import proposals, web semantics derived only from markup (OBSERVED evidence), commit of reviewed imports into persisted projects through the import-stack history transaction, and network imports gated by import.fetch policy decisions. Composes import-stack, network-policy, and persistence; creates no second document authority.",
+    dependsOn: ["import-export", "network-policy", "persistence", "history"],
+  },
+  {
     id: "desktop-bridge",
     title: "Desktop bridge",
     owner: "@lilac/desktop",

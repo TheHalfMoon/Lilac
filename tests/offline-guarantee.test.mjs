@@ -93,6 +93,7 @@ test("the core workflow completes with all network access disabled and makes zer
     const { LILAC_MOBILE_METHOD_PACK, evaluateSnapshot } = await import("../packages/design-method/src/index.ts");
     const { IMPORT_SCHEMA_VERSION, defaultImportPolicy, importHtmlSnapshot } = await import("../packages/import-stack/src/index.ts");
     const { CORE_FEATURES, defaultNetworkPolicy, evaluateOfflineReadiness, evaluateUrl } = await import("../packages/network-policy/src/index.ts");
+    const { commitIntake, reviewImport } = await import("../packages/intake/src/index.ts");
     const exercised = new Set();
 
     // Policy: the default is offline and denies everything; every required feature is declared offline-capable.
@@ -167,6 +168,15 @@ test("the core workflow completes with all network access disabled and makes zer
       policy: defaultImportPolicy("offline"),
     }, "<main><h1>Offline</h1><img src=\"https://cdn.example.com/a.png\"></main>");
     assert.ok(proposal);
+    assert.equal(reviewImport(proposal).commitReady, true);
+    const importStore = openProject(root, { owner: "offline-user", at: AT });
+    const committed = commitIntake(importStore, proposal, { transactionId: "tx-import", at: AT });
+    assert.equal(committed.revision, 4);
+    importStore.close();
+    const afterImport = openProject(root, { owner: "offline-user", at: AT });
+    assert.equal(afterImport.revision, 4);
+    assert.ok(Object.values(afterImport.document.nodes).some((node) => node.props?.semantics?.role === "main"));
+    afterImport.close();
     exercised.add("import.offline-html");
 
     // Every required core feature was exercised here, and nothing touched the network.
