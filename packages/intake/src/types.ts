@@ -14,6 +14,9 @@ export const SEMANTIC_ROLES = [
   "listitem",
   "img",
   "textbox",
+  "searchbox",
+  "spinbutton",
+  "listbox",
   "checkbox",
   "radio",
   "combobox",
@@ -70,6 +73,8 @@ export interface ImportReview {
     warning: number;
     info: number;
     items: Array<{ code: string; severity: "info" | "warning" | "error"; message: string; nodeId: string | null }>;
+    /** Items beyond the review cap that were counted but not listed. */
+    truncated: number;
   };
   sourceBindings: { bound: number; elements: number };
   semantics: { byRole: Partial<Record<SemanticRole, number>>; unknownRoles: number; overrides: number };

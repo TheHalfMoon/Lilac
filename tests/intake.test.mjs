@@ -51,7 +51,7 @@ function withProject(callback) {
 test("provenance and dependencies are composition-only", () => {
   assert.match(INTAKE_PROVENANCE.posture, /creates no second document authority/i);
   const manifest = JSON.parse(readFileSync(new URL("../packages/intake/package.json", import.meta.url), "utf8"));
-  assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["@lilac/document-model", "@lilac/history", "@lilac/import-stack", "@lilac/network-policy", "@lilac/persistence"]);
+  assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["@lilac/history", "@lilac/import-stack", "@lilac/network-policy", "@lilac/persistence"]);
 });
 
 test("web semantics come only from markup and carry OBSERVED evidence", () => {
@@ -155,4 +155,75 @@ test("network imports are decided by the project network policy", () => {
   assert.equal(remote.decision.grantId, "site");
   const wrongCapability = planNetworkImport({ schemaVersion: 1, mode: "allowlist", grants: [{ ...grant, capability: "provider.inference" }] }, "https://example.com/page");
   assert.equal(wrongCapability.allowed, false);
+});
+
+test("semantics follow HTML-AAM scoping, input types, decorative images, and list membership", () => {
+  const p = proposal(`<article><header>a</header><footer>b</footer></article><header>page</header>
+<main><input type="number"><input type="search"><input type="password"><input type="text" list="opts">
+<img src="https://cdn.example.com/d.png" alt=""><ul role="presentation"><li>x</li></ul><li>orphan</li>
+<div role="banana button">t</div><h2 aria-level="4">h</h2><select multiple><option>o</option></select></main>`);
+  const report = inferSemantics(p);
+  const roleOf = (id) => report.records.find((record) => record.nodeId === id)?.role ?? null;
+  const headers = byTag(p, "header");
+  assert.deepEqual(headers.map(roleOf).sort(), [null, "banner"].sort(), "scoped header is not a landmark");
+  assert.equal(roleOf(byTag(p, "footer")[0]), null);
+  const inputRole = (type) => roleOf(byTag(p, "input", (node) => node.attributes.type === type)[0]);
+  assert.equal(inputRole("number"), "spinbutton");
+  assert.equal(inputRole("search"), "searchbox");
+  assert.equal(inputRole("password"), null);
+  assert.equal(inputRole("text"), "combobox");
+  assert.equal(Object.values(p.nodes).filter((node) => node.kind === "image").some((node) => roleOf(node.id) !== null), false, "empty alt is decorative");
+  assert.deepEqual(byTag(p, "li").map(roleOf), [null, null], "li is a listitem only inside a list role");
+  const multi = report.records.find((record) => record.nodeId === byTag(p, "div")[0]);
+  assert.deepEqual([multi.role, multi.source], ["button", "aria-role:button"]);
+  assert.ok(report.unknownRoles.some((entry) => entry.role === "banana"));
+  assert.equal(report.records.find((record) => record.nodeId === byTag(p, "h2")[0]).level, 4);
+  assert.equal(roleOf(byTag(p, "select")[0]), "listbox");
+});
+
+test("accessible names are cleaned of hidden characters and never split a code point", () => {
+  const long = "\u{1F600}".repeat(250);
+  const p = proposal(`<nav aria-label="Ma\u{202e}in\u{200b}">n</nav><button aria-label="${long}">b</button>`);
+  const report = inferSemantics(p);
+  const nav = report.records.find((record) => record.role === "navigation");
+  assert.equal(nav.name, "Main");
+  const button = report.records.find((record) => record.role === "button");
+  assert.equal(Array.from(button.name).length, 200);
+  assert.equal(button.name.isWellFormed(), true);
+});
+
+test("a commit computed against a stale revision is refused and writes nothing", () => withProject((root) => {
+  const store = openProject(root, { owner: "user-1", at: AT });
+  const journal = join(root, PROJECT_FILES.directory, PROJECT_FILES.journal);
+  const staleView = { document: store.document, revision: store.revision, commit: (transaction) => store.commit(transaction) };
+  commitIntake(store, proposal("<p>first</p>", "intake-a"), { transactionId: "tx-first", at: AT });
+  const before = readFileSync(journal);
+  assert.throws(() => commitIntake(staleView, proposal("<p>second</p>", "intake-b"), { transactionId: "tx-stale", at: AT }), /Stale transaction/);
+  assert.deepEqual(readFileSync(journal), before);
+  assert.equal(store.revision, 1);
+  store.close();
+}));
+
+test("malformed and getter-backed proposals fail closed or are read exactly once", () => withProject((root) => {
+  const store = openProject(root, { owner: "user-1", at: AT });
+  assert.throws(() => commitIntake(store, { schemaVersion: 1, nodes: "nope" }, { transactionId: "tx-bad", at: AT }));
+  const clean = proposal("<p>clean</p>", "intake-clean");
+  const other = proposal("<p>DIFFERENT</p>", "intake-other");
+  let reads = 0;
+  const shifty = { ...clean };
+  Object.defineProperty(shifty, "nodes", { enumerable: true, get: () => (reads++ === 0 ? clean.nodes : other.nodes) });
+  const result = commitIntake(store, shifty, { transactionId: "tx-shifty", at: AT });
+  assert.equal(reads, 1, "the proposal is read once into an inert copy");
+  assert.equal(result.review.counts.nodes, Object.keys(clean.nodes).length);
+  assert.equal(Object.values(store.document.nodes).some((node) => node.props?.text === "DIFFERENT"), false);
+  store.close();
+}));
+
+test("review lists errors first and reports truncation", () => {
+  const p = structuredClone(proposal());
+  for (let index = 0; index < 205; index += 1) p.diagnostics.push({ code: `zz-info-${String(index).padStart(3, "0")}`, severity: "info", message: "i" });
+  p.diagnostics.push({ code: "aa-error", severity: "error", message: "e" });
+  const review = reviewImport(p);
+  assert.equal(review.diagnostics.items[0].severity, "error");
+  assert.equal(review.diagnostics.truncated, p.diagnostics.length - 200);
 });
