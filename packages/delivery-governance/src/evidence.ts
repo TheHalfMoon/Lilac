@@ -75,12 +75,16 @@ export async function createEvidenceStore(options: EvidenceStoreOptions): Promis
     throw new DeliveryValidationError(`evidence root cannot be resolved: ${error instanceof Error ? error.message : String(error)}`);
   }
   for (const disposable of options.disposableRoots ?? []) {
-    let canonicalDisposable: string | null;
+    let canonicalDisposable: string;
     try {
       canonicalDisposable = await realpath(disposable);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      continue;
+      const link = await lstat(disposable).catch(() => null);
+      if (link !== null) {
+        throw new DeliveryValidationError(`disposable worktree ${disposable} cannot be resolved`);
+      }
+      canonicalDisposable = resolve(disposable);
     }
     if (insideDirectory(root, canonicalDisposable)) {
       throw new DeliveryValidationError(`evidence root must persist outside disposable worktree ${disposable}`);
