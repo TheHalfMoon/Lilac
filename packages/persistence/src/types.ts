@@ -49,6 +49,8 @@ export interface LockRecord {
   owner: string;
   pid: number;
   at: string;
+  /** Random per acquisition, so two acquisitions with the same owner, pid, and time differ. */
+  nonce: string;
   /** Present when this lock replaced a stale one; persisted so the override survives restarts. */
   override?: LockOverride;
 }

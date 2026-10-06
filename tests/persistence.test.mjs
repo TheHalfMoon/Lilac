@@ -399,15 +399,20 @@ test("a hard-linked journal is refused before any write leaves the project", () 
   }
 }));
 
-test("an acknowledged entry that lost only its terminator fails closed instead of being dropped", () => withProject((root) => {
+test("an unterminated final line is an unacknowledged write and is recovered even if it is a complete entry", () => withProject((root) => {
   const store = open(root);
   store.commit(setTitle("tx-1", 0, "One"));
   store.commit(setTitle("tx-2", 1, "Two"));
   store.close();
   const journal = file(root, PROJECT_FILES.journal);
   const bytes = readFileSync(journal);
+  const firstLineEnd = bytes.indexOf(0x0a) + 1;
   writeFileSync(journal, bytes.subarray(0, bytes.length - 1));
-  assert.throws(() => open(root), /complete entry missing its line terminator/);
+  const recovered = open(root);
+  assert.equal(recovered.revision, 1);
+  assert.equal(recovered.recovery.tornTailBytes, bytes.length - 1 - firstLineEnd);
+  assert.deepEqual(readFileSync(journal), bytes.subarray(0, firstLineEnd));
+  recovered.close();
 }));
 
 test("values JSON cannot represent are refused, and memory always equals replay", () => withProject((root) => {
@@ -451,4 +456,42 @@ test("a closed store refuses every read and write", () => withProject((root) => 
   assert.throws(() => store.journalSeq, /closed/);
   assert.throws(() => store.document, /closed/);
   assert.throws(() => store.checkpoint(), /closed/);
+}));
+
+test("lock identity includes a per-acquisition nonce, so a same-owner stale store cannot write or release", () => withProject((root) => {
+  const stale = open(root);
+  const fresh = open(root, { breakStaleLock: { reason: "same owner reopened" } });
+  assert.throws(() => stale.commit(setTitle("tx-stale", 0, "Stale")), PersistenceLockError);
+  assert.throws(() => stale.checkpoint(), PersistenceLockError);
+  assert.throws(() => stale.putObject(Buffer.from("x")), PersistenceLockError);
+  stale.close();
+  assert.equal(existsSync(file(root, PROJECT_FILES.lock)), true);
+  fresh.commit(setTitle("tx-1", 0, "Fresh"));
+  fresh.close();
+}));
+
+test("a journal replaced while open is detected even when sizes match", () => withProject((root) => {
+  const store = open(root);
+  store.commit(setTitle("tx-1", 0, "One"));
+  const journal = file(root, PROJECT_FILES.journal);
+  const size = readFileSync(journal).length;
+  const impostor = join(root, PROJECT_FILES.directory, "impostor.log");
+  writeFileSync(impostor, `${"x".repeat(size - 1)}${String.fromCharCode(10)}`);
+  rmSync(journal);
+  writeFileSync(journal, readFileSync(impostor));
+  rmSync(impostor);
+  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /replaced outside this writer/);
+  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /reopened/);
+  store.close();
+}));
+
+test("a deleted journal and a non-file lock path fail with typed errors", () => withProject((root) => {
+  const store = open(root);
+  rmSync(file(root, PROJECT_FILES.journal));
+  assert.throws(() => store.commit(setTitle("tx-1", 0, "One")), (error) => error instanceof PersistenceCorruptionError && /journal is missing/.test(error.message));
+  store.close();
+  writeFileSync(file(root, PROJECT_FILES.journal), "");
+  mkdirSync(file(root, PROJECT_FILES.lock));
+  assert.throws(() => open(root, { breakStaleLock: { reason: "lock is a directory" } }), /not a regular file/);
+  assert.equal(readdirSync(join(root, PROJECT_FILES.directory)).some((name) => name.startsWith("lock.broken-")), false);
 }));

@@ -66,10 +66,10 @@ function verifyLine(line: string, expectedSeq: number, previous: string, label: 
 }
 
 /**
- * Parse and verify the whole journal. Only an unterminated final line is treated as a torn
- * write (each append writes line and newline in one call), and only when it is not a
- * complete, chain-valid entry: an acknowledged entry that merely lost its terminator is
- * corruption, never silently dropped. Every other defect is corruption.
+ * Parse and verify the whole journal. Every append writes line and newline in one call and
+ * is acknowledged only after fsync covers both, so an unterminated final line can only be
+ * an unacknowledged write interrupted by a crash: it is a torn tail, reported and removed,
+ * even when its bytes happen to form a complete entry. Every other defect is corruption.
  */
 export function parseJournal(bytes: Buffer, genesis: string): ParsedJournal {
   // Split on the last newline byte before decoding, so a tail torn inside a multi-byte
@@ -92,24 +92,6 @@ export function parseJournal(bytes: Buffer, genesis: string): ParsedJournal {
     const verified = verifyLine(line, index + 1, previous, `journal line ${index + 1}`);
     entries.push(verified);
     previous = verified.digest;
-  }
-  if (tornTailBytes > 0) {
-    let tail: string | null = null;
-    try {
-      tail = UTF8.decode(bytes.subarray(validBytes));
-    } catch {
-      tail = null;
-    }
-    let completeEntry = false;
-    if (tail !== null) {
-      try {
-        verifyLine(tail, entries.length + 1, previous, "journal tail");
-        completeEntry = true;
-      } catch {
-        completeEntry = false;
-      }
-    }
-    if (completeEntry) throw new PersistenceCorruptionError("journal tail is a complete entry missing its line terminator");
   }
   return { entries, tornTailBytes, validBytes };
 }

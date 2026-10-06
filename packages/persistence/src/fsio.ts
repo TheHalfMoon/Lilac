@@ -150,15 +150,36 @@ export function createExclusive(path: string, data: string): void {
  * exactly `expectedSize` bytes, so a foreign writer, a stale writer, or a hard link out of
  * the project is detected before anything is written.
  */
-export function appendDurable(path: string, data: string, label: string, expectedSize: number): void {
+export interface FileIdentity {
+  dev: bigint;
+  ino: bigint;
+}
+
+/** Device and inode (64-bit) of a non-link file, used to pin the journal a store writes to. */
+export function fileIdentity(path: string, label: string): FileIdentity {
   assertNotSymlink(path, label);
-  const fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | NOFOLLOW);
+  const stat = lstatSync(path, { bigint: true });
+  return { dev: stat.dev, ino: stat.ino };
+}
+
+export function appendDurable(path: string, data: string, label: string, expected: { size: number; identity: FileIdentity }): void {
+  assertNotSymlink(path, label);
+  let fd: number;
   try {
-    const stat = fstatSync(fd);
+    fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | NOFOLLOW);
+  } catch (error) {
+    if (isMissing(error)) throw new PersistenceCorruptionError(`${label} is missing`);
+    throw error;
+  }
+  try {
+    const stat = fstatSync(fd, { bigint: true });
     if (!stat.isFile()) throw new PersistenceValidationError(`${label} must be a regular file`);
-    if (stat.nlink > 1) throw new PersistenceValidationError(`${label} must not be hard-linked`);
-    if (stat.size !== expectedSize) {
-      throw new PersistenceCorruptionError(`${label} changed outside this writer (expected ${expectedSize} bytes, found ${stat.size})`);
+    if (stat.nlink > 1n) throw new PersistenceValidationError(`${label} must not be hard-linked`);
+    if (stat.dev !== expected.identity.dev || stat.ino !== expected.identity.ino) {
+      throw new PersistenceCorruptionError(`${label} was replaced outside this writer`);
+    }
+    if (stat.size !== BigInt(expected.size)) {
+      throw new PersistenceCorruptionError(`${label} changed outside this writer (expected ${expected.size} bytes, found ${stat.size})`);
     }
     writeAll(fd, Buffer.from(data, "utf8"));
     fsyncSync(fd);

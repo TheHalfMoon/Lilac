@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, renameSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { cloneDocument, normalizeDocument, validateDocument } from "@lilac/document-model";
 import { applyTransaction } from "@lilac/history";
@@ -10,7 +10,9 @@ import {
   assertNotSymlink,
   atomicWrite,
   createExclusive,
+  fileIdentity,
   fsyncDirectory,
+  type FileIdentity,
   projectDirectory,
   readBounded,
   removeFile,
@@ -187,15 +189,15 @@ export interface OpenProjectOptions {
 function readLock(path: string): LockRecord | null {
   try {
     const record = readJsonFile(path, "lock", MAX_LOCK_BYTES);
-    if (typeof record.owner !== "string" || typeof record.pid !== "number" || typeof record.at !== "string") return null;
-    return { owner: record.owner.slice(0, 128), pid: record.pid, at: record.at.slice(0, 64) };
+    if (typeof record.owner !== "string" || typeof record.pid !== "number" || typeof record.at !== "string" || typeof record.nonce !== "string") return null;
+    return { owner: record.owner.slice(0, 128), pid: record.pid, at: record.at.slice(0, 64), nonce: record.nonce.slice(0, 64) };
   } catch {
     return null;
   }
 }
 
 function sameHolder(left: LockRecord | null, right: LockRecord): boolean {
-  return left !== null && left.owner === right.owner && left.pid === right.pid && left.at === right.at;
+  return left !== null && left.owner === right.owner && left.pid === right.pid && left.at === right.at && left.nonce === right.nonce;
 }
 
 /**
@@ -214,6 +216,14 @@ function acquireLock(lockPath: string, record: LockRecord, override: OpenProject
   if (typeof override.reason !== "string" || override.reason.trim() === "" || override.reason.length > 500) {
     throw new PersistenceValidationError("breakStaleLock.reason must be a non-empty string of at most 500 characters");
   }
+  let lockStat;
+  try {
+    lockStat = lstatSync(lockPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") throw new PersistenceLockError("project lock changed hands during override");
+    throw error;
+  }
+  if (!lockStat.isFile()) throw new PersistenceLockError("project lock path is not a regular file; resolve it manually");
   const broken = `${lockPath}.broken-${randomUUID()}`;
   try {
     renameSync(lockPath, broken);
@@ -222,7 +232,11 @@ function acquireLock(lockPath: string, record: LockRecord, override: OpenProject
     throw error;
   }
   const previous = readLock(broken);
-  removeFile(broken);
+  try {
+    removeFile(broken);
+  } catch {
+    // A leftover renamed lock is inert; the new lock below is what counts.
+  }
   const lockOverride: LockOverride = { previous, reason: override.reason };
   try {
     createExclusive(lockPath, canonicalJson({ ...record, override: lockOverride }));
@@ -244,7 +258,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   assertTimestamp(options.at, "at");
   if (!assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("no Lilac project exists at this root");
   const files = paths(projectDir);
-  const lockRecord: LockRecord = { owner: options.owner, pid: process.pid, at: options.at };
+  const lockRecord: LockRecord = { owner: options.owner, pid: process.pid, at: options.at, nonce: randomUUID() };
   const lockOverride = acquireLock(files.lock, lockRecord, options.breakStaleLock);
   try {
     const rawManifest = readJsonFile(files.manifest, "manifest");
@@ -286,6 +300,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       seq: last?.entry.seq ?? 0,
       digest: last?.digest ?? genesis,
       journalBytes: parsed.validBytes,
+      journalIdentity: fileIdentity(files.journal, "journal"),
       lock: lockRecord,
       recovery: { tornTailBytes: parsed.tornTailBytes, replayedEntries: replayed, migratedFrom, lockOverride },
     });
@@ -299,6 +314,7 @@ interface StoreState {
   seq: number;
   digest: string;
   journalBytes: number;
+  journalIdentity: FileIdentity;
   lock: LockRecord;
   recovery: RecoveryReport;
 }
@@ -312,6 +328,7 @@ export class ProjectStore {
   #seq: number;
   #digest: string;
   #journalBytes: number;
+  #journalIdentity: FileIdentity;
   #lock: LockRecord;
   #closed = false;
   #poisoned = false;
@@ -325,6 +342,7 @@ export class ProjectStore {
     this.#seq = state.seq;
     this.#digest = state.digest;
     this.#journalBytes = state.journalBytes;
+    this.#journalIdentity = state.journalIdentity;
     this.#lock = state.lock;
   }
 
@@ -366,7 +384,13 @@ export class ProjectStore {
    */
   commit(transaction: unknown): { revision: number; seq: number; transactionId: string } {
     this.#assertWritable();
-    const validated = applyTransaction(this.#document, transaction);
+    let validated;
+    try {
+      validated = applyTransaction(this.#document, transaction);
+    } catch (error) {
+      if ((error as Error)?.name === "DataCloneError") throw new PersistenceValidationError("transaction contains values that cannot be cloned");
+      throw error;
+    }
     const stored = persisted(validated.transaction) as Record<string, unknown>;
     const next = applyTransaction(this.#document, stored).document as LilacDocument;
     const entry = { seq: this.#seq + 1, revision: next.revision, transaction: stored };
@@ -376,7 +400,7 @@ export class ProjectStore {
       throw new PersistenceValidationError(`journal reached its ${PERSISTENCE_LIMITS.maxJournalBytes}-byte limit; journal rotation is not available in this release`);
     }
     try {
-      appendDurable(join(this.projectDir, PROJECT_FILES.journal), line, "journal", this.#journalBytes);
+      appendDurable(join(this.projectDir, PROJECT_FILES.journal), line, "journal", { size: this.#journalBytes, identity: this.#journalIdentity });
     } catch (error) {
       // The file may now hold a partial line; only a reopen can reconcile it safely.
       this.#poisoned = true;
