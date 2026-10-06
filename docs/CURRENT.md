@@ -10,11 +10,11 @@ Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 
 
 ## Canonical main
 
-`a4bb361b90c7a100205c913b924c565153f2afea`
+`0815425435baca4424262be0893bc1e49b7713e0`
 
-This is the normal merge commit for PR #62 (P05 D4 Visual Git).
+This is the normal merge commit for PR #67 (P03 architecture catalog sync, Issue #63).
 
-Post-merge CI run `37493917822` completed `SUCCESS` on that exact SHA (299/299 tests, 0 vulnerabilities).
+Post-merge CI run `37495649057` completed `SUCCESS` on that exact SHA (310/310 tests).
 
 ## Post-grain program state
 
@@ -24,7 +24,9 @@ Post-merge CI run `37493917822` completed `SUCCESS` on that exact SHA (299/299 t
 - P05 D2 native design components: complete via PR #55, Issue #54 closed. `packages/design-components` provides contracts with typed props/slots/states/variants, strict binding to D1 symbols, verified-patch variants with drift refusal, source-linked previews, drift detection, and system membership with only the `@lilac/code-ir` workspace dependency.
 - P05 D3 multi-agent workspace: complete via PR #58, Issue #57 closed. `packages/agent-workspace` provides the program role registry with capability scopes, role assignment, out-of-scope rejection, an append-only action ledger with full attribution, cancellation, and reversal marking with zero new runtime dependencies.
 - P05 D4 Visual Git: complete via PR #62, Issue #60 closed. `packages/visual-git` provides design snapshots bound to branch and source commit, stable identity and tree validation, structural diffs, anchored review comments and design/code links, three-way conflict reports (node-level plus structural cycle, nesting, depth, and size conflicts; never a merged snapshot), exact-head acceptance gates, and provenance records with zero runtime dependencies. Qualification drove four forward repairs (merge-structure conflicts, getter/proxy and array-species input forgery, merge limits, hidden-text characters). Parked panel follow-ups: #64.
-- Open before P05 D5: #61 (canonical serializers in seven packages emit malformed JSON) and #63 (P03 architecture catalog drift after D1-D4).
+- Canonical serializer defect: fixed via PR #66 (merge `569dca2`), Issue #61 closed. All package canonical serializers emit parseable key-sorted JSON, guarded by a shared parse-back test. Derived identity digests changed; none were persisted, so no migration was needed.
+- P03 catalog drift: fixed via PR #67 (merge `0815425`), Issue #63 closed. The catalog reflects D1-D4 (`code-ir`, `round-trip-sync`, `components` as stub slices; `agent-workspace`, `visual-git`, `architecture-ownership` implemented), and CI now fails if any workspace package lacks a delivered owner or the known-package list drifts.
+- Open, non-blocking: #64 (review-panel hardening follow-ups, including a shared hidden-text policy across packages).
 
 ## Canonical implementation chain
 
@@ -139,7 +141,7 @@ The remaining product program, in working order:
 3. P05 D1 - Bidirectional code/design engine (round-trip React/JSX/TSX, CSS, Tailwind with AST-aware patches);
 4. P05 D2 - Code components as native design primitives;
 5. P05 D3 - Multi-agent workspace product surface;
-6. P05 D4 - Visual Git (complete; #61 and #63 follow before D5);
+6. P05 D4 - Visual Git (complete; #61 and #63 also closed);
 7. P05 D5 - Decision assurance product surface;
 8. P05 D6 - Local/private mode product guarantees;
 9. P05 D7 - Website/app intake product experience;
