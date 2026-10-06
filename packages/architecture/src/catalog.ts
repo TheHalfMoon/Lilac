@@ -179,6 +179,14 @@ const SUBSYSTEMS = [
     dependsOn: ["design-assurance"],
   },
   {
+    id: "decision-assurance",
+    title: "Decision assurance",
+    owner: "@lilac/decision-assurance",
+    status: "stub",
+    boundary: "Assures sets of agent-generated alternatives: deterministic rule-pack, accessibility, layout, and design-system (type scale, spacing grid) checks decide eligibility first; optional decision-router ranking orders eligible candidates; explicit abstention with preserved rationale and evidence. Color-contrast and token-conformance checks are planned until snapshots carry color and token data. Records and recommends only; never mutates documents or applies candidates.",
+    dependsOn: ["decision-router", "design-method"],
+  },
+  {
     id: "delivery-governance",
     title: "Delivery governance",
     owner: "@lilac/delivery-governance",
