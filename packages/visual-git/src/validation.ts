@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { types } from "node:util";
 import { VisualGitValidationError } from "./errors.ts";
 import {
   NODE_KINDS,
@@ -43,6 +44,19 @@ export function assertPlainObject(value: unknown, label: string): asserts value 
   if (prototype !== Object.prototype && prototype !== null) {
     throw new VisualGitValidationError(`${label} must not be a class instance`);
   }
+  assertDataOnly(value, label);
+}
+
+// Fields are read more than once (validate, then copy). Proxies and accessors could
+// answer differently per read, so only inert own data properties are accepted.
+function assertDataOnly(value: object, label: string): void {
+  if (types.isProxy(value)) throw new VisualGitValidationError(`${label} must not be a proxy`);
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    throw new VisualGitValidationError(`${label} must not have symbol keys`);
+  }
+  for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+    if (!("value" in descriptor)) throw new VisualGitValidationError(`${label} must not have accessor properties`);
+  }
 }
 
 export function assertAllowedKeys(value: Record<string, unknown>, allowed: readonly string[], label: string): void {
@@ -57,7 +71,7 @@ export function assertBoundedString(value: unknown, label: string, max = 4096): 
     throw new VisualGitValidationError(`${label} must be a non-empty string`);
   }
   if (value.length > max) throw new VisualGitValidationError(`${label} exceeds ${max} characters`);
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)) {
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]/u.test(value)) {
     throw new VisualGitValidationError(`${label} must not contain control characters`);
   }
 }
@@ -101,6 +115,7 @@ export function assertBranch(value: unknown, label: string): asserts value is st
 export function assertBoundedArray(value: unknown, label: string, max: number): asserts value is unknown[] {
   if (!Array.isArray(value)) throw new VisualGitValidationError(`${label} must be an array`);
   if (value.length > max) throw new VisualGitValidationError(`${label} exceeds its bounded budget of ${max}`);
+  assertDataOnly(value, label);
 }
 
 export function normalizeNode(value: unknown): DesignNode {
@@ -182,7 +197,8 @@ export function normalizeSnapshot(value: unknown): DesignSnapshot {
     byId.set(node.id, node);
   }
   assertTree(byId);
-  const nodes = [...byId.values()].sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+  // Ids are distinct here, so a two-way comparison is a total order.
+  const nodes = [...byId.values()].sort((left, right) => (left.id < right.id ? -1 : 1));
   return {
     schemaVersion: VISUAL_GIT_SCHEMA_VERSION,
     snapshotId: value.snapshotId as string,

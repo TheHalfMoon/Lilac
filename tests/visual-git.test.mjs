@@ -328,3 +328,55 @@ test("serialization is deterministic across repeated runs", () => {
   }
   assert.doesNotThrow(() => JSON.parse(first));
 });
+
+test("accessor and proxy inputs are rejected so validated values cannot be swapped", () => {
+  let reads = 0;
+  const swapping = snapshot();
+  Object.defineProperty(swapping, "branch", { enumerable: true, get: () => (reads++ === 0 ? "main" : "--upload-pack=evil") });
+  assert.throws(() => normalizeSnapshot(swapping), /accessor/);
+  const gate = gateInput();
+  Object.defineProperty(gate, "headCommit", { enumerable: true, get: () => HEAD_COMMIT });
+  assert.throws(() => evaluateAcceptance(gate), /accessor/);
+  const check = { name: "design-assurance", detail: "ok" };
+  Object.defineProperty(check, "verdict", { enumerable: true, get: () => "pass" });
+  assert.throws(() => evaluateAcceptance(gateInput({ checks: [check] })), /accessor/);
+  assert.throws(() => normalizeSnapshot(new Proxy(snapshot(), {})), /proxy/);
+  assert.throws(() => normalizeSnapshot(snapshot({ nodes: new Proxy(baseNodes(), {}) })), /proxy/);
+  assert.throws(() => normalizeSnapshot({ ...snapshot(), [Symbol("x")]: 1 }), /symbol/);
+});
+
+test("merges that exceed depth or node limits are not mergeable", () => {
+  const chain = (prefix, root) => Array.from({ length: 100 }, (_, index) => node(`${prefix}-${index}`, "frame", index === 0 ? root : `${prefix}-${index - 1}`));
+  const deepBase = [node("page-1", "page", null), ...chain("a", "page-1"), ...chain("b", "page-1"), ...chain("c", "page-1")];
+  const base = snapshot({ nodes: deepBase });
+  const ours = snapshot({ snapshotId: "snap-o6", sourceCommit: HEAD_COMMIT, nodes: replaceNode(deepBase, "b-0", { parentId: "a-99" }) });
+  const theirs = snapshot({ snapshotId: "snap-t6", sourceCommit: "c".repeat(40), nodes: replaceNode(deepBase, "c-0", { parentId: "b-99" }) });
+  const deep = detectConflicts(base, ours, theirs);
+  assert.equal(deep.mergeable, false);
+  assert.equal(deep.conflicts.length, 300 - VISUAL_GIT_HARD_LIMITS.maxDepth);
+  assert.ok(deep.conflicts.every((entry) => entry.kinds.length === 1 && entry.kinds[0] === "depth-limit"));
+
+  const half = VISUAL_GIT_HARD_LIMITS.maxNodes / 2;
+  const grow = (prefix) => [node("page-1", "page", null), ...Array.from({ length: half }, (_, index) => node(`${prefix}-${index}`, "frame", "page-1"))];
+  const wide = detectConflicts(
+    snapshot({ nodes: [node("page-1", "page", null)] }),
+    snapshot({ snapshotId: "snap-o7", sourceCommit: HEAD_COMMIT, nodes: grow("o") }),
+    snapshot({ snapshotId: "snap-t7", sourceCommit: "c".repeat(40), nodes: grow("t") }),
+  );
+  assert.deepEqual(wide.conflicts, []);
+  assert.equal(wide.exceedsNodeLimit, true);
+  assert.equal(wide.mergeable, false);
+});
+
+test("boundary hardening: empty ranges, bidi text, git-hostile paths, malformed provenance records", () => {
+  assert.deepEqual(evaluateAcceptance(gateInput({ baseCommit: HEAD_COMMIT })).blocks, [{ reason: "empty-range", check: null }]);
+  assert.throws(() => normalizeSnapshot(snapshot({ nodes: replaceNode(baseNodes(), "frame-1", { name: "safe‮txt.exe" }) })), /control characters/);
+  assert.throws(() => normalizeSnapshot(snapshot({ nodes: replaceNode(baseNodes(), "frame-1", { name: "c1\u0085" }) })), /control characters/);
+  const link = { linkId: "link-x", snapshotId: "snap-base", nodeId: "button-1", file: "src/Button.tsx", symbol: "Button", sourceCommit: BASE_COMMIT, range: null };
+  assert.equal(linkDesignToCode(snapshot(), link).file, "src/Button.tsx");
+  for (const file of ["-rf/x.ts", "src/.git/config", ".GIT/HEAD"]) {
+    assert.throws(() => linkDesignToCode(snapshot(), { ...link, file }), /normalized repository-relative path/);
+  }
+  assert.throws(() => verifyProvenance(null, snapshot()), VisualGitValidationError);
+  assert.throws(() => verifyProvenance({ recordId: "../x" }, snapshot()), VisualGitValidationError);
+});

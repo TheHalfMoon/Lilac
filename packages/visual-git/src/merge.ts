@@ -6,6 +6,7 @@ import {
   type ConflictReport,
   type DesignNode,
   type MergeConflict,
+  VISUAL_GIT_HARD_LIMITS,
 } from "./types.ts";
 import { nodeIndex, normalizeSnapshot } from "./validation.ts";
 
@@ -80,26 +81,41 @@ function projectStructure(
 }
 
 // Structural invariants of the projected merge. Walks stop at conflicted nodes, whose
-// merged shape is undecided, so these kinds only flag otherwise-clean nodes.
+// merged shape is undecided, so these kinds only flag otherwise-clean nodes. Depth is
+// memoized per node; null means unknown (cycle or conflicted ancestor).
 function structuralConflicts(
   projected: Map<string, ProjectedNode>,
   add: (id: string, kind: ConflictKind) => void,
 ): void {
-  const settled = new Set<string>();
+  const depth = new Map<string, number | null>();
   for (const start of projected.keys()) {
     const path: string[] = [];
     const onPath = new Set<string>();
     let cursor: string | null = start;
-    while (cursor !== null && !settled.has(cursor) && projected.has(cursor)) {
+    let known: number | null = -1;
+    while (cursor !== null) {
+      if (depth.has(cursor)) {
+        known = depth.get(cursor) as number | null;
+        break;
+      }
+      if (!projected.has(cursor)) {
+        known = null;
+        break;
+      }
       if (onPath.has(cursor)) {
         for (const id of path.slice(path.indexOf(cursor))) add(id, "cycle");
+        known = null;
         break;
       }
       onPath.add(cursor);
       path.push(cursor);
       cursor = (projected.get(cursor) as ProjectedNode).parentId;
     }
-    for (const id of path) settled.add(id);
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      known = known === null ? null : known + 1;
+      depth.set(path[index], known);
+      if (known !== null && known > VISUAL_GIT_HARD_LIMITS.maxDepth) add(path[index], "depth-limit");
+    }
   }
   for (const [id, node] of projected) {
     if ((node.kind === "page") !== (node.parentId === null)) {
@@ -133,7 +149,9 @@ export function detectConflicts(baseInput: unknown, oursInput: unknown, theirsIn
   }
   for (const id of orphanedChildren(baseNodes, ourNodes, theirNodes)) add(id, "orphaned-child");
   for (const id of orphanedChildren(baseNodes, theirNodes, ourNodes)) add(id, "orphaned-child");
-  structuralConflicts(projectStructure(ids, baseNodes, ourNodes, theirNodes, new Set(kindsById.keys())), add);
+  const projected = projectStructure(ids, baseNodes, ourNodes, theirNodes, new Set(kindsById.keys()));
+  structuralConflicts(projected, add);
+  const exceedsNodeLimit = projected.size > VISUAL_GIT_HARD_LIMITS.maxNodes;
   const conflicts: MergeConflict[] = [...kindsById.keys()].sort().map((id) => ({
     nodeId: id,
     kinds: CONFLICT_KINDS.filter((kind) => kindsById.get(id)?.has(kind)),
@@ -146,6 +164,7 @@ export function detectConflicts(baseInput: unknown, oursInput: unknown, theirsIn
     oursSnapshotId: ours.snapshotId,
     theirsSnapshotId: theirs.snapshotId,
     conflicts,
-    mergeable: conflicts.length === 0,
+    exceedsNodeLimit,
+    mergeable: conflicts.length === 0 && !exceedsNodeLimit,
   };
 }

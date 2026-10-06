@@ -31,7 +31,10 @@ export function assertRepoRelativePath(value: unknown, label: string): asserts v
   assertBoundedString(value, label, VISUAL_GIT_HARD_LIMITS.maxPathLength);
   const segments = value.split("/");
   for (const segment of segments) {
-    if (segment === "" || segment === "." || segment === ".." || !PATH_SEGMENT.test(segment)) {
+    if (
+      segment === "" || segment === "." || segment === ".." || segment.startsWith("-") ||
+      segment.toLowerCase() === ".git" || !PATH_SEGMENT.test(segment)
+    ) {
       throw new VisualGitValidationError(`${label} must be a normalized repository-relative path`);
     }
   }

@@ -29,6 +29,9 @@ export function recordProvenance(snapshotInput: unknown, input: unknown): Design
 }
 
 export function verifyProvenance(record: DesignProvenanceRecord, snapshotInput: unknown): true {
+  assertPlainObject(record, "provenance record");
+  assertAllowedKeys(record, ["recordId", "snapshotId", "snapshotDigest", "branch", "sourceCommit", "recordedBy", "recordedAt"], "provenance record");
+  assertStableId(record.recordId, "provenance record.recordId");
   const snapshot = normalizeSnapshot(snapshotInput);
   if (
     record.snapshotId !== snapshot.snapshotId ||

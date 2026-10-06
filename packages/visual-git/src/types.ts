@@ -93,6 +93,7 @@ export const CONFLICT_KINDS = [
   "orphaned-child",
   "cycle",
   "invalid-nesting",
+  "depth-limit",
 ] as const;
 export type ConflictKind = (typeof CONFLICT_KINDS)[number];
 
@@ -109,6 +110,7 @@ export interface ConflictReport {
   oursSnapshotId: string;
   theirsSnapshotId: string;
   conflicts: MergeConflict[];
+  exceedsNodeLimit: boolean;
   mergeable: boolean;
 }
 
@@ -128,6 +130,7 @@ export const GATE_BLOCK_REASONS = [
   "missing-required-check",
   "skipped-required-check",
   "stale-snapshot",
+  "empty-range",
 ] as const;
 export type GateBlockReason = (typeof GATE_BLOCK_REASONS)[number];
 

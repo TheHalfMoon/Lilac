@@ -50,6 +50,7 @@ export function evaluateAcceptance(input: unknown): AcceptanceResult {
   }
   const blocks: GateBlock[] = [];
   if (snapshot.sourceCommit !== input.headCommit) blocks.push({ reason: "stale-snapshot", check: null });
+  if (input.baseCommit === input.headCommit) blocks.push({ reason: "empty-range", check: null });
   if (checks.size === 0) blocks.push({ reason: "no-checks", check: null });
   for (const name of [...required].sort()) {
     const check = checks.get(name);
