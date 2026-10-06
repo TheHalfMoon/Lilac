@@ -6,15 +6,20 @@ Last updated: 2026-10-06
 
 **LILAC-P00 — Foundation, authorized-source intake, and staged product implementation**
 
-Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–9 are `CLOSED_CANONICAL`; repository-side Graft context policy is canonical; the program continues with the broader Master Plan work (P03–P07).
+Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–9 are `CLOSED_CANONICAL`; P03 architecture ownership and P04 parity disposition are complete; repository-side Graft context policy is canonical; the program continues with the P05 product differentiators.
 
 ## Canonical main
 
-`6c5031509b798a20cd57e7b693dc586eaccbbaeb`
+`3dfa66bfb02f02ec8c0367b3f21619fb2cc1983e`
 
-This is the normal merge commit for PR #44 (Grain 9 Design Method and Resources).
+This is the normal merge commit for PR #49 (P04 parity disposition).
 
-Post-merge CI run `37411386981` completed `SUCCESS` on that exact SHA (241/241 tests, 0 vulnerabilities).
+Post-merge CI run `37412970724` completed `SUCCESS` on that exact SHA (241/241 tests, 0 vulnerabilities).
+
+## Post-grain program state
+
+- P03 architecture ownership: complete via PR #47, Issue #46 closed. `packages/architecture` maps every required subsystem to exactly one owner with machine-checked validation; missing subsystems are declared as planned, not implemented.
+- P04 parity disposition: complete via PR #49, Issue #48 closed. Every `docs/PARITY_MATRIX.md` row carries a terminal disposition with evidence or a deferral pointer; nothing is intentionally dropped.
 
 ## Canonical implementation chain
 
@@ -124,9 +129,15 @@ The remaining product program, in working order:
 
 1. P03 — Architecture completion (explicit typed subsystem ownership);
 2. P04 — Paper capability parity disposition;
-3. P05 D1-D7 - product differentiators (bidirectional code/design engine, native code components, multi-agent workspace, Visual Git, decision assurance, local/private mode, website/app intake);
-4. P06 - Product hardening;
-5. P07 - Release program with signed evidence and clean-machine verification.
+3. P05 D1 - Bidirectional code/design engine (round-trip React/JSX/TSX, CSS, Tailwind with AST-aware patches);
+4. P05 D2 - Code components as native design primitives;
+5. P05 D3 - Multi-agent workspace product surface;
+6. P05 D4 - Visual Git;
+7. P05 D5 - Decision assurance product surface;
+8. P05 D6 - Local/private mode product guarantees;
+9. P05 D7 - Website/app intake product experience;
+10. P06 - Product hardening;
+11. P07 - Release program with signed evidence and clean-machine verification.
 
 ## Integrity rule
 
