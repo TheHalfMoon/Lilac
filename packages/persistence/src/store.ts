@@ -196,6 +196,18 @@ function readLock(path: string): LockRecord | null {
   }
 }
 
+/** Lenient read for the override audit trail: older lock records may lack a nonce. */
+function readPreviousHolder(path: string): LockRecord | null {
+  try {
+    const record = readJsonFile(path, "lock", MAX_LOCK_BYTES);
+    if (typeof record.owner !== "string" || typeof record.pid !== "number" || typeof record.at !== "string") return null;
+    const nonce = typeof record.nonce === "string" ? record.nonce.slice(0, 64) : "";
+    return { owner: record.owner.slice(0, 128), pid: record.pid, at: record.at.slice(0, 64), nonce };
+  } catch {
+    return null;
+  }
+}
+
 function sameHolder(left: LockRecord | null, right: LockRecord): boolean {
   return left !== null && left.owner === right.owner && left.pid === right.pid && left.at === right.at && left.nonce === right.nonce;
 }
@@ -231,7 +243,7 @@ function acquireLock(lockPath: string, record: LockRecord, override: OpenProject
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") throw new PersistenceLockError("project lock changed hands during override");
     throw error;
   }
-  const previous = readLock(broken);
+  const previous = readPreviousHolder(broken);
   try {
     removeFile(broken);
   } catch {
@@ -400,7 +412,7 @@ export class ProjectStore {
       throw new PersistenceValidationError(`journal reached its ${PERSISTENCE_LIMITS.maxJournalBytes}-byte limit; journal rotation is not available in this release`);
     }
     try {
-      appendDurable(join(this.projectDir, PROJECT_FILES.journal), line, "journal", { size: this.#journalBytes, identity: this.#journalIdentity });
+      this.#journalIdentity = appendDurable(join(this.projectDir, PROJECT_FILES.journal), line, "journal", { size: this.#journalBytes, identity: this.#journalIdentity });
     } catch (error) {
       // The file may now hold a partial line; only a reopen can reconcile it safely.
       this.#poisoned = true;

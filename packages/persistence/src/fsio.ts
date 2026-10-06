@@ -146,23 +146,31 @@ export function createExclusive(path: string, data: string): void {
 }
 
 /**
- * Append and fsync one record. The opened file must be a regular, singly linked file of
- * exactly `expectedSize` bytes, so a foreign writer, a stale writer, or a hard link out of
- * the project is detected before anything is written.
+ * Pin for the journal a store writes to: device and inode, plus the status-change time.
+ * Inode numbers are reused immediately after deletion on some filesystems (ext4), so the
+ * ctime, which the kernel sets on every change and user space cannot set backwards, is what
+ * distinguishes a recreated or externally modified file. The store refreshes it after each
+ * of its own appends.
  */
 export interface FileIdentity {
   dev: bigint;
   ino: bigint;
+  ctimeNs: bigint;
 }
 
-/** Device and inode (64-bit) of a non-link file, used to pin the journal a store writes to. */
 export function fileIdentity(path: string, label: string): FileIdentity {
   assertNotSymlink(path, label);
   const stat = lstatSync(path, { bigint: true });
-  return { dev: stat.dev, ino: stat.ino };
+  return { dev: stat.dev, ino: stat.ino, ctimeNs: stat.ctimeNs };
 }
 
-export function appendDurable(path: string, data: string, label: string, expected: { size: number; identity: FileIdentity }): void {
+/**
+ * Append and fsync one record. The opened file must be the pinned, regular, singly linked
+ * journal of exactly the expected size, so a foreign writer, a stale writer, a replaced
+ * file, or a hard link out of the project is detected before anything is written. Returns
+ * the refreshed pin after this writer's own change.
+ */
+export function appendDurable(path: string, data: string, label: string, expected: { size: number; identity: FileIdentity }): FileIdentity {
   assertNotSymlink(path, label);
   let fd: number;
   try {
@@ -175,14 +183,16 @@ export function appendDurable(path: string, data: string, label: string, expecte
     const stat = fstatSync(fd, { bigint: true });
     if (!stat.isFile()) throw new PersistenceValidationError(`${label} must be a regular file`);
     if (stat.nlink > 1n) throw new PersistenceValidationError(`${label} must not be hard-linked`);
-    if (stat.dev !== expected.identity.dev || stat.ino !== expected.identity.ino) {
-      throw new PersistenceCorruptionError(`${label} was replaced outside this writer`);
+    if (stat.dev !== expected.identity.dev || stat.ino !== expected.identity.ino || stat.ctimeNs !== expected.identity.ctimeNs) {
+      throw new PersistenceCorruptionError(`${label} was replaced or modified outside this writer`);
     }
     if (stat.size !== BigInt(expected.size)) {
       throw new PersistenceCorruptionError(`${label} changed outside this writer (expected ${expected.size} bytes, found ${stat.size})`);
     }
     writeAll(fd, Buffer.from(data, "utf8"));
     fsyncSync(fd);
+    const after = fstatSync(fd, { bigint: true });
+    return { dev: after.dev, ino: after.ino, ctimeNs: after.ctimeNs };
   } finally {
     closeSync(fd);
   }

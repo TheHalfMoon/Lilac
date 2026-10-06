@@ -346,7 +346,7 @@ test("bytes written to the journal by anyone else stop the writer before it appe
   const store = open(root);
   store.commit(setTitle("tx-1", 0, "One"));
   appendFileSync(file(root, PROJECT_FILES.journal), '{"partial');
-  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), (error) => error instanceof PersistenceCorruptionError && /changed outside this writer/.test(error.message));
+  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), (error) => error instanceof PersistenceCorruptionError && /outside this writer/.test(error.message));
   assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /reopened/);
   store.close();
   const reopened = open(root);
@@ -480,7 +480,7 @@ test("a journal replaced while open is detected even when sizes match", () => wi
   rmSync(journal);
   writeFileSync(journal, readFileSync(impostor));
   rmSync(impostor);
-  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /replaced outside this writer/);
+  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /replaced or modified outside this writer/);
   assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /reopened/);
   store.close();
 }));
@@ -494,4 +494,18 @@ test("a deleted journal and a non-file lock path fail with typed errors", () => 
   mkdirSync(file(root, PROJECT_FILES.lock));
   assert.throws(() => open(root, { breakStaleLock: { reason: "lock is a directory" } }), /not a regular file/);
   assert.equal(readdirSync(join(root, PROJECT_FILES.directory)).some((name) => name.startsWith("lock.broken-")), false);
+}));
+
+test("an in-place rewrite of the journal with identical size and inode is detected", () => withProject((root) => {
+  const store = open(root);
+  store.commit(setTitle("tx-1", 0, "One"));
+  const journal = file(root, PROJECT_FILES.journal);
+  const bytes = readFileSync(journal);
+  const altered = Buffer.from(bytes);
+  altered[altered.indexOf(0x4f)] = 0x30;
+  writeFileSync(journal, altered);
+  assert.equal(readFileSync(journal).length, bytes.length);
+  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /replaced or modified outside this writer/);
+  store.close();
+  assert.throws(() => open(root), PersistenceCorruptionError);
 }));
