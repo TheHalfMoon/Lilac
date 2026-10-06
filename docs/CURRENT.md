@@ -10,11 +10,11 @@ Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 
 
 ## Canonical main
 
-`b10494feed474b01afc7e48cf040e5ac4a9a720d`
+`5ad4fabd6dafeca87f82c96bbaeb12b9464b14bf`
 
-This is the normal merge commit for PR #93 (import-stack enforcement through the network policy, Issue #83).
+This is the normal merge commit for PR #96 (import-stack removal counts and diagnostics, Issue #86).
 
-Post-merge CI run `37536764652` completed `SUCCESS` on that exact SHA (409/409 tests).
+Post-merge CI run `37541789197` completed `SUCCESS` on that exact SHA (420 tests).
 
 ## Post-grain program state
 
@@ -34,7 +34,8 @@ Post-merge CI run `37536764652` completed `SUCCESS` on that exact SHA (409/409 t
 - P05 D7a intake: complete via PR #87 (merge `1d3f4a9`), Issue #85 closed. `packages/intake` (workspace deps `@lilac/import-stack`, `@lilac/network-policy`, `@lilac/persistence`, `@lilac/history`) adds a deterministic pre-commit review of Grain 6 proposals (counts, sanitization summary, severity-ordered bounded diagnostics, source-binding coverage, commit verdict), markup-only web semantics recorded as `OBSERVED` evidence with their source (HTML-AAM native mappings with landmark scoping, ARIA role-token precedence, bounded accessible names), a single-snapshot commit into a persisted project through `ProjectStore.commit`, and a network gate that maps `import.fetch` decisions to import-stack policies without loosening them. The offline-guarantee test now includes intake. Qualification drove three delta repair cycles; parked items are in #89.
 - Persistence journal content pin: fixed via PR #91 (merge `af80efc`), Issue #88 closed. The in-session pin had compared ctime, which missed same-size in-place rewrites inside one filesystem timestamp tick (milliseconds, not the nanoseconds the D6a evidence first stated; reopen caught them by the hash chain). The store now keeps a SHA-256 of the bytes it validated at open and appended since, and verifies it through the write descriptor before every append; metadata-only changes no longer poison the store. The D6a evidence residuals are corrected (verify-to-write window up to about 341 ms at the 256 MiB cap; per-append cost grows with the journal until rotation exists).
 - Import-stack enforcement through the network policy: complete via PR #93 (merge `b10494f`), Issue #83 closed. Import requests may carry a `networkPolicy`; every import contact (entry, mirror pages and assets, redirects, Playwright subrequests and final URLs, mirror manifest re-validation) needs an allowed `import.fetch` decision and an `evaluateResolved` pass on the addresses used, in addition to the Grain 6 `ImportPolicy`. Without a policy the default offline policy applies, so network-mode imports fail closed; the policy is read only from an own property, so a polluted prototype cannot grant access. Cross-origin CSS references are skipped without contact. Proposals and ledger records do not embed the policy. Parked follow-ups: #94. Process note: #83 was auto-closed at merge by the commit subject "Close #83 ...", before post-merge CI finished; CI then succeeded and the closed state stands. This is recorded on the issue.
-- Next: #86 (import-stack form-removal diagnostics), then P06 hardening.
+- Import-stack removal counts and diagnostics: complete via PR #96 (merge `5ad4fab`), Issue #86 closed. Every forbidden element that does not survive as itself is counted once in the security summary (forms, `<meta>`, and `<link>` elements that do not become stylesheet resources now count in `dangerousElementsRemoved`). `<form>` stays neutralized into a `<div>` that keeps its children. Forms, links, and meta get bounded per-class diagnostics (`form-element-neutralized`, `forbidden-element-removed`). Review delta 1 also strips the form-authority attributes (`form`, `formmethod`, `formtarget`, `formenctype`, `formnovalidate`, plus `action`/`formaction`) on import, rejects them in proposal validation, and makes the `<link>` attribute lookup prototype-safe. Qualification ran in a cloud session without Jev or pstack: CI, OCR (rule groups applied by the host agent, re-resolved locally with the pinned 1.12.9), and a fresh-context judge panel ran; no Jev cells exist for this PR. Parked follow-ups: #94.
+- Next: P06 hardening.
 - Open, non-blocking: #64 (review-panel hardening follow-ups, including a shared hidden-text and input-hygiene policy across packages), #78, #79, #82, #89, #94, #2.
 
 ## Canonical implementation chain
@@ -153,7 +154,7 @@ The remaining product program, in working order:
 6. P05 D4 - Visual Git (complete; #61 and #63 also closed);
 7. P05 D5 - Decision assurance (complete; #71 router hardening also closed);
 8. P05 D6 - Local/private mode (complete for what exists today: D6a persistence, D6b network policy and offline guarantee; import-stack enforcement #83 complete; local MCP endpoint #82 open);
-9. P05 D7 - Website/app intake product experience (D7a review, semantics, commit, and network gate complete; #83 complete; #86 open);
+9. P05 D7 - Website/app intake product experience (D7a review, semantics, commit, and network gate complete; #83 and #86 complete);
 10. P06 - Product hardening;
 11. P07 - Release program with signed evidence and clean-machine verification.
 
