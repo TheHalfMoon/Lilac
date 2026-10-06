@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 import {
   ARCHITECTURE_SCHEMA_VERSION,
   ArchitectureValidationError,
+  IMPLEMENTED_PACKAGES,
   LILAC_ARCHITECTURE_MAP,
   architectureDigest,
   canonicalArchitectureStringify,
@@ -65,6 +67,9 @@ test("canonical catalog covers every required subsystem exactly once", () => {
   assert.equal(owners["agent-runtime"], "@lilac/agent-runtime");
   assert.equal(owners["mcp-surface"], "@lilac/mcp-protocol");
   assert.equal(owners["canvas-viewport"], "@lilac/canvas");
+  assert.equal(owners["components"], "@lilac/design-components");
+  assert.equal(owners["agent-workspace"], "@lilac/agent-workspace");
+  assert.equal(owners["visual-git"], "@lilac/visual-git");
   const planned = normalized.subsystems.filter((subsystem) => subsystem.status === "planned");
   assert.ok(planned.length > 0);
   const implemented = normalized.subsystems.filter((subsystem) => subsystem.status === "implemented");
@@ -81,6 +86,7 @@ test("duplicate ownership and unknown references fail closed", () => {
     entry({ id: "cycle-b", dependsOn: ["cycle-a"] }),
   ])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([entry({ status: "implemented", owner: "@lilac/does-not-exist" })])), ArchitectureValidationError);
+  assert.throws(() => normalizeArchitectureMap(map([entry({ status: "stub", owner: "@lilac/does-not-exist" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([entry({ owner: "not-a-package" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([entry({ id: "Bad_Id" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([])), ArchitectureValidationError);
@@ -99,4 +105,26 @@ test("deterministic serialization for identical inputs", () => {
   assert.equal(canonicalArchitectureStringify(LILAC_ARCHITECTURE_MAP), canonicalArchitectureStringify(JSON.parse(JSON.stringify(LILAC_ARCHITECTURE_MAP))));
   assert.equal(architectureDigest(LILAC_ARCHITECTURE_MAP).length, 64);
   assert.equal(sha256Text("lilac").length, 64);
+});
+
+function workspacePackages() {
+  const root = new URL("../packages/", import.meta.url);
+  return readdirSync(root, { withFileTypes: true })
+    .filter((dirent) => dirent.isDirectory())
+    .filter((dirent) => ["index.ts", "index.mjs"].some((file) => existsSync(new URL(`${dirent.name}/src/${file}`, root))))
+    .map((dirent) => JSON.parse(readFileSync(new URL(`${dirent.name}/package.json`, root), "utf8")).name)
+    .sort();
+}
+
+test("every workspace package is owned by a delivered catalog subsystem", () => {
+  const packages = workspacePackages();
+  assert.ok(packages.length >= 17);
+  const delivered = normalizeArchitectureMap(LILAC_ARCHITECTURE_MAP).subsystems.filter((subsystem) => subsystem.status !== "planned");
+  for (const name of packages) {
+    assert.ok(delivered.some((subsystem) => subsystem.owner === name), `${name} has no implemented or stub catalog entry`);
+  }
+});
+
+test("known package list matches the workspace exactly", () => {
+  assert.deepEqual([...IMPLEMENTED_PACKAGES].sort(), workspacePackages());
 });
