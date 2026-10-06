@@ -151,8 +151,9 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
   // Forbidden elements that are neutralized or dropped without a per-element
   // diagnostic are reported once per class after the walk, with the first
   // occurrence's node context, so the diagnostic count stays bounded.
-  const removalClasses = new Map<"form" | "link" | "meta", { count: number; domPath: string; location?: { startOffset?: number; endOffset?: number }; nodeId?: string }>();
-  const recordRemoval = (tag: "form" | "link" | "meta", domPath: string, location: any, removedNodeId?: string) => {
+  type SourceLocation = { startOffset?: number; endOffset?: number } | undefined;
+  const removalClasses = new Map<"form" | "link" | "meta", { count: number; domPath: string; location: SourceLocation; nodeId?: string }>();
+  const recordRemoval = (tag: "form" | "link" | "meta", domPath: string, location: SourceLocation, removedNodeId?: string) => {
     security.dangerousElementsRemoved += 1;
     const existing = removalClasses.get(tag);
     if (existing) existing.count += 1;
