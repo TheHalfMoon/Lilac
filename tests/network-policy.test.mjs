@@ -35,7 +35,7 @@ test("address classification is owned here and re-exported unchanged by import-s
   const cases = {
     "127.0.0.1": "loopback", "::1": "loopback", "::ffff:127.0.0.1": "loopback",
     "10.1.2.3": "forbidden", "192.168.0.1": "forbidden", "169.254.169.254": "forbidden", "100.64.0.1": "forbidden",
-    "fc00::1": "forbidden", "fe80::1": "forbidden", "64:ff9b::a00:1": "forbidden", "2002::1": "forbidden", "::ffff:10.0.0.1": "forbidden",
+    "fc00::1": "forbidden", "fe80::1": "forbidden", "64:ff9b::a00:1": "forbidden", "2002:c000:0204::1": "forbidden", "2002::1": "unspecified", "::ffff:10.0.0.1": "forbidden",
     "93.184.216.34": "public", "2606:4700:4700::1111": "public",
     "example.com": "invalid", "": "invalid",
   };
@@ -200,18 +200,37 @@ test("only decisions issued by evaluateUrl are honored, and they cannot be widen
 });
 
 test("wildcard grants cover DNS names only, never IP literals", () => {
-  assert.throws(() => normalizeNetworkPolicy(allowlist([grant({ host: "*.168.1.1", allowPrivateNetwork: true })])), /numeric/);
-  assert.throws(() => normalizeNetworkPolicy(allowlist([grant({ host: "*.8.8" })])), /numeric/);
+  assert.throws(() => normalizeNetworkPolicy(allowlist([grant({ host: "*.168.1.1", allowPrivateNetwork: true })])), /numeric|end in a number/);
+  assert.throws(() => normalizeNetworkPolicy(allowlist([grant({ host: "*.8.8" })])), /numeric|end in a number/);
   const policy = allowlist([grant({ host: "*.example.com" })]);
   assert.equal(evaluateUrl(policy, { capability: "provider.inference", url: "https://a.example.com" }).allowed, true);
 });
 
 test("provider endpoints refuse secret-shaped paths and plaintext credentials", () => {
   const remote = (endpoint, credentialRef = null) => registry([{ id: "p", kind: "remote-http", capabilities: ["inference.text"], endpoint, credentialRef }]);
-  assert.throws(() => normalizeProviderRegistry(remote("https://api.example.com/key/sk-ant-SECRET123")), /secret/);
-  assert.throws(() => normalizeProviderRegistry(remote("https://api.example.com/v1/AbCdEfGhIjKlMnOpQrStUvWxYz012345")), /secret/);
+  assert.throws(() => normalizeProviderRegistry(remote("https://api.example.com/key/sk-ant-api03-SECRETsecret0123456")), /secret/);
+  assert.doesNotThrow(() => normalizeProviderRegistry(remote("https://api.example.com/v1/AbCdEfGhIjKlMnOpQrStUvWxYz012345")), "generic opaque runs are not treated as secrets");
   assert.throws(() => normalizeProviderRegistry(remote("http://api.example.com/v1", { store: "env", name: "LILAC_KEY" })), /https/);
   assert.throws(() => normalizeProviderRegistry(remote("https://0.0.0.0/v1")), /unspecified/);
   assert.doesNotThrow(() => normalizeProviderRegistry(remote("https://api.example.com/v1/chat/completions", { store: "env", name: "LILAC_KEY" })));
   assert.doesNotThrow(() => normalizeProviderRegistry(remote("http://api.example.com/v1")));
+});
+
+test("embedded unspecified forms and numeric-looking grant hosts are refused", () => {
+  for (const address of ["64:ff9b::0.0.0.0", "64:ff9b::0.1.2.3", "::0.1.2.3", "2002::1", "2002:00ff::1"]) assert.equal(classifyAddress(address), "unspecified", address);
+  assert.equal(classifyAddress("::1"), "loopback");
+  assert.equal(classifyAddress("64:ff9b::808:808"), "forbidden");
+  for (const host of ["0", "0x0", "0x7f000001", "10.0.0.0x1", "api.example.123"]) {
+    assert.throws(() => normalizeNetworkPolicy(allowlist([grant({ host })])), /end in a number|unspecified/, host);
+  }
+});
+
+test("the secret-path heuristic refuses known key shapes but accepts legitimate endpoints", () => {
+  const remote = (endpoint) => registry([{ id: "p", kind: "remote-http", capabilities: ["inference.text"], endpoint }]);
+  for (const path of ["/v1/sk-proj-AbCdEf0123456789xyz", "/hooks/xoxb-1234567890-abcdef", "/u/ghp_0123456789abcdefghijABCDEFGHIJ", "/k/AKIAABCDEFGHIJKLMNOP", "/t/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl", "/v1/sk%2Dproj%2DAbCdEf0123456789xyz"]) {
+    assert.throws(() => normalizeProviderRegistry(remote(`https://api.example.com${path}`)), /secret/, path);
+  }
+  for (const path of ["/v1/chat/completions", "/projects/123e4567-e89b-12d3-a456-426614174000/models", "/models/sentence-transformers_all-MiniLM-L6-v2", "/deployments/0123456789abcdef0123456789abcdef", "/ak_prod/api"]) {
+    assert.doesNotThrow(() => normalizeProviderRegistry(remote(`https://api.example.com${path}`)), path);
+  }
 });

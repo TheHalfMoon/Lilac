@@ -16,8 +16,10 @@ import {
 import { assertOneOf, assertRecord, assertStableId, inertCopy } from "./validation.ts";
 
 const ENV_NAME = /^[A-Z][A-Z0-9_]{0,63}$/u;
-// Path segments that look like API keys or tokens: common key prefixes or long opaque runs.
-const SECRET_SEGMENT = /^(?:sk|pk|rk|ak)[-_]|^[A-Za-z0-9+/=_-]{32,}$/u;
+// Path segments shaped like well-known credentials (OpenAI/Anthropic-style keys, GitHub and
+// Slack tokens, AWS access key ids, JWTs). A heuristic, deliberately narrow so legitimate
+// endpoints (UUIDs, model ids, deployment names) are never refused.
+const SECRET_SEGMENT = /^(?:sk|rk)[-_][A-Za-z0-9_-]{16,}$|^(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}$|^xox[abpors]-[A-Za-z0-9-]{10,}$|^(?:AKIA|ASIA)[A-Z0-9]{16}$|^eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+$/u;
 
 function normalizeCredentialRef(value: unknown, label: string): CredentialRef | null {
   if (value === undefined || value === null) return null;
@@ -43,7 +45,13 @@ function endpointHost(endpoint: string, label: string): string {
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new NetworkPolicyValidationError(`${label} must be http or https`);
   if (url.username !== "" || url.password !== "") throw new NetworkPolicyValidationError(`${label} must not embed credentials; use credentialRef`);
   if (url.search !== "" || url.hash !== "") throw new NetworkPolicyValidationError(`${label} must not carry a query or fragment (they often hold secrets)`);
-  const segments = url.pathname.split("/");
+  const segments = url.pathname.split("/").map((segment) => {
+    try {
+      return decodeURIComponent(segment);
+    } catch {
+      return segment;
+    }
+  });
   if (segments.some((segment) => SECRET_SEGMENT.test(segment))) {
     throw new NetworkPolicyValidationError(`${label} path looks like it embeds a secret; use credentialRef`);
   }

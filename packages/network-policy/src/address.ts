@@ -104,9 +104,10 @@ export function isForbiddenRemoteAddress(address: string): boolean {
 export type AddressClass = "unspecified" | "loopback" | "forbidden" | "public" | "invalid";
 
 /**
- * Unspecified addresses (0.0.0.0/8, ::, ::ffff:0.0.0.0/104) are never a legitimate
- * destination; on common stacks connecting to them reaches local services, so they get
- * their own class and are denied in every mode.
+ * Unspecified addresses are never a legitimate destination; on common stacks connecting to
+ * them reaches local services, so they get their own class and are denied in every mode.
+ * Covers 0.0.0.0/8, ::, and 0.x.x.x embedded in IPv4-mapped (::ffff:0:0/104),
+ * IPv4-compatible (::/96, except ::1), NAT64 (64:ff9b::/96), and 6to4 (2002::/16) forms.
  */
 function isUnspecifiedAddress(address: string): boolean {
   const v4 = ipv4(address);
@@ -115,7 +116,13 @@ function isUnspecifiedAddress(address: string): boolean {
   if (!v6) return false;
   if (v6.every((value) => value === 0)) return true;
   const mapped = mappedIpv4(v6);
-  return mapped !== null && mapped[0] === 0;
+  if (mapped !== null) return mapped[0] === 0;
+  const tailFirstOctet = v6[6] >> 8;
+  const isLoopbackV6 = v6.slice(0, 7).every((value) => value === 0) && v6[7] === 1;
+  if (v6.slice(0, 6).every((value) => value === 0) && !isLoopbackV6) return tailFirstOctet === 0;
+  if (v6[0] === 0x0064 && v6[1] === 0xff9b && v6.slice(2, 6).every((value) => value === 0)) return tailFirstOctet === 0;
+  if (v6[0] === 0x2002) return v6[1] >> 8 === 0;
+  return false;
 }
 
 /** Classify a literal IP address; anything that is not an IP literal is "invalid". */

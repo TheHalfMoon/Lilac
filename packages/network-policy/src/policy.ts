@@ -49,6 +49,11 @@ function normalizeHost(value: unknown, label: string): string {
   const wildcard = host.startsWith("*.");
   const base = wildcard ? host.slice(2) : host;
   if (!HOSTNAME.test(base)) throw new NetworkPolicyValidationError(`${label} must be a hostname, *.suffix, or IP literal`);
+  // WHATWG URL parses any host whose last label is a number (decimal or 0x hex) as IPv4, so
+  // such "hostnames" (0, 0x7f000001, 10.0.0.0x1) would never match and only hide intent.
+  if (/^(?:[0-9]+|0x[0-9a-f]*)$/u.test(base.split(".").at(-1) ?? "")) {
+    throw new NetworkPolicyValidationError(`${label} must not end in a number; write the IP literal instead`);
+  }
   if (wildcard && (isIP(base) !== 0 || /^[0-9.]+$/u.test(base))) {
     throw new NetworkPolicyValidationError(`${label} wildcard must not cover numeric (IP-like) hosts`);
   }

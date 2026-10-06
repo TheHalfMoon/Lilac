@@ -106,25 +106,36 @@ test("the core workflow completes with all network access disabled and makes zer
     exercised.add("document.edit");
     store.checkpoint();
 
-    // history.undo-redo: undo and redo through history, then persist the redo state.
+    // history.undo-redo: edit, undo, redo through history; persist the transaction of the redone entry.
     const editing = commitTransaction(createHistoryState(store.document), { id: "tx-2", actor: "offline-user", baseRevision: 1, operations: [{ type: "set-props", nodeId: "node-1", set: { width: 320 } }] });
     const undone = undo(editing);
     assert.equal(undone.document.nodes["node-1"].props.width, undefined);
     const redone = redo(undone);
     assert.equal(redone.document.nodes["node-1"].props.width, 320);
+    store.commit(redone.past.at(-1).transaction);
+    assert.deepEqual(store.document.nodes["node-1"].props, redone.document.nodes["node-1"].props);
     exercised.add("history.undo-redo");
-    store.commit({ id: "tx-2", actor: "offline-user", baseRevision: 1, operations: [{ type: "set-props", nodeId: "node-1", set: { width: 320 } }] });
 
-    // collaboration.agent-edit: an agent-transport edit through the collaboration authority, then persisted.
+    // collaboration.agent-edit: an agent actor (owned by the user) edits through the collaboration
+    // authority; the room's own attributed transaction is what gets persisted.
     const owner = { actorId: "offline-user", kind: "user", accessClass: "member", displayName: "Owner" };
-    const room = new LocalCollaborationRoom(createCollaborationState("doc-1", [{ principalKind: "actor", principalId: owner.actorId, capabilities: ["read", "presence", "document-write", "comments", "admin"] }]));
+    const agent = { actorId: "agent-offline", kind: "agent", accessClass: "service", displayName: "Offline agent", ownerActorId: owner.actorId, operationId: "op-offline", workerTaskId: "task-offline" };
+    const room = new LocalCollaborationRoom(createCollaborationState("doc-1", [
+      { principalKind: "actor", principalId: owner.actorId, capabilities: ["read", "presence", "document-write", "comments", "admin"] },
+      { principalKind: "actor", principalId: agent.actorId, capabilities: ["read", "document-write"] },
+    ]));
     const agentEdit = room.commitTransaction({
-      actor: owner, transport: "agent", history: createHistoryState(store.document), at: AT,
+      actor: agent, transport: "agent", history: createHistoryState(store.document), at: AT,
       operationId: "op-offline", workerTaskId: "task-offline",
       transaction: { id: "tx-agent", baseRevision: 2, intent: "Agent retitles", operations: [{ type: "set-props", nodeId: "node-1", set: { title: "Agent edit" } }] },
     });
+    const attributed = agentEdit.history.past.at(-1).transaction;
+    assert.equal(attributed.actor, agent.actorId);
+    assert.equal(attributed.metadata.collaboration.actorKind, "agent");
+    assert.equal(attributed.metadata.collaboration.ownerActorId, owner.actorId);
     assert.equal(agentEdit.summary.operationId, "op-offline");
-    store.commit({ id: "tx-agent", actor: owner.actorId, baseRevision: 2, operations: [{ type: "set-props", nodeId: "node-1", set: { title: "Agent edit" } }] });
+    store.commit(attributed);
+    assert.deepEqual(store.document.nodes, agentEdit.history.document.nodes);
     exercised.add("collaboration.agent-edit");
     store.close();
     const reopened = openProject(root, { owner: "offline-user", at: AT });
