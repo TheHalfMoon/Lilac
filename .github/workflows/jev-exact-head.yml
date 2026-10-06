@@ -1,0 +1,133 @@
+name: Jev Exact-Head Qualification
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jev-exact-head-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  jev:
+    name: Jev exact-head qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require an internal candidate branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "Jev qualification intentionally requires a trusted internal branch because repository secrets are not exposed to fork pull requests."
+            exit 1
+          fi
+
+      - name: Check out exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build exact-head qualification state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          printf "%s\n" "${{ github.event.pull_request.base.sha }}" > jev-base-sha.txt
+          printf "%s\n" "${{ github.event.pull_request.head.sha }}" > jev-head-sha.txt
+          git diff --name-status "origin/${{ github.event.pull_request.base.ref }}...HEAD" > jev-changed-files.txt
+          git ls-tree -r HEAD .claude/skills > jev-vendored-skill-tree.txt
+          git diff --no-ext-diff --binary "origin/${{ github.event.pull_request.base.ref }}...HEAD" -- . ":(exclude).claude/skills/**" > jev-authored.diff
+          {
+            echo "BASE_SHA=${{ github.event.pull_request.base.sha }}"
+            echo "HEAD_SHA=${{ github.event.pull_request.head.sha }}"
+            echo "CHANGED_FILES"
+            cat jev-changed-files.txt
+            echo "VENDORED_SKILL_TREE"
+            cat jev-vendored-skill-tree.txt
+            echo "AUTHORED_DIFF"
+            cat jev-authored.diff
+          } > jev-candidate.txt
+          test -s jev-candidate.txt
+
+      - name: Run Jev on exact candidate
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          PYTHONIOENCODING: utf-8
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${TYPESAFE_API_KEY:-}" || { echo "TYPESAFE_API_KEY repository secret is missing."; exit 1; }
+          python .claude/skills/jev/scripts/jev --version
+          python .claude/skills/jev/scripts/jev run commit -s @jev-candidate.txt --json > jev-commit.json
+
+      - name: Validate Jev evidence and secret-leak judgment
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const raw = JSON.parse(fs.readFileSync('jev-commit.json', 'utf8'));
+          const head = fs.readFileSync('jev-head-sha.txt', 'utf8').trim();
+          const base = fs.readFileSync('jev-base-sha.txt', 'utf8').trim();
+
+          if (!raw || typeof raw !== 'object' || !raw.answers) {
+            throw new Error('Jev returned no answers object');
+          }
+
+          const required = ['type', 'has_secret', 'breaking', 'risk'];
+          for (const key of required) {
+            if (!raw.answers[key]) throw new Error(`Jev response missing answer: ${key}`);
+          }
+
+          const evidence = {
+            schema_version: '1',
+            base_sha: base,
+            head_sha: head,
+            provider: raw.provider ?? null,
+            model: raw.model ?? null,
+            answers: raw.answers,
+            usage: raw.usage ?? null,
+          };
+
+          fs.writeFileSync('jev-evidence.json', JSON.stringify(evidence, null, 2) + '\n');
+
+          const secret = raw.answers.has_secret;
+          console.log(`JEV_PROVIDER=${evidence.provider}`);
+          console.log(`JEV_MODEL=${evidence.model}`);
+          console.log(`JEV_CHANGE_TYPE=${raw.answers.type.choice}`);
+          console.log(`JEV_BREAKING=${raw.answers.breaking.yes}`);
+          console.log(`JEV_RISK=${raw.answers.risk.label} (${raw.answers.risk.score})`);
+          console.log(`JEV_SECRET_LEAK=${secret.yes} (p=${secret.noul})`);
+
+          if (secret.yes === true) {
+            throw new Error(`Jev flagged a possible secret leak in exact head ${head} (p=${secret.noul}).`);
+          }
+          NODE
+
+      - name: Upload exact-head Jev evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: jev-exact-head-${{ github.event.pull_request.head.sha }}
+          path: |
+            jev-base-sha.txt
+            jev-head-sha.txt
+            jev-changed-files.txt
+            jev-vendored-skill-tree.txt
+            jev-authored.diff
+            jev-commit.json
+            jev-evidence.json
+          if-no-files-found: error
+          retention-days: 14
