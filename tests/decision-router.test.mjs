@@ -377,5 +377,24 @@ test("adapter identity is read once and adapter text is bounded", async () => {
   const unavailable = await routeDecision(request(), { adapter: loud });
   assert.ok(unavailable.record.decisions.every((decision) => decision.abstainReason.length <= 1100));
   const unprintable = { name: "unprintable", async classifyCells() { throw { toString() { throw new Error("nope"); } }; } };
-  await assert.rejects(routeDecision(request(), { adapter: unprintable }), /unprintable adapter reason/);
+  await assert.rejects(routeDecision(request(), { adapter: unprintable }), /non-string adapter reason/);
+});
+
+test("every adapter throw is re-issued by the router with a bounded, host-independent reason", async () => {
+  const forged = { name: "forger", async classifyCells() { throw new DecisionAdapterError("z".repeat(1_000_000)); } };
+  const huge = await routeDecision(request(), { adapter: forged }).catch((error) => error);
+  assert.ok(huge instanceof DecisionAdapterError);
+  assert.ok(huge.message.length <= 1100, String(huge.message.length));
+
+  const sneaky = new Error("hidden");
+  Object.defineProperty(sneaky, "message", { get() { throw new Error("gotcha"); } });
+  await assert.rejects(routeDecision(request(), { adapter: { name: "sneaky", async classifyCells() { throw sneaky; } } }), (error) => error instanceof DecisionAdapterError && /unprintable adapter reason/.test(error.message));
+
+  const dated = { name: "dated", async classifyCells() { return { status: "unavailable", reason: new Date(0) }; } };
+  const result = await routeDecision(request(), { adapter: dated });
+  assert.ok(result.record.decisions.every((decision) => decision.abstainReason === "adapter-unavailable: non-string adapter reason"));
+
+  const badIdentity = { async classifyCells() {} };
+  Object.defineProperty(badIdentity, "name", { get() { throw new Error("no name"); } });
+  await assert.rejects(routeDecision(request(), { adapter: badIdentity }), DecisionValidationError);
 });

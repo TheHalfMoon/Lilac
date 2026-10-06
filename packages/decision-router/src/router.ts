@@ -42,10 +42,14 @@ function oneHotScores(labels: string[], label: string): Record<string, number> {
 const MAX_ADAPTER_NAME = 128;
 const MAX_ADAPTER_REASON = 1000;
 
+// Only string reasons (or an Error's string message) are kept; anything else becomes a fixed
+// placeholder, so records never depend on host-specific stringification and reading the
+// reason can never throw.
 function adapterReason(value: unknown): string {
-  let text: string;
+  let text = "non-string adapter reason";
   try {
-    text = typeof value === "string" ? value : String(value);
+    const candidate = value instanceof Error ? value.message : value;
+    if (typeof candidate === "string") text = candidate;
   } catch {
     text = "unprintable adapter reason";
   }
@@ -71,8 +75,14 @@ export async function routeDecision(
   // read their outcome once as plain data, so nothing they do can change cells, indexes, or
   // the values that validation approved.
   const rawAdapter = options.adapter;
-  const adapterName: unknown = rawAdapter.name;
-  const classify: unknown = rawAdapter.classifyCells;
+  let adapterName: unknown;
+  let classify: unknown;
+  try {
+    adapterName = rawAdapter.name;
+    classify = rawAdapter.classifyCells;
+  } catch {
+    throw new DecisionValidationError("decision adapter identity could not be read");
+  }
   if (typeof adapterName !== "string" || adapterName.trim() === "" || adapterName.length > MAX_ADAPTER_NAME) {
     throw new DecisionValidationError(`decision adapter name must be a non-empty string of at most ${MAX_ADAPTER_NAME} characters`);
   }
@@ -80,7 +90,14 @@ export async function routeDecision(
   const adapter: DecisionAdapter = {
     name: adapterName,
     classifyCells: async (cells, policy) => {
-      const outcome = await classify.call(rawAdapter, structuredClone(cells), structuredClone(policy));
+      let outcome: unknown;
+      try {
+        outcome = await classify.call(rawAdapter, structuredClone(cells), structuredClone(policy));
+      } catch (error) {
+        // Every adapter throw, including adapter-made DecisionAdapterErrors, is re-issued by
+        // the router with a bounded reason.
+        throw new DecisionAdapterError(`${adapterName} threw: ${adapterReason(error)}`);
+      }
       try {
         return structuredClone(outcome);
       } catch {
@@ -200,7 +217,7 @@ export async function routeDecision(
       results = outcome.value;
     } catch (error) {
       if (error instanceof DecisionAdapterError) throw error;
-      throw new DecisionAdapterError(`${adapter.name} threw: ${adapterReason(error instanceof Error ? error.message : error)}`);
+      throw new DecisionAdapterError(`${adapter.name} threw: ${adapterReason(error)}`);
     }
     if (!Array.isArray(results) || results.length !== batch.length) {
       throw new DecisionAdapterError(`${adapter.name} must return one result per cell`);
