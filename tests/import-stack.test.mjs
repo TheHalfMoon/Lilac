@@ -174,7 +174,7 @@ test("proposal validation rejects executable tags, unsafe CSS, external URL auth
   const child = proposal.nodes[root2].children[0];
   const bad = structuredClone(proposal);
   bad.nodes[child].parentId = "missing-parent";
-  assert.throws(() => validateImportProposal(bad), /missing parent/u);
+  assert.throws(() => validateImportProposal(bad), ImportValidationError);
 });
 
 test("request ledger is idempotent only for identical input and intent", () => {
