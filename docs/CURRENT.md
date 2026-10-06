@@ -10,11 +10,11 @@ Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 
 
 ## Canonical main
 
-`121c91d92c75576a760c1b381750651596455af8`
+`83c195e59ab04d6d2dcc1fe1378101c2faf2635a`
 
-This is the normal merge commit for PR #72 (decision-router adapter isolation, Issue #71).
+This is the normal merge commit for PR #75 (P05 D6a local project persistence, Issue #74).
 
-Post-merge CI run `37500151343` completed `SUCCESS` on that exact SHA (333/333 tests).
+Post-merge CI run `37524902541` completed `SUCCESS` on that exact SHA (362/362 tests).
 
 ## Post-grain program state
 
@@ -28,6 +28,8 @@ Post-merge CI run `37500151343` completed `SUCCESS` on that exact SHA (333/333 t
 - P03 catalog drift: fixed via PR #67 (merge `0815425`), Issue #63 closed. The catalog reflects D1-D4 (`code-ir`, `round-trip-sync`, `components` as stub slices; `agent-workspace`, `visual-git`, `architecture-ownership` implemented), and CI now fails if any workspace package lacks a delivered owner or the known-package list drifts.
 - P05 D5 decision assurance: complete via PR #70 (merge `63de513`), Issue #69 closed. `packages/decision-assurance` (workspace deps `@lilac/design-method`, `@lilac/decision-router` only) runs deterministic rule-pack, accessibility, layout, and design-system checks first, lets an optional router adapter order only eligible candidates of equal penalty, abstains explicitly (insufficient candidates, none eligible, adapter failure, leading candidate abstained or weak, tie), and records rationale and evidence; it never mutates documents. Catalog status `stub`: color-contrast and token-conformance checks wait for snapshots that carry color and token data. Qualification drove two repair cycles (adapter isolation against prototype pollution and result getters, bounded router input).
 - Decision-router adapter isolation: fixed via PR #72 (merge `121c91d`), Issue #71 closed. The router reads adapter identity once, hands adapters cloned cells and policy, clones outcomes once, and re-issues every adapter throw with a bounded, host-independent reason.
+- P05 D6a local project persistence: complete via PR #75 (merge `83c195e`), Issue #74 closed. `packages/persistence` (workspace deps `@lilac/document-model`, `@lilac/history` only) stores projects under `<root>/.lilac` with content-addressed objects, a SHA-256 hash-chained append-only journal of history transactions, atomic writes, atomic project creation, crash recovery (unterminated tails recovered; all other damage fails closed), a nonce-bound single-writer lock with recorded stale-lock override, manifest migration, and a journal pin (device, inode, ctime) checked before every append. Document state is only produced by replaying history transactions. Catalog status `stub` (agent-state persistence planned). Qualification drove three repair cycles plus one fix from exact-head Linux CI (inode reuse); residual risks are recorded in the evidence file.
+- Next: P05 D6b (explicit network capability policy, bring-your-own provider registry, offline guarantees).
 - Open, non-blocking: #64 (review-panel hardening follow-ups, including a shared hidden-text and input-hygiene policy across packages).
 
 ## Canonical implementation chain
@@ -145,7 +147,7 @@ The remaining product program, in working order:
 5. P05 D3 - Multi-agent workspace product surface;
 6. P05 D4 - Visual Git (complete; #61 and #63 also closed);
 7. P05 D5 - Decision assurance (complete; #71 router hardening also closed);
-8. P05 D6 - Local/private mode product guarantees;
+8. P05 D6 - Local/private mode (D6a persistence complete; D6b network policy, providers, and offline guarantees next);
 9. P05 D7 - Website/app intake product experience;
 10. P06 - Product hardening;
 11. P07 - Release program with signed evidence and clean-machine verification.
