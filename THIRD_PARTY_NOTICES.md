@@ -2,6 +2,16 @@
 
 Lilac uses or interoperates with third-party software under its respective licenses. This file records direct runtime integrations introduced into the repository; transitive package notices remain governed by their own distributions.
 
+## Parse5
+
+- npm runtime: `parse5@8.0.1`
+- Copyright: 2013-2019 Ivan Nikulin
+- License: MIT
+- Upstream project: https://github.com/inikulin/parse5
+- Transitive runtime: `entities@8.0.0` (Copyright Felix Bohm, BSD-2-Clause)
+
+Lilac's `@lilac/import-stack` package uses the published local Parse5 HTML parser as a bounded parser only. Lilac owns sanitization, authority limits, deterministic identifiers, source provenance, proposal validation, and history commit boundaries. The MIT and BSD-2-Clause license texts are included by the upstream npm distributions. Any Lilac release that redistributes Parse5 or entities source or object code must preserve the applicable licenses and attribution notices.
+
 ## Impeccable
 
 - Project: `pbakaus/impeccable`
