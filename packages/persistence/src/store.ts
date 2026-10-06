@@ -312,7 +312,9 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       seq: last?.entry.seq ?? 0,
       digest: last?.digest ?? genesis,
       journalBytes: parsed.validBytes,
-      // The content pin covers exactly the bytes validated above, so a change made after that read is caught.
+      // Content pin: SHA-256 of exactly the bytes validated above (after any torn-tail truncation).
+      // commit() extends it with each line it appends, and appendDurable compares the file to it
+      // before the next write, so any later change to those bytes refuses that commit.
       journalContent: createHash("sha256").update(journalBytes.subarray(0, parsed.validBytes)),
       journalIdentity: fileIdentity(files.journal, "journal"),
       lock: lockRecord,
