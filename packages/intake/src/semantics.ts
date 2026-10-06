@@ -13,9 +13,17 @@ const KNOWN_INPUT_TYPES = new Set([
 // header/footer are page landmarks only when not scoped inside sectioning content (HTML-AAM).
 const SCOPING_TAGS = new Set(["article", "aside", "main", "nav", "section"]);
 const SCOPING_ROLES = new Set(["main", "navigation", "complementary", "region"]);
-// ARIA tokens that scope header/footer even though intake does not record them as roles.
+// Valid ARIA roles intake does not record; when chosen they remove native semantics and
+// scope header/footer.
 const SCOPING_ARIA_TOKENS = new Set(["article"]);
 const MAX_NAME_CODE_POINTS = 200;
+// HTML attribute keywords and ARIA role tokens are ASCII case-insensitive and split on ASCII whitespace.
+const ASCII_WHITESPACE = /[\t\n\f\r ]+/u;
+const SIZE_PREFIX = /^[\t\n\f\r ]*\+?([0-9]+)/u;
+
+function asciiLower(value: string): string {
+  return value.replace(/[A-Z]/gu, (letter) => String.fromCharCode(letter.charCodeAt(0) + 32));
+}
 // Accessible names are display text: format characters (bidi, zero-width, tags) are removed;
 // controls, separators, and whitespace runs become a single space.
 const FORMAT = /\p{Cf}/gu;
@@ -56,14 +64,15 @@ function nativeRole(node: ImportNode, linkNodes: ReadonlySet<string>, context: W
     case "textarea": return { role: "textbox", source: "tag:textarea" };
     case "select": {
       if (Object.hasOwn(node.attributes, "multiple")) return { role: "listbox", source: "tag:select+multiple" };
-      // HTML non-negative integer parsing: leading digits after optional whitespace.
-      const size = Number.parseInt((node.attributes.size ?? "").trim(), 10);
-      return Number.isInteger(size) && size > 1 ? { role: "listbox", source: "tag:select+size" } : { role: "combobox", source: "tag:select" };
+      // HTML non-negative integer parsing: ASCII whitespace, an optional "+", then leading digits.
+      const digits = SIZE_PREFIX.exec(node.attributes.size ?? "");
+      return digits !== null && Number(digits[1]) > 1 ? { role: "listbox", source: "tag:select+size" } : { role: "combobox", source: "tag:select" };
     }
     case "dialog": return { role: "dialog", source: "tag:dialog" };
     case "input": {
-      const declared = (node.attributes.type ?? "text").toLowerCase();
-      const type = KNOWN_INPUT_TYPES.has(declared) ? declared : "text";
+      const declared = asciiLower(node.attributes.type ?? "text");
+      if (!KNOWN_INPUT_TYPES.has(declared)) return { role: "textbox", source: "input-type:invalid" };
+      const type = declared;
       if (type === "checkbox" || type === "radio") return { role: type, source: `input-type:${type}` };
       if (BUTTON_INPUT_TYPES.has(type)) return { role: "button", source: `input-type:${type}` };
       if (Object.hasOwn(node.attributes, "list") && (TEXTBOX_INPUT_TYPES.has(type) || type === "search")) {
@@ -83,7 +92,7 @@ function cleanName(value: string | undefined): string | undefined {
   if (typeof value !== "string") return undefined;
   const visible = value.toWellFormed().replace(FORMAT, "").replace(BREAKING, " ").trim();
   if (visible === "") return undefined;
-  return Array.from(visible).slice(0, MAX_NAME_CODE_POINTS).join("");
+  return Array.from(visible).slice(0, MAX_NAME_CODE_POINTS).join("").trimEnd();
 }
 
 function headingLevel(node: ImportNode, fallback: number | undefined): number | undefined {
@@ -96,8 +105,8 @@ function headingLevel(node: ImportNode, fallback: number | undefined): number | 
  * Derive web semantics from markup only, walking the tree in document order so scoping and
  * list membership are known. Every record is OBSERVED evidence with its source. The first
  * allow-listed token of an ARIA role list overrides native semantics (recorded as an
- * override); presentational roles remove semantics; unknown tokens are reported and never
- * applied. Grain 6 removes <form> elements, so a form landmark can only come from an
+ * override); presentational roles remove semantics, and `article` removes them while scoping
+ * header/footer; unknown tokens are reported and never applied. Grain 6 removes <form> elements, so a form landmark can only come from an
  * explicit role="form".
  */
 export function inferSemantics(proposalInput: ImportProposal): SemanticReport {
@@ -123,16 +132,18 @@ export function inferSemantics(proposalInput: ImportProposal): SemanticReport {
     let role: SemanticRole | null = native?.role ?? null;
     let source = native?.source ?? "";
     let level = native?.level;
+    let ariaScopes = false;
     const ariaRaw = node.attributes.role;
-    if (typeof ariaRaw === "string" && ariaRaw.trim() !== "") {
-      const tokens = ariaRaw.trim().toLowerCase().split(/\s+/u).slice(0, 8);
-      const chosen = tokens.find((token) => PRESENTATIONAL.has(token) || ROLE_SET.has(token));
+    const tokens = typeof ariaRaw === "string" ? asciiLower(ariaRaw).split(ASCII_WHITESPACE).filter((token) => token !== "").slice(0, 8) : [];
+    if (tokens.length > 0) {
+      const chosen = tokens.find((token) => PRESENTATIONAL.has(token) || ROLE_SET.has(token) || SCOPING_ARIA_TOKENS.has(token));
       for (const token of tokens) {
         if (token === chosen) break;
         unknownRoles.push({ nodeId: id, role: token.slice(0, 64) });
       }
-      if (chosen !== undefined && PRESENTATIONAL.has(chosen)) {
+      if (chosen !== undefined && (PRESENTATIONAL.has(chosen) || SCOPING_ARIA_TOKENS.has(chosen))) {
         role = null;
+        ariaScopes = SCOPING_ARIA_TOKENS.has(chosen);
       } else if (chosen !== undefined) {
         if (native && native.role !== chosen) overrides.push({ nodeId: id, native: native.role, aria: chosen as SemanticRole });
         role = chosen as SemanticRole;
@@ -152,10 +163,8 @@ export function inferSemantics(proposalInput: ImportProposal): SemanticReport {
       records.push(record);
     }
     const tag = node.tag?.toLowerCase();
-    const ariaTokens = typeof node.attributes.role === "string" ? node.attributes.role.toLowerCase().split(/\s+/u) : [];
     const childContext: WalkContext = {
-      scoped: context.scoped || (tag !== undefined && SCOPING_TAGS.has(tag)) || (role !== null && SCOPING_ROLES.has(role))
-        || ariaTokens.some((token) => SCOPING_ARIA_TOKENS.has(token)),
+      scoped: context.scoped || ariaScopes || (tag !== undefined && SCOPING_TAGS.has(tag)) || (role !== null && SCOPING_ROLES.has(role)),
       parentRole: role,
     };
     for (const child of [...node.children].reverse()) stack.push({ id: child, context: childContext });

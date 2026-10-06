@@ -242,3 +242,27 @@ Menu   wide">n</nav></main>`);
   assert.equal(roleOf(byTag(p, "div", (node) => node.attributes.role === "heading")[0]).level, 2);
   assert.equal(roleOf(byTag(p, "nav")[0]).name, "Main Menu wide");
 });
+
+test("semantics follow ARIA token choice for scoping and HTML ASCII parsing rules", () => {
+  const long = `${"x".repeat(199)}  y`;
+  const p = proposal(`<div role="button article"><header>a</header></div><div role="article navigation"><footer>b</footer></div>
+<input type="chec&#x212A;box"><input type="CHECKBOX"><select size=" 3"></select><select size="1"></select><select size="&nbsp;3"></select>
+<nav aria-label="a&#x200B; &#x200B;b">n</nav><aside aria-label="${long}">s</aside>`);
+  const report = inferSemantics(p);
+  const recordOf = (id) => report.records.find((record) => record.nodeId === id) ?? null;
+  const buttonDiv = byTag(p, "div", (node) => node.attributes.role === "button article")[0];
+  const articleDiv = byTag(p, "div", (node) => node.attributes.role === "article navigation")[0];
+  assert.equal(recordOf(buttonDiv).role, "button");
+  assert.equal(recordOf(byTag(p, "header")[0]).role, "banner", "a non-chosen article token does not scope");
+  assert.equal(recordOf(articleDiv), null, "a chosen article role removes semantics");
+  assert.equal(recordOf(byTag(p, "footer")[0]), null, "a chosen article role scopes footer");
+  assert.equal(report.unknownRoles.some((entry) => entry.nodeId === articleDiv), false);
+  const kelvin = byTag(p, "input", (node) => node.attributes.type !== "CHECKBOX")[0];
+  const upper = byTag(p, "input", (node) => node.attributes.type === "CHECKBOX")[0];
+  assert.deepEqual([recordOf(kelvin).role, recordOf(kelvin).source], ["textbox", "input-type:invalid"]);
+  assert.equal(recordOf(upper).role, "checkbox");
+  const selectSource = (size) => recordOf(byTag(p, "select", (node) => node.attributes.size === size)[0]).source;
+  assert.deepEqual([selectSource(" 3"), selectSource("1"), selectSource(String.fromCodePoint(0xa0) + "3")], ["tag:select+size", "tag:select", "tag:select"]);
+  assert.equal(recordOf(byTag(p, "nav")[0]).name, "a b");
+  assert.equal(recordOf(byTag(p, "aside")[0]).name, "x".repeat(199));
+});
