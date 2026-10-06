@@ -151,7 +151,7 @@ function discoverCssUrls(css: string, baseUrl: URL): string[] {
 async function addressesFor(url: URL, request: ImportRequest, resolveHost: (hostname: string) => Promise<string[]>): Promise<string[]> {
   const literal = url.hostname.replace(/^\[|\]$/gu, "");
   const addresses = /^[0-9.]+$/u.test(literal) || literal.includes(":") ? [literal] : await resolveHost(url.hostname);
-  validateResolvedAddresses(url, addresses, request.policy);
+  validateResolvedAddresses(url, addresses, request.policy, request.networkPolicy);
   return addresses;
 }
 
@@ -169,7 +169,7 @@ export async function mirrorStaticSite(
     if (request.source.kind !== "remote-url" && request.source.kind !== "local-app") {
       throw new ImportValidationError("static mirror requires remote-url or local-app source kind");
     }
-    const entry = fetchCanonical(validateNavigationUrl(rawUrl, request.policy));
+    const entry = fetchCanonical(validateNavigationUrl(rawUrl, request.policy, request.networkPolicy));
     const prefix = scopePrefix(entry);
     const resolveHost = dependencies.resolveHost ?? defaultResolveHost;
     const fetchResource = dependencies.fetchResource ?? defaultFetchResource;
@@ -200,7 +200,7 @@ export async function mirrorStaticSite(
       if (options.signal?.aborted) throw new ImportSecurityError("mirror capture cancelled");
       if (now() >= deadline) throw new ImportSecurityError("mirror capture exceeded maxWallClockMs");
       const item = queue.shift()!;
-      let current = validateNavigationUrl(item.url, request.policy);
+      let current = validateNavigationUrl(item.url, request.policy, request.networkPolicy);
       const original = current.href;
       let redirects = 0;
       let response: MirrorFetchResult;
@@ -222,7 +222,7 @@ export async function mirrorStaticSite(
         if (!location) throw new ImportValidationError("mirror redirect is missing Location");
         redirects += 1;
         if (redirects > request.policy.maxRedirects) throw new ImportSecurityError("mirror redirect count exceeds maxRedirects");
-        const next = fetchCanonical(validateNavigationUrl(new URL(location, current).href, request.policy));
+        const next = fetchCanonical(validateNavigationUrl(new URL(location, current).href, request.policy, request.networkPolicy));
         if (next.origin !== entry.origin) throw new ImportSecurityError("mirror redirect escaped same-origin scope");
         current = next;
       }
@@ -274,7 +274,7 @@ export async function mirrorStaticSite(
         if (response.body.byteLength > request.policy.maxCssBytes) throw new ImportSecurityError("mirrored CSS exceeds maxCssBytes");
         const css = decodeUtf8(response.body, "mirrored CSS");
         for (const raw of discoverCssUrls(css, current)) {
-          const discovered = validateNavigationUrl(raw, request.policy);
+          const discovered = validateNavigationUrl(raw, request.policy, request.networkPolicy);
           if (discovered.origin === entry.origin) enqueue(discovered, item.depth, "asset");
         }
       }
@@ -340,9 +340,9 @@ async function verifyStaticMirrorResult(
   if (manifest.schemaVersion !== 1) throw new ImportValidationError("unsupported static mirror manifest schema version");
   if (manifest.requestId !== request.requestId) throw new ImportConflictError("static mirror request identity does not match import request");
   assertBoundedString(manifest.entryUrl, "static mirror entryUrl", 4096);
-  const entryUrl = fetchCanonical(validateNavigationUrl(manifest.entryUrl, request.policy));
+  const entryUrl = fetchCanonical(validateNavigationUrl(manifest.entryUrl, request.policy, request.networkPolicy));
   if (request.source.uri !== undefined) {
-    const expected = fetchCanonical(validateNavigationUrl(request.source.uri, request.policy));
+    const expected = fetchCanonical(validateNavigationUrl(request.source.uri, request.policy, request.networkPolicy));
     if (expected.href !== entryUrl.href) throw new ImportConflictError("static mirror entry URL does not match import request source");
   }
   assertMirrorObjectPath(manifest.entryLogicalPath, "static mirror entryLogicalPath");
@@ -361,8 +361,8 @@ async function verifyStaticMirrorResult(
     assertAllowedKeys(raw, ["sourceUri", "finalUri", "mediaType", "sha256", "byteLength", "logicalPath", "depth"], `static mirror resource[${index}]`);
     assertBoundedString(raw.sourceUri, `static mirror resource[${index}].sourceUri`, 4096);
     assertBoundedString(raw.finalUri, `static mirror resource[${index}].finalUri`, 4096);
-    validateNavigationUrl(raw.sourceUri, request.policy);
-    validateNavigationUrl(raw.finalUri, request.policy);
+    validateNavigationUrl(raw.sourceUri, request.policy, request.networkPolicy);
+    validateNavigationUrl(raw.finalUri, request.policy, request.networkPolicy);
     assertBoundedString(raw.mediaType, `static mirror resource[${index}].mediaType`, 256);
     assertBoundedString(raw.sha256, `static mirror resource[${index}].sha256`, 64);
     if (!/^[a-f0-9]{64}$/u.test(raw.sha256)) throw new ImportValidationError("static mirror resource sha256 is invalid");
@@ -406,7 +406,7 @@ async function verifyStaticMirrorResult(
   const rewrites: Record<string, string> = Object.create(null);
   for (const [from, to] of rewriteEntries.sort(([a], [b]) => a.localeCompare(b))) {
     assertBoundedString(from, "static mirror rewrite source", 4096);
-    validateNavigationUrl(from, request.policy);
+    validateNavigationUrl(from, request.policy, request.networkPolicy);
     assertMirrorObjectPath(to, "static mirror rewrite target");
     if (!bytesByLogicalPath.has(to)) throw new ImportConflictError("static mirror rewrite points to an unverified object");
     rewrites[from] = to;

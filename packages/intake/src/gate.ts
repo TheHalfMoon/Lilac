@@ -8,14 +8,14 @@ export type NetworkImportPlan =
 /**
  * Decide whether a network import of `url` may happen under the project's network policy.
  * An allowed `import.fetch` decision maps to the matching import-stack policy (`local-app`
- * for loopback decisions, `remote` otherwise). Callers must still pass every resolved
- * address through `evaluateResolved(plan.decision, addresses)` before connecting; the
- * import-stack transport also applies its own resolved-address checks.
+ * for loopback decisions, `remote` otherwise). Pass the same network policy as
+ * `networkPolicy` on the import request: import-stack then requires an allowed `import.fetch`
+ * decision for every URL it contacts and checks the addresses it connects to with
+ * `evaluateResolved` (#83), so this plan is an early answer, not the enforcement point.
  *
- * The returned import policy is generic for its mode and is only meaningful together with
- * `plan.decision` for this URL. It is never looser than the decision: import-stack's remote
- * mode refuses private and reserved addresses even when the grant sets allowPrivateNetwork,
- * so private-network imports fail closed until import-stack routes through this policy (#83).
+ * The returned import policy is generic for its mode and never looser than the decision:
+ * import-stack enforces both policies together, and its remote mode refuses private and
+ * reserved addresses even when a grant sets allowPrivateNetwork.
  */
 export function planNetworkImport(networkPolicy: unknown, url: unknown): NetworkImportPlan {
   const decision = evaluateUrl(networkPolicy, { capability: "import.fetch", url });

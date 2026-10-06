@@ -94,6 +94,10 @@ The implementation:
 
 `ExternalCrawlerConnector` and `VisualImportOperator` are capability-neutral interfaces only. Firecrawl and UI-TARS remain optional external implementations; neither is a Grain 6 core dependency.
 
+## Addendum 2026-10-07: project network policy enforcement (#83)
+
+Import requests may carry `networkPolicy` (`@lilac/network-policy`). `validateNavigationUrl` now also requires an allowed `import.fetch` decision, and `validateResolvedAddresses` also requires `evaluateResolved` on that decision for the addresses actually used. This covers entry URLs, queued mirror pages and assets, redirects, Playwright subrequests and final URLs, and mirror manifest re-validation. Both policies must allow a contact (intersection): `ImportPolicy` keeps every Grain 6 refusal, and a grant's `allowPrivateNetwork` does not widen remote mode. A request without `networkPolicy` uses the default offline policy, so network-mode imports fail closed. All import-stack contacts use `import.fetch`; `asset.fetch` stays reserved. Proposals and ledger records do not embed the network policy. The Grain 6 network tests were re-run with explicit grants (`tests/import-stack.test.mjs`), and `tests/import-network-policy.test.mjs` adds the enforcement cases.
+
 ## Qualification
 
 Qualification evidence is added to the PR/Issue only after exact-head GitHub CI, Alibaba Open Code Review delegation, and Jev review complete. Cubic, CodeRabbit, and Qodo are not qualification evidence.

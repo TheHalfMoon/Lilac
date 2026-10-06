@@ -21,7 +21,7 @@ The Grain 6 IPv4/IPv6 classifier (loopback, RFC 1918 and other private/reserved 
 - `evaluateUrl` (before DNS) refuses non-http(s) schemes, embedded credentials, and unmatched grants; loopback targets need an explicit loopback grant; private IP literals need `allowPrivateNetwork`.
 - `evaluateResolved` (after DNS) checks every resolved address against the decision: loopback grants must stay on loopback, other grants may never resolve to loopback, and private or reserved addresses need `allowPrivateNetwork`. This defeats DNS rebinding when callers pass the addresses they actually connect to.
 - Decisions are frozen data with reasons. `evaluateResolved` honors only decisions issued by `evaluateUrl` (tracked in a module-private `WeakSet`), so forged or copied decision objects are refused. Wildcard grants match DNS names only, never IP literals, and numeric wildcard bases are rejected.
-- The package never opens connections or resolves names. **It enforces nothing on its own:** callers must ask it before connecting. Its only real network consumer today, `@lilac/import-stack`, still enforces its own `ImportPolicy`; routing import through this policy is tracked in #83.
+- The package never opens connections or resolves names. **It enforces nothing on its own:** callers must ask it before connecting. Its real network consumer, `@lilac/import-stack`, enforces it since #83 (2026-10-07): every import contact needs an allowed `import.fetch` decision and `evaluateResolved` on the addresses used, in addition to the import's own `ImportPolicy`; a request without a network policy gets the default offline policy.
 
 ## Providers
 

@@ -1,3 +1,4 @@
+import type { NetworkPolicy } from "@lilac/network-policy";
 export const IMPORT_SCHEMA_VERSION = 1;
 
 export const IMPORT_HARD_LIMITS = Object.freeze({
@@ -64,6 +65,12 @@ export interface ImportRequest {
   at: string;
   source: ImportSourceIdentity;
   policy: ImportPolicy;
+  /**
+   * Project network policy (`@lilac/network-policy`). Network contacts need an allowed
+   * `import.fetch` decision from it in addition to `policy`; when absent, the default
+   * offline policy applies, so network-mode imports are refused.
+   */
+  networkPolicy?: NetworkPolicy;
 }
 
 export interface SourceBinding {
