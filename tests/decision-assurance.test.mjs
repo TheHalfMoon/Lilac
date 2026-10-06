@@ -325,3 +325,50 @@ test("exotic and huge containers are rejected before enumeration with bounded me
   const longKey = "k".repeat(5_000_000);
   await assert.rejects(assureCandidates({ ...valid, [longKey]: 1 }), (error) => error instanceof DecisionAssuranceValidationError && error.message.length < 400);
 });
+
+test("adapter results are read once as plain data and re-validated", async () => {
+  let reads = 0;
+  const shifty = {
+    name: "shifty",
+    async classifyCells(cells) {
+      return {
+        status: "ok",
+        value: cells.map(() => {
+          const answer = { confidence: 0.9, scores: { strong: 0.05, acceptable: 0.05, weak: 0.9 } };
+          Object.defineProperty(answer, "label", { enumerable: true, get: () => (reads++ % 2 === 0 ? "weak" : "\u{202e}EVIL") });
+          return answer;
+        }),
+      };
+    },
+  };
+  const record = await assureCandidates(input([candidate("a"), candidate("b")]), { adapter: shifty });
+  // Each getter is read exactly once by the clone; the second answer clones as the forged
+  // label, which the router rejects, so the run fails closed with no forged text recorded.
+  assert.equal(reads, 2);
+  assert.equal(record.outcome.reason, "adapter-failed");
+  assert.ok(record.candidates.every((entry) => entry.fit === null));
+  assert.doesNotMatch(serializeAssuranceRecord(record), /EVIL/);
+
+  const proxied = { name: "proxied", async classifyCells(cells) { return new Proxy({ status: "ok", value: [] }, {}); } };
+  const failed = await assureCandidates(input([candidate("a"), candidate("b")]), { adapter: proxied });
+  assert.equal(failed.outcome.reason, "adapter-failed");
+  assert.match(failed.outcome.detail, /not plain data/);
+});
+
+test("variation selectors are allowed only where they carry visible meaning", async () => {
+  const named = (rationale) => input([candidate("a", cleanNodes("a"), rationale), candidate("b")]);
+  for (const hidden of ["a\u{fe01}b\u{fe02}c", "plain\u{fe0f}", "space \u{fe0e}", "x\u{e0100}"]) {
+    await assert.rejects(assureCandidates(named(hidden)), /hidden/);
+  }
+  for (const visible of ["keycap 1\u{fe0f}\u{20e3}", "heart \u{2764}\u{fe0f}", "text style \u{2764}\u{fe0e}", "variant \u{8fbb}\u{e0100}", "flag \u{1f1f8}\u{1f1e6}"]) {
+    await assert.doesNotReject(assureCandidates(named(visible)), visible);
+  }
+});
+
+test("oversized strings and arrays are rejected before any scanning", async () => {
+  const valid = input([candidate("a"), candidate("b")]);
+  const started = performance.now();
+  await assert.rejects(assureCandidates({ ...valid, intent: "x".repeat(20_000_000) }), /exceeds 4096/);
+  await assert.rejects(assureCandidates({ ...valid, rulePacks: new Array(5_000_000).fill(0) }), /exceeds/);
+  assert.ok(performance.now() - started < 1500, `took ${performance.now() - started}ms`);
+});

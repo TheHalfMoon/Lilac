@@ -50,10 +50,17 @@ function isolateAdapter(adapter: unknown): DecisionAdapter {
     throw new DecisionAssuranceValidationError("options.adapter.name must be a short stable identifier");
   }
   if (typeof classify !== "function") throw new DecisionAssuranceValidationError("options.adapter.classifyCells must be a function");
-  return Object.freeze({
-    name,
-    classifyCells: (cells, policy) => classify.call(adapter, structuredClone(cells), structuredClone(policy)),
-  } satisfies DecisionAdapter);
+  // Results are cloned once too: getters are read exactly once and proxies cannot be cloned,
+  // so the router validates the same values it later records.
+  const classifyCells: DecisionAdapter["classifyCells"] = async (cells, policy) => {
+    const outcome = await classify.call(adapter, structuredClone(cells), structuredClone(policy));
+    try {
+      return structuredClone(outcome);
+    } catch {
+      return { status: "failed", reason: "adapter returned a result that is not plain data" };
+    }
+  };
+  return Object.freeze({ name, classifyCells } satisfies DecisionAdapter);
 }
 
 // Router inputs are bounded by the router's own policy; a valid assurance input must never
@@ -175,6 +182,10 @@ export async function assureCandidates(inputValue: unknown, options: AssureOptio
           throw new DecisionAdapterError("router returned an out-of-range or duplicate decision index");
         }
         seen.add(index);
+        const labelOk = decision.label === null || (FIT_LABELS as readonly string[]).includes(decision.label);
+        const confidenceOk = decision.confidence === null
+          || (typeof decision.confidence === "number" && Number.isFinite(decision.confidence) && decision.confidence >= 0 && decision.confidence <= 1);
+        if (!labelOk || !confidenceOk) throw new DecisionAdapterError("router returned a fit outside the fit dimension");
       }
       for (const decision of result.record.decisions) {
         assessments[decision.itemIndex].fit = {

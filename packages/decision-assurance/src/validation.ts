@@ -18,11 +18,15 @@ const HIDDEN_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{34f}\u{115f}\u{1160}\u{2800}\u{
 const HIDDEN_TEXT_GLOBAL = new RegExp(HIDDEN_TEXT.source, "gu");
 const VISIBLE_FORMAT = /[\t\n\r\u{200c}\u{200d}]/gu;
 const VISIBLE_FORMAT_CHAR = /^[\t\n\r\u{200c}\u{200d}]$/u;
-// Variation selectors are legitimate after a base character (emoji, CJK variants), but a
-// leading selector or a run of them can carry hidden data.
+// Variation selectors can carry hidden data one per visible character. Only the legitimate
+// uses are allowed: text/emoji presentation after an emoji or keycap base, and ideographic
+// variation selectors after an ideograph. Everything else, including runs, is rejected.
 const VARIATION_SELECTORS = /[\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}]/gu;
-const SELECTOR_SMUGGLING = /(?:^|[\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}])[\u{fe00}-\u{fe0f}\u{e0100}-\u{e01ef}]/u;
+const SELECTOR_SMUGGLING = /(?<![\p{Extended_Pictographic}0-9#*])[\u{fe0e}\u{fe0f}]|[\u{fe00}-\u{fe0d}]|(?<!\p{Ideographic})[\u{e0100}-\u{e01ef}]/u;
 const MAX_KEY_LENGTH = 128;
+// Largest text field any schema accepts (design-method node text); longer strings are
+// rejected before any regex work.
+const MAX_STRING_LENGTH = 4096;
 const MAX_PATH_IN_MESSAGE = 160;
 
 function shown(path: string): string {
@@ -74,6 +78,7 @@ export function inertCopy(value: unknown, label = "input"): unknown {
     if (depth > ASSURANCE_HARD_LIMITS.maxInputDepth) throw new DecisionAssuranceValidationError(`${shown(path)} is nested too deeply`);
     if (entry === null || typeof entry === "boolean") return entry;
     if (typeof entry === "string") {
+      if (entry.length > MAX_STRING_LENGTH) throw new DecisionAssuranceValidationError(`${shown(path)} exceeds ${MAX_STRING_LENGTH} characters`);
       assertVisibleText(entry, path);
       return entry;
     }
@@ -88,6 +93,9 @@ export function inertCopy(value: unknown, label = "input"): unknown {
     const prototype = Object.getPrototypeOf(entry);
     if (isArray ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) {
       throw new DecisionAssuranceValidationError(`${shown(path)} must be a plain ${isArray ? "array" : "object"}`);
+    }
+    if (isArray && (entry as unknown[]).length > budget) {
+      throw new DecisionAssuranceValidationError(`${label} exceeds ${ASSURANCE_HARD_LIMITS.maxInputValues} values`);
     }
     const ownKeys = Reflect.ownKeys(entry);
     if (ownKeys.length > budget + 1) throw new DecisionAssuranceValidationError(`${label} exceeds ${ASSURANCE_HARD_LIMITS.maxInputValues} values`);
