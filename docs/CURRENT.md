@@ -6,15 +6,15 @@ Last updated: 2026-10-06
 
 **LILAC-P00 — Foundation, authorized-source intake, and staged product implementation**
 
-Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–7 are `CLOSED_CANONICAL`; repository-side Graft context policy is canonical; Grain 8 Delivery Governance is the next implementation frontier.
+Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–8 are `CLOSED_CANONICAL`; repository-side Graft context policy is canonical; Grain 9 Design Method and Resources is the next implementation frontier.
 
 ## Canonical main
 
-`723e7b067d95e3d600bf47c8b952adf4520d8c99`
+`cf8dee827e79f175b79e61504dbc03c063fc2c17`
 
-This is the normal merge commit for PR #38 (Grain 7 Decision Router).
+This is the normal merge commit for PR #41 (Grain 8 Delivery Governance).
 
-Post-merge CI run `37407426329` completed `SUCCESS` on that exact SHA (219/219 tests, 0 vulnerabilities).
+Post-merge CI run `37409833005` completed `SUCCESS` on that exact SHA (232/232 tests, 0 vulnerabilities).
 
 ## Canonical implementation chain
 
@@ -27,6 +27,7 @@ Post-merge CI run `37407426329` completed `SUCCESS` on that exact SHA (219/219 t
 | 5 | Local-first Collaboration | CLOSED_CANONICAL | PR #32 merged at `007e829fdc6e4a28f7fb5089277e6e535840f317`; post-merge CI `37327594078` succeeded |
 | 6 | Import Stack | CLOSED_CANONICAL | PR #35 merged at `c3841a19e7d1d8c348e5ed114f101351725c6578` (qualified head `3955007ca055708bdb7efc0b4601cbd2df8bff6e`); post-merge CI `37405576580` succeeded |
 | 7 | Decision Router | CLOSED_CANONICAL | PR #38 merged at `723e7b067d95e3d600bf47c8b952adf4520d8c99` (qualified head `9e25bd787b2e874120f6183beea1dfe07b1afba4`); post-merge CI `37407426329` succeeded |
+| 8 | Delivery Governance | CLOSED_CANONICAL | PR #41 merged at `cf8dee827e79f175b79e61504dbc03c063fc2c17` (qualified head `8cf830779e85c8f1bd50603d1a417422956168e5`); post-merge CI `37409833005` succeeded |
 | Tooling | Graft context/navigation policy | CANONICAL | PR #8 merged at `d6eb3be46e9d608b2071b80be0f6911ba5bf0c9b`; post-merge CI `37329841174` succeeded |
 
 ## Canonical facts
@@ -65,8 +66,8 @@ Post-merge CI run `37407426329` completed `SUCCESS` on that exact SHA (219/219 t
 | I05 Collaboration | PROVEN |
 | I06 Import Stack | PROVEN |
 | I07 Decision Router | PROVEN |
-| I08 Delivery Governance | ACTIVE_NEXT |
-| I09 Design Method and Resources | BLOCKED_BY_I08 |
+| I08 Delivery Governance | PROVEN |
+| I09 Design Method and Resources | ACTIVE_NEXT |
 
 ## Grain 6 — closed canonical
 
@@ -90,9 +91,15 @@ Grain 7 (Decision Router, `packages/decision-router`, Issue #37) is `CLOSED_CANO
 
 Delivered scope (per `docs/DONOR_INTEGRATION_MAP.md` and Issue #37): typed decision dimensions with label schemas; selected label plus confidence plus complete label-score distributions; bounded inputs and batching; provider-neutral adapter contract with strict output validation; deterministic prechecks that always outrank probabilistic output; explicit unsure-below threshold semantics with abstention; bounded manual-review routing; offline rule adapter; optional Jev adapter seam; idempotent request ledger; decision provenance records. Guidance donor `mrmps/classifier-dev@a17bf2b6353f6234af6e977a463da7cd1975b68e` (MIT); no SaaS, billing, gateway, or analytics code imported.
 
-## Grain 8 — next canonical action
+## Grain 8 — closed canonical
 
-Grain 8 is **Delivery Governance** defined by `docs/DONOR_INTEGRATION_MAP.md`: Lilac's exact-head agent-authored source delivery and qualification layer, guided by `kunchenguid/no-mistakes@0616eb4911845e2ba04faa17186ecd2686d7d579`. Freeze a dedicated Grain 8 Issue/spec before implementation, branch from the exact canonical `main`, and close only after post-merge CI.
+Grain 8 (Delivery Governance, `packages/delivery-governance`, Issue #40) is `CLOSED_CANONICAL` via PR #41, merged normally at `cf8dee827e79f175b79e61504dbc03c063fc2c17` with post-merge CI `37409833005` green on the exact merge SHA. Exact-head qualification on `8cf830779e85c8f1bd50603d1a417422956168e5` covered 232/232 tests, zero vulnerabilities, Jev 9/9 cells below threshold 0.70, Alibaba Open Code Review delegation SUCCESS (v1.12.9, 11 reviewable files), Graft blast-radius inspection, and manual review of findings, gates, repair ancestry, ask-user lifecycle, CI model, movement guards, merge-strategy guard, and dependency closure (zero new runtime dependencies). Elevated Jev cells drove three concrete repairs with red-green proofs (ancestor-resolved destination confinement, disposable-root resolution including not-yet-existing roots, and a pinned single-root evidence store redesign); one intermediate CI run caught a real clean-machine-only confinement gap masked locally by a leftover directory. Full evidence is recorded on Issue #40.
+
+Delivered scope (per `docs/DONOR_INTEGRATION_MAP.md` and Issue #40): structured findings; worktree identity verification records shaped by the Grain 4 supervisor boundary; exact-head proof; base/head movement protection; CI qualification model; repair ancestry with rerun-after-fix; explicit ask-user state; evidence bundles confined to one pre-registered store root outside disposable worktrees; merge-strategy guard (normal merge only); qualification invalidation on mutation. Guidance donor `kunchenguid/no-mistakes@0616eb4911845e2ba04faa17186ecd2686d7d579` (MIT); no daemon, proxy, hooks, database, billing, or forge machinery imported.
+
+## Grain 9 — next canonical action
+
+Grain 9 is **Design Method and Resources** defined by `docs/DONOR_INTEGRATION_MAP.md`: explainable mobile/native design rule packs, deterministic design-review candidates, agent review checklists, and a provider/resource taxonomy with registry, source/provenance fields, and license metadata, guided by `Appllama/appllama-skills@dd5caaec3d5d50ad7fc0324da238119c6b7c3707` and `reinaldosimoes/design-resources@43fe2b5d801e34c21e22b5639711f7e250a798e5`. Freeze a dedicated Grain 9 Issue/spec before implementation, branch from the exact canonical `main`, and close only after post-merge CI.
 
 ## Grain 6 authority boundaries
 
@@ -106,10 +113,9 @@ Grain 8 is **Delivery Governance** defined by `docs/DONOR_INTEGRATION_MAP.md`: L
 
 ## Later sequence
 
-Grain 8 and Grain 9 remain, then the broader Master Plan work:
+Only Grain 9 remains of the staged grains, then the broader Master Plan work:
 
-1. Grain 8 — Delivery Governance for exact-head repository change qualification;
-3. Grain 9 — Design Method and Resources;
+1. Grain 9 — Design Method and Resources;
 4. continue broader Master Plan work: bidirectional code/design IR, native code components, Visual Git, parity disposition, product hardening, packaging, release, and reproducible smoke evidence.
 
 ## Integrity rule
