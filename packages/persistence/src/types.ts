@@ -7,7 +7,6 @@ export const PERSISTENCE_LIMITS = {
   maxEntryBytes: 4 * 1024 * 1024,
   maxReplayEntries: 1_000_000,
   maxManifestBytes: 64 * 1024,
-  maxIdLength: 128,
 } as const;
 
 /** Fixed names inside `<root>/.lilac`. No path is ever derived from input. */
@@ -41,15 +40,22 @@ export interface JournalEntry {
   transaction: Record<string, unknown>;
 }
 
+export interface LockOverride {
+  previous: LockRecord | null;
+  reason: string;
+}
+
 export interface LockRecord {
   owner: string;
   pid: number;
   at: string;
+  /** Present when this lock replaced a stale one; persisted so the override survives restarts. */
+  override?: LockOverride;
 }
 
 export interface RecoveryReport {
   tornTailBytes: number;
   replayedEntries: number;
   migratedFrom: number | null;
-  lockOverride: { previous: LockRecord | null; reason: string } | null;
+  lockOverride: LockOverride | null;
 }

@@ -13,7 +13,10 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { chmodSync, linkSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
+
 import { join } from "node:path";
 
 import { createDocument } from "../packages/document-model/src/index.mjs";
@@ -319,3 +322,133 @@ test("journal encoding is deterministic across independent projects", () => {
     for (const root of roots) rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a failed journal write poisons the store until reopen", () => withProject((root) => {
+  const store = open(root);
+  store.commit(setTitle("tx-1", 0, "One"));
+  const journal = file(root, PROJECT_FILES.journal);
+  chmodSync(journal, 0o444);
+  try {
+    assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")));
+  } finally {
+    chmodSync(journal, 0o644);
+  }
+  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /reopened after a failed journal write/);
+  assert.throws(() => store.checkpoint(), /reopened after a failed journal write/);
+  store.close();
+  const reopened = open(root);
+  assert.equal(reopened.revision, 1);
+  reopened.commit(setTitle("tx-2", 1, "Two"));
+  reopened.close();
+}));
+
+test("bytes written to the journal by anyone else stop the writer before it appends", () => withProject((root) => {
+  const store = open(root);
+  store.commit(setTitle("tx-1", 0, "One"));
+  appendFileSync(file(root, PROJECT_FILES.journal), '{"partial');
+  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), (error) => error instanceof PersistenceCorruptionError && /changed outside this writer/.test(error.message));
+  assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /reopened/);
+  store.close();
+  const reopened = open(root);
+  assert.equal(reopened.recovery.tornTailBytes, 9);
+  assert.equal(reopened.revision, 1);
+  reopened.close();
+}));
+
+test("a writer whose lock was overridden can no longer write, and the override is persisted", () => withProject((root) => {
+  const stale = open(root);
+  const fresh = open(root, { owner: "writer-2", breakStaleLock: { reason: "first writer hung" } });
+  const lock = JSON.parse(readFileSync(file(root, PROJECT_FILES.lock), "utf8"));
+  assert.equal(lock.owner, "writer-2");
+  assert.equal(lock.override.reason, "first writer hung");
+  assert.equal(lock.override.previous.owner, "writer-1");
+  assert.throws(() => stale.commit(setTitle("tx-stale", 0, "Stale")), PersistenceLockError);
+  assert.throws(() => stale.checkpoint(), PersistenceLockError);
+  fresh.commit(setTitle("tx-1", 0, "Fresh"));
+  stale.close();
+  fresh.close();
+  const reopened = open(root);
+  assert.equal(reopened.document.nodes["node-1"].props.title, "Fresh");
+  reopened.close();
+}));
+
+test("a second writer in another process is refused", () => withProject((root) => {
+  const store = open(root);
+  try {
+    const entry = new URL("../packages/persistence/src/index.ts", import.meta.url).href;
+    const script = `import { openProject } from ${JSON.stringify(entry)};
+try { openProject(${JSON.stringify(root)}, { owner: "child", at: "${AT}" }); console.log("OPENED"); }
+catch (error) { console.log(error.name); }`;
+    const output = execFileSync(process.execPath, ["--input-type=module", "-e", script], { cwd: new URL("..", import.meta.url), encoding: "utf8" }).trim();
+    assert.equal(output, "PersistenceLockError");
+  } finally {
+    store.close();
+  }
+}));
+
+test("a hard-linked journal is refused before any write leaves the project", () => withProject((root) => {
+  const outsideDir = tempRoot();
+  try {
+    const store = open(root);
+    linkSync(file(root, PROJECT_FILES.journal), join(outsideDir, "victim.log"));
+    assert.throws(() => store.commit(setTitle("tx-1", 0, "Leak")), /hard-linked/);
+    assert.equal(readFileSync(join(outsideDir, "victim.log"), "utf8"), "");
+    store.close();
+  } finally {
+    rmSync(outsideDir, { recursive: true, force: true });
+  }
+}));
+
+test("an acknowledged entry that lost only its terminator fails closed instead of being dropped", () => withProject((root) => {
+  const store = open(root);
+  store.commit(setTitle("tx-1", 0, "One"));
+  store.commit(setTitle("tx-2", 1, "Two"));
+  store.close();
+  const journal = file(root, PROJECT_FILES.journal);
+  const bytes = readFileSync(journal);
+  writeFileSync(journal, bytes.subarray(0, bytes.length - 1));
+  assert.throws(() => open(root), /complete entry missing its line terminator/);
+}));
+
+test("values JSON cannot represent are refused, and memory always equals replay", () => withProject((root) => {
+  const store = open(root);
+  const journal = file(root, PROJECT_FILES.journal);
+  const before = readFileSync(journal);
+  const props = (set) => ({ id: "tx-x", actor: "user-1", baseRevision: 0, operations: [{ type: "set-props", nodeId: "node-1", set }] });
+  assert.throws(() => store.commit(props({ when: new Date(0) })), /non-plain object/);
+  assert.throws(() => store.commit(props({ tags: new Map() })), /non-plain object/);
+  assert.throws(() => store.commit(props({ gone: undefined })), /undefined/);
+  assert.deepEqual(readFileSync(journal), before);
+  assert.equal(store.revision, 0);
+  store.commit(props({ zero: -0, big: 1e21, text: "line\u{2028}separator" }));
+  const inMemory = store.document;
+  assert.ok(Object.is(inMemory.nodes["node-1"].props.zero, 0));
+  store.close();
+  const reopened = open(root);
+  assert.deepEqual(reopened.document, inMemory);
+  reopened.close();
+}));
+
+test("an existing .lilac of any kind is never replaced by project creation", () => {
+  const root = tempRoot();
+  try {
+    writeFileSync(join(root, PROJECT_FILES.directory), "USER DATA");
+    assert.throws(() => createProject(root, { projectId: "p", document: baseDocument(), createdAt: AT }), /already exists/);
+    assert.equal(readFileSync(join(root, PROJECT_FILES.directory), "utf8"), "USER DATA");
+    assert.deepEqual(readdirSync(root), [PROJECT_FILES.directory]);
+    rmSync(join(root, PROJECT_FILES.directory));
+    mkdirSync(join(root, PROJECT_FILES.directory));
+    assert.throws(() => createProject(root, { projectId: "p", document: baseDocument(), createdAt: AT }), /already exists/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a closed store refuses every read and write", () => withProject((root) => {
+  const store = open(root);
+  store.close();
+  assert.throws(() => store.revision, /closed/);
+  assert.throws(() => store.journalSeq, /closed/);
+  assert.throws(() => store.document, /closed/);
+  assert.throws(() => store.checkpoint(), /closed/);
+}));

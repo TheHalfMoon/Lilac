@@ -14,7 +14,7 @@ import {
   writeSync,
 } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
-import { PersistenceValidationError } from "./errors.ts";
+import { PersistenceCorruptionError, PersistenceValidationError } from "./errors.ts";
 import { PROJECT_FILES } from "./types.ts";
 
 // O_NOFOLLOW makes the kernel refuse a symlink at open time (POSIX). Windows has no such
@@ -60,9 +60,11 @@ export function ensureDirectory(path: string, label: string): void {
     return;
   }
   mkdirSync(path, { mode: 0o700 });
+  // Make the new directory entry durable before anything that references it is written.
+  fsyncDirectory(dirname(path));
 }
 
-function fsyncDirectory(path: string): void {
+export function fsyncDirectory(path: string): void {
   let fd: number | null = null;
   try {
     fd = openSync(path, "r");
@@ -143,11 +145,21 @@ export function createExclusive(path: string, data: string): void {
   fsyncDirectory(dirname(path));
 }
 
-/** Append and fsync; the caller writes each record with one call so a crash can only tear the tail. */
-export function appendDurable(path: string, data: string, label: string): void {
+/**
+ * Append and fsync one record. The opened file must be a regular, singly linked file of
+ * exactly `expectedSize` bytes, so a foreign writer, a stale writer, or a hard link out of
+ * the project is detected before anything is written.
+ */
+export function appendDurable(path: string, data: string, label: string, expectedSize: number): void {
   assertNotSymlink(path, label);
-  const fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | NOFOLLOW, 0o600);
+  const fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | NOFOLLOW);
   try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) throw new PersistenceValidationError(`${label} must be a regular file`);
+    if (stat.nlink > 1) throw new PersistenceValidationError(`${label} must not be hard-linked`);
+    if (stat.size !== expectedSize) {
+      throw new PersistenceCorruptionError(`${label} changed outside this writer (expected ${expectedSize} bytes, found ${stat.size})`);
+    }
     writeAll(fd, Buffer.from(data, "utf8"));
     fsyncSync(fd);
   } finally {

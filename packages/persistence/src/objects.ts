@@ -31,7 +31,9 @@ export function putObject(projectDir: string, bytes: Buffer): string {
 
 /** Read an object and verify its content against its id. */
 export function getObject(projectDir: string, digest: string): Buffer {
-  const { file } = objectPath(projectDir, digest);
+  const { directory, file } = objectPath(projectDir, digest);
+  assertNotSymlink(join(projectDir, PROJECT_FILES.objects), "object store");
+  assertNotSymlink(directory, "object fan-out directory");
   const bytes = readBounded(file, PERSISTENCE_LIMITS.maxObjectBytes, `object ${digest}`);
   if (bytes === null) throw new PersistenceCorruptionError(`object ${digest} is missing`);
   if (sha256Hex(bytes) !== digest) throw new PersistenceCorruptionError(`object ${digest} does not match its content hash`);

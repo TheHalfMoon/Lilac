@@ -10,7 +10,7 @@ import {
   assertNotSymlink,
   atomicWrite,
   createExclusive,
-  ensureDirectory,
+  fsyncDirectory,
   projectDirectory,
   readBounded,
   removeFile,
@@ -23,6 +23,7 @@ import {
   PROJECT_FILES,
   PROJECT_FORMAT,
   PROJECT_SCHEMA_VERSION,
+  type LockOverride,
   type LockRecord,
   type ProjectManifest,
   type RecoveryReport,
@@ -37,6 +38,8 @@ const STABLE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST = /^[0-9a-f]{64}$/u;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u;
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
+const MAX_LOCK_BYTES = 8192;
+const STORE_TOKEN = Symbol("ProjectStore");
 
 function assertId(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || !STABLE_ID.test(value)) throw new PersistenceValidationError(`${label} must be a stable identifier`);
@@ -68,7 +71,7 @@ function parseJsonFile(bytes: Buffer, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function readJsonFile(path: string, label: string, maxBytes = PERSISTENCE_LIMITS.maxManifestBytes): Record<string, unknown> {
+function readJsonFile(path: string, label: string, maxBytes: number = PERSISTENCE_LIMITS.maxManifestBytes): Record<string, unknown> {
   const bytes = readBounded(path, maxBytes, label);
   if (bytes === null) throw new PersistenceCorruptionError(`${label} is missing`);
   return parseJsonFile(bytes, label);
@@ -78,7 +81,7 @@ function readManifest(record: Record<string, unknown>): ProjectManifest {
   if (record.format !== PROJECT_FORMAT) throw new PersistenceCorruptionError("manifest is not a Lilac project manifest");
   for (const key of Object.keys(record)) {
     if (!["format", "schemaVersion", "projectId", "documentId", "createdAt"].includes(key)) {
-      throw new PersistenceCorruptionError(`manifest contains unsupported field ${key}`);
+      throw new PersistenceCorruptionError(`manifest contains unsupported field ${JSON.stringify(key).slice(0, 80)}`);
     }
   }
   try {
@@ -111,8 +114,13 @@ function loadDocument(projectDir: string, digest: string): LilacDocument {
     validateDocument(record);
     return normalizeDocument(record) as LilacDocument;
   } catch (error) {
-    throw new PersistenceCorruptionError(`document object ${digest} is not a valid document: ${(error as Error).message}`);
+    throw new PersistenceCorruptionError(`document object ${digest} is not a valid document: ${(error as Error).message.slice(0, 200)}`);
   }
+}
+
+/** Round-trip a value through canonical JSON, so in-memory state equals what replay will produce. */
+function persisted<T>(value: T): T {
+  return JSON.parse(canonicalJson(value)) as T;
 }
 
 export interface CreateProjectOptions {
@@ -123,7 +131,8 @@ export interface CreateProjectOptions {
 
 /**
  * Create `<root>/.lilac` atomically: it is assembled in a temporary sibling directory and
- * renamed into place, so a crash never leaves a half-initialized project.
+ * renamed into place, so a crash never leaves a half-initialized project. Anything already
+ * named `.lilac` (directory, file, or link) is refused.
  */
 export function createProject(root: string, options: CreateProjectOptions): { projectDir: string } {
   const projectDir = projectDirectory(root);
@@ -132,11 +141,12 @@ export function createProject(root: string, options: CreateProjectOptions): { pr
   let document: LilacDocument;
   try {
     validateDocument(options.document);
-    document = normalizeDocument(cloneDocument(options.document)) as LilacDocument;
+    document = normalizeDocument(persisted(cloneDocument(options.document))) as LilacDocument;
   } catch (error) {
-    throw new PersistenceValidationError(`document is invalid: ${(error as Error).message}`);
+    throw new PersistenceValidationError(`document is invalid: ${(error as Error).message.slice(0, 200)}`);
   }
   assertId(document.id, "document.id");
+  if (assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("a Lilac project already exists at this root");
   const staging = join(dirname(projectDir), `${PROJECT_FILES.directory}.tmp-${process.pid}-${randomUUID()}`);
   mkdirSync(staging, { mode: 0o700 });
   try {
@@ -156,9 +166,10 @@ export function createProject(root: string, options: CreateProjectOptions): { pr
       renameSync(staging, projectDir);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException)?.code;
-      if (code === "EEXIST" || code === "ENOTEMPTY" || code === "EPERM") throw new PersistenceValidationError("a Lilac project already exists at this root");
+      if (code === "EEXIST" || code === "ENOTEMPTY") throw new PersistenceValidationError("a Lilac project already exists at this root");
       throw error;
     }
+    fsyncDirectory(dirname(projectDir));
   } catch (error) {
     rmSync(staging, { recursive: true, force: true });
     throw error;
@@ -173,7 +184,26 @@ export interface OpenProjectOptions {
   migrations?: Readonly<Record<number, ManifestMigration>>;
 }
 
-function acquireLock(lockPath: string, record: LockRecord, override: OpenProjectOptions["breakStaleLock"]): RecoveryReport["lockOverride"] {
+function readLock(path: string): LockRecord | null {
+  try {
+    const record = readJsonFile(path, "lock", MAX_LOCK_BYTES);
+    if (typeof record.owner !== "string" || typeof record.pid !== "number" || typeof record.at !== "string") return null;
+    return { owner: record.owner.slice(0, 128), pid: record.pid, at: record.at.slice(0, 64) };
+  } catch {
+    return null;
+  }
+}
+
+function sameHolder(left: LockRecord | null, right: LockRecord): boolean {
+  return left !== null && left.owner === right.owner && left.pid === right.pid && left.at === right.at;
+}
+
+/**
+ * Take the writer lock. A stale lock is broken by renaming it to a unique name first: only
+ * one contender can win that rename, so two overriding processes cannot both end up holding
+ * the lock. The override is persisted in the new lock record.
+ */
+function acquireLock(lockPath: string, record: LockRecord, override: OpenProjectOptions["breakStaleLock"]): LockOverride | null {
   try {
     createExclusive(lockPath, canonicalJson(record));
     return null;
@@ -184,27 +214,35 @@ function acquireLock(lockPath: string, record: LockRecord, override: OpenProject
   if (typeof override.reason !== "string" || override.reason.trim() === "" || override.reason.length > 500) {
     throw new PersistenceValidationError("breakStaleLock.reason must be a non-empty string of at most 500 characters");
   }
-  let previous: LockRecord | null = null;
+  const broken = `${lockPath}.broken-${randomUUID()}`;
   try {
-    previous = readJsonFile(lockPath, "lock", 4096) as unknown as LockRecord;
-  } catch {
-    previous = null;
+    renameSync(lockPath, broken);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") throw new PersistenceLockError("project lock changed hands during override");
+    throw error;
   }
-  removeFile(lockPath);
+  const previous = readLock(broken);
+  removeFile(broken);
+  const lockOverride: LockOverride = { previous, reason: override.reason };
   try {
-    createExclusive(lockPath, canonicalJson(record));
-  } catch {
-    throw new PersistenceLockError("project lock was re-acquired by another writer during override");
+    createExclusive(lockPath, canonicalJson({ ...record, override: lockOverride }));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "EEXIST") throw new PersistenceLockError("project lock was taken by another writer during override");
+    throw error;
   }
-  return { previous, reason: override.reason };
+  return lockOverride;
 }
 
-/** Open a project for writing: verify, recover a torn journal tail, replay, and lock. */
+function releaseLock(lockPath: string, record: LockRecord): void {
+  if (sameHolder(readLock(lockPath), record)) removeFile(lockPath);
+}
+
+/** Open a project for writing: lock, verify, recover a torn journal tail, and replay. */
 export function openProject(root: string, options: OpenProjectOptions): ProjectStore {
   const projectDir = projectDirectory(root);
   assertId(options?.owner, "owner");
   assertTimestamp(options.at, "at");
-  ensureExists(projectDir);
+  if (!assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("no Lilac project exists at this root");
   const files = paths(projectDir);
   const lockRecord: LockRecord = { owner: options.owner, pid: process.pid, at: options.at };
   const lockOverride = acquireLock(files.lock, lockRecord, options.breakStaleLock);
@@ -237,14 +275,14 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       try {
         next = applyTransaction(document, entry.transaction).document as LilacDocument;
       } catch (error) {
-        throw new PersistenceCorruptionError(`journal entry ${entry.seq} does not apply: ${(error as Error).message}`);
+        throw new PersistenceCorruptionError(`journal entry ${entry.seq} does not apply: ${(error as Error).message.slice(0, 200)}`);
       }
       if (next.revision !== entry.revision) throw new PersistenceCorruptionError(`journal entry ${entry.seq} revision mismatch`);
       document = next;
       replayed += 1;
     }
     const last = parsed.entries.at(-1);
-    return new ProjectStore(projectDir, manifest, document, {
+    return new ProjectStore(STORE_TOKEN, projectDir, manifest, document, {
       seq: last?.entry.seq ?? 0,
       digest: last?.digest ?? genesis,
       journalBytes: parsed.validBytes,
@@ -257,21 +295,6 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   }
 }
 
-function ensureExists(projectDir: string): void {
-  if (!assertNotSymlink(projectDir, "project directory")) {
-    throw new PersistenceValidationError("no Lilac project exists at this root");
-  }
-}
-
-function releaseLock(lockPath: string, record: LockRecord): void {
-  try {
-    const current = readJsonFile(lockPath, "lock", 4096);
-    if (current.owner === record.owner && current.pid === record.pid && current.at === record.at) removeFile(lockPath);
-  } catch {
-    // A missing or foreign lock is left untouched.
-  }
-}
-
 interface StoreState {
   seq: number;
   digest: string;
@@ -280,6 +303,7 @@ interface StoreState {
   recovery: RecoveryReport;
 }
 
+/** An open, locked project. Obtain one only through `openProject`. */
 export class ProjectStore {
   readonly projectDir: string;
   readonly manifest: Readonly<ProjectManifest>;
@@ -290,8 +314,10 @@ export class ProjectStore {
   #journalBytes: number;
   #lock: LockRecord;
   #closed = false;
+  #poisoned = false;
 
-  constructor(projectDir: string, manifest: ProjectManifest, document: LilacDocument, state: StoreState) {
+  constructor(token: symbol, projectDir: string, manifest: ProjectManifest, document: LilacDocument, state: StoreState) {
+    if (token !== STORE_TOKEN) throw new PersistenceValidationError("ProjectStore is created by openProject");
     this.projectDir = projectDir;
     this.manifest = Object.freeze({ ...manifest });
     this.recovery = Object.freeze(state.recovery);
@@ -306,6 +332,16 @@ export class ProjectStore {
     if (this.#closed) throw new PersistenceValidationError("project store is closed");
   }
 
+  /** Writes need an open, unpoisoned store that still holds the lock on a non-link project directory. */
+  #assertWritable(): void {
+    this.#assertOpen();
+    if (this.#poisoned) throw new PersistenceValidationError("project store must be reopened after a failed journal write");
+    assertNotSymlink(this.projectDir, "project directory");
+    if (!sameHolder(readLock(join(this.projectDir, PROJECT_FILES.lock)), this.#lock)) {
+      throw new PersistenceLockError("this writer no longer holds the project lock");
+    }
+  }
+
   /** A copy of the current document; the store's state changes only through commit. */
   get document(): LilacDocument {
     this.#assertOpen();
@@ -313,38 +349,49 @@ export class ProjectStore {
   }
 
   get revision(): number {
+    this.#assertOpen();
     return this.#document.revision;
   }
 
   get journalSeq(): number {
+    this.#assertOpen();
     return this.#seq;
   }
 
   /**
    * Apply a history transaction (validation and stale-revision rejection happen first),
-   * durably append it to the journal, then update memory. Nothing is written on failure.
+   * durably append it to the journal, then update memory. The in-memory document is built
+   * from the decoded journal form, so it always equals what replay produces. Nothing is
+   * written on validation failure; any journal write failure poisons the store.
    */
   commit(transaction: unknown): { revision: number; seq: number; transactionId: string } {
-    this.#assertOpen();
-    const result = applyTransaction(this.#document, transaction);
-    const next = result.document as LilacDocument;
-    const entry = { seq: this.#seq + 1, revision: next.revision, transaction: result.transaction as Record<string, unknown> };
+    this.#assertWritable();
+    const validated = applyTransaction(this.#document, transaction);
+    const stored = persisted(validated.transaction) as Record<string, unknown>;
+    const next = applyTransaction(this.#document, stored).document as LilacDocument;
+    const entry = { seq: this.#seq + 1, revision: next.revision, transaction: stored };
     const { line, digest } = encodeJournalLine(entry, this.#digest);
     const bytes = Buffer.byteLength(line, "utf8");
     if (this.#journalBytes + bytes > PERSISTENCE_LIMITS.maxJournalBytes) {
-      throw new PersistenceValidationError("journal is full; checkpoint and rotate before committing more");
+      throw new PersistenceValidationError(`journal reached its ${PERSISTENCE_LIMITS.maxJournalBytes}-byte limit; journal rotation is not available in this release`);
     }
-    appendDurable(join(this.projectDir, PROJECT_FILES.journal), line, "journal");
+    try {
+      appendDurable(join(this.projectDir, PROJECT_FILES.journal), line, "journal", this.#journalBytes);
+    } catch (error) {
+      // The file may now hold a partial line; only a reopen can reconcile it safely.
+      this.#poisoned = true;
+      throw error;
+    }
     this.#document = next;
     this.#seq = entry.seq;
     this.#digest = digest;
     this.#journalBytes += bytes;
-    return { revision: next.revision, seq: entry.seq, transactionId: String(result.transaction.id) };
+    return { revision: next.revision, seq: entry.seq, transactionId: String(stored.id) };
   }
 
   /** Persist the current document and move the snapshot reference to the journal head. */
   checkpoint(): SnapshotRef {
-    this.#assertOpen();
+    this.#assertWritable();
     const documentObject = putObject(this.projectDir, Buffer.from(canonicalJson(this.#document), "utf8"));
     const snapshot: SnapshotRef = { revision: this.#document.revision, documentObject, journalSeq: this.#seq, chainDigest: this.#digest };
     atomicWrite(join(this.projectDir, PROJECT_FILES.snapshot), canonicalJson(snapshot), "snapshot reference");
@@ -352,9 +399,8 @@ export class ProjectStore {
   }
 
   putObject(bytes: Buffer): string {
-    this.#assertOpen();
+    this.#assertWritable();
     if (!Buffer.isBuffer(bytes)) throw new PersistenceValidationError("object content must be a Buffer");
-    ensureDirectory(join(this.projectDir, PROJECT_FILES.objects), "object store");
     return putObject(this.projectDir, bytes);
   }
 

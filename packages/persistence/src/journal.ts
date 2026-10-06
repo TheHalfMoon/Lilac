@@ -32,12 +32,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/**
- * Parse and verify the whole journal. Only an unterminated final line is treated as a torn
- * write (each append writes line and newline in one call); every other defect is corruption.
- */
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
 
+/** Decode and verify one journal line against the chain; throws a corruption error describing `label`. */
+function verifyLine(line: string, expectedSeq: number, previous: string, label: string): { entry: JournalEntry; digest: string } {
+  if (Buffer.byteLength(line, "utf8") >= PERSISTENCE_LIMITS.maxEntryBytes) {
+    throw new PersistenceCorruptionError(`${label} exceeds ${PERSISTENCE_LIMITS.maxEntryBytes} bytes`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    throw new PersistenceCorruptionError(`${label} is not valid JSON`);
+  }
+  if (!isRecord(parsed) || typeof parsed.digest !== "string" || !isRecord(parsed.entry)) {
+    throw new PersistenceCorruptionError(`${label} is malformed`);
+  }
+  const entry = parsed.entry;
+  if (entry.seq !== expectedSeq || !Number.isSafeInteger(entry.revision) || !isRecord(entry.transaction)) {
+    throw new PersistenceCorruptionError(`${label} has an invalid sequence or entry`);
+  }
+  const typed: JournalEntry = { seq: expectedSeq, revision: entry.revision as number, transaction: entry.transaction };
+  let encoded: { line: string; digest: string };
+  try {
+    encoded = encodeJournalLine(typed, previous);
+  } catch (error) {
+    throw new PersistenceCorruptionError(`${label} cannot be re-encoded: ${(error as Error).message}`);
+  }
+  if (encoded.digest !== parsed.digest || `${line}\n` !== encoded.line) {
+    throw new PersistenceCorruptionError(`${label} breaks the hash chain`);
+  }
+  return { entry: typed, digest: encoded.digest };
+}
+
+/**
+ * Parse and verify the whole journal. Only an unterminated final line is treated as a torn
+ * write (each append writes line and newline in one call), and only when it is not a
+ * complete, chain-valid entry: an acknowledged entry that merely lost its terminator is
+ * corruption, never silently dropped. Every other defect is corruption.
+ */
 export function parseJournal(bytes: Buffer, genesis: string): ParsedJournal {
   // Split on the last newline byte before decoding, so a tail torn inside a multi-byte
   // character is still recognized as a torn tail rather than as corruption.
@@ -56,26 +89,27 @@ export function parseJournal(bytes: Buffer, genesis: string): ParsedJournal {
   const entries: ParsedJournal["entries"] = [];
   let previous = genesis;
   for (const [index, line] of lines.entries()) {
-    let parsed: unknown;
+    const verified = verifyLine(line, index + 1, previous, `journal line ${index + 1}`);
+    entries.push(verified);
+    previous = verified.digest;
+  }
+  if (tornTailBytes > 0) {
+    let tail: string | null = null;
     try {
-      parsed = JSON.parse(line);
+      tail = UTF8.decode(bytes.subarray(validBytes));
     } catch {
-      throw new PersistenceCorruptionError(`journal line ${index + 1} is not valid JSON`);
+      tail = null;
     }
-    if (!isRecord(parsed) || typeof parsed.digest !== "string" || !isRecord(parsed.entry)) {
-      throw new PersistenceCorruptionError(`journal line ${index + 1} is malformed`);
+    let completeEntry = false;
+    if (tail !== null) {
+      try {
+        verifyLine(tail, entries.length + 1, previous, "journal tail");
+        completeEntry = true;
+      } catch {
+        completeEntry = false;
+      }
     }
-    const entry = parsed.entry;
-    if (entry.seq !== index + 1 || !Number.isSafeInteger(entry.revision) || !isRecord(entry.transaction)) {
-      throw new PersistenceCorruptionError(`journal line ${index + 1} has an invalid sequence or entry`);
-    }
-    const typed: JournalEntry = { seq: entry.seq as number, revision: entry.revision as number, transaction: entry.transaction };
-    const { line: expected, digest } = encodeJournalLine(typed, previous);
-    if (digest !== parsed.digest || `${line}\n` !== expected) {
-      throw new PersistenceCorruptionError(`journal line ${index + 1} breaks the hash chain`);
-    }
-    entries.push({ entry: typed, digest });
-    previous = digest;
+    if (completeEntry) throw new PersistenceCorruptionError("journal tail is a complete entry missing its line terminator");
   }
   return { entries, tornTailBytes, validBytes };
 }
