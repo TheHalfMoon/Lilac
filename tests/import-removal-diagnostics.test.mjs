@@ -146,6 +146,7 @@ test("form-owner and submission override attributes are stripped from every elem
 });
 
 test("link attribute lookup ignores a polluted prototype", () => {
+  // Deliberate, scoped pollution: the attack under test. Removed in finally.
   Object.prototype.rel = "stylesheet";
   Object.prototype.href = "https://evil.test/a.css";
   let proposal;
