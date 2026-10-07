@@ -124,6 +124,24 @@ test("closing the proxy ends upstream connections the browser left open", async 
   }
 });
 
+test("closing one proxy leaves another proxy's connections alone", async () => {
+  await withServer((request, response) => setTimeout(() => response.end("slow"), request.url === "/slow" ? 200 : 0), async (port) => {
+    const lookup = lookupTable({ "app.test": ["127.0.0.1"] });
+    const first = await startBrowserPolicyProxy({ allowPrivateNetwork: true, lookup });
+    const second = await startBrowserPolicyProxy({ allowPrivateNetwork: true, lookup });
+    try {
+      assert.equal((await viaProxy(first.url, `http://app.test:${port}/warm`)).status, 200);
+      assert.equal((await viaProxy(second.url, `http://app.test:${port}/warm`)).status, 200);
+      const slow = viaProxy(second.url, `http://app.test:${port}/slow`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await first.close();
+      assert.equal((await slow).status, 200);
+    } finally {
+      await second.close();
+    }
+  });
+});
+
 test("an unresolvable host is a gateway error, not a policy denial", async () => {
   const proxy = await startBrowserPolicyProxy({ lookup: lookupTable({}) });
   try {

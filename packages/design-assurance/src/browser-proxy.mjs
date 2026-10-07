@@ -1,5 +1,5 @@
 import { lookup as dnsLookup } from "node:dns/promises";
-import { createServer, request as httpRequest } from "node:http";
+import { Agent, createServer, request as httpRequest } from "node:http";
 import { connect, isIP } from "node:net";
 
 import { classifyAddress, isLinkLocalOrMetadataAddress } from "@lilac/network-policy";
@@ -38,6 +38,8 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
   const privateAllowed = allowPrivateNetwork === true;
   const denials = [];
   const sockets = new Set();
+  // A per-proxy pool, so closing one scan's proxy never ends another's connections.
+  const agent = new Agent({ keepAlive: true });
 
   const deny = (host, reason) => {
     if (denials.length < BROWSER_PROXY_LIMITS.maxDenials) denials.push(Object.freeze({ host, reason }));
@@ -106,7 +108,7 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
     const headers = {};
     for (const [name, value] of Object.entries(request.headers)) if (!HOP_BY_HOP.has(name)) headers[name] = value;
     headers.host = target.host;
-    const upstream = httpRequest({ host: pinned.address, port, method: request.method, path: `${target.pathname}${target.search}`, headers, setHost: false }, (reply) => {
+    const upstream = httpRequest({ host: pinned.address, port, method: request.method, path: `${target.pathname}${target.search}`, headers, setHost: false, agent }, (reply) => {
       const replyHeaders = {};
       for (const [name, value] of Object.entries(reply.headers)) if (!HOP_BY_HOP.has(name)) replyHeaders[name] = value;
       reply.on("error", () => response.destroy());
@@ -124,6 +126,8 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
   server.on("connection", (socket) => { track(socket); });
 
   server.on("connect", async (request, client, head) => {
+    // A client that half-closes during the lookup has left too.
+    client.once("end", () => client.destroy());
     const match = /^(\[[0-9a-fA-F:.]+\]|[^:[\]]+):(\d{1,5})$/u.exec(request.url ?? "");
     const port = match ? parsePort(match[2], null) : null;
     if (!match || port === null) {
@@ -164,6 +168,7 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
     denials: () => denials.slice(),
     async close() {
       closed = true;
+      agent.destroy();
       for (const socket of sockets) socket.destroy();
       await new Promise((resolve) => server.close(() => resolve()));
     },

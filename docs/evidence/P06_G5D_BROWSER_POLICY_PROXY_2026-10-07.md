@@ -37,7 +37,7 @@ A probe in this container pointed `IMPECCABLE_BROWSER` at a wrapper. The wrapper
 
 ## Tests
 
-`tests/browser-proxy.test.mjs` has 12 tests. Tests 10 to 12 were added in review delta 1, below. To check them against base `15c6158`, the package changes were removed and the tests that do not import the new export were run. Tests 4 to 9 fail there; tests 1 to 3 exercise the new proxy directly.
+`tests/browser-proxy.test.mjs` has 13 tests. Tests 10 to 12 were added in review delta 1 and test 13 in review delta 2, both described below. To check them against base `15c6158`, the package changes were removed and the tests that do not import the new export were run. Tests 4 to 9 fail there; tests 1 to 3 exercise the new proxy directly.
 
 1. By default the proxy refuses loopback (by name and by literal), private, IPv6 loopback and metadata destinations, over HTTP and `CONNECT`. Nothing reaches the server.
 2. An unresolvable host gets a 502 and is not recorded as a denial.
@@ -66,6 +66,12 @@ New tests, each failing on `d5fdc86`:
 12. `close()` ends an upstream connection that never answered.
 
 Test 8 now also passes single-dash switches, and it fails on `d5fdc86` too.
+
+**Review delta 2.** The delta re-review had no must-fix. It confirmed the delta-1 fixes with probes, including real-DNS hex, octal and decimal metadata spellings over CONNECT and absolute-form requests. Two worth-considering items are fixed:
+- **Shared connection pool.** Upstream requests used Node's shared global agent, so closing one proxy broke another live proxy's in-flight request. Each proxy now has its own keep-alive agent, destroyed by `close()`.
+- **Half-closed clients.** A CONNECT client that half-closes during the lookup is now treated as gone.
+
+13. Closing one proxy leaves another proxy's slow in-flight request intact. This test fails on `026db1a`.
 
 ## Gate
 
