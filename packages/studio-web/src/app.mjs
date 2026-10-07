@@ -333,13 +333,37 @@ async function loadProject() {
   return session;
 }
 
-// One load at a time: the open/create path and the stream's project event both ask for one.
+// One load at a time. A request made while one is in flight (the project switched again)
+// runs another load once it settles, so the last request always wins.
 let loading = null;
+let loadAgain = false;
 function requestLoad() {
-  loading ??= loadProject().finally(() => {
+  if (loading !== null) {
+    loadAgain = true;
+    return loading;
+  }
+  loading = (async () => {
+    let session;
+    do {
+      loadAgain = false;
+      session = await loadProject();
+    } while (loadAgain);
+    return session;
+  })().finally(() => {
     loading = null;
   });
   return loading;
+}
+
+// Retries after a failed refresh back off, from 250 ms to 30 s, and reset on success.
+let retryDelay = 250;
+function retryLoad() {
+  if (state.client === null || ended) return;
+  const delay = retryDelay;
+  retryDelay = Math.min(30_000, retryDelay * 2);
+  setTimeout(() => requestLoad().catch((error) => {
+    if (!handleSessionEnded(error)) retryLoad();
+  }), delay);
 }
 
 function clearProject() {
@@ -359,12 +383,12 @@ function clearProject() {
  * at or below its revision are already in it), so none is lost or applied twice.
  */
 async function resync() {
-  const [{ revision, document: next }, { entries }, session] = await Promise.all([
+  const [{ project, revision, document: next }, { entries }, session] = await Promise.all([
     state.client.get("/api/document"),
     state.client.get("/api/history"),
     state.client.get("/api/session"),
   ]);
-  if (session.project !== state.project) throw new Error("the open project changed during the refresh");
+  if (session.project !== state.project || project !== state.project) throw new Error("the open project changed during the refresh");
   state.revision = revision;
   state.document = next;
   state.history = entries.filter((entry) => entry.revision <= revision).slice(-MAX_HISTORY_SHOWN);
@@ -393,9 +417,10 @@ function requestResync() {
     held = [];
     if (failed) {
       // The project changed under the refresh (or the host is unreachable): start over.
-      if (state.client !== null && state.document !== null) setTimeout(() => requestLoad().catch(() => {}), 250);
+      retryLoad();
       return;
     }
+    retryDelay = 250;
     for (const event of replay) applyChange(event);
     renderAll();
   })();
@@ -560,11 +585,15 @@ function save() {
   });
 }
 
-function listenForChanges() {
+// The event stream reconnects with a growing delay (1 s to 30 s, reset once it opens), and
+// refreshes the copy on reopening, since changes may have been missed while it was down.
+let streamDelay = 1000;
+function listenForChanges({ refreshOnOpen = false } = {}) {
   state.events?.close();
+  if (ended) return;
   const events = state.client.events();
   state.events = events;
-  let dropped = false;
+  let dropped = refreshOnOpen;
   events.addEventListener("change", (message) => {
     try {
       applyChange(JSON.parse(message.data));
@@ -591,6 +620,7 @@ function listenForChanges() {
       // The copy belongs to the old project: stop applying to it until the new one is loaded.
       state.project = info.project;
       state.document = null;
+      renderAll();
       requestLoad().catch((error) => {
         if (!handleSessionEnded(error)) setStatus(describeError(error));
       });
@@ -598,14 +628,21 @@ function listenForChanges() {
   });
   events.addEventListener("error", () => {
     dropped = true;
-    // A closed stream is not retried by the browser; find out whether the session ended.
-    if (events.readyState === 2) {
-      state.client.get("/api/session").then(() => listenForChanges(), (error) => {
-        if (!handleSessionEnded(error)) setTimeout(listenForChanges, 1000);
-      });
+    // A closed stream is not retried by the browser: find out whether the session ended,
+    // and otherwise open a new one after a delay.
+    if (events.readyState === 2 && state.events === events) {
+      const delay = streamDelay;
+      streamDelay = Math.min(30_000, streamDelay * 2);
+      state.client.get("/api/session").then(
+        () => setTimeout(() => listenForChanges({ refreshOnOpen: true }), delay),
+        (error) => {
+          if (!handleSessionEnded(error)) setTimeout(() => listenForChanges({ refreshOnOpen: true }), delay);
+        },
+      );
     }
   });
   events.addEventListener("open", () => {
+    streamDelay = 1000;
     // Changes may have been missed while the stream was down.
     if (dropped && state.document !== null) requestResync();
     dropped = false;

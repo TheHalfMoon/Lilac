@@ -183,7 +183,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     },
     "GET /api/document": () => {
       const current = requireSession();
-      return { revision: current.revision, document: current.document };
+      return { project: current.name, revision: current.revision, document: current.document };
     },
     "GET /api/history": () => ({ entries: requireSession().log }),
     "POST /api/edit": (body) => requireSession().edit(owner, body),
