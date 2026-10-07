@@ -10,9 +10,11 @@ import {
   assertNotSymlink,
   atomicWrite,
   createExclusive,
+  directoryIdentity,
+  type DirectoryIdentity,
   fileIdentity,
-  fsyncDirectory,
   type FileIdentity,
+  fsyncDirectory,
   projectDirectory,
   readBounded,
   removeFile,
@@ -73,8 +75,8 @@ function parseJsonFile(bytes: Buffer, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function readJsonFile(path: string, label: string, maxBytes: number = PERSISTENCE_LIMITS.maxManifestBytes): Record<string, unknown> {
-  const bytes = readBounded(path, maxBytes, label);
+function readJsonFile(path: string, label: string, maxBytes: number = PERSISTENCE_LIMITS.maxManifestBytes, options: { singleLink?: boolean } = {}): Record<string, unknown> {
+  const bytes = readBounded(path, maxBytes, label, options);
   if (bytes === null) throw new PersistenceCorruptionError(`${label} is missing`);
   return parseJsonFile(bytes, label);
 }
@@ -188,7 +190,7 @@ export interface OpenProjectOptions {
 
 function readLock(path: string): LockRecord | null {
   try {
-    const record = readJsonFile(path, "lock", MAX_LOCK_BYTES);
+    const record = readJsonFile(path, "lock", MAX_LOCK_BYTES, { singleLink: true });
     if (typeof record.owner !== "string" || typeof record.pid !== "number" || typeof record.at !== "string" || typeof record.nonce !== "string") return null;
     return { owner: record.owner.slice(0, 128), pid: record.pid, at: record.at.slice(0, 64), nonce: record.nonce.slice(0, 64) };
   } catch {
@@ -199,7 +201,7 @@ function readLock(path: string): LockRecord | null {
 /** Lenient read for the override audit trail: older lock records may lack a nonce. */
 function readPreviousHolder(path: string): LockRecord | null {
   try {
-    const record = readJsonFile(path, "lock", MAX_LOCK_BYTES);
+    const record = readJsonFile(path, "lock", MAX_LOCK_BYTES, { singleLink: true });
     if (typeof record.owner !== "string" || typeof record.pid !== "number" || typeof record.at !== "string") return null;
     const nonce = typeof record.nonce === "string" ? record.nonce.slice(0, 64) : "";
     return { owner: record.owner.slice(0, 128), pid: record.pid, at: record.at.slice(0, 64), nonce };
@@ -350,6 +352,7 @@ export class ProjectStore {
   #lock: LockRecord;
   #closed = false;
   #poisoned = false;
+  #directory: DirectoryIdentity;
 
   constructor(token: symbol, projectDir: string, manifest: ProjectManifest, document: LilacDocument, state: StoreState) {
     if (token !== STORE_TOKEN) throw new PersistenceValidationError("ProjectStore is created by openProject");
@@ -363,6 +366,7 @@ export class ProjectStore {
     this.#journalContent = state.journalContent;
     this.#journalIdentity = state.journalIdentity;
     this.#lock = state.lock;
+    this.#directory = directoryIdentity(projectDir, "project directory");
   }
 
   #assertOpen(): void {
@@ -374,6 +378,13 @@ export class ProjectStore {
     this.#assertOpen();
     if (this.#poisoned) throw new PersistenceValidationError("project store must be reopened after a failed journal write");
     assertNotSymlink(this.projectDir, "project directory");
+    // The project directory must still be the one opened: a renamed root with a symlink
+    // in its place, or a swapped .lilac, would otherwise receive this store's writes.
+    // A swap between this check and the write remains possible (Node has no openat).
+    const current = directoryIdentity(this.projectDir, "project directory");
+    if (current.path !== this.#directory.path || current.dev !== this.#directory.dev || current.ino !== this.#directory.ino) {
+      throw new PersistenceValidationError("project directory changed since the store was opened");
+    }
     if (!sameHolder(readLock(join(this.projectDir, PROJECT_FILES.lock)), this.#lock)) {
       throw new PersistenceLockError("this writer no longer holds the project lock");
     }

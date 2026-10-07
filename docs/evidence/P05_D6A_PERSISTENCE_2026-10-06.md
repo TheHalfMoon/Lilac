@@ -75,3 +75,20 @@ Network policy, provider adapters, offline guarantees (D6b); multi-writer merge 
 ## Qualification
 
 Qualification evidence is recorded on Issue #74 after exact-head GitHub CI, Alibaba Open Code Review delegation with host-agent rule application, pstack review panel, and Jev complete on the final candidate. Cubic, CodeRabbit, and Qodo are not qualification evidence.
+
+## Addendum 2026-10-07: sandbox escapes closed in P06 G5b (#115)
+
+The P06 gate-5 probe found two escapes in this package, plus two weaker behaviours.
+
+**FIFO hang.** A FIFO in place of `snapshot.json`, `project.json`, `journal.log` or `lock` blocked `openProject` (or a lock read) forever, because `readBounded` opened before it checked the file type. Now:
+- `readBounded` refuses non-regular files by `lstat` before opening.
+- Opens of existing files add `O_NONBLOCK`, so a FIFO swapped in after the check cannot block.
+
+**Post-open root swap.** After a rename of the root and a symlink at its old path, `checkpoint` and `putObject` wrote into an outside `.lilac` holding a copied lock. Now:
+- The store pins the real path and device/inode of its project directory at open.
+- Every write re-checks both.
+- Residual: a swap between that check and the write remains possible, because Node has no `openat`-style directory-descriptor API.
+
+**Weaker behaviours.**
+- `ENOTDIR` while inspecting a project path is now a typed `PersistenceValidationError`.
+- Lock reads require a singly linked file, so a hard-linked lock no longer copies an outside file's fields into the override record.
