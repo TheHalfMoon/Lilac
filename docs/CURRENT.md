@@ -56,7 +56,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (630/630 test
   - MCP documentation, migration docs, and security policy: #140 → PR #141, merge `9bca91b`, post-merge CI 620/620.
   - Reproducible smoke test: #142 → PR #143, merge `285df27`, post-merge CI 625/625.
   - SBOM and attribution bundle, and the signed-release workflow: #144 → PR #145, merge `e702f58`, post-merge CI 630/630.
-- Founder decisions (2026-10-07):
+- Founder decisions (2026-10-07, recorded at ):
   - **Scope.** Lilac ships as a usable product. Desktop builds and local web mode are required, so the PC Product Completion phase was added before P07 closes.
   - **License.** The target is Apache-2.0, applied only after an evidence-based compatibility audit.
   - **Vulnerability reporting.** Enabling GitHub private vulnerability reporting is a required repository-administration action before release.
@@ -83,17 +83,17 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (630/630 test
 | 16 | Offline/local-first smoke flow through the product surface | OPEN |
 | 17 | A release-candidate end-to-end test | OPEN |
 
-  Grain plan (each grain closes the gates in brackets, with the exact-head chain):
-  1. PC1: studio host, a loopback project API and a change stream [4]
-  2. PC2: renderer and the web-semantic props convention [2]
-  3. PC3: canvas interaction, covering viewport, selection and transform [2, 3]
-  4. PC4: the editor shell, with panels, history, attribution and undo/redo [1, 3, 9]
-  5. PC5: MCP server and stdio relay (#82), with live agent edits [7, 8]
-  6. PC6: import and design/code workflows in the product [10, 11]
-  7. PC7: local web mode and the offline product smoke [6, 16]
-  8. PC8: accessibility, performance and crash/recovery qualification [12, 13, 14]
-  9. PC9: desktop shell and packaging [5, 15]
-  10. PC10: release-candidate end-to-end [17]
+  Grain plan. A grain may advance a gate, but only the grain named as closing it may set it `CLOSED_CANONICAL`, after end-to-end evidence through the product surface:
+  1. PC1: studio host, loopback project API and change stream (advances 4)
+  2. PC2: renderer and the web-semantic props convention (advances 2)
+  3. PC3: canvas interaction, covering viewport, selection and transform (closes 2; advances 3)
+  4. PC4: editor shell, with panels, history, attribution, undo/redo and recovery reporting (closes 1, 3, 4, 9)
+  5. PC5: MCP server and stdio relay (#82), with live agent edits (closes 7, 8)
+  6. PC6: import and design/code workflows in the product (closes 10, 11)
+  7. PC7: local web mode and the offline product smoke (closes 6, 16)
+  8. PC8: accessibility, performance and crash/recovery qualification (closes 12, 13, 14)
+  9. PC9: desktop shell and packaging (closes 5, 15)
+  10. PC10: release-candidate end-to-end (closes 17)
   11. PC-L: Apache-2.0 license and provenance audit, then adoption (P07 prerequisite)
 - Open, non-blocking: #64 (review-panel hardening follow-ups, including a shared hidden-text and input-hygiene policy across packages), #78, #79, #82, #89, #94, #108, #132, #135, #2. Issue #121 ("cirq.quantum") is unrelated to the program.
 

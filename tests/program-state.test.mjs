@@ -53,3 +53,17 @@ test("the PC record mirrors every master-plan Product Completion gate in order",
     assert.ok(["OPEN", "CLOSED_CANONICAL"].includes(row.state), `PC gate ${row.number} has a known state`);
   }
 });
+
+test("each PC gate has exactly one closing grain in the plan", () => {
+  const current = read("docs/CURRENT.md");
+  assert.match(current, /\| PC Product completion \(17 gates\) \| ACTIVE \|/);
+  const plan = current.slice(current.indexOf("Grain plan."), current.indexOf("11. PC-L:"));
+  const closers = new Map();
+  for (const [, grain, list] of plan.matchAll(/(PC\d+): .*\(closes ([\d, ]+)[;)]/g)) {
+    for (const gate of list.split(",").map((value) => Number(value.trim()))) {
+      assert.ok(!closers.has(gate), `PC gate ${gate} is closed by both ${closers.get(gate)} and ${grain}`);
+      closers.set(gate, grain);
+    }
+  }
+  assert.deepEqual([...closers.keys()].sort((a, b) => a - b), Array.from({ length: 17 }, (_, index) => index + 1));
+});

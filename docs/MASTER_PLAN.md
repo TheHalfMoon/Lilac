@@ -218,7 +218,7 @@ Shape:
 - **Renderer.** It emits web semantics into a sandboxed frame, with a stable node→DOM identity and no renderer-only document state.
 - **Edits.** Every edit, whether from a person or an agent, is a history transaction committed through the project store, with collaboration attribution.
 
-New third-party dependencies need an allowlisted license and an entry in `THIRD_PARTY_NOTICES.md`. They are added only where a grain shows they are needed.
+New third-party dependencies need an allowlisted license and an entry in `THIRD_PARTY_NOTICES.md`. They are added only where a grain shows they are needed. Browser end-to-end tests use `playwright-core` (Apache-2.0, no dependencies), driving the Chromium already present on CI runners.
 
 Acceptance gates. Each needs real implementation and end-to-end evidence through the product surface:
 1. Editor application shell: open or create a project; layers, inspector and history panels; keyboard operable.
@@ -227,15 +227,15 @@ Acceptance gates. Each needs real implementation and end-to-end evidence through
 4. Persistence and reopen workflow, including stale-lock and recovery reporting in the UI.
 5. Desktop bridge: a context-isolated shell with a minimal preload and denied navigation and permissions.
 6. Local web mode: one command serves the editor locally with no network access beyond loopback.
-7. MCP server and authorization integration (#82): stdio relay and loopback HTTP, every call through `requireMCPToolCall`, and the confirmation flow for consequential tools.
+7. MCP server and authorization integration (#82): stdio relay and loopback HTTP, every call through `requireMCPToolCall`, and the confirmation flow for consequential tools. This discharges the server obligations P06 G8 recorded on #82.
 8. MCP and agent mutations visible live on the canvas.
 9. Mutation attribution, history and undo/redo through the real UI.
 10. Import → edit → save → reopen through the UI.
 11. Design/code workflow through the product: export JSX through `code-ir`, and bring code into the design.
-12. Accessibility qualification of the editor UI and its generated output.
-13. Large-document canvas and render performance qualification, including the architecture's 10,000-node edit/render benchmark.
+12. Accessibility qualification of the editor UI and its generated output: `auditAccessibility` finds nothing in the editor chrome or in exported output, every editor action is keyboard operable, and the rest is judged against WCAG 2.2 AA. This closes P06 G4's editor-UI disposition.
+13. Large-document canvas and render performance qualification, including the architecture's 10,000-node edit/render benchmark. In headless Chromium on CI, the first render of a 10,000-node document takes at most 2 s, and a single-node edit is re-rendered within 100 ms at p95. This closes the renderer budget P06 G3 deferred (#108).
 14. Crash and recovery behaviour through the actual app surface.
-15. Supported desktop packaging (Windows, macOS and Linux where supported) with a smoke test of the packaged app.
+15. Supported desktop packaging (Windows, macOS and Linux where supported) with a smoke test of the packaged app. Supported means Linux x64, macOS arm64 and Windows x64, each built on its GitHub-hosted runner. Code signing and notarization need owner-provided certificates and are recorded separately.
 16. Offline/local-first smoke flow through the product surface.
 17. A release-candidate end-to-end test covering the whole user journey.
 
