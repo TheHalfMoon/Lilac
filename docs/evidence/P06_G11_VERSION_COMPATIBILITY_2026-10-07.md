@@ -107,3 +107,21 @@ Delta 1 takes its three worth-considering items, plus the two items parked on #1
 **Worktree note.** The first head's local gate ran with the worktree's `node_modules` symlinked to the primary checkout. So `@lilac/*` imports resolved to that checkout's packages, which also explains the "address classification" artifact failure in earlier worktree runs. CI was unaffected. Delta 1 was run with a worktree-local `node_modules` whose `@lilac` links point into the worktree.
 
 **Gate run.** `npm run check` ran 615 tests: 613 passed, 1 failed and 1 was skipped. The one failure, "a failed journal write poisons the store until reopen", fails only when run as root.
+
+## Review delta 2
+
+The delta-1 re-review found no must-fix. It confirmed:
+- No caller across `packages/*` produces values that are now refused.
+- The deferred repairs are safe. `journalIdentity` is still taken after the journal rewrite, and a crash between the two writes leaves a state the next open repairs.
+- `jsonDataProblem` matches the serializers.
+- Every gate-3 budget passes. The tightest is parse at 50k nodes, at about 2x headroom.
+
+Delta 2 is wording only:
+- The comment in `validateDocument` no longer claims accessor or symbol-key detection. The walk reads values as the serializer does, and `serializeDocument` re-validates, so a getter that changes its value still fails closed there.
+- "holds an undefined value" fixes the grammar.
+
+Recorded and not changed:
+- **Depth offset at commit.** History checks a `set-props.set` or `transaction.metadata` value from depth 0, while the persisted journal line nests it 4 to 6 levels deeper. A value just under the document limit can therefore apply in memory and then be refused at `store.commit` with `PersistenceValidationError` ("cannot persist values nested deeper than 256"). The store stays usable. This predates this PR and fails safe. The reverse case does not occur: anything the journal accepts replays.
+- **Error location.** Walk errors do not name the node or key.
+- **`-0`.** It is accepted in memory and persisted as `0`.
+- **Lost recovery fact.** If the journal rewrite fails after the migrated manifest is written, the next open reports `migratedFrom: null`.

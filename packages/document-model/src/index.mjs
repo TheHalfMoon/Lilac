@@ -86,7 +86,7 @@ export function jsonDataProblem(value, depth = 0) {
   if (depth > MAX_SERIALIZE_DEPTH) return `is nested deeper than ${MAX_SERIALIZE_DEPTH} levels`;
   if (value === null || typeof value === "boolean" || typeof value === "string") return null;
   if (typeof value === "number") return Number.isFinite(value) ? null : "holds a non-finite number";
-  if (typeof value !== "object") return `holds a ${typeof value} value`;
+  if (typeof value !== "object") return `holds ${typeof value === "undefined" ? "an" : "a"} ${typeof value} value`;
   if (Array.isArray(value)) {
     if (Object.getPrototypeOf(value) !== Array.prototype) return "holds a non-plain array";
     for (let index = 0; index < value.length; index += 1) {
@@ -405,8 +405,8 @@ export function isDescendant(document, ancestorId, candidateId) {
 export function validateDocument(document) {
   assertPlainObject(document, "document");
   assertKnownFields(document, DOCUMENT_FIELD_SET, "document");
-  // One walk proves the whole record is JSON data (no accessors, symbol keys, Maps, typed
-  // arrays...), so the field checks below read plain values only.
+  // One walk checks the whole record is JSON data as the serializer reads it (no Maps, typed
+  // arrays, undefined, non-finite numbers...), so the field checks below read plain values.
   const dataProblem = jsonDataProblem(document);
   if (dataProblem !== null) throw new DocumentInvariantError(`document ${dataProblem}`);
   if (document.schemaVersion !== DOCUMENT_SCHEMA_VERSION) {
