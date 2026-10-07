@@ -47,6 +47,8 @@ export function exportJsx(document: any, nodeId: unknown): { componentName: stri
   const order: string[] = [];
   const walkOrder = (id: string, depth: number) => {
     if (depth > MAX_EXPORT_DEPTH || !document.nodes[id]) return;
+    // The same limit convert enforces, before any work is done on a larger export.
+    if (order.length >= MAX_EXPORT_NODES) throw new StudioError(422, "export-too-large", `at most ${MAX_EXPORT_NODES} layers can be exported at once`);
     order.push(id);
     for (const child of document.nodes[id].children) walkOrder(child, depth + 1);
   };
@@ -59,12 +61,32 @@ export function exportJsx(document: any, nodeId: unknown): { componentName: stri
   const exportedId = new Map<string, string>(); // control node → id in the code
   const labelTarget = new Map<string, string>(); // label node → id in the code
   const taken = new Set<string>();
+  // Each id's positions in document order (ascending), so a label finds its control by
+  // binary search: linear in the export, not labels × controls.
+  const positionsOf = new Map<string, number[]>();
+  order.forEach((id, position) => {
+    const value = attr(id, "id");
+    if (value === null) return;
+    if (!positionsOf.has(value)) positionsOf.set(value, []);
+    positionsOf.get(value)!.push(position);
+  });
   order.forEach((labelId, position) => {
     const wanted = attr(labelId, "for");
     if (wanted === null) return;
-    const controls = order.filter((id) => attr(id, "id") === wanted && id !== labelId);
-    const control = controls.find((id) => order.indexOf(id) > position) ?? controls.filter((id) => order.indexOf(id) < position).at(-1);
-    if (control === undefined) return;
+    const positions = positionsOf.get(wanted);
+    if (positions === undefined) return;
+    let low = 0;
+    let high = positions.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (positions[middle] <= position) low = middle + 1;
+      else high = middle;
+    }
+    // The next control after the label, or else the last one before it (never the label itself).
+    let at = low < positions.length ? low : low - 1;
+    if (at >= 0 && positions[at] === position) at -= 1;
+    if (at < 0) return;
+    const control = order[positions[at]];
     if (!exportedId.has(control)) {
       let candidate = wanted;
       for (let copy = 2; taken.has(candidate); copy += 1) candidate = `${wanted}-${copy}`;

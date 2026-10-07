@@ -336,3 +336,33 @@ test("generated output audits clean: exported code and code brought into the des
   assert.equal((exported.match(/ id="email"/gu) ?? []).length, 1, "an id appears once");
   assert.match(exported, /htmlFor="email"[\s\S]*id="email"[\s\S]*htmlFor="email-2"[\s\S]*id="email-2"/u, "each copy's label names its own control");
 });
+
+test("pairing labels with controls is linear, and an export too large is refused before any work", () => {
+  // Alternating labels and inputs that all share one id, so every label has many
+  // candidates; in rows of 50 pairs (code-ir bounds the children of one element).
+  const flat = (pairs) => {
+    const nodes = [{ id: "form", type: "element", parentId: null, children: [], props: { tag: "form" }, metadata: {} }];
+    let row = null;
+    for (let index = 0; index < pairs; index += 1) {
+      if (index % 50 === 0) {
+        row = { id: `row${index}`, type: "element", parentId: "form", children: [], props: { tag: "div" }, metadata: {} };
+        nodes.push(row);
+        nodes[0].children.push(row.id);
+      }
+      nodes.push({ id: `l${index}`, type: "element", parentId: row.id, children: [], props: { tag: "label", text: "Email", attributes: { for: "x" } }, metadata: {} });
+      nodes.push({ id: `i${index}`, type: "element", parentId: row.id, children: [], props: { tag: "input", attributes: { id: "x" } }, metadata: {} });
+      row.children.push(`l${index}`, `i${index}`);
+    }
+    return { id: "doc", rootIds: ["form"], nodes: Object.fromEntries(nodes.map((node) => [node.id, node])) };
+  };
+  const started = performance.now();
+  const code = exportJsx(flat(2_000), "form").code;
+  const elapsed = performance.now() - started;
+  assert.ok(elapsed < 2_000, `2,000 label/control pairs export in ${elapsed.toFixed(0)} ms`);
+  assert.match(code, /htmlFor="x-2000"[\s\S]*id="x-2000"/u, "each label still names its own (next) control");
+  assert.equal((code.match(/ id="x-2000"/gu) ?? []).length, 1);
+  // 10,000 layers: refused at once, as the limit says, not after pairing them.
+  const refusedAt = performance.now();
+  assert.throws(() => exportJsx(flat(5_000), "form"), /at most 5000 layers/u);
+  assert.ok(performance.now() - refusedAt < 1_000, "refused before the pairing work");
+});

@@ -149,3 +149,11 @@ The cycle-1 re-review confirmed the reflow, panning, skip-link and id fixes, wit
 **Also taken:**
 - **Labels in a second copy.** Each copy of a labelled control gets its own id (`email`, `email-2`), and each label points to its own control. A second label used to point at the first input. T checks the pairing.
 - **Backgrounds.** The snapshot's unresolved-colour guard checks background colours as well as text colours.
+
+## Review delta 3
+
+The cycle-2 re-review confirmed the ring on top of the design (every edge pixel reads the ring colour at 6x zoom) and the frame no longer a Tab stop. It found one must-fix, now fixed:
+- **The label pairing was cubic and ran before the export's size limit.** It took 4.4 s at 2,000 label/control pairs and did not finish at 5,000. Everything ran on the studio host's one thread, and an agent could reach it through `export_code`.
+  - Each id's positions are now indexed once, in document order, and a label finds its control by binary search.
+  - The walk that orders the export enforces the 5,000-layer limit itself, so a larger export is refused before any pairing work is done.
+  - T exports 2,000 pairs that all share one id in about 0.2 s, with every label still naming its own control, and refuses 10,000 layers at once.
