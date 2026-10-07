@@ -3,20 +3,22 @@
 // Playwright browser cache. Locally a missing browser skips the test; in CI (CI=true) it fails.
 import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 export const TEST_ORIGIN = "http://lilac.test";
 
 export function findBrowser() {
-  const candidates = [process.env.LILAC_TEST_BROWSER, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
+  // The Chromium build matched to playwright-core comes first; a system Chrome is the fallback.
+  const candidates = [process.env.LILAC_TEST_BROWSER];
   const cache = process.env.PLAYWRIGHT_BROWSERS_PATH ?? "/opt/pw-browsers";
   if (existsSync(cache)) {
     for (const name of readdirSync(cache).filter((entry) => /^chromium-\d+$/u.test(entry)).sort().reverse()) {
       candidates.push(join(cache, name, "chrome-linux", "chrome"));
     }
   }
+  candidates.push("/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser");
   return candidates.find((path) => typeof path === "string" && path !== "" && existsSync(path)) ?? null;
 }
 
@@ -45,8 +47,9 @@ export async function launchPage({ extraRoutes = {} } = {}) {
     requests.push(url.href);
     if (url.origin !== TEST_ORIGIN) return route.abort();
     if (Object.hasOwn(extraRoutes, url.pathname)) return route.fulfill(extraRoutes[url.pathname]);
+    // Confinement is checked on the decoded, normalized path: only package sources are served.
     const path = normalize(join(ROOT, decodeURIComponent(url.pathname)));
-    if (!path.startsWith(ROOT) || !/^\/packages\/[a-z-]+\/src\//u.test(url.pathname)) return route.fulfill({ status: 404, body: "" });
+    if (!/^packages\/[a-z-]+\/src\/[^]+$/u.test(relative(ROOT, path).split("\\").join("/"))) return route.fulfill({ status: 404, body: "" });
     try {
       return route.fulfill({ status: 200, contentType: TYPES[extname(path)] ?? "application/octet-stream", body: await readFile(path) });
     } catch {

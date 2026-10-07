@@ -35,7 +35,8 @@ function assertInert(plan, label) {
   for (const [name, value] of Object.entries(plan.attributes)) {
     assert.ok(!name.startsWith("on"), `${label}: no event handler (${name})`);
     assert.ok(!["style", "srcdoc", "formaction", "action", "id"].includes(name), `${label}: ${name} is never rendered`);
-    if (name === "href" || name === "cite") assert.match(value, /^(https?:|mailto:|tel:|#)/iu, `${label}: ${name}`);
+    assert.notEqual(name, "href", `${label}: links are rendered inert`);
+    if (name === "data-lilac-href" || name === "cite") assert.match(value, /^(https?:|mailto:|tel:|#)/iu, `${label}: ${name}`);
     if (name === "src") assert.match(value, /^data:image\/(png|jpeg|gif|webp|avif);base64,/iu, `${label}: src`);
     assert.doesNotMatch(value, /javascript:/iu, `${label}: ${name} value`);
   }
@@ -75,14 +76,14 @@ test("hand-built hostile props are reduced to the allowlists", () => {
   assert.equal(plan.text, "hello");
   assert.ok(plan.dropped >= 9);
   const link = planElement({ id: "a", type: "element", props: { tag: "a", attributes: { href: " https://example.com/x ", target: "_top" } } });
-  assert.deepEqual(link.attributes, { href: "https://example.com/x" }, "only _blank survives as a target");
+  assert.deepEqual(link.attributes, { "data-lilac-href": "https://example.com/x" }, "links are inert, and only _blank survives as a target");
   const image = planElement({ id: "i", type: "image", props: { attributes: { src: "https://evil.example/p.png", alt: "Chart" } } });
   assert.deepEqual([image.tag, image.attributes], ["img", { alt: "Chart" }], "remote images are not rendered");
   assert.equal(planElement({ id: "i2", type: "image", props: { attributes: { src: "data:image/png;base64,iVBORw0KGgo=" } } }).attributes.src, "data:image/png;base64,iVBORw0KGgo=");
   assert.equal(planElement({ id: "s", type: "image", props: { attributes: { src: "data:image/svg+xml;base64,PHN2Zy8+" } } }).attributes.src, undefined, "SVG data images are refused");
   const vector = planElement({ id: "v", type: "vector", props: { attributes: { viewBox: "0 0 10 10", onload: "x", fill: "url(#g)" } } });
   assert.equal(vector.namespace, "svg");
-  assert.deepEqual(vector.attributes, { viewbox: "0 0 10 10" });
+  assert.deepEqual(vector.attributes, { viewBox: "0 0 10 10" }, "SVG attributes keep the case the SVG DOM requires");
   const input = planElement({ id: "in", type: "element", props: { tag: "input", attributes: { type: "image", value: "v", formaction: "https://evil.example" } } });
   assert.deepEqual(input.attributes, { value: "v" });
   assert.deepEqual(planElement({ id: "n", type: "frame", props: { name: "Hero", other: { a: 1 } } }), { tag: "div", namespace: "html", attributes: {}, style: {}, text: null, dropped: 0 });

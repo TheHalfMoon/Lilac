@@ -23,7 +23,7 @@ const HTML_TAGS = new Set([
   "small", "span", "strong", "sub", "summary", "sup", "table", "tbody", "td", "textarea", "tfoot", "th", "thead",
   "time", "tr", "u", "ul", "var",
 ]);
-const SVG_TAGS = new Set(["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan", "defs", "lineargradient", "radialgradient", "stop", "title", "desc"]);
+const SVG_TAGS = new Set(["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan", "title", "desc"]);
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const DEFAULT_TAG = Object.freeze({ page: "div", frame: "div", group: "div", element: "div", text: "span", image: "img", vector: "svg", media: "div" });
@@ -53,12 +53,12 @@ const ELEMENT_ATTRIBUTES = Object.freeze({
   details: ["open"],
   fieldset: ["disabled", "name"],
 });
-const SVG_ATTRIBUTES = new Set([
-  "viewbox", "width", "height", "d", "fill", "fill-rule", "fill-opacity", "stroke", "stroke-width", "stroke-linecap",
+// SVG attributes, keyed by lowercase name, with the case the SVG DOM requires.
+const SVG_ATTRIBUTES = new Map([
+  "viewBox", "width", "height", "d", "fill", "fill-rule", "fill-opacity", "stroke", "stroke-width", "stroke-linecap",
   "stroke-linejoin", "stroke-opacity", "opacity", "transform", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry",
-  "points", "offset", "stop-color", "stop-opacity", "gradientunits", "gradienttransform", "text-anchor", "font-size",
-  "preserveaspectratio",
-]);
+  "points", "text-anchor", "font-size", "preserveAspectRatio",
+].map((name) => [name.toLowerCase(), name]));
 const INPUT_TYPES = new Set(["text", "email", "number", "password", "search", "tel", "url", "checkbox", "radio", "range", "date", "time", "color", "button", "submit", "reset"]);
 const SAFE_LINK = /^(https?:|mailto:|tel:|#)/iu;
 const SAFE_IMAGE = /^data:image\/(png|jpeg|gif|webp|avif);base64,[A-Za-z0-9+/=\s]+$/iu;
@@ -93,10 +93,12 @@ export function planElement(node) {
   const rawAttributes = own(props, "attributes");
   if (isRecord(rawAttributes)) {
     for (const [rawName, rawValue] of Object.entries(rawAttributes)) {
-      const name = rawName.toLowerCase();
-      const value = sanitizeAttribute(tag, namespace, name, rawValue);
+      const lower = rawName.toLowerCase();
+      const value = sanitizeAttribute(tag, namespace, lower, rawValue);
       if (value === null) dropped += 1;
-      else attributes[name] = value;
+      // Links are rendered inert: the canvas is an editing surface, never a browser.
+      else if (lower === "href") attributes["data-lilac-href"] = value;
+      else attributes[namespace === "svg" ? SVG_ATTRIBUTES.get(lower) ?? lower : lower] = value;
     }
   }
   const style = {};
@@ -105,7 +107,7 @@ export function planElement(node) {
     for (const [name, rawValue] of Object.entries(rawStyle)) {
       const value = typeof rawValue === "number" ? String(rawValue) : rawValue;
       if (typeof value !== "string" || !STYLE_NAME.test(name) || value.length > MAX_VALUE || UNSAFE_STYLE.test(value)) dropped += 1;
-      else style[name] = value;
+      else style[name] = value.trim();
     }
   }
   const rawText = own(props, "text");
@@ -135,7 +137,7 @@ export const FRAME_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-i
 export const FRAME_SANDBOX = "allow-same-origin";
 
 export function frameSrcdoc() {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}"><style>html,body{margin:0;padding:0}body{font-family:system-ui,sans-serif}[data-lilac-root]{position:relative;min-height:100vh}</style></head><body><div data-lilac-root></div></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}"><style>html,body{margin:0;padding:0}body{font-family:system-ui,sans-serif}[data-lilac-root]{position:relative;min-height:100vh}a[data-lilac-href]{color:LinkText;text-decoration:underline}</style></head><body><div data-lilac-root></div></body></html>`;
 }
 
 /**
@@ -150,7 +152,19 @@ export function mountSandboxedRenderer(container) {
   frame.setAttribute("referrerpolicy", "no-referrer");
   frame.srcdoc = frameSrcdoc();
   return new Promise((resolve) => {
-    frame.addEventListener("load", () => resolve({ frame, renderer: createRenderer(frame.contentDocument.querySelector("[data-lilac-root]")) }), { once: true });
+    frame.addEventListener("load", () => {
+      const frameDocument = frame.contentDocument;
+      // Defense in depth: nothing in the frame may navigate it or submit anything.
+      for (const type of ["click", "auxclick", "submit", "keydown"]) {
+        frameDocument.addEventListener(type, (event) => {
+          if (type !== "keydown" || event.key === "Enter") {
+            if (type === "keydown" && !event.target?.closest?.("a, button, input, summary")) return;
+            event.preventDefault();
+          }
+        }, true);
+      }
+      resolve({ frame, renderer: createRenderer(frameDocument.querySelector("[data-lilac-root]")) });
+    }, { once: true });
     container.appendChild(frame);
   });
 }
@@ -182,9 +196,16 @@ export function createRenderer(root) {
       if (element.getAttribute(name) !== value) element.setAttribute(name, value);
     }
     element.removeAttribute("style");
-    for (const [name, value] of Object.entries(plan.style)) element.style.setProperty(name, value);
+    let rejected = 0;
+    for (const [name, raw] of Object.entries(plan.style)) {
+      const important = /\s*!important$/iu.test(raw);
+      const value = important ? raw.replace(/\s*!important$/iu, "") : raw;
+      element.style.setProperty(name, value, important ? "important" : "");
+      // The browser's CSS parser is the final judge; count what it refused.
+      if (element.style.getPropertyValue(name) === "") rejected += 1;
+    }
     element.setAttribute("data-lilac-type", node.type);
-    stats.dropped += plan.dropped;
+    stats.dropped += plan.dropped + rejected;
     const first = element.firstChild;
     const textNode = first !== null && first.nodeType === 3 && first.__lilacText ? first : null;
     if (plan.text === null) textNode?.remove();
@@ -257,9 +278,20 @@ export function createRenderer(root) {
         }
         const node = document.nodes[id];
         if (element) {
-          apply(element, node, planElement(node));
+          const plan = planElement(node);
+          const namespace = plan.namespace === "svg" ? SVG_NS : "http://www.w3.org/1999/xhtml";
+          let target = element;
+          if (element.localName !== plan.tag || element.namespaceURI !== namespace) {
+            // A changed tag or namespace needs a new element; its children move across.
+            target = build(node);
+            stats.created -= 1;
+            for (const child of [...element.childNodes]) if (!child.__lilacText) target.appendChild(child);
+            element.replaceWith(target);
+          } else {
+            apply(element, node, plan);
+          }
           stats.updated += 1;
-          reconcileChildren(element, node.children, document);
+          reconcileChildren(target, node.children, document);
         }
       }
       // Roots are reconciled every time; it touches only the top level.
