@@ -26,7 +26,7 @@ const NOT_DISTRIBUTED = new Set(["optional-runtime"]);
 const distributedOrPermissive = (entry) => PERMISSIVE.has(entry.license) || (NOT_DISTRIBUTED.has(entry.kind) && entry.license.startsWith("NOT-DISTRIBUTED"));
 // GitHub projects tracked files may link to that are registered under another id, or are
 // not incorporated at all (the upstream of an upstream; an optional local dev tool).
-const URL_ALIASES = { "inikulin/parse5": "parse5", "fb55/entities": "entities" };
+const URL_ALIASES = { "inikulin/parse5": "parse5", "fb55/entities": "entities", "microsoft/playwright": "playwright-core" };
 const URL_NOT_INCORPORATED = new Set(["ehmo/platform-design-skills", "trailhq/Graft", "owner/repo"]); // owner/repo: the placeholder in docs
 // owner/name literals that are not upstream projects: rule ids, MIME types, and Lilac paths.
 const NOT_DONORS = /^(a11y|lilac-mobile-method|application|text|packages|internal|LilacImportStack)\//u;

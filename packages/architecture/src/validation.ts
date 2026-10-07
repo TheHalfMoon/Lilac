@@ -31,6 +31,7 @@ export const IMPLEMENTED_PACKAGES = [
   "@lilac/network-policy",
   "@lilac/intake",
   "@lilac/studio-host",
+  "@lilac/renderer",
 ] as const;
 
 export function sha256Text(value: string): string {

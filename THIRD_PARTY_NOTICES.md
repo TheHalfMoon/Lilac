@@ -42,6 +42,15 @@ Impeccable's upstream `NOTICE.md` at the pinned revision is reproduced verbatim 
 > **Original license:** MIT
 > **Author:** ehmo
 
+## Playwright (development only)
+
+- npm package: `playwright-core@1.56.1`, a devDependency with no dependencies of its own
+- Copyright: Microsoft Corporation (see its `NOTICE`)
+- License: Apache License 2.0
+- Upstream project: https://github.com/microsoft/playwright
+
+Lilac's test suite uses `playwright-core` to drive a locally installed Chromium for renderer and editor end-to-end tests. It is not part of the product. Its `LICENSE` and `NOTICE` are carried in the release bundle's license texts.
+
 ## Unreal Agent
 
 - Project: `unreallabsai/unreal-agent`

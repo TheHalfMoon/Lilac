@@ -86,9 +86,9 @@ const SUBSYSTEMS = [
     id: "renderer",
     title: "Renderer",
     owner: "@lilac/renderer",
-    status: "planned",
-    boundary: "Deterministic canvas rendering from document state. Read-only view over the model plus tokens and layout.",
-    dependsOn: ["document-model", "layout-css", "tokens-themes", "text", "vector", "images-media"],
+    status: "stub",
+    boundary: "Read-only rendering of document state as web semantics in a script-free sandboxed frame: allowlisted tags, attributes, URLs and styles under the frozen web-semantic props convention (tag, text, attributes, style), a stable data-lilac-id node to DOM identity, and incremental patches from history affectedNodeIds (PC2). Layout comes from the browser's CSS engine; tokens, text shaping, vector editing and media remain their own planned subsystems.",
+    dependsOn: ["document-model"],
   },
   {
     id: "persistence",
