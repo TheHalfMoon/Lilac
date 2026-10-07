@@ -108,6 +108,35 @@ export function isForbiddenRemoteAddress(address: string): boolean {
   return false;
 }
 
+// The IPv4 address an IPv6 form carries, if any: mapped, compatible, translated, NAT64 and
+// 6to4 forms can all name an IPv4 destination.
+function embeddedIpv4(parts: number[]): number[] | null {
+  const tail = [parts[6] >> 8, parts[6] & 0xff, parts[7] >> 8, parts[7] & 0xff];
+  if (parts.slice(0, 5).every((value) => value === 0) && (parts[5] === 0xffff || parts[5] === 0)) return tail;
+  if (isTranslatedIpv4(parts)) return tail;
+  if (parts[0] === 0x0064 && parts[1] === 0xff9b) return tail;
+  if (parts[0] === 0x2002) return [parts[1] >> 8, parts[1] & 0xff, parts[2] >> 8, parts[2] & 0xff];
+  return null;
+}
+
+const metadataIpv4 = ([a, b, c, d]: number[]): boolean => (a === 169 && b === 254) || (a === 100 && b === 100 && c === 100 && d === 200);
+
+/**
+ * Link-local and cloud-metadata destinations (169.254.0.0/16, fe80::/10, Alibaba's
+ * 100.100.100.200, AWS's fd00:ec2::254), in every IPv4 and IPv6 spelling. These are refused
+ * even where private networks are allowed.
+ */
+export function isLinkLocalOrMetadataAddress(address: string): boolean {
+  const v4 = ipv4(address);
+  if (v4) return metadataIpv4(v4);
+  const v6 = expandIpv6(address);
+  if (!v6) return false;
+  if ((v6[0] & 0xffc0) === 0xfe80) return true;
+  if (v6[0] === 0xfd00 && v6[1] === 0x0ec2 && v6.slice(2, 7).every((value) => value === 0) && v6[7] === 0x0254) return true;
+  const embedded = embeddedIpv4(v6);
+  return embedded !== null && metadataIpv4(embedded);
+}
+
 export type AddressClass = "unspecified" | "loopback" | "forbidden" | "public" | "invalid";
 
 /**
