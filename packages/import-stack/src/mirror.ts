@@ -488,7 +488,8 @@ export async function proposalFromStaticMirror(requestInput: ImportRequest, resu
       });
     }
   }
-  proposal.stylesheets.sort((a, b) => compareCodeUnits(a.id, b.id));
+  // Inline stylesheets keep document order and captured external ones follow in capture
+  // order; the proposal does not record where each <link> sat among the <style> elements.
   return proposal;
 }
 

@@ -48,6 +48,22 @@ function binding(request: ImportRequest, domPath: string, location?: { startOffs
   };
 }
 
+const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+const TABLE_SECTIONS = new Set(["table", "tbody", "thead", "tfoot", "tr"]);
+// Elements that bound "button scope" in the HTML parser: a <p> above one of them is not
+// closed by a block start tag.
+const BUTTON_SCOPE_BOUNDARIES = new Set(["button", "html", "table", "td", "th", "caption", "marquee", "object", "applet", "template"]);
+
+function insideOpenParagraph(node: any): boolean {
+  for (let current = node.parentNode; current && current.tagName !== undefined; current = current.parentNode) {
+    if (current.namespaceURI !== HTML_NAMESPACE) return false;
+    const tag = String(current.tagName).toLowerCase();
+    if (tag === "p") return true;
+    if (BUTTON_SCOPE_BOUNDARIES.has(tag)) return false;
+  }
+  return false;
+}
+
 function nodeId(proposalId: string, domPath: string): string {
   return `import-node:${sha256Text(`${proposalId}:${domPath}`).slice(0, 32)}`;
 }
@@ -177,7 +193,21 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     resources.push(entry);
   };
 
-  const walk = (node: any, parentId: string | null, domPath: string, depth: number): string | null => {
+  const walkChildren = (node: any, parentId: string | null, domPath: string, depth: number): string[] => {
+    const out: string[] = [];
+    const children = node.content?.childNodes ?? node.childNodes ?? [];
+    for (let index = 0; index < children.length; index += 1) {
+      const child = children[index];
+      const childTag = child?.nodeName === "#text" ? "#text" : String(child?.tagName ?? child?.nodeName ?? "node").toLowerCase();
+      const childId = walk(child, parentId, `${domPath}/${childTag}[${index + 1}]`, depth + 1);
+      if (Array.isArray(childId)) out.push(...childId);
+      else if (childId) out.push(childId);
+    }
+    return out;
+  };
+
+  // A string id, or several when an element is unwrapped into its parent.
+  const walk = (node: any, parentId: string | null, domPath: string, depth: number): string | string[] | null => {
     if (depth > request.policy.maxDomDepth) throw new ImportSecurityError("DOM exceeds maxDomDepth");
     visitedNodes += 1;
     if (visitedNodes > request.policy.maxDomNodes) throw new ImportSecurityError("DOM exceeds maxDomNodes");
@@ -252,6 +282,16 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
       return null;
     }
 
+    // <form> becomes <div>, except where a <div> would parse differently: in foreign
+    // content (an SVG or MathML "form" is not an HTML form, and <div> breaks out of the
+    // foreign element), in a table section (where the parser keeps <form> empty but would
+    // move a <div> out of the table) and under an open <p> (reachable only through
+    // table-mode insertion; a <div> would close the <p>). There the form is unwrapped,
+    // children kept.
+    if (rawTag === "form" && (node.namespaceURI !== HTML_NAMESPACE || TABLE_SECTIONS.has(String(node.parentNode?.tagName ?? "").toLowerCase()) || insideOpenParagraph(node))) {
+      recordRemoval("form", domPath, node.sourceCodeLocation);
+      return walkChildren(node, parentId, domPath, depth);
+    }
     const tag = rawTag === "form" ? "div" : rawTag;
     const id = nodeId(proposalId, domPath);
     if (rawTag === "form") recordRemoval("form", domPath, node.sourceCodeLocation, id);
@@ -260,7 +300,9 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     let attributeBytes = 0;
 
     for (const attr of attrs) {
-      const name = String(attr.name ?? "").toLowerCase();
+      // parse5 reports a foreign attribute such as xlink:href as name "href" with a prefix;
+      // the qualified name keeps it distinct from a plain href on the same element.
+      const name = (attr.prefix ? `${String(attr.prefix)}:${String(attr.name ?? "")}` : String(attr.name ?? "")).toLowerCase();
       const rawValue = String(attr.value ?? "");
       attributeBytes += byteLength(name) + byteLength(rawValue);
       if (attributeBytes > request.policy.maxAttributeBytes) throw new ImportSecurityError(`<${rawTag}> attributes exceed maxAttributeBytes`);
@@ -357,13 +399,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     };
     nodes[id] = imported;
 
-    const children = node.content?.childNodes ?? node.childNodes ?? [];
-    for (let index = 0; index < children.length; index += 1) {
-      const child = children[index];
-      const childTag = child?.nodeName === "#text" ? "#text" : String(child?.tagName ?? child?.nodeName ?? "node").toLowerCase();
-      const childId = walk(child, id, `${domPath}/${childTag}[${index + 1}]`, depth + 1);
-      if (childId) imported.children.push(childId);
-    }
+    imported.children.push(...walkChildren(node, id, domPath, depth));
     return id;
   };
 
@@ -372,7 +408,8 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     const root = roots[index];
     const tag = root?.nodeName === "#text" ? "#text" : String(root?.tagName ?? root?.nodeName ?? "node").toLowerCase();
     const id = walk(root, null, `/${tag}[${index + 1}]`, 0);
-    if (id) rootIds.push(id);
+    if (Array.isArray(id)) rootIds.push(...id);
+    else if (id) rootIds.push(id);
   }
   if (rootIds.length === 0) throw new ImportValidationError("HTML snapshot produced no importable semantic nodes");
 
@@ -414,7 +451,8 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     policy: request.policy,
     rootIds,
     nodes: Object.fromEntries(Object.entries(nodes).sort(([a], [b]) => compareCodeUnits(a, b))),
-    stylesheets: stylesheets.sort((a, b) => compareCodeUnits(a.id, b.id)),
+    // Document order: later stylesheets win the cascade, so their order is meaning.
+    stylesheets,
     assets: [],
     resources: uniqueResources,
     diagnostics,
