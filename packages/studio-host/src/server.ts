@@ -5,6 +5,7 @@ import { extname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isLoopbackAddress } from "@lilac/network-policy";
 import { StudioError } from "./errors.ts";
+import { ImportDesk, MAX_IMPORT_HTML_BYTES } from "./imports.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
 
 export interface StudioHostOptions {
@@ -78,6 +79,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     return expires !== undefined && expires >= Date.now();
   };
   const streams = new Set<ServerResponse>();
+  const imports = new ImportDesk();
   let session: StudioSession | null = null;
   let unsubscribe: (() => void) | null = null;
   let port = 0;
@@ -95,6 +97,8 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     for (const stream of [...streams]) send(stream, frame);
   };
   const closeSession = () => {
+    // A reviewed import belongs to the project it was reviewed for.
+    imports.clear();
     unsubscribe?.();
     unsubscribe = null;
     session?.close();
@@ -174,6 +178,19 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     "POST /api/undo": () => requireSession().undo(owner),
     "POST /api/redo": () => requireSession().redo(owner),
     "POST /api/checkpoint": () => requireSession().checkpoint(),
+    "POST /api/import": (body) => {
+      requireSession();
+      return imports.prepare(body, owner.actorId, now());
+    },
+    "POST /api/import/commit": (body) => {
+      const current = requireSession();
+      const { operations, intent, frameId } = imports.take(body?.proposalId, current.document, now());
+      return { ...current.edit(owner, { baseRevision: current.revision, operations, intent, tool: "lilac:import" }), frameId };
+    },
+    "POST /api/import/discard": (body) => {
+      imports.discard(body?.proposalId);
+      return { discarded: true };
+    },
   };
 
   // Check timeouts every second, so the 10 s header limit is actually enforced.
@@ -211,7 +228,8 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     }
     const route = routes[`${request.method} ${url.pathname}`];
     if (route === undefined) throw new StudioError(404, "not-found", "not found");
-    const body = request.method === "POST" ? await readJson(request) : undefined;
+    // An HTML import may be larger than other requests (the import stack's own limit).
+    const body = request.method === "POST" ? await readJson(request, url.pathname === "/api/import" ? MAX_IMPORT_HTML_BYTES + 64 * 1024 : MAX_BODY_BYTES) : undefined;
     respondJson(response, 200, route(body));
   }
 
@@ -291,7 +309,7 @@ function stripMappedPrefix(address: string): string {
   return address.startsWith("::ffff:") ? address.slice(7) : address;
 }
 
-async function readJson(request: IncomingMessage): Promise<unknown> {
+async function readJson(request: IncomingMessage, limit = MAX_BODY_BYTES): Promise<unknown> {
   const type = request.headers["content-type"];
   const bodiless = type === undefined && request.headers["transfer-encoding"] === undefined && (request.headers["content-length"] ?? "0") === "0";
   if (bodiless) return {};
@@ -300,7 +318,7 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   let size = 0;
   for await (const chunk of request) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY_BYTES) throw new StudioError(413, "too-large", `request bodies are limited to ${MAX_BODY_BYTES} bytes`);
+    if (size > limit) throw new StudioError(413, "too-large", `request bodies are limited to ${limit} bytes`);
     chunks.push(chunk as Buffer);
   }
   if (size === 0) return {};

@@ -193,6 +193,90 @@ function showReopen(message) {
   }, { dismissable: false });
 }
 
+// ---------- importing ----------
+
+const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
+
+function openImportDialog() {
+  if (state.document === null) return;
+  showDialog("Import HTML", (close) => {
+    const error = el("p", { class: "error", role: "alert" });
+    const file = el("input", { id: "import-file", type: "file", accept: ".html,.htm,text/html" });
+    const pasted = el("textarea", { id: "import-html", rows: 6, spellcheck: "false", placeholder: "<main>…</main>" });
+    const form = el("form", {
+      novalidate: true,
+      onsubmit: async (event) => {
+        event.preventDefault();
+        error.textContent = "";
+        let html = pasted.value;
+        let name = "Pasted HTML";
+        const chosen = file.files?.[0];
+        if (chosen) {
+          if (chosen.size > MAX_IMPORT_BYTES) {
+            error.textContent = "That file is larger than 4 MiB.";
+            return;
+          }
+          html = await chosen.text();
+          name = chosen.name.replace(/\.html?$/iu, "") || "Imported page";
+        }
+        if (html.trim() === "") {
+          error.textContent = "Choose an HTML file or paste HTML.";
+          return;
+        }
+        try {
+          const review = await state.client.post("/api/import", { html, name });
+          close();
+          showImportReview(review);
+        } catch (failure) {
+          if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
+        }
+      },
+    },
+    el("p", {}, "Lilac reads the HTML on this computer and removes scripts, event handlers and unsafe links. Nothing it links to is fetched. You review the result before anything is added."),
+    el("label", { for: "import-file" }, "HTML file", file),
+    el("label", { for: "import-html" }, "Or paste HTML", pasted),
+    el("div", { class: "actions" }, el("button", { type: "button", onclick: close }, "Cancel"), el("button", { type: "submit", class: "primary" }, "Review import")));
+    return [form, error];
+  });
+}
+
+function showImportReview(review) {
+  const KINDS = { scriptsRemoved: "script", eventHandlersRemoved: "event handler", dangerousUrlsRemoved: "unsafe link", dangerousElementsRemoved: "unsafe element", unsafeStylesRemoved: "unsafe style" };
+  const removed = Object.entries(review.security).filter(([kind, count]) => count > 0 && Object.hasOwn(KINDS, kind)).map(([kind, count]) => `${count} ${KINDS[kind]}${count === 1 ? "" : "s"} removed`);
+  showDialog(`Review import: ${review.name}`, (close) => {
+    const error = el("p", { class: "error", role: "alert" });
+    const discard = async () => {
+      close();
+      await state.client.post("/api/import/discard", { proposalId: review.proposalId }).catch(() => {});
+    };
+    const commit = () => enqueue(async () => {
+      try {
+        const event = await state.client.post("/api/import/commit", { proposalId: review.proposalId });
+        close();
+        applyChange(event);
+        selectLayers([event.frameId]);
+        canvas.fit();
+        renderToolbar();
+        setStatus(`${event.intent}: ${review.counts.nodes} layers added.`);
+      } catch (failure) {
+        if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
+      }
+    });
+    return [
+      el("ul", { class: "report", id: "import-review" },
+        el("li", {}, `${review.counts.nodes} layers in ${review.counts.roots} top-level group${review.counts.roots === 1 ? "" : "s"}`),
+        removed.length > 0 ? el("li", {}, `For safety: ${removed.join(", ")}`) : el("li", {}, "Nothing unsafe was found."),
+        review.accessibilityFindings > 0 ? el("li", {}, `${review.accessibilityFindings} accessibility finding${review.accessibilityFindings === 1 ? "" : "s"} to look at after importing`) : null,
+        review.notes.map((note) => el("li", {}, note)),
+        review.blockingReasons.map((reason) => el("li", { class: "error" }, `Cannot import: ${reason}`))),
+      error,
+      el("div", { class: "actions" },
+        el("button", { type: "button", onclick: discard }, "Discard"),
+        el("button", { type: "button", class: "primary", disabled: !review.commitReady, onclick: commit }, "Import")),
+    ];
+  }, { dismissable: false });
+}
+
 // ---------- loading and applying changes ----------
 
 async function loadProject() {
@@ -774,6 +858,7 @@ function renderToolbar() {
   $("action-insert-text").disabled = !open;
   $("action-delete").disabled = !open || state.selection.length === 0;
   $("action-save").disabled = !open;
+  $("action-import").disabled = !open;
   $("zoom-level").textContent = `${Math.round(canvas.viewport.zoom * 100)}%`;
   $("revision").textContent = open ? `Revision ${state.revision}` : "";
   document.title = state.project ? `${state.project} — Lilac` : "Lilac";
@@ -836,6 +921,7 @@ async function main() {
   $("action-zoom-out").addEventListener("click", () => { canvas.zoomBy(0.8); renderToolbar(); });
   $("action-fit").addEventListener("click", () => { canvas.fit(); renderToolbar(); });
   $("action-save").addEventListener("click", save);
+  $("action-import").addEventListener("click", openImportDialog);
   $("layers").addEventListener("keydown", onLayersKey);
   $("layers").addEventListener("click", onLayersClick);
   $("inspector").addEventListener("change", onInspectorChange);
