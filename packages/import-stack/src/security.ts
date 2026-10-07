@@ -62,17 +62,15 @@ function withoutComments(css: string): string {
   return out;
 }
 
-function cssSecurityView(rawCss: string): string {
-  // CSS input preprocessing first: CR LF, CR and FF become LF, so an escape followed by
-  // CR LF consumes the whole line break as a browser does (for example `\75<CR><LF>rl(`
-  // is `url(`), and NUL becomes U+FFFD.
-  const css = rawCss.replace(/\r\n|[\r\f]/gu, "\n").replace(/\0/gu, "\ufffd");
-  // Strip CSS line continuations (backslash + newline) before and after
-  // escape decoding: a real CSS engine ignores them, so keywords split
-  // across a continuation (for example `u\<LF>rl(`) must be visible here.
-  const withoutContinuations = (value: string): string =>
-    value.replace(/\\(?:\r\n|[\r\n\f])/gu, "");
-  const decoded = withoutComments(withoutContinuations(css))
+// CSS input preprocessing: CR LF, CR and FF become LF (so an escape followed by CR LF
+// consumes the whole line break, as `\75<CR><LF>rl(` is `url(` to a browser), and NUL
+// becomes U+FFFD.
+function preprocessCss(rawCss: string): string {
+  return rawCss.replace(/\r\n|[\r\f]/gu, "\n").replace(/\0/gu, "\ufffd");
+}
+
+function decodeEscapes(css: string): string {
+  return css
     .replace(/\\([0-9a-fA-F]{1,6})\s?/gu, (_match, hex: string) => {
       const codePoint = Number.parseInt(hex, 16);
       return Number.isFinite(codePoint) && codePoint > 0 && codePoint <= 0x10ffff
@@ -80,7 +78,23 @@ function cssSecurityView(rawCss: string): string {
         : "";
     })
     .replace(/\\([^\r\n0-9a-fA-F])/gu, "$1");
-  return withoutContinuations(decoded).toLowerCase();
+}
+
+/**
+ * Views of untrusted CSS that are checked for fetch or execute authority; the CSS is
+ * unsafe if any view shows it. A browser never joins tokens across a comment, so a
+ * comment can only hide a url( or @import, never create one: the raw view (escapes
+ * decoded, nothing removed) therefore contains every function or at-rule a browser
+ * would see, whatever the comment, string, or continuation tricks. The stripped view
+ * (comments and continuations removed) additionally flags spellings split by them, so
+ * nothing the earlier checks refused becomes accepted.
+ */
+function cssSecurityViews(rawCss: string): string[] {
+  const css = preprocessCss(rawCss);
+  const withoutContinuations = (value: string): string => value.replace(/\\\n/gu, "");
+  const raw = decodeEscapes(css).toLowerCase();
+  const stripped = withoutContinuations(decodeEscapes(withoutComments(withoutContinuations(css)))).toLowerCase();
+  return [raw, stripped];
 }
 
 export function sanitizeImportedCssText(
@@ -90,8 +104,7 @@ export function sanitizeImportedCssText(
   if (Buffer.byteLength(css, "utf8") > maxBytes) {
     throw new ImportSecurityError("imported stylesheet exceeds maxCssBytes");
   }
-  const view = cssSecurityView(css);
-  const unsafe = (
+  const unsafe = cssSecurityViews(css).some((view) => (
     /@import\b/u.test(view)
     || /expression\s*\(/u.test(view)
     || /url\s*\(/u.test(view)
@@ -100,7 +113,7 @@ export function sanitizeImportedCssText(
     || /(?:javascript|vbscript):/u.test(view)
     || /-moz-binding\s*:/u.test(view)
     || /(?:^|[;{])\s*behavior\s*:/u.test(view)
-  );
+  ));
   return { cssText: unsafe ? null : css.trim(), unsafe };
 }
 

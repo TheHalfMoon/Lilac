@@ -596,6 +596,20 @@
         "dangerousUrlsRemoved": 3,
         "unsafeStylesRemoved": 3
       }
+    },
+    {
+      "id": "css-continuation-comment",
+      "category": "css",
+      "file": "css-continuation-comment.html",
+      "description": "backslash-newline outside strings that a naive continuation strip turns into a comment start",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 3
+      }
     }
   ]
 }

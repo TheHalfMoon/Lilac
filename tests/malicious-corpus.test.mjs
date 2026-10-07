@@ -80,6 +80,20 @@ function cssView(css) {
   }
   return out.toLowerCase().replace(/\s+/gu, "");
 }
+// Comments can hide, never create, a url( or @import (tokens never join across a
+// comment), so decoding escapes without removing anything is a second, sound view.
+function rawCssView(css) {
+  const preprocessed = css.replace(/\r\n|[\r\f]/gu, "\n");
+  return preprocessed
+    .replace(/\\([0-9a-fA-F]{1,6})[ \t\n]?/gu, (_match, hex) => {
+      const code = Number.parseInt(hex, 16);
+      return code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff) ? "\ufffd" : String.fromCodePoint(code);
+    })
+    .replace(/\\(.)/gsu, "$1")
+    .toLowerCase()
+    .replace(/\s+/gu, "");
+}
+const unsafeCss = (css) => CSS_AUTHORITY.test(cssView(css)) || CSS_AUTHORITY.test(rawCssView(css));
 const CSS_AUTHORITY = /url\(|@import|image-set\(|image\(|expression\(|-moz-binding|behavior:|src\(|cross-fade\(|element\(|paint\(|javascript:|vbscript:/u;
 
 // Markup surfaces only: text content is inert data (for example markup inside RCDATA
@@ -95,15 +109,15 @@ function assertNoAuthority(proposal, id) {
       assert.equal(HOST_ACTING.has(lower), false, `${id}: ${name} acts on host elements`);
       if (URL_BEARING.has(lower)) assert.match(value, INERT_URL, `${id}: ${name} keeps a live URL`);
       if (PRESENTATION_URL_ATTRIBUTES.has(lower) || lower === "style") {
-        assert.equal(CSS_AUTHORITY.test(cssView(value)), false, `${id}: ${name} keeps CSS fetch authority`);
+        assert.equal(unsafeCss(value), false, `${id}: ${name} keeps CSS fetch authority`);
       }
     }
     if (node.style.cssText !== undefined) {
-      assert.equal(CSS_AUTHORITY.test(cssView(node.style.cssText)), false, `${id}: unsafe inline style survived`);
+      assert.equal(unsafeCss(node.style.cssText), false, `${id}: unsafe inline style survived`);
     }
   }
   for (const stylesheet of proposal.stylesheets) {
-    assert.equal(CSS_AUTHORITY.test(cssView(stylesheet.cssText)), false, `${id}: unsafe stylesheet survived`);
+    assert.equal(unsafeCss(stylesheet.cssText), false, `${id}: unsafe stylesheet survived`);
   }
   for (const resource of proposal.resources) {
     // Without a base URL a resource may stay relative, but only if no scheme hides in it.

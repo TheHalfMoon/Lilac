@@ -4,7 +4,7 @@ Part of P06 gate 6 (#100).
 
 ## Corpus
 
-`tests/fixtures/malicious/` holds 43 cases, one `.html` file each, across the categories `html`, `url`, `css`, `svg` and `mxss`. `manifest.json` records for each case:
+`tests/fixtures/malicious/` holds 44 cases, one `.html` file each, across the categories `html`, `url`, `css`, `svg` and `mxss`. `manifest.json` records for each case:
 - its description;
 - its expected outcome;
 - for imported cases, the exact expected security summary.
@@ -15,7 +15,7 @@ Adding a case means adding a file and a manifest entry. The test checks that the
 
 ## Invariants
 
-Checked for every case by `tests/malicious-corpus.test.mjs`, which has 48 tests and runs in about 3 s:
+Checked for every case by `tests/malicious-corpus.test.mjs`, which has 49 tests and runs in about 3 s:
 - the outcome and exact security summary match the manifest;
 - `validateImportProposal` passes;
 - no forbidden tag survives;
@@ -52,6 +52,22 @@ The delta-1 adversarial re-review found that a comment marker inside a CSS strin
 Both now remove comments as a CSS tokenizer does: only outside strings, and never when the `/` is escaped. The case `css-comment-in-string` covers this and fails on the pre-delta-2 head.
 
 The older host-acting names `interesttarget`, `interestaction` and `anchor` are now stripped as well.
+
+## Review delta 3: a CSS check that is sound by construction
+
+The final, third adversarial cycle found that delta 2 had introduced a regression. Continuation removal, which runs before comment scanning and ignores escapes and strings, turned `/\<LF>*` into a comment start, so `color:red;/\<LF>*;background:url(...)` was kept. A browser reads `/ \ *` as junk and loads the URL. The judge also found two older variants that were already being kept at `d72c405`.
+
+Rather than patch the scanner's ordering again, the sanitizer now flags CSS when **either** of two views shows authority:
+- **Raw view:** escapes are decoded and nothing is removed.
+- **Stripped view:** comments and continuations are removed, as before.
+
+A browser never joins tokens across a comment, so a comment can only hide a `url(` or `@import`; it can never create one. Every function or at-rule a browser sees is therefore present in the raw view. The stripped view only adds flags, so nothing refused earlier becomes accepted. The cost is possible false positives, which drop a style; the design cannot produce false negatives.
+
+The test's independent CSS check gained the same raw view. The case `css-continuation-comment` covers this and fails on the pre-delta-3 head.
+
+The judge's own harness for this delta now reports every one of its 15 payloads as unsafe, and benign CSS, including CSS with comments, is still kept.
+
+ps-review's cap of three delta cycles had been reached. Delta 3 was verified by the judge's harness, the corpus and the mechanical gate, not by a fourth judge. The soundness argument above is why that verification is considered sufficient.
 
 ## Notes
 
