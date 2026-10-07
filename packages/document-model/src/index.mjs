@@ -50,16 +50,90 @@ function assertUniqueStrings(values, label) {
   for (const value of values) {
     assertNonEmptyString(value, `${label} entry`);
     if (seen.has(value)) {
-      throw new DocumentInvariantError(`${label} contains duplicate id ${value}`);
+      const shownValue = value.length > 80 ? `${value.slice(0, 77)}...` : value;
+      throw new DocumentInvariantError(`${label} contains duplicate id ${shownValue}`);
     }
     seen.add(value);
   }
 }
 
+// Code-unit order: unlike localeCompare, it does not depend on the process locale.
+function compareCodeUnits(left, right) {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
+
+// In-memory key order is a convenience: JS always enumerates integer-like keys
+// first. The canonical order is the one serializeDocument writes.
 function sortNodeRecord(nodes) {
   return Object.fromEntries(
-    Object.entries(nodes).sort(([left], [right]) => left.localeCompare(right)),
+    Object.entries(nodes).sort(([left], [right]) => compareCodeUnits(left, right)),
   );
+}
+
+const MAX_SERIALIZE_DEPTH = 256;
+
+function canonicalValue(value, depth) {
+  if (depth > MAX_SERIALIZE_DEPTH) {
+    throw new DocumentInvariantError(`cannot serialize values nested deeper than ${MAX_SERIALIZE_DEPTH}`);
+  }
+  if (value === null || typeof value === "boolean" || typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new DocumentInvariantError("cannot serialize a non-finite number");
+    return JSON.stringify(Object.is(value, -0) ? 0 : value);
+  }
+  if (Array.isArray(value)) {
+    const parts = [];
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.hasOwn(value, index)) throw new DocumentInvariantError("cannot serialize a sparse array");
+      parts.push(canonicalValue(value[index], depth + 1));
+    }
+    return `[${parts.join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new DocumentInvariantError("cannot serialize a non-plain object");
+    }
+    const body = Object.keys(value)
+      .sort(compareCodeUnits)
+      .map((key) => {
+        if (value[key] === undefined) {
+          throw new DocumentInvariantError(`cannot serialize undefined at key ${JSON.stringify(key).slice(0, 80)}`);
+        }
+        return `${JSON.stringify(key)}:${canonicalValue(value[key], depth + 1)}`;
+      })
+      .join(",");
+    return `{${body}}`;
+  }
+  throw new DocumentInvariantError(`cannot serialize a ${typeof value} value`);
+}
+
+/**
+ * Canonical JSON for a valid document: keys in code-unit order at every depth,
+ * no whitespace, -0 written as 0. Values JSON cannot represent faithfully are refused.
+ */
+export function serializeDocument(document) {
+  validateDocument(document);
+  return canonicalValue(document, 0);
+}
+
+/**
+ * Parse canonical document text. Only the exact canonical form is accepted, so one
+ * document has exactly one byte representation.
+ */
+export function parseDocument(text) {
+  if (typeof text !== "string") throw new DocumentInvariantError("document text must be a string");
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new DocumentInvariantError("document text is not valid JSON");
+  }
+  if (serializeDocument(value) !== text) {
+    throw new DocumentInvariantError("document text is not in canonical form");
+  }
+  return normalizeDocument(value);
 }
 
 export function createNode({
@@ -146,9 +220,14 @@ export function normalizeDocument(document) {
 }
 
 export function getNode(document, nodeId) {
-  const node = document.nodes[nodeId];
+  // Same key coercion as a property lookup (so getNode(doc, 5) still finds
+  // node "5"), but own keys only: inherited names such as toString are not nodes.
+  const key = typeof nodeId === "symbol" ? undefined : String(nodeId);
+  const node = key !== undefined && Object.hasOwn(document.nodes, key) ? document.nodes[key] : undefined;
   if (!node) {
-    throw new DocumentInvariantError(`Unknown node id ${nodeId}`);
+    let shown = "(symbol)";
+    if (key !== undefined) shown = key.length > 80 ? `${key.slice(0, 77)}...` : key;
+    throw new DocumentInvariantError(`Unknown node id ${shown}`);
   }
   return node;
 }
@@ -205,81 +284,106 @@ export function validateDocument(document) {
   assertPlainObject(document.nodes, "document.nodes");
   assertPlainObject(document.metadata, "document.metadata");
 
+  // Own-key lookups only: an id such as "toString" or "__proto__" must not
+  // resolve through Object.prototype. Ids are shortened in messages so an
+  // oversized id cannot produce an oversized error.
+  const nodes = document.nodes;
+  const lookup = (id) => (typeof id === "string" && Object.hasOwn(nodes, id) ? nodes[id] : undefined);
+  const shown = (id) => {
+    const text = String(id);
+    return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+  };
+
   const rootSet = new Set(document.rootIds);
-  for (const [id, node] of Object.entries(document.nodes)) {
+  const referenced = new Set();
+  for (const [id, node] of Object.entries(nodes)) {
     assertNonEmptyString(id, "document node key");
-    assertPlainObject(node, `node ${id}`);
+    assertPlainObject(node, `node ${shown(id)}`);
     if (node.id !== id) {
-      throw new DocumentInvariantError(`Node record key ${id} does not match node.id ${String(node.id)}`);
+      throw new DocumentInvariantError(`Node record key ${shown(id)} does not match node.id ${shown(node.id)}`);
     }
     if (!NODE_TYPE_SET.has(node.type)) {
-      throw new DocumentInvariantError(`Node ${id} has unsupported type ${String(node.type)}`);
+      throw new DocumentInvariantError(`Node ${shown(id)} has unsupported type ${shown(node.type)}`);
     }
-    if (node.parentId !== null && !document.nodes[node.parentId]) {
-      throw new DocumentInvariantError(`Node ${id} references missing parent ${node.parentId}`);
+    if (node.parentId !== null && !lookup(node.parentId)) {
+      throw new DocumentInvariantError(`Node ${shown(id)} references missing parent ${shown(node.parentId)}`);
     }
-    assertUniqueStrings(node.children, `node ${id}.children`);
-    assertPlainObject(node.props, `node ${id}.props`);
-    assertPlainObject(node.metadata, `node ${id}.metadata`);
+    assertUniqueStrings(node.children, `node ${shown(id)}.children`);
+    assertPlainObject(node.props, `node ${shown(id)}.props`);
+    assertPlainObject(node.metadata, `node ${shown(id)}.metadata`);
 
     if (node.parentId === null && !rootSet.has(id)) {
-      throw new DocumentInvariantError(`Root node ${id} is missing from document.rootIds`);
+      throw new DocumentInvariantError(`Root node ${shown(id)} is missing from document.rootIds`);
     }
     if (node.parentId !== null && rootSet.has(id)) {
-      throw new DocumentInvariantError(`Non-root node ${id} appears in document.rootIds`);
+      throw new DocumentInvariantError(`Non-root node ${shown(id)} appears in document.rootIds`);
     }
 
     for (const childId of node.children) {
-      const child = document.nodes[childId];
+      const child = lookup(childId);
       if (!child) {
-        throw new DocumentInvariantError(`Node ${id} references missing child ${childId}`);
+        throw new DocumentInvariantError(`Node ${shown(id)} references missing child ${shown(childId)}`);
       }
       if (child.parentId !== id) {
         throw new DocumentInvariantError(
-          `Child ${childId} declares parent ${String(child.parentId)} instead of ${id}`,
+          `Child ${shown(childId)} declares parent ${shown(child.parentId)} instead of ${shown(id)}`,
         );
       }
+      // Children are unique per parent and each child names one parent, so a
+      // child is referenced at most once overall.
+      referenced.add(childId);
     }
   }
 
   for (const rootId of document.rootIds) {
-    const root = document.nodes[rootId];
+    const root = lookup(rootId);
     if (!root) {
-      throw new DocumentInvariantError(`document.rootIds references missing node ${rootId}`);
+      throw new DocumentInvariantError(`document.rootIds references missing node ${shown(rootId)}`);
     }
     if (root.parentId !== null) {
-      throw new DocumentInvariantError(`Root node ${rootId} must have parentId null`);
+      throw new DocumentInvariantError(`Root node ${shown(rootId)} must have parentId null`);
     }
   }
 
-  for (const [id, node] of Object.entries(document.nodes)) {
-    if (node.parentId !== null) {
-      const occurrences = document.nodes[node.parentId].children.filter((childId) => childId === id).length;
-      if (occurrences !== 1) {
-        throw new DocumentInvariantError(
-          `Parent ${node.parentId} must reference child ${id} exactly once`,
-        );
+  for (const [id, node] of Object.entries(nodes)) {
+    if (node.parentId !== null && !referenced.has(id)) {
+      throw new DocumentInvariantError(
+        `Parent ${shown(node.parentId)} must reference child ${shown(id)} exactly once`,
+      );
+    }
+  }
+
+  // Iterative depth-first walk, so a long parent chain cannot overflow the stack.
+  const visited = new Set();
+  const onPath = new Set();
+  for (const rootId of document.rootIds) {
+    if (visited.has(rootId)) continue;
+    const stack = [[rootId, 0]];
+    onPath.add(rootId);
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const children = nodes[frame[0]].children;
+      if (frame[1] < children.length) {
+        const childId = children[frame[1]];
+        frame[1] += 1;
+        if (onPath.has(childId)) throw new DocumentInvariantError(`Cycle detected at node ${shown(childId)}`);
+        if (visited.has(childId)) continue;
+        onPath.add(childId);
+        stack.push([childId, 0]);
+      } else {
+        stack.pop();
+        onPath.delete(frame[0]);
+        visited.add(frame[0]);
       }
     }
   }
 
-  const visiting = new Set();
-  const visited = new Set();
-  const visit = (id) => {
-    if (visiting.has(id)) {
-      throw new DocumentInvariantError(`Cycle detected at node ${id}`);
-    }
-    if (visited.has(id)) return;
-    visiting.add(id);
-    for (const childId of document.nodes[id].children) visit(childId);
-    visiting.delete(id);
-    visited.add(id);
-  };
-  for (const rootId of document.rootIds) visit(rootId);
-
-  if (visited.size !== Object.keys(document.nodes).length) {
-    const unreachable = Object.keys(document.nodes).filter((id) => !visited.has(id));
-    throw new DocumentInvariantError(`Unreachable nodes: ${unreachable.join(", ")}`);
+  const nodeCount = Object.keys(nodes).length;
+  if (visited.size !== nodeCount) {
+    const unreachable = Object.keys(nodes).filter((id) => !visited.has(id));
+    const listed = unreachable.slice(0, 10).map(shown).join(", ");
+    const more = unreachable.length > 10 ? ` (and ${unreachable.length - 10} more)` : "";
+    throw new DocumentInvariantError(`Unreachable nodes: ${listed}${more}`);
   }
 
   return true;
