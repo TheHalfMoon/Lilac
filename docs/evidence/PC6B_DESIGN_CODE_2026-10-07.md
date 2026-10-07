@@ -25,7 +25,7 @@ PC6b closes PC gate 11: the design/code workflow through the product, which mean
 **Bring code in** (`importJsx`):
 - A JSX function component of at most 256 KiB, in code-ir's subset (elements, text, literal props), is parsed by code-ir.
 - Code containing anything code-ir cannot read, such as fragments, spreads or expression props, is refused whole, with the reason. It is never partly imported.
-- The element brought in is the declared export's own, found by its component symbol, and the root layer is named after it.
+- The element brought in is the declared export's own: the component symbol whose element is a root, not a JSX use of the same name. The root layer is named after it. When a file exports several components, the first one with a definition is brought in.
 - The code becomes layers inside a new page frame, as one `restore-subtree` committed as the person's change, with intent `Bring in <Name>` and tool `lilac:code`:
   - `className` becomes `class`, and a style string becomes style properties, keeping custom properties (`--brand`);
   - `{true}` becomes an empty attribute, and `{false}` is left out, as in JSX;
@@ -81,3 +81,11 @@ The security and correctness judge found nothing that injects code or makes anyt
 - the judge's two partial-import cases are refused;
 - mixed text keeps its order;
 - booleans and custom properties.
+
+## Review delta 2
+
+The cycle-1 re-review confirmed both fixes by probe. All eight round-trip cases are export → import → export fixpoints, and the custom-property change is safe for HTML import, because the renderer re-checks every value. It found one must-fix in the same class as the first, now fixed:
+- **A JSX use of the declared name was taken for its definition.** If `<Button>` was used before `export function Button`, the use was imported instead. Only a component symbol whose element is a root is now taken as a definition.
+- **Comments and strings.** A commented-out `export function` no longer shadows the real one: the first exported name with a definition wins.
+
+Test 2 covers both cases.

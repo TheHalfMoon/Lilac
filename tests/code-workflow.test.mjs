@@ -78,6 +78,11 @@ test("JSX comes into the design as layers, and refused code is reported, not gue
   const pick = importJsx("function Icon() { return <svg />; }\nexport function Card() { return <div>card</div>; }");
   assert.equal(pick.componentName, "Card");
   assert.deepEqual([pick.operations[0].nodes[1].props.tag, pick.operations[0].nodes[1].props.text], ["div", "card"]);
+  // A use of the name (<Button>) earlier in the file is not its definition.
+  const used = importJsx("function App() { return <Button><span>x</span></Button>; }\nexport function Button() { return <button>b</button>; }");
+  assert.deepEqual([used.componentName, used.operations[0].nodes[1].props.tag, used.operations[0].nodes[1].props.text], ["Button", "button", "b"]);
+  // A commented-out export does not shadow the real one.
+  assert.equal(importJsx("// export function Old() {}\nexport function New() { return <p>n</p>; }").componentName, "New");
   const second = importJsx("export function A() { return <p>a</p>; }\nfunction B() { return <i>b</i>; }");
   assert.equal(second.operations[0].nodes[1].props.tag, "p");
   // Code with anything code-ir cannot read is refused whole, never partly imported.

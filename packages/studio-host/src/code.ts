@@ -77,10 +77,10 @@ export function importJsx(source: unknown): { operations: unknown[]; frameId: st
   if (typeof source !== "string" || source.trim() === "") throw new StudioError(400, "invalid-code", "code must be a non-empty string");
   if (Buffer.byteLength(source) > MAX_CODE_BYTES) throw new StudioError(413, "code-too-large", "code is limited to 256 KiB");
   const refuse = (message: string) => new StudioError(422, "code-refused", message.slice(0, 300));
-  const declared = /export\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9]*)/u.exec(source)?.[1] ?? null;
+  const exportedNames = [...source.matchAll(/export\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9]*)/gu)].map((match) => match[1]);
   let ir: any;
   try {
-    ir = buildCodeIr([{ path: `${declared ?? "Imported"}.jsx`, content: source }]);
+    ir = buildCodeIr([{ path: `${exportedNames[0] ?? "Imported"}.jsx`, content: source }]);
   } catch (error) {
     throw refuse(error instanceof Error ? error.message : "the code could not be read");
   }
@@ -90,8 +90,13 @@ export function importJsx(source: unknown): { operations: unknown[]; frameId: st
     throw refuse(`this code uses something Lilac cannot bring in yet (${String(first.reason ?? first.kind ?? "unsupported construct")}, line ${first.range?.startLine ?? "?"})`);
   }
   // The exported component's own element, by name, not whichever element came first.
+  // A component's definition is the component symbol whose element is a root; a JSX use of
+  // the same name (<Button>) is also a component symbol, but inside another element. The
+  // first exported function with a definition is brought in (others in the file are not).
   const symbols = Object.values(ir.symbols) as any[];
-  const component = declared === null ? null : symbols.find((symbol) => symbol.kind === "component" && symbol.name === declared && symbol.children.length > 0);
+  const definitionOf = (name: string) => symbols.find((symbol) => symbol.kind === "component" && symbol.name === name && symbol.children.length > 0 && ir.rootIds.includes(symbol.children[0]));
+  const declared = exportedNames.find((name) => definitionOf(name) !== undefined) ?? exportedNames[0] ?? null;
+  const component = declared === null ? undefined : definitionOf(declared);
   const rootId = component ? component.children[0] : (declared === null && ir.rootIds.length === 1 ? ir.rootIds[0] : null);
   if (!rootId) throw refuse(declared === null ? "bring in one exported function component, e.g. export function Card() { return <section>…</section>; }" : `${declared} does not return a JSX element`);
   const componentName = declared ?? "Imported";
