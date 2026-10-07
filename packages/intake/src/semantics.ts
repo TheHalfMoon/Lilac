@@ -113,7 +113,7 @@ export function inferSemantics(proposalInput: ImportProposal): SemanticReport {
   const proposal = validateImportProposal(proposalInput);
   const linkNodes = new Set(
     proposal.resources
-      .filter((resource) => resource.kind === "link" && resource.attribute === "href" && typeof resource.nodeId === "string")
+      .filter((resource) => resource.kind === "link" && (resource.attribute === "href" || resource.attribute === "xlink:href") && typeof resource.nodeId === "string")
       .map((resource) => resource.nodeId as string),
   );
   const records: SemanticRecord[] = [];

@@ -159,8 +159,8 @@ const SUBSYSTEMS = [
     title: "Agent runtime MCP surface",
     owner: "@lilac/mcp-protocol",
     status: "stub",
-    boundary: "MCP contract validation (client, tool, server-config, and Paper tool-set compatibility) exists. The capability-scoped local MCP endpoint for project discovery, inspection, queries, and transaction-aware edits is planned (#82).",
-    dependsOn: ["agent-runtime", "document-model", "history"],
+    boundary: "MCP contract validation (client, tool, server-config, and Paper tool-set compatibility) and tool-call authorization through the collaboration access oracle exist. The capability-scoped local MCP endpoint for project discovery, inspection, queries, and transaction-aware edits is planned (#82) and must authorize every call.",
+    dependsOn: ["agent-runtime", "document-model", "history", "collaboration"],
   },
   {
     id: "design-assurance",
