@@ -3,10 +3,10 @@ import { lookup } from "node:dns/promises";
 import { readFile, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { createAssetRecord } from "./assets.ts";
 import { ImportConflictError, ImportSecurityError, ImportValidationError } from "./errors.ts";
-import { canonicalDirectory, canonicalFileWithinRoots, createImportJobDirectory, safeRemoveImportJobDirectory } from "./filesystem.ts";
+import { canonicalDirectory, canonicalFileWithinRoots, createImportJobDirectory, readSingleLinkFile, safeRemoveImportJobDirectory } from "./filesystem.ts";
 import { importHtmlSnapshot } from "./html.ts";
 import { sanitizeImportedCssText } from "./security.ts";
 import { validateNavigationUrl, validateResolvedAddresses } from "./network.ts";
@@ -323,6 +323,8 @@ function assertMirrorObjectPath(value: unknown, label: string): asserts value is
   }
 }
 
+const MIRROR_JOB_DIRECTORY_NAME = /^mirror-[0-9a-f]{24}$/u;
+
 async function verifyStaticMirrorResult(
   request: ImportRequest,
   result: StaticMirrorResult,
@@ -331,6 +333,11 @@ async function verifyStaticMirrorResult(
   assertAllowedKeys(result, ["jobDirectory", "manifest"], "static mirror result");
   assertBoundedString(result.jobDirectory, "static mirror jobDirectory", 4096);
   const jobDirectory = await canonicalDirectory(result.jobDirectory, "static mirror job directory");
+  // The proposal step is not given the work root, so the directory is bound to the shape
+  // mirrorStaticSite creates; every object it serves is still hash-verified below.
+  if (!MIRROR_JOB_DIRECTORY_NAME.test(basename(jobDirectory))) {
+    throw new ImportSecurityError("static mirror job directory is not a mirror job directory");
+  }
 
   assertPlainObject(result.manifest, "static mirror manifest");
   assertAllowedKeys(
@@ -386,7 +393,7 @@ async function verifyStaticMirrorResult(
         [jobDirectory],
         "static mirror object",
       );
-      bytes = await readFile(path);
+      bytes = await readSingleLinkFile(path, "static mirror object", request.policy.maxTotalBytes);
       const sha256 = createHash("sha256").update(bytes).digest("hex");
       if (sha256 !== raw.sha256 || bytes.byteLength !== raw.byteLength) {
         throw new ImportConflictError("static mirror object bytes no longer match the captured manifest");
@@ -486,5 +493,8 @@ export async function proposalFromStaticMirror(requestInput: ImportRequest, resu
 }
 
 export async function disposeStaticMirror(workRoot: string, result: StaticMirrorResult): Promise<void> {
+  if (typeof result?.jobDirectory !== "string" || !MIRROR_JOB_DIRECTORY_NAME.test(basename(result.jobDirectory))) {
+    throw new ImportSecurityError("refusing to dispose a path that is not a static mirror job directory");
+  }
   await safeRemoveImportJobDirectory(workRoot, result.jobDirectory);
 }

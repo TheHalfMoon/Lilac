@@ -1,7 +1,6 @@
-import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, relative, sep } from "node:path";
 import { ImportSecurityError, ImportValidationError } from "./errors.ts";
-import { canonicalDirectory, canonicalFileWithinRoots } from "./filesystem.ts";
+import { canonicalDirectory, canonicalFileWithinRoots, readSingleLinkFile } from "./filesystem.ts";
 import type { AdapterResult, ImportRequest, LocalSourceSnapshot } from "./types.ts";
 import { normalizeImportRequest, sha256Text } from "./validation.ts";
 
@@ -27,11 +26,8 @@ export async function readAuthorizedLocalSource(
       throw new ImportSecurityError("local source path escapes repository root");
     }
     const normalizedPath = rel.split(sep).join("/");
-    const info = await stat(source);
-    if (info.size === 0 || info.size > request.policy.maxHtmlBytes) {
-      throw new ImportSecurityError("local source file size is outside maxHtmlBytes");
-    }
-    const bytes = await readFile(source);
+    const bytes = await readSingleLinkFile(source, "local source file", request.policy.maxHtmlBytes);
+    if (bytes.byteLength === 0) throw new ImportSecurityError("local source file is empty");
     let content: string;
     try { content = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
     catch { throw new ImportValidationError("local source file is not valid UTF-8"); }

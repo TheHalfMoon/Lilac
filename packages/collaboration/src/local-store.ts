@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdir, lstat, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { mkdir, lstat, open, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { deserializePersistentState, serializePersistentState } from "./durable.ts";
 import { CollaborationPersistenceError } from "./errors.ts";
 import { assertBoundedString } from "./validation.ts";
-import type { CollaborationPersistentState } from "./types.ts";
+import { MAX_STATE_BYTES, type CollaborationPersistentState } from "./types.ts";
 
 function stateFileName(documentId: string): string {
   assertBoundedString(documentId, "store.documentId");
@@ -37,15 +38,31 @@ export class LocalCollaborationFileStore {
   async load(documentId: string): Promise<CollaborationPersistentState | null> {
     const filePath = this.filePath(documentId);
     await refuseSymlink(filePath);
+    // The checks above can race a swap, so the file is opened without following a link or
+    // blocking on a FIFO, and the opened file itself must be a single-link regular file
+    // within the state size bound (a hard link can name a file outside the store).
+    let handle;
     try {
-      const serialized = await readFile(filePath, "utf8");
-      const state = deserializePersistentState(serialized);
-      if (state.documentId !== documentId) throw new CollaborationPersistenceError("stored collaboration state document identity mismatch");
-      return state;
-    } catch (error: any) {
-      if (error?.code === "ENOENT") return null;
+      handle = await open(filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return null;
+      if (code === "ELOOP") throw new CollaborationPersistenceError("collaboration state path cannot be a symbolic link");
       throw error;
     }
+    let serialized: string;
+    try {
+      const info = await handle.stat();
+      if (!info.isFile()) throw new CollaborationPersistenceError("collaboration state path must be a regular file");
+      if (info.nlink > 1) throw new CollaborationPersistenceError("collaboration state file must not be hard-linked");
+      if (info.size > MAX_STATE_BYTES) throw new CollaborationPersistenceError("serialized collaboration state is invalid or oversized");
+      serialized = await handle.readFile({ encoding: "utf8" });
+    } finally {
+      await handle.close();
+    }
+    const state = deserializePersistentState(serialized);
+    if (state.documentId !== documentId) throw new CollaborationPersistenceError("stored collaboration state document identity mismatch");
+    return state;
   }
 
   async save(state: CollaborationPersistentState): Promise<void> {

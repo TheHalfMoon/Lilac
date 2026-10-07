@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { ImportAdapterError, ImportSecurityError, ImportValidationError } from "./errors.ts";
-import { canonicalFileWithinRoots, createImportJobDirectory, safeRemoveImportJobDirectory } from "./filesystem.ts";
+import { canonicalFileWithinRoots, createImportJobDirectory, readSingleLinkFile, safeRemoveImportJobDirectory } from "./filesystem.ts";
 import type { AdapterResult, DocumentAdapterOutput, ImportPolicy } from "./types.ts";
 import { normalizeImportJson } from "./validation.ts";
 
@@ -158,11 +158,11 @@ export async function runLocalDocling(
     if (result.exitCode !== 0) {
       return { status: "failed", reason: `Docling exited with code ${result.exitCode}` };
     }
-    const outputStat = await stat(outputPath);
-    if (!outputStat.isFile() || outputStat.size === 0 || outputStat.size > policy.maxDocumentOutputBytes) {
-      throw new ImportSecurityError("Docling output size is outside policy bounds");
-    }
-    const encoded = await readFile(outputPath, "utf8");
+    // The output path is inside the job directory, but whatever Docling left there is checked
+    // on the open handle like every other file the package reads.
+    const output = await readSingleLinkFile(outputPath, "Docling output", policy.maxDocumentOutputBytes);
+    if (output.byteLength === 0) throw new ImportSecurityError("Docling output is empty");
+    const encoded = output.toString("utf8");
     let parsed: unknown;
     try { parsed = JSON.parse(encoded); } catch { throw new ImportValidationError("Docling output is malformed JSON"); }
     const normalized = normalizeImportJson(parsed, "Docling output");
