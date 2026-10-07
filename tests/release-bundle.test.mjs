@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { BUNDLED_DIRECTORIES, BUNDLED_DOCUMENTS, buildReleaseBundle, childEnv, verifyReleaseBundle } from "../scripts/release-bundle.mjs";
 import { externalPackages, purlFor } from "../scripts/sbom.mjs";
@@ -71,12 +72,25 @@ test("tampering, bad inputs, and a non-empty output are refused", () => withBund
 
 test("the bundle does not depend on which platform binary npm installed", () => withBundles(2, ([native, swapped]) => {
   buildReleaseBundle(native, { sourceCommit: COMMIT });
-  // A full copy of node_modules (links dereferenced) with the installed impeccable binary
-  // renamed to another platform's, as npm would install it there.
+  // A private copy of every external package, each copied from its real location, so no
+  // link in it can lead back to a shared install; the copy is checked before it is changed.
   const scratch = realpathSync(mkdtempSync(join(tmpdir(), "lilac-bundle-modules-")));
   try {
     const modules = join(scratch, "node_modules");
-    cpSync(new URL("../node_modules", import.meta.url), modules, { recursive: true, dereference: true });
+    const source = fileURLToPath(new URL("../node_modules", import.meta.url));
+    for (const pkg of externalPackages(lock)) {
+      const from = join(source, relative("node_modules", pkg.path));
+      if (existsSync(from)) cpSync(realpathSync(from), join(modules, relative("node_modules", pkg.path)), { recursive: true });
+    }
+    const links = [];
+    const walk = (directory) => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (entry.isSymbolicLink()) links.push(join(directory, entry.name));
+        else if (entry.isDirectory()) walk(join(directory, entry.name));
+      }
+    };
+    walk(modules);
+    assert.deepEqual(links, [], "the private copy holds no symbolic links");
     const binaries = join(modules, "@impeccable");
     const [installed] = readdirSync(binaries).filter((name) => name.startsWith("cli-"));
     const other = installed === "cli-darwin-arm64" ? "cli-linux-x64" : "cli-darwin-arm64";

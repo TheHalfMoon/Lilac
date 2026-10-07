@@ -39,7 +39,8 @@ jobs:
   attest:
     # Only downloads the finished bundle and signs it; runs no repository or dependency code.
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Pushed release tags only: a manual dispatch, even one started on a tag, is never signed.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read

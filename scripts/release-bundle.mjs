@@ -29,7 +29,8 @@ export const BUNDLED_DOCUMENTS = Object.freeze([
   "docs/DONORS.md",
   "scripts/license-policy.json",
 ]);
-// Every file in these directories is bundled too, so a new provenance record is never left out.
+// Every git-tracked file in these directories is bundled too, so a new provenance record is
+// never left out and an untracked draft never slips in.
 export const BUNDLED_DIRECTORIES = Object.freeze(["docs/provenance"]);
 
 // The smoke subprocess gets only what Node needs to find binaries and a temp directory on
@@ -39,7 +40,7 @@ export function childEnv(env = process.env) {
   return Object.fromEntries(CHILD_ENV_KEYS.filter((key) => typeof env[key] === "string").map((key) => [key, env[key]]));
 }
 
-const LICENSE_FILE = /^(licen[cs]e|copying|notice)([.-].*)?$/iu;
+const LICENSE_FILE = /^(licen[cs]e|copying|notice)([.-][A-Za-z0-9-]+)?$/iu;
 const sha256 = (data) => createHash("sha256").update(data).digest("hex");
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -71,7 +72,7 @@ function collectLicenses(lock, policy, nodeModules) {
     // An override package is recorded only through its override, so a platform binary's own
     // files never make the bundle depend on which platform built it.
     if (installed && override === null) {
-      for (const name of readdirSync(directory).filter((entry) => LICENSE_FILE.test(entry)).sort(compare)) {
+      for (const name of readdirSync(directory, { withFileTypes: true }).filter((entry) => entry.isFile() && LICENSE_FILE.test(entry.name)).map((entry) => entry.name).sort(compare)) {
         const bytes = readFileSync(join(directory, name));
         const digest = sha256(bytes);
         texts.set(digest, bytes);
@@ -131,7 +132,9 @@ export function buildReleaseBundle(out, { sourceCommit, root = ROOT, nodeModules
   for (const [digest, bytes] of [...texts].sort(([a], [b]) => compare(a, b))) writeFile(out, `licenses/${digest}.txt`, bytes);
   writeFile(out, "licenses/index.json", `${JSON.stringify(index, null, 2)}\n`);
 
-  const directoryFiles = BUNDLED_DIRECTORIES.flatMap((directory) => listFiles(join(root, directory)).map((path) => `${directory}/${path}`));
+  const tracked = execFileSync("git", ["ls-files", "-z", "--", ...BUNDLED_DIRECTORIES], { cwd: root, encoding: "utf8", env: childEnv() }).split("\0").filter(Boolean);
+  if (tracked.length === 0) fail(`no tracked files under ${BUNDLED_DIRECTORIES.join(", ")} (is this a git checkout?)`);
+  const directoryFiles = tracked.sort(compare);
   for (const path of [...BUNDLED_DOCUMENTS, ...directoryFiles]) {
     if (!existsSync(join(root, path))) fail(`${path} is missing`);
     writeFile(out, path, readFileSync(join(root, path)));

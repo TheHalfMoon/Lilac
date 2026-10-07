@@ -12,7 +12,7 @@ A Lilac release is a tagged commit together with a signed evidence bundle. This 
 | `licenses/<sha256>.txt` | Every license text that the dependencies ship, deduplicated by content. |
 | `licenses/index.json` | For each dependency: its purl, its license, and which license texts belong to it. A package covered by a policy override, such as a platform binary, is recorded through the override's license file and sha256. This keeps the index independent of the platform the bundle was built on. The bundle is refused unless every listed text is present. |
 | `THIRD_PARTY_NOTICES.md`, `scripts/license-policy.json` | Notices and the license allowlist with its overrides. |
-| `docs/DONORS.md`, `docs/provenance/*` | Donor and authorization provenance. |
+| `docs/DONORS.md`, `docs/provenance/*` | Donor and authorization provenance (every tracked file under `docs/provenance`). |
 | `SECURITY.md`, `docs/MCP.md`, `docs/MIGRATION.md`, `docs/RELEASE.md` | The release documents. |
 | `smoke-report.json` | The offline smoke-test report for this commit (`npm run smoke`). |
 | `MANIFEST.json` | The product, the source commit, the lockfile sha256, the project license, and the sha256 of every other file. |
@@ -32,7 +32,7 @@ The `Release Evidence` workflow (`.github/workflows/release.yml`) has two jobs.
   This job cannot request an OIDC token.
 - **`attest`** runs only for a pushed tag matching `v[0-9]*`. It downloads the finished bundle and signs every file with `actions/attest-build-provenance`. These are keyless Sigstore attestations through GitHub OIDC, so no signing key is stored anywhere. It runs no repository or dependency code.
 
-A manual dispatch builds the bundle but never signs it, so attestations exist only for tagged commits. The workflow never creates tags; pushing one is the release decision.
+A manual dispatch builds the bundle but never signs it, even when it is started on a tag. Only a pushed `v[0-9]*` tag is ever attested. The workflow never creates tags; pushing one is the release decision.
 
 The attestations are stored with the repository and outlive the artifact. After 90 days, the bundle can be rebuilt from the tag, as in step 4 below, and checked against them.
 
@@ -46,9 +46,10 @@ The trust anchor is the attestation on `MANIFEST.json`. `--verify` only checks t
    ```sh
    gh attestation verify <bundle dir>/MANIFEST.json --repo TheHalfMoon/Lilac \
      --source-ref refs/tags/<tag> \
-     --signer-workflow TheHalfMoon/Lilac/.github/workflows/release.yml
+     --signer-workflow TheHalfMoon/Lilac/.github/workflows/release.yml \
+     --source-digest "$(git rev-list -n1 <tag>)"
    ```
-3. Check that `sourceCommit` in `MANIFEST.json` equals `git rev-list -n1 <tag>`. Then check every file against the manifest:
+3. Check that `sourceCommit` in `MANIFEST.json` is that same commit. Then check every file against the manifest:
 
    ```sh
    node scripts/release-bundle.mjs --verify <bundle dir>
@@ -61,4 +62,4 @@ The trust anchor is the attestation on `MANIFEST.json`. `--verify` only checks t
    diff -r /tmp/lilac-rebuilt <bundle dir>
    ```
 
-Every other file is also attested individually, and can be checked the same way as in step 2.
+The same attestation names every file in the bundle as a subject, so any single file can be checked the same way as in step 2.

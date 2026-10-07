@@ -6,5 +6,6 @@ CLAUDE.md text eol=lf
 package.json text eol=lf
 package-lock.json text eol=lf
 scripts/*.json text eol=lf
+docs/provenance/** text eol=lf
 # Fixtures are compared byte for byte (content-addressed objects, expected reports).
 tests/fixtures/** -text
