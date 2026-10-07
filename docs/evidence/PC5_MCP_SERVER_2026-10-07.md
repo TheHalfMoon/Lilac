@@ -134,3 +134,19 @@ It also confirmed that agent tokens are refused on `/api/*`, that revert is pers
   - a sixth request from the same agent is "busy";
   - disconnecting the agent declines its waiting calls and clears the queue.
 - **Test 9:** a damaged registry is set aside, and Lilac starts with no agents and reports why. The discovery file is removed on close, and a stale one is refused.
+
+## Review delta 2 and landing
+
+The cycle-1 delta re-review approved, with no must-fix. Its probes confirmed the tree cap (500 nodes), the duplicate order and deduplication, the busy caps (in total, per agent and per request), the honest summary on a 99k-node document, the damaged-registry fallback, the stale discovery refusal, the broker lifecycle, and dialog ownership. Taken from it:
+- **Waiting calls.** The broker documents that identical waiting calls each run once. That is safe because `delete_nodes` is idempotent. A future non-idempotent consequential tool must run once and share its result.
+- **The registry problem** is cleared once a fresh registry is saved, so connecting an agent again stops the warning. Test 8 covers this.
+- **Dead code.** The unused `closeDialog` was removed.
+
+**Landing.** PC5 lands in two PRs, because its full diff exceeded the Jev input limit:
+- **Part 1, PR #161:** the server, the agent registry, tools, authorization, the confirmation broker, revert and the routes. It merged as `ea37472`.
+- **Part 2:** the stdio relay and its CLI, the editor's Agents and approval dialogs, the history's Revert button, the gate-8 browser test, the catalog, and this document. It also records PC gates 1, 2, 3, 4 and 9 as closed in `docs/CURRENT.md`; they closed with PC3 (#155) and PC4 (#157).
+
+The relay tests are in `tests/mcp-relay.test.mjs`:
+- the relay as a child process;
+- the refused URL forms;
+- discovery files that are stale, missing or non-loopback.

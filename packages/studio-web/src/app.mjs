@@ -84,11 +84,6 @@ function showDialog(title, build, { dismissable = true, onReplaced = null } = {}
   return close;
 }
 
-function closeDialog() {
-  const dialog = $("dialog");
-  if (dialog.open) dialog.close();
-}
-
 // ---------- projects ----------
 
 async function openProjectsDialog() {

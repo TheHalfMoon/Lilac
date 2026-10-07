@@ -436,6 +436,9 @@ export class ConfirmationBroker {
   /**
    * The person's decision, made in the editor. An approval serves the calls waiting on the
    * request; if none is waiting (they timed out), it is kept for one identical retry.
+   * Identical waiting calls (at most 4) each run once: the only consequential tool,
+   * delete_nodes, is idempotent, so the repeats find nothing left to delete. A consequential
+   * tool that is not idempotent must run once and share its result instead.
    */
   decide(id: unknown, approve: boolean, at: string): void {
     this.#prune();
