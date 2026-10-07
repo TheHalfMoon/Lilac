@@ -91,7 +91,7 @@ test("the MCP protocol: initialize, tools/list, notifications and errors", async
     assert.equal((await mcp(token, "initialize", { protocolVersion: "1999-01-01" })).json.result.protocolVersion, "2025-06-18", "an unknown version gets the latest");
     assert.equal((await mcp(token, "notifications/initialized", undefined, { notification: true })).status, 202);
     const { tools } = (await mcp(token, "tools/list")).json.result;
-    assert.equal(tools.length, 15);
+    assert.equal(tools.length, 16);
     validateMCPServerConfig({ tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
     for (const tool of tools) {
       validateMCPToolDefinition(tool);

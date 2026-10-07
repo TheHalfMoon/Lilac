@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { isLoopbackAddress } from "@lilac/network-policy";
 import { AgentRegistry } from "./agents.ts";
 import { StudioError } from "./errors.ts";
+import { exportJsx, importJsx } from "./code.ts";
 import { ImportDesk, MAX_IMPORT_HTML_BYTES } from "./imports.ts";
 import { ConfirmationBroker, handleMcpMessage } from "./mcp.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
@@ -206,6 +207,13 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       // Only a committed review is used up; a failed commit can be retried.
       imports.consume(body.proposalId);
       return { ...event, frameId };
+    },
+    "POST /api/code/export": (body) => exportJsx(requireSession().document, body?.nodeId),
+    "POST /api/code/import": (body) => {
+      const current = requireSession();
+      const { operations, frameId, componentName, layers } = importJsx(body?.code);
+      const placed = operations.map((operation: any) => ({ ...operation, index: (current.document as any).rootIds.length }));
+      return { ...current.edit(owner, { baseRevision: current.revision, operations: placed, intent: `Bring in ${componentName}`, tool: "lilac:code" }), frameId, layers };
     },
     "POST /api/import/discard": (body) => {
       imports.discard(body?.proposalId);
