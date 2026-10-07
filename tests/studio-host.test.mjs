@@ -106,7 +106,7 @@ test("the host listens on loopback only and refuses requests outside its envelop
   assert.equal((await raw(host, { ...base, headers: { ...good, origin: host.url } })).status, 200, "own Origin");
   const ok = await raw(host, { ...base, headers: good });
   assert.equal(ok.status, 200);
-  assert.deepEqual(ok.json, { project: null });
+  assert.deepEqual(ok.json, { project: null, user: { actorId: "local-user", displayName: "You" } });
   for (const header of ["cache-control", "x-content-type-options", "content-security-policy"]) assert.ok(ok.headers[header], header);
   // A cross-site form post cannot be JSON, and bodies are bounded.
   assert.equal((await raw(host, { method: "POST", path: "/api/projects/create", headers: { ...good, "content-type": "text/plain" }, body: "{}" })).status, 415);

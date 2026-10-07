@@ -5,6 +5,7 @@
   "type": "module",
   "description": "The Lilac editor: the browser application the studio host serves.",
   "exports": {
+    ".": "./src/index.mjs",
     "./client": "./src/client.mjs",
     "./provenance": "./src/provenance.mjs"
   },
