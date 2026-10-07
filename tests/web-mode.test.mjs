@@ -230,3 +230,22 @@ test("offline smoke: create, import, edit, code, an agent over stdio, save, rest
   }
   assert.deepEqual(attempts, [], "no process and no page tried to reach anything off this computer");
 });
+
+test("stopping Lilac does not wait for open connections", { timeout: 10_000 }, async () => {
+  const { startStudioHost } = await import("../packages/studio-host/src/index.ts");
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-close-")));
+  const host = await startStudioHost({ projectsRoot: root });
+  try {
+    // An open event stream and an idle keep-alive connection.
+    const stream = await fetch(`${host.url}/api/events?token=${host.token}`);
+    const idle = connect({ host: "127.0.0.1", port: host.port });
+    await new Promise((resolve) => idle.once("connect", resolve));
+    const started = Date.now();
+    await host.close();
+    assert.ok(Date.now() - started < 1000, `closed in ${Date.now() - started} ms`);
+    await stream.body.cancel().catch(() => {});
+    idle.destroy();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
