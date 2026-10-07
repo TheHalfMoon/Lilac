@@ -394,8 +394,11 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       } catch {
         // already gone, or another host's
       }
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      // Stop accepting, then drop every open connection (idle keep-alives, an editor's
+      // requests, an agent's waiting call): close() alone waits for all of them to end.
+      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeAllConnections?.();
+      await closed;
     },
   };
 }

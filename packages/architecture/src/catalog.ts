@@ -247,7 +247,7 @@ const SUBSYSTEMS = [
     title: "Studio host",
     owner: "@lilac/studio-host",
     status: "stub",
-    boundary: "Single writer of an open project for the product surfaces: a loopback-only HTTP API (127.0.0.1, per-launch token, Host and Origin checks) over persistence, history and collaboration attribution, with undo/redo as committed inverse transactions, a server-sent change stream, and lock and recovery reporting (PC1); it serves the editor (PC4) and hosts the MCP endpoint and agent registry (PC5), and imports reviewed HTML offline through import-stack and intake (PC6). Web mode and the desktop shell build on it in later PC grains.",
+    boundary: "Single writer of an open project for the product surfaces: a loopback-only HTTP API (127.0.0.1, per-launch token, Host and Origin checks) over persistence, history and collaboration attribution, with undo/redo as committed inverse transactions, a server-sent change stream, and lock and recovery reporting (PC1); it serves the editor (PC4) and hosts the MCP endpoint and agent registry (PC5), and imports reviewed HTML offline through import-stack and intake (PC6). Local web mode (`npm start`, scripts/lilac.mjs, PC7) runs it directly; the desktop shell builds on it in a later PC grain.",
     dependsOn: ["persistence", "history", "collaboration", "network-policy", "import-export", "intake"],
   },
   {
