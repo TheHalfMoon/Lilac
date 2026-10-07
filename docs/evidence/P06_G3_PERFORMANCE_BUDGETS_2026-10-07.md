@@ -43,7 +43,7 @@ The output is identical; the G1 and G2 suites, including the 300-seed undo/redo 
 Documents over a limit fail closed with `DocumentInvariantError`. The UTF-8 byte count does not rely on `Buffer`, so the model stays environment-neutral.
 
 **Hardened in review delta 1:**
-- `parseDocument` runs a linear bracket-nesting pre-scan, which ignores brackets inside strings and honours escapes. Text nested deeper than 257 levels is refused before `JSON.parse`. Canonical output never nests deeper: the document object is level 1, and values are capped at 256. Before this change, 60 MB of nested brackets kept `JSON.parse` busy for about 14.5 s before the depth check fired.
+- `parseDocument` runs a linear bracket-nesting pre-scan, which ignores brackets inside strings and honours escapes. Text nested deeper than 257 levels is refused before `JSON.parse`. Canonical output never nests deeper: the document object is level 1, and values are capped at 256. Before this change, 60 MB of nested brackets kept `JSON.parse` busy for about 14.5 s before the depth check fired; that figure was measured by the security judge.
 - `serializeDocument` refuses output over `maxDocumentBytes`, so an in-memory document cannot produce text that `parseDocument` and persistence would refuse.
 
 ## Budgets enforced
