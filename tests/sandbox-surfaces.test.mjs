@@ -102,6 +102,31 @@ test("worktree inspection ignores Git environment overrides of the process", asy
   });
 });
 
+// A partial clone fetches missing objects on demand through its promisor remote, and an
+// ext:: remote URL is a command. Rename detection in status needs a missing blob.
+test("worktree inspection never fetches through a repository-configured transport", async () => {
+  await withTemp(async (dir) => {
+    const source = join(dir, "source");
+    await mkdir(source);
+    gitIn(source, "init", "-q", "-b", "main");
+    await writeFile(join(source, "big.txt"), Array.from({ length: 200 }, (_, index) => `line ${index}`).join("\n"));
+    gitIn(source, "add", ".");
+    gitIn(source, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "init");
+    gitIn(source, "config", "uploadpack.allowFilter", "true");
+    const clone = join(dir, "clone");
+    gitIn(dir, "clone", "-q", "--no-checkout", "--filter=blob:none", `file://${source}`, clone);
+    gitIn(clone, "read-tree", "HEAD");
+    await writeFile(join(clone, "moved.txt"), Array.from({ length: 199 }, (_, index) => `line ${index}`).join("\n"));
+    gitIn(clone, "add", "moved.txt");
+    gitIn(clone, "rm", "-q", "--cached", "big.txt");
+    const marker = join(dir, "fetched");
+    gitIn(clone, "config", "remote.origin.url", `ext::sh -c touch% ${marker}`);
+    gitIn(clone, "config", "protocol.ext.allow", "always");
+    try { await new GitWorktreeInspector().inspect(clone); } catch { /* failing closed is acceptable */ }
+    assert.equal(existsSync(marker), false, "the ext:: promisor command did not run");
+  });
+});
+
 const importRequest = (overrides = {}) => ({
   schemaVersion: IMPORT_SCHEMA_VERSION, requestId: "import-1", actorId: "user-1", intent: "Sandbox surfaces", at: AT,
   ...overrides,

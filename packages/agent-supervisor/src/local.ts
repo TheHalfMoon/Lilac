@@ -22,7 +22,8 @@ const execFileAsync = promisify(execFile);
 
 // An inspected worktree is untrusted, and Git reads that worktree's own config: core.fsmonitor
 // is a command `git status` runs, filter drivers can run during status, and a missing object
-// in a partial clone triggers a fetch through a configured transport. Every command therefore
+// in a partial clone triggers a fetch through a configured transport (GIT_ALLOW_PROTOCOL
+// outranks the repository's protocol.<name>.allow, which protocol.allow does not). Every command therefore
 // runs with repository-controlled execution switched off by command-scope config (which
 // outranks repository config), with no system or global config, and with none of the
 // caller's GIT_* variables. Overrides go through GIT_CONFIG_COUNT rather than `-c`, because
@@ -42,7 +43,7 @@ const SAFE_GIT_CONFIG: Array<[string, string]> = [
 function inspectionEnvironment(config: Array<[string, string]>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) if (!GIT_ENV_OVERRIDES.test(key)) env[key] = value;
-  Object.assign(env, { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: devNull, GIT_TERMINAL_PROMPT: "0", GIT_NO_LAZY_FETCH: "1" });
+  Object.assign(env, { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: devNull, GIT_TERMINAL_PROMPT: "0", GIT_NO_LAZY_FETCH: "1", GIT_ALLOW_PROTOCOL: "none" });
   const entries = [...SAFE_GIT_CONFIG, ...config];
   env.GIT_CONFIG_COUNT = String(entries.length);
   entries.forEach(([key, value], index) => {
@@ -52,7 +53,8 @@ function inspectionEnvironment(config: Array<[string, string]>): NodeJS.ProcessE
   return env;
 }
 
-async function runGit(cwd: string, config: Array<[string, string]>, args: string[]): Promise<string> {
+// Returns null when Git exits 1 and `noMatchIsNull` is set (a config query with no match).
+async function runGit(cwd: string, config: Array<[string, string]>, args: string[], noMatchIsNull = false): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync("git", ["-C", cwd, "--no-optional-locks", ...args], {
       encoding: "utf8",
@@ -62,6 +64,7 @@ async function runGit(cwd: string, config: Array<[string, string]>, args: string
     });
     return stdout;
   } catch (error) {
+    if (noMatchIsNull && (error as { code?: unknown }).code === 1) return null;
     throw new SupervisorWorktreeError(error instanceof Error ? error.message : "Git inspection failed");
   }
 }
@@ -71,19 +74,8 @@ async function runGit(cwd: string, config: Array<[string, string]>, args: string
 // treats as no filter. Exit code 1 means no filter is configured; any other failure stops
 // the inspection rather than running status without the overrides.
 async function filterOverrides(cwd: string): Promise<Array<[string, string]>> {
-  let listing: string;
-  try {
-    const { stdout } = await execFileAsync("git", ["-C", cwd, "--no-optional-locks", "config", "-z", "--includes", "--name-only", "--get-regexp", "^filter\\."], {
-      encoding: "utf8",
-      windowsHide: true,
-      maxBuffer: 4 * 1024 * 1024,
-      env: inspectionEnvironment([]),
-    });
-    listing = stdout;
-  } catch (error) {
-    if ((error as { code?: unknown }).code === 1) return [];
-    throw new SupervisorWorktreeError(error instanceof Error ? error.message : "Git inspection failed");
-  }
+  const listing = await runGit(cwd, [], ["config", "-z", "--includes", "--name-only", "--get-regexp", "^filter\\."], true);
+  if (listing === null) return [];
   const drivers = new Set<string>();
   for (const key of listing.split("\0")) {
     const match = /^filter\.(.+)\.(?:clean|smudge|process|required)$/su.exec(key);
@@ -95,7 +87,7 @@ async function filterOverrides(cwd: string): Promise<Array<[string, string]>> {
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
-  return runGit(cwd, await filterOverrides(cwd), args);
+  return (await runGit(cwd, await filterOverrides(cwd), args)) ?? "";
 }
 
 export class GitWorktreeInspector {

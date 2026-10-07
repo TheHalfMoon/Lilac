@@ -44,9 +44,10 @@ export class LocalCollaborationFileStore {
     let handle;
     try {
       handle = await open(filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
-    } catch (error: any) {
-      if (error?.code === "ENOENT") return null;
-      if (error?.code === "ELOOP") throw new CollaborationPersistenceError("collaboration state path cannot be a symbolic link");
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return null;
+      if (code === "ELOOP") throw new CollaborationPersistenceError("collaboration state path cannot be a symbolic link");
       throw error;
     }
     let serialized: string;
