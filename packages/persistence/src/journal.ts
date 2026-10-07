@@ -1,6 +1,49 @@
 import { canonicalJson, sha256Hex } from "./canonical.ts";
-import { PersistenceCorruptionError, PersistenceValidationError } from "./errors.ts";
+import { PersistenceCorruptionError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
 import { PERSISTENCE_LIMITS, type JournalEntry } from "./types.ts";
+
+// Journal format 1, the format project schema 1 writes: exactly these fields on a
+// transaction, an operation of each type, and a node record. History drops fields it does
+// not know, so a field from a newer format would otherwise replay with its meaning lost;
+// it is refused instead (at replay as a version error, at commit before it is written).
+const TRANSACTION_FIELDS = new Set(["id", "actor", "baseRevision", "intent", "tool", "timestamp", "metadata", "operations"]);
+const OPERATION_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
+  "insert-node": new Set(["type", "node", "parentId", "index"]),
+  "remove-node": new Set(["type", "nodeId"]),
+  "restore-subtree": new Set(["type", "rootId", "nodes", "parentId", "index"]),
+  "set-props": new Set(["type", "nodeId", "set", "unset"]),
+  "move-node": new Set(["type", "nodeId", "parentId", "index"]),
+});
+const NODE_FIELDS = new Set(["id", "type", "parentId", "children", "props", "metadata"]);
+
+/** The first way `transaction` departs from journal format 1, or null. */
+function journalFormatProblem(transaction: Record<string, unknown>): string | null {
+  const extra = (record: Record<string, unknown>, allowed: ReadonlySet<string>) => Object.keys(record).find((key) => !allowed.has(key));
+  const field = extra(transaction, TRANSACTION_FIELDS);
+  if (field !== undefined) return `transaction field ${JSON.stringify(field).slice(0, 80)}`;
+  if (!Array.isArray(transaction.operations)) return null; // history reports the shape
+  for (const [index, operation] of transaction.operations.entries()) {
+    if (!isRecord(operation)) continue;
+    const allowed = Object.hasOwn(OPERATION_FIELDS, String(operation.type)) ? OPERATION_FIELDS[String(operation.type)] : undefined;
+    if (allowed === undefined) return `operation type ${JSON.stringify(operation.type).slice(0, 80)}`;
+    const opField = extra(operation, allowed);
+    if (opField !== undefined) return `field ${JSON.stringify(opField).slice(0, 80)} on operation ${index}`;
+    const nodes = [operation.node, ...(Array.isArray(operation.nodes) ? operation.nodes : [])].filter(isRecord);
+    for (const node of nodes) {
+      const nodeField = extra(node, NODE_FIELDS);
+      if (nodeField !== undefined) return `node field ${JSON.stringify(nodeField).slice(0, 80)} on operation ${index}`;
+    }
+  }
+  return null;
+}
+
+/** Refuse a transaction a journal-format-1 reader would misread. */
+export function assertJournalFormat(transaction: Record<string, unknown>, label: string, replay: boolean): void {
+  const problem = journalFormatProblem(transaction);
+  if (problem === null) return;
+  if (replay) throw new PersistenceVersionError(`${label} uses ${problem}, which journal format 1 does not have; it was written by a newer Lilac`);
+  throw new PersistenceValidationError(`${label} uses ${problem}, which journal format 1 cannot record`);
+}
 
 /** Chain origin, bound to the project so journals cannot be swapped between projects. */
 export function genesisDigest(projectId: string): string {

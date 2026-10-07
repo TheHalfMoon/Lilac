@@ -1,10 +1,10 @@
 import { createHash, randomUUID, type Hash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { cloneDocument, normalizeDocument, validateDocument } from "@lilac/document-model";
+import { DOCUMENT_SCHEMA_VERSION, cloneDocument, normalizeDocument, validateDocument } from "@lilac/document-model";
 import { applyTransaction } from "@lilac/history";
 import { canonicalJson } from "./canonical.ts";
-import { PersistenceCorruptionError, PersistenceLockError, PersistenceValidationError } from "./errors.ts";
+import { PersistenceCorruptionError, PersistenceLockError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
 import {
   appendDurable,
   assertNotSymlink,
@@ -23,7 +23,7 @@ import {
   removeStaleFiles,
   removeStaleTemporaries,
 } from "./fsio.ts";
-import { encodeJournalLine, genesisDigest, parseJournal } from "./journal.ts";
+import { assertJournalFormat, encodeJournalLine, genesisDigest, parseJournal } from "./journal.ts";
 import { PROJECT_MIGRATIONS, migrateManifest, type ManifestMigration } from "./migrations.ts";
 import { getObject, putObject } from "./objects.ts";
 import {
@@ -118,6 +118,13 @@ function readSnapshot(record: Record<string, unknown>): SnapshotRef {
 
 function loadDocument(projectDir: string, digest: string): LilacDocument {
   const record = parseJsonFile(getObject(projectDir, digest), `document object ${digest}`);
+  // A document schema this release does not read is a version mismatch, not corruption.
+  const version = (record as { schemaVersion?: unknown } | null)?.schemaVersion;
+  if (Number.isSafeInteger(version) && version !== DOCUMENT_SCHEMA_VERSION) {
+    throw new PersistenceVersionError((version as number) > DOCUMENT_SCHEMA_VERSION
+      ? `document schema ${version} is newer than supported schema ${DOCUMENT_SCHEMA_VERSION}`
+      : `no migration from document schema ${version}`);
+  }
   try {
     validateDocument(record);
     return normalizeDocument(record) as LilacDocument;
@@ -354,6 +361,8 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
     if (anchor !== snapshot.chainDigest) throw new PersistenceCorruptionError("snapshot reference does not match the journal chain");
 
     let replayed = 0;
+    // Every entry must be journal format 1, including those the snapshot already covers.
+    for (const { entry } of parsed.entries) assertJournalFormat(entry.transaction, `journal entry ${entry.seq}`, true);
     for (const { entry } of parsed.entries.slice(snapshot.journalSeq)) {
       let next: LilacDocument;
       try {
@@ -481,6 +490,7 @@ export class ProjectStore {
       throw error;
     }
     const stored = persisted(validated.transaction) as Record<string, unknown>;
+    assertJournalFormat(stored, "transaction", false);
     const next = applyTransaction(this.#document, stored).document as LilacDocument;
     const entry = { seq: this.#seq + 1, revision: next.revision, transaction: stored };
     const { line, digest } = encodeJournalLine(entry, this.#digest);
