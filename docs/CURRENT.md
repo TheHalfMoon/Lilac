@@ -42,14 +42,14 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (615/615 test
 | 1 | Deterministic document serialization | G1a #101 → #102 `5139458` (433/433); G1b #103 → #104 `e3074ac` (435/435) | issues #101, #103 |
 | 2 | Undo/redo property tests | G2 #105 → #106 `dc40e9c` (438/438) | issue #105 |
 | 3 | Large-canvas performance budgets | G3 #107 → #109 `92505b6` (446/446) | issue #107; renderer budget dispositioned until a renderer exists; #108 |
-| 4 | Accessibility checks | G4 #110 → #111 `f4aafd8` (462/462) | issue #110; editor UI dispositioned until it exists |
+| 4 | Accessibility checks for editor and generated output | G4 #110 → #111 `f4aafd8` (462/462) | issue #110; editor UI dispositioned until it exists |
 | 5 | Sandbox escape tests | G5a #112 → #113 `35c5272` (469/469); G5b #115 → #116 `462bf7a` (483/483); G5c #119 → #120 `15c6158` (541/541); G5d #114 → #122 `b0e16d9` (555/555) | issues and PRs listed |
 | 6 | Malicious HTML/CSS/SVG corpus | G6 #117 → #118 `d0cdc7f` (532/532) | `tests/fixtures/malicious/` |
 | 7 | Import/export differential tests | G7a #123 → #125 `d45c2bb` (568/568); G7b #126 → #127 `8e509d7` (588/588) | #132 parked |
 | 8 | MCP authorization tests | G8 #128 → #129 `b320820` (575/575) | obligations on the future server recorded on #82 |
-| 9 | Dependency / SBOM / license scan | G9 #130 → #131 `9160be2` (595/595) | `scripts/sbom.mjs`; #135 parked; project license is `NOASSERTION` pending a founder decision |
+| 9 | Dependency/SBOM and license scan | G9 #130 → #131 `9160be2` (595/595) | `scripts/sbom.mjs`; #135 parked; project license is `NOASSERTION` pending a founder decision |
 | 10 | Crash recovery | G10 #133 → #134 `94d6af7` (606/606) | `docs/evidence/P06_G10_CRASH_RECOVERY_2026-10-07.md` |
-| 11 | File migration / version compatibility | G11 #136 → #137 `c73c48e` (615/615) | `docs/evidence/P06_G11_VERSION_COMPATIBILITY_2026-10-07.md` |
+| 11 | File migration/version compatibility | G11 #136 → #137 `c73c48e` (615/615) | `docs/evidence/P06_G11_VERSION_COMPATIBILITY_2026-10-07.md` |
 
 - Tooling during P06: CI surfaces Jev, OCR, and test-total evidence as check-run annotations (PR #99, merge `550baae`) and the names of failing tests (T1, PR #124, merge `0acf81c`), so exact-head evidence can be read from check-run annotations.
 - Next: P07 Release (umbrella #139). No editor application exists: the catalog entries `canvas-viewport`, `renderer`, and `desktop-bridge` are `planned` and `mcp-surface` is `stub` (#82), so the P07 desktop-build and local-web-mode artifacts depend on a founder scope decision; scope-independent P07 artifacts proceed.
