@@ -15,7 +15,15 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
 const register = JSON.parse(read("docs/provenance/LICENSE_REGISTER.json"));
 const byId = new Map(register.entries.map((entry) => [entry.id, entry]));
-const COPYLEFT_OR_UNKNOWN = /AGPL|GPL|LGPL|SSPL|NONE-|Proprietary/u;
+// Licenses under which material may be used as compatible code: the dependency allowlist plus
+// CC0 (public-domain dedication) and OFL (fonts). Anything else must stay reference-only.
+const policy = JSON.parse(read("scripts/license-policy.json"));
+const PERMISSIVE = new Set([...policy.allowed, "CC0-1.0", "OFL-1.1"]);
+// Kinds that are never distributed with Lilac, so their own licenses impose nothing on it.
+const NOT_DISTRIBUTED = new Set(["optional-runtime"]);
+// owner/name literals that are not upstream projects: rule ids, MIME types, and Lilac paths.
+const NOT_DONORS = /^(a11y|lilac-mobile-method|application|text|packages|internal|LilacImportStack)\//u;
+const PATH_LIKE = /\.(ts|mts|mjs|js|cjs|json|md|ya?ml|tsx|jsx|css|html?|txt|svg|png|go|py|rs|toml|lock|sh)$/iu;
 
 test("every entry is well formed and ids are unique", () => {
   assert.equal(register.targetProjectLicense, "Apache-2.0");
@@ -41,22 +49,37 @@ test("every lockfile package is registered as a dependency with its lockfile lic
   }
 });
 
-test("every donor named in package provenance or the donor ledger is registered", () => {
+test("every upstream project named anywhere in package sources or the donor ledgers is registered", () => {
+  const files = [];
+  const walk = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else files.push(path);
+    }
+  };
+  walk(join(ROOT, "packages"));
+  files.push(join(ROOT, "docs", "DONORS.md"), join(ROOT, "docs", "DONOR_INTEGRATION_MAP.md"));
   const named = new Set();
-  for (const name of readdirSync(join(ROOT, "packages"))) {
-    const src = join(ROOT, "packages", name, "src");
-    if (!existsSync(src)) continue;
-    for (const file of readdirSync(src).filter((entry) => /\.(ts|mjs)$/u.test(entry))) {
-      for (const [, repo] of readFileSync(join(src, file), "utf8").matchAll(/(?:repository|donor|guidanceDonor): "([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)"/gu)) named.add(repo);
+  for (const file of files) {
+    const text = readFileSync(file, "utf8");
+    // Any quoted or backticked owner/name literal, under any key, in any file shape.
+    for (const [, name] of text.matchAll(/[`"']([A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*)[`"']/gu)) {
+      if (!NOT_DONORS.test(name) && !PATH_LIKE.test(name)) named.add(name);
     }
   }
-  for (const [, repo] of read("docs/DONORS.md").matchAll(/^\| `([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)` \|/gmu)) named.add(repo);
-  assert.ok(named.size >= 20, `found ${named.size} donor names`);
-  for (const repo of named) assert.ok(byId.has(repo), `${repo} is registered`);
+  // Ledger table rows name projects even when they look like file names (opentype.js).
+  for (const [, name] of read("docs/DONORS.md").matchAll(/^\| `([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)` \|/gmu)) named.add(name);
+  assert.ok(named.size >= 22, `found ${named.size} upstream names`);
+  for (const name of named) assert.ok(byId.has(name), `${name} is registered`);
 });
 
-test("copyleft, unlicensed and proprietary material is never treated as compatible code", () => {
-  for (const entry of register.entries.filter((item) => COPYLEFT_OR_UNKNOWN.test(item.license))) {
+test("only permissively licensed material is ever treated as compatible code", () => {
+  for (const entry of register.entries) {
+    if (entry.compatible !== "yes" || NOT_DISTRIBUTED.has(entry.kind)) continue;
+    assert.ok(PERMISSIVE.has(entry.license), `${entry.id} is compatible only under a permissive license (has ${entry.license})`);
+  }
+  for (const entry of register.entries.filter((item) => !PERMISSIVE.has(item.license) && !NOT_DISTRIBUTED.has(item.kind))) {
     assert.ok(["reference-only", "proprietary-authorized"].includes(entry.kind), `${entry.id} (${entry.license}) is reference-only or proprietary`);
     assert.notEqual(entry.compatible, "yes", `${entry.id} is not declared compatible`);
   }
@@ -67,7 +90,7 @@ test("copyleft, unlicensed and proprietary material is never treated as compatib
     assert.ok(at >= 0, `${repo} is in ${file}`);
     assert.match(source.slice(at, at + 600), /importedCode: false/u, `${repo} records importedCode: false`);
   }
-  // No Paper source has ever been imported into the repository.
+  // No Paper source is in the working tree (the full-history check is in the audit evidence).
   assert.equal(existsSync(join(ROOT, "imports")), false);
 });
 
@@ -88,7 +111,7 @@ test("vendored third-party files match the register and are named in the notices
     for (const [path, digest] of Object.entries(entry.vendored ?? {})) {
       assert.equal(createHash("sha256").update(readFileSync(join(ROOT, path))).digest("hex"), digest, path);
     }
-    if (entry.notices === "THIRD_PARTY_NOTICES.md") assert.ok(notices.includes(`\`${entry.id}`), `${entry.id} is named in THIRD_PARTY_NOTICES.md`);
+    assert.ok(notices.includes(`\`${entry.id}`), `${entry.id} is named in THIRD_PARTY_NOTICES.md`);
   }
   // Every vendored skill directory is covered by a registered license file.
   for (const name of readdirSync(join(ROOT, ".claude", "skills"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name)) {
