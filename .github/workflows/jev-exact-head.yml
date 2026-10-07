@@ -105,6 +105,21 @@ jobs:
           fs.writeFileSync('jev-evidence.json', JSON.stringify(evidence, null, 2) + '\n');
 
           const secret = raw.answers.has_secret;
+          // Also surface the judgments as a check-run annotation, which the
+          // REST API can read when job logs and artifacts are out of reach.
+          // Workflow-command data must escape %, CR and LF.
+          const escape = (value) => String(value).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+          const summary = [
+            `head=${head}`,
+            `base=${base}`,
+            `provider=${evidence.provider}`,
+            `model=${evidence.model}`,
+            `type=${raw.answers.type.choice}`,
+            `breaking=${raw.answers.breaking.yes}`,
+            `risk=${raw.answers.risk.label} (${raw.answers.risk.score})`,
+            `secret_leak=${secret.yes} (p=${secret.noul})`,
+          ].join('; ');
+          console.log(`::notice title=Jev exact-head evidence::${escape(summary)}`);
           console.log(`JEV_PROVIDER=${evidence.provider}`);
           console.log(`JEV_MODEL=${evidence.model}`);
           console.log(`JEV_CHANGE_TYPE=${raw.answers.type.choice}`);
