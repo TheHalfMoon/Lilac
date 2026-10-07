@@ -494,6 +494,20 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
       viewport = fitBounds({ x: 0, y: 0, width: Math.max(1, root.scrollWidth), height: Math.max(1, frameDocument.documentElement.scrollHeight) }, stage.clientWidth, stage.clientHeight);
       applyViewport();
     },
+    /**
+     * Move the selection by (dx, dy), or resize the single selected layer by (dw, dh), as
+     * a drag would: the single-pointer alternative to dragging (buttons in the editor).
+     */
+    nudge(dx, dy) {
+      if (document !== null && selection.length > 0) commit(moveBy(document, selection, dx, dy, measuredBoxes(selection)), selection.length === 1 ? "Move layer" : "Move layers");
+    },
+    resizeBy(dw, dh) {
+      if (document === null || selection.length !== 1 || !renderer.elementFor(selection[0])) return;
+      const element = renderer.elementFor(selection[0]);
+      const size = cssSize(element);
+      const inline = frameDocument.defaultView.getComputedStyle(element).display === "inline";
+      commit(resizeTo(document, selection[0], size.width + dw, size.height + dh, { inline }), "Resize layer");
+    },
     /** Drop a held drag preview: the caller's commit of it was not applied. */
     clearPreview() {
       releaseHeld();

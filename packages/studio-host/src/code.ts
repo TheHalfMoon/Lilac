@@ -50,8 +50,13 @@ export function exportJsx(document: any, nodeId: unknown): { componentName: stri
     for (const [name, value] of Object.entries(plan.attributes as Record<string, string>)) {
       if (name === "data-lilac-href") props.href = value;
       else if (name === "class") props.className = value;
+      else if (name === "for") props.htmlFor = value;
       else if (/^[A-Za-z_][A-Za-z0-9_:.-]*$/u.test(name) && !/[\r\n]/u.test(value)) props[name] = value;
     }
+    // The canvas never renders ids (they could clash in the editor), but a label's htmlFor
+    // needs its control's id in the code: a simple id the layer carries is kept.
+    const ownId = node.props?.attributes?.id;
+    if (typeof ownId === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(ownId)) props.id = ownId;
     if (Object.keys(plan.style).length > 0) props.style = cssText(plan.style);
     const out: DesignDocNode = { tag: plan.tag, props };
     const childIds: string[] = node.children;
@@ -122,6 +127,7 @@ export function importJsx(source: unknown): { operations: unknown[]; frameId: st
       if (value === false) continue; // absent, as in JSX
       const text = value === true ? "" : String(value);
       if (prop.name === "className") attributes.class = text;
+      else if (prop.name === "htmlFor") attributes.for = text;
       else if (prop.name === "style" && typeof value === "string") style = styleProperties({ cssText: value });
       else attributes[prop.name] = text;
     }

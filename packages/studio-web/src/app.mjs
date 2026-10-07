@@ -1038,6 +1038,18 @@ function renderInspector() {
   if (node.type === "text" || typeof node.props?.text === "string") children.push(field("text", "Text", typeof node.props?.text === "string" ? node.props.text : "", true));
   const styleFields = STYLE_FIELDS.map(([name, label]) => field(`style:${name}`, label, typeof style[name] === "string" ? style[name] : ""));
   children.push(el("div", { class: "pair" }, styleFields.slice(0, 2)), el("div", { class: "pair" }, styleFields.slice(2, 4)), ...styleFields.slice(4));
+  // Moving and resizing without dragging (WCAG 2.5.7): one click per 10-pixel step.
+  const step = (label, text, action) => el("button", { type: "button", "aria-label": label, onclick: action }, text);
+  children.push(el("div", { class: "steps", role: "group", "aria-label": "Move and resize by 10 pixels" },
+    step("Move left 10 pixels", "←", () => canvas.nudge(-10, 0)),
+    step("Move right 10 pixels", "→", () => canvas.nudge(10, 0)),
+    step("Move up 10 pixels", "↑", () => canvas.nudge(0, -10)),
+    step("Move down 10 pixels", "↓", () => canvas.nudge(0, 10)),
+    // Visible words are the accessible names (WCAG 2.5.3); the group says "by 10 pixels".
+    el("button", { type: "button", onclick: () => canvas.resizeBy(-10, 0) }, "Narrower"),
+    el("button", { type: "button", onclick: () => canvas.resizeBy(10, 0) }, "Wider"),
+    el("button", { type: "button", onclick: () => canvas.resizeBy(0, -10) }, "Shorter"),
+    el("button", { type: "button", onclick: () => canvas.resizeBy(0, 10) }, "Taller")));
   form.replaceChildren(...children);
   if (typing && typing.node === node.id) {
     const input = form.elements.namedItem(typing.field);
@@ -1190,7 +1202,7 @@ async function main() {
   }
   listenForChanges();
   state.client.get("/api/confirmations").then(({ pending }) => showConfirmations(pending), () => {});
-  if (session.project === null) openProjectsDialog();
+  if (session.project === null) await openProjectsDialog();
   else setStatus(`Opened ${session.project}.`);
   document.documentElement.dataset.ready = "true";
 }
