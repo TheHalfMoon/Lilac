@@ -75,11 +75,13 @@ Its worth-considering item is also fixed: the component-binding pattern `\([^)]*
 
 The two regex repros were added to test 9, and a new test 12 checks binding speed. Test 12 takes 813 ms on `fb1dcf8` and about 20 ms now, against a 500 ms budget.
 
-`tests/code-ir-differential.test.mjs` now has 12 tests.
+**Review delta 3.** The delta-2 re-review found one more escape: a nested template literal inside `${}` (`` {`${`}`}</A>`} ``) ended the braces early. Any backtick inside braces now stops recovery. Its worth-considering item is also fixed: the binding bound of 256 skipped real components with long destructured parameter lists, so it was raised to 2048, which is still linear.
+
+The three template repros were added to test 9, and test 13 checks that a 30-parameter destructured component binds. Both fail on `edd0ee3`. `tests/code-ir-differential.test.mjs` now has 13 tests.
 
 ## Jev breaking judgment
 
-At `05c21d0`, Jev judged this change `breaking=true`. That is accurate, and the break is intended. Each of these changes fixes a divergence or a fail-open:
+At `05c21d0` and again at `edd0ee3`, Jev judged this change `breaking=true`. That is accurate, and the break is intended. Each of these changes fixes a divergence or a fail-open:
 - Attribute strings no longer apply JS backslash escapes; JSX attribute strings have none.
 - A file whose only element fails to parse is now refused instead of yielding a nested element as its root.
 - Unknown named entities, lone surrogates, octal-style escapes and numbers, and `__proto__` props are refused.

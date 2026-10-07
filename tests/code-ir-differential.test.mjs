@@ -131,6 +131,8 @@ test("recovery stops rather than guess when the failed element's structure is am
     "<a>{x}</c><h1>inner</h1></a>",
     "<A>{/}/.test(s) ? \"</A>\" : 1}<h1>inner</h1></A>",
     "<A>{/'/.test(s) ? '}' : \"</A>\"}<h1>inner</h1></A>",
+    "<A>{`${`}`}</A>`}<h1>inner</h1></A>",
+    "<A x={h}>{`${`}`}</A>`}<h1>inner</h1></A>",
   ]) {
     assert.throws(() => buildCodeIr([{ path: "R.jsx", content: source }]), /no supported elements/u, source);
   }
@@ -141,6 +143,12 @@ test("component binding stays fast on unclosed parameter lists", () => {
   const started = performance.now();
   buildCodeIr([{ path: "B.jsx", content: source }]);
   assert.ok(performance.now() - started < 500, `took ${(performance.now() - started).toFixed(0)} ms`);
+});
+
+test("components with long destructured parameter lists still bind", () => {
+  const params = Array.from({ length: 30 }, (_, index) => `propName${index}`).join(", ");
+  const ir = buildCodeIr([{ path: "Big.jsx", content: `const Big = ({ ${params} }) => (\n  <div className="big" />\n);\n` }]);
+  assert.ok(Object.values(ir.symbols).some((symbol) => symbol.kind === "component" && symbol.name === "Big"));
 });
 
 test("long whitespace runs are trimmed in linear time", () => {

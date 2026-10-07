@@ -432,7 +432,7 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
  * output range with copied literal props. Anonymous defaults cannot bind.
  */
 function bindComponentDefinitions(state: ParserState, roots: SourceSymbol[]): void {
-  const pattern = /(?:export\s+default\s+)?(?:export\s+)?function\s+([A-Z][A-Za-z0-9]*)\s*\(|const\s+([A-Z][A-Za-z0-9]*)\s*=\s*(?:\([^)]{0,256}\)|[A-Za-z_$][\w$]*)\s*=>/gu;
+  const pattern = /(?:export\s+default\s+)?(?:export\s+)?function\s+([A-Z][A-Za-z0-9]*)\s*\(|const\s+([A-Z][A-Za-z0-9]*)\s*=\s*(?:\([^)]{0,2048}\)|[A-Za-z_$][\w$]*)\s*=>/gu;
   const definitions: { name: string; offset: number }[] = [];
   for (const match of state.source.matchAll(pattern)) {
     if (definitions.length >= 64) break;
@@ -467,14 +467,15 @@ function bindComponentDefinitions(state: ParserState, roots: SourceSymbol[]): vo
 // End offset of a braced expression starting at `start`, skipping quoted strings, template
 // literals and nested braces; -1 when it never closes. JSX, a comment or a regex literal
 // inside the braces makes quotes and braces ambiguous (an apostrophe in JSX text is not a
-// string, a "}" in a regex closes nothing), so any "<" or "/" also gives -1: recovery then
-// stops instead of guessing where the element ends.
+// string, a "}" in a regex closes nothing, a template literal can nest more templates
+// inside ${}), so any "<", "/" or backtick also gives -1: recovery then stops instead of
+// guessing where the element ends.
 function bracedEnd(source: string, start: number): number {
   let depth = 0;
   for (let index = start; index < source.length; index += 1) {
     const char = source[index];
-    if (char === "<" || char === "/") return -1;
-    if (char === '"' || char === "'" || char === "`") {
+    if (char === "<" || char === "/" || char === "`") return -1;
+    if (char === '"' || char === "'") {
       for (index += 1; index < source.length && source[index] !== char; index += 1) if (source[index] === "\\") index += 1;
       continue;
     }
