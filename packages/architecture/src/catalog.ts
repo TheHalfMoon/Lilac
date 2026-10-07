@@ -255,7 +255,7 @@ const SUBSYSTEMS = [
     title: "Editor application shell",
     owner: "@lilac/studio-web",
     status: "stub",
-    boundary: "The browser editor the studio host serves. PC4 part 1: the application shell page, its styles, and the host client (launch-ticket exchange, token held per tab, Bearer API calls, change stream). The application itself (layers tree, inspector, live history, dialogs, keyboard operation over the canvas) lands with PC4.",
+    boundary: "The browser editor the studio host serves: project open and create, layers tree, inspector, live history with attribution, undo/redo, lock takeover and recovery dialogs, and keyboard operation, over the canvas (PC4). Every edit is a history transaction committed by the host; the editor's document copy advances only by the host's change events.",
     dependsOn: ["studio-host", "canvas-viewport", "selection-transform", "history"],
   },
   {
