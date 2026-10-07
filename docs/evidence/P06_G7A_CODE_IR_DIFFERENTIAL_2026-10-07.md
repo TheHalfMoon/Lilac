@@ -69,7 +69,13 @@ Three tests were added; each fails on `bc311a7`:
 10. 64,000-character runs of spaces or tabs, trailing on the first line or leading on a later line, are trimmed within 1 s. Over-long raw text is refused.
 11. These are refused: lone surrogates (parser and `designToCode`), `__proto__`, `\01` and `{010}`, plus `&#X41;` and `&#;`. Long numeric references decode, and `-0` round-trips as `0`.
 
-`tests/code-ir-differential.test.mjs` now has 11 tests.
+**Review delta 2.** The delta re-review confirmed every delta-1 fix with about 35 timed adversarial inputs and many recovery probes, and found one more escape. A `/` that started neither a comment nor a regex was treated as code, so a `}` or a quote inside a regex literal closed the braces early. In `<A>{/}/.test(s) ? "</A>" : 1}<C>leak</C></A>`, `C` became a root. Any `/` inside braces now stops recovery.
+
+Its worth-considering item is also fixed: the component-binding pattern `\([^)]*\)` re-scanned to the end of the source for each unclosed `const X=(`, taking about 660 ms at 240K. It is now bounded to 256 characters.
+
+The two regex repros were added to test 9, and a new test 12 checks binding speed. Test 12 takes 813 ms on `fb1dcf8` and about 20 ms now, against a 500 ms budget.
+
+`tests/code-ir-differential.test.mjs` now has 12 tests.
 
 ## Jev breaking judgment
 

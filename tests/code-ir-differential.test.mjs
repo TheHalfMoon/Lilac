@@ -129,9 +129,18 @@ test("recovery stops rather than guess when the failed element's structure is am
     "<Card>{a && <b>Don't</b>}<Inner>{'}'}</Inner><h1>inner</h1></Card>",
     "<Card>{/* don't */}<Inner>{'}'}</Inner><h1>inner</h1></Card>",
     "<a>{x}</c><h1>inner</h1></a>",
+    "<A>{/}/.test(s) ? \"</A>\" : 1}<h1>inner</h1></A>",
+    "<A>{/'/.test(s) ? '}' : \"</A>\"}<h1>inner</h1></A>",
   ]) {
     assert.throws(() => buildCodeIr([{ path: "R.jsx", content: source }]), /no supported elements/u, source);
   }
+});
+
+test("component binding stays fast on unclosed parameter lists", () => {
+  const source = `${"const A=(".repeat(1500)}${"x".repeat(200_000)}\n<p>ok</p>`;
+  const started = performance.now();
+  buildCodeIr([{ path: "B.jsx", content: source }]);
+  assert.ok(performance.now() - started < 500, `took ${(performance.now() - started).toFixed(0)} ms`);
 });
 
 test("long whitespace runs are trimmed in linear time", () => {
