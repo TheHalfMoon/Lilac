@@ -10,20 +10,24 @@ const LOCALES = ["C", "en_US.UTF-8", "sv_SE.UTF-8", "tr_TR.UTF-8"];
 
 // Ids whose collation differs between locales: sv_SE puts a-ring and a-umlaut
 // after z, tr_TR has dotless i, and en_US ignores case at the first level.
+const ATTRIBUTE_NAMES = ["data-x1", "data-x_", "data-xa", "data-xb", "data-x\u00e4", "data-xaa", "data-x\u00e5", "data-x\u0131", "data-xz"];
 const IDS = ["a", "aa", "B", "z", "\u00e4", "\u00e5", "I", "\u0131", "e\u0301", "\u00e9"];
 
 function sourceFiles(directory) {
   return readdirSync(directory).flatMap((name) => {
     const path = join(directory, name);
     if (statSync(path).isDirectory()) return sourceFiles(path);
-    return /\.(?:mjs|ts)$/u.test(name) ? [path] : [];
+    return /\.(?:[cm]?js|[cm]?ts)$/u.test(name) ? [path] : [];
   });
 }
 
-test("package sources never order by locale", () => {
+// Locale-sensitive comparison or case mapping; package output must not depend on either.
+const LOCALE_APIS = /\.localeCompare\s*\(|Intl\.Collator|\.toLocale(?:Lower|Upper)Case\s*\(/u;
+
+test("package sources never order or case-map by locale", () => {
   const offenders = readdirSync(join(ROOT, "packages"))
     .flatMap((name) => sourceFiles(join(ROOT, "packages", name, "src")))
-    .filter((path) => /\.localeCompare\s*\(/u.test(readFileSync(path, "utf8")))
+    .filter((path) => LOCALE_APIS.test(readFileSync(path, "utf8")))
     .map((path) => path.slice(ROOT.length));
   assert.deepEqual(offenders, []);
 });
@@ -31,6 +35,8 @@ test("package sources never order by locale", () => {
 const SCRIPT = `
   const root = ${JSON.stringify(new URL("../packages/", import.meta.url).href)};
   const ids = ${JSON.stringify(IDS)};
+  // Attribute names ICU and code-unit order disagree on ("_" sorts before "1" in ICU).
+  const attributeNames = ${JSON.stringify(ATTRIBUTE_NAMES)};
   const imports = await import(root + "import-stack/src/index.ts");
   const assurance = await import(root + "design-assurance/src/index.mjs");
   const model = await import(root + "document-model/src/index.mjs");
@@ -40,7 +46,7 @@ const SCRIPT = `
     at: "2026-10-07T09:00:00.000Z", policy: imports.defaultImportPolicy("offline"),
     source: { kind: "html-snapshot", uri: "https://example.com/page", baseUrl: "https://example.com/page" },
   });
-  const html = "<div " + ids.map((id, index) => "data-" + index + "-" + encodeURIComponent(id).replace(/%/g, "") + "=\\"" + id + "\\"").join(" ") + ">"
+  const html = "<div " + attributeNames.map((name) => name + "=\\"v\\"").join(" ") + ">"
     + ids.map((id) => "<a href=\\"/" + encodeURIComponent(id) + "\\">" + id + "</a><style>." + id + "{color:red}</style>").join("") + "</div>";
   const proposal = imports.importHtmlSnapshot(request("r-1"), html);
 
@@ -76,7 +82,9 @@ test("proposals, ledgers and findings are ordered identically under every locale
   assert.ok(parsed.resources.length >= IDS.length, "every link became a resource");
   assert.ok(parsed.findings.length >= IDS.length, "every unresolved token produced a finding");
   assert.equal(parsed.ledger.length, IDS.length);
-  // Code-unit order: canonically equivalent but different strings stay distinct.
-  const sortedCopy = [...parsed.resources].sort();
-  assert.deepEqual(parsed.resources, sortedCopy);
+  const divAttributes = parsed.attributes.find((keys) => keys.length === ATTRIBUTE_NAMES.length);
+  assert.deepEqual(divAttributes, [...ATTRIBUTE_NAMES].sort(), "attribute keys in code-unit order");
+  // Canonically equivalent but different strings stay distinct resources.
+  assert.ok(parsed.resources.includes("https://example.com/e%CC%81"));
+  assert.ok(parsed.resources.includes("https://example.com/%C3%A9"));
 });
