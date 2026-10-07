@@ -171,7 +171,7 @@ test("lockfile shapes beyond today's are handled, and unsafe shapes fail closed"
     "node_modules/ok": pkg("MIT", { dependencies: { inner: "^1" } }),
     "node_modules/ok/node_modules/inner": { version: "1.0.0", license: "MIT", inBundle: true },
   } });
-  const edges = Object.fromEntries(buildSbom(workspace, policy).dependencies.map((entry) => [entry.ref, entry.dependsOn]));
-  assert.deepEqual(edges["workspace:w"], ["pkg:npm/ok@1.0.0"]);
+  const workspaceEdges = Object.fromEntries(buildSbom(workspace, policy).dependencies.map((entry) => [entry.ref, entry.dependsOn]));
+  assert.deepEqual(workspaceEdges["workspace:w"], ["pkg:npm/ok@1.0.0"]);
   assert.deepEqual(checkPolicy(workspace, policy, "`ok@1.0.0` `inner@1.0.0`", { nodeModules: join(ROOT, "no-such-dir") }), []);
 });

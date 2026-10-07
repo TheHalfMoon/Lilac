@@ -96,4 +96,6 @@ Its worth-considering items are fixed:
 - **Workspace devDependencies** are now graph edges.
 - **Bundled dependencies.** An `inBundle` entry ships inside its parent's tarball, which the lockfile hashes, so it is not flagged for having no integrity of its own. It is marked `npm:inBundle`.
 
-Test 7 covers each of these.
+Test 7 covers each of these and fails on `bd0ec2b`.
+
+The delta-2 commit `aa484bf` was pushed with a duplicate `const edges` declaration in `tests/sbom.test.mjs`, a syntax error that made the whole file fail. It was fixed in the next commit before any review or merge.
