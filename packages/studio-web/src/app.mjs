@@ -53,7 +53,7 @@ function setStatus(message) {
 }
 
 function describeError(error) {
-  return error instanceof HostError ? error.message : "The studio host could not be reached.";
+  return error instanceof HostError ? error.message : "Lilac could not be reached. If it has stopped, start it again and open the new link it gives you.";
 }
 
 /** Show a modal dialog; `build(close)` returns its content. Focus returns where it was. */

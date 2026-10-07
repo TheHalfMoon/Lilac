@@ -7,11 +7,11 @@ PC8c closes PC gate 14: crash and recovery behaviour through the actual app surf
 Lilac commits every change durably before it is confirmed (P06 G10: journal and snapshot, with torn-tail repair and stale-temporary removal). PC1 to PC4 put recovery in the product:
 - **Taking over a lock.** A crashed session leaves its lock. Opening the project offers to take it over, with a reason, and only if the lock's process is gone.
 - **The recovery report.** It says what recovery did: a discarded unfinished write, removed temporary files, a format upgrade, a lock takeover.
-- **Orphaned editors.** An editor whose Lilac has gone says it cannot reach Lilac. It loses nothing it showed, because everything it showed was committed.
+- **Orphaned editors.** An editor whose Lilac has gone says Lilac could not be reached and that, if it has stopped, the person should start it again and open the new link. It loses nothing it showed, because everything it showed was committed.
 
 ## The test
 
-**`tests/crash-recovery.test.mjs`** (Chromium) starts Lilac as a person does (`scripts/lilac.mjs`), under the PC7 no-network preload.
+**`tests/app-crash-recovery.test.mjs`** (Chromium) starts Lilac as a person does (`scripts/lilac.mjs`), under the PC7 no-network preload.
 
 1. **The session.** It creates a project in the editor, adds three boxes and renames one.
 2. **Crash 1:** `SIGKILL` with the project open and the editor attached.
@@ -24,6 +24,18 @@ Lilac commits every change durably before it is confirmed (P06 G10: journal and 
    - The report names the discarded unfinished write and the takeover.
    - The reopened revision counts every complete journal entry, and includes every change the host confirmed before the kill. Each committed edit of the burst is a layer.
    - The project keeps working: one more edit commits.
-4. **Isolation.** No process or page reached anything off this computer. The only console error is the expected 409 when the locked project is first opened.
+4. **Isolation and console.** No process or page reached anything off this computer. Each tab's console is checked:
+   - the orphaned editor logs only the connections it could no longer make;
+   - each restarted editor logs exactly one `409 (Conflict)`, when it first opens the locked project (and, for the one killed under it, the lost connections).
 
 `tests/support/lilac-process.mjs` holds the helpers that run Lilac and open its links. It adds `kill()`, which is a crash with no cleanup.
+
+The P06 G10 crash-point suite (`tests/crash-recovery.test.mjs`: torn tails at every offset, checkpoint loss, damaged bytes, interrupted writes and migrations, lock override) is unchanged. This test adds the app-level path on top of it.
+
+## What this does not show
+
+- **Power loss.** `SIGKILL` leaves the operating system's page cache intact, so this test proves nothing about `fsync`. G10 covers durability against a lost write.
+- **Checkpoints.** "The reopened revision is every complete journal entry" holds because nothing checkpoints during the test. With a checkpoint, the revision would count the snapshot plus the journal.
+- **Not exercised here:**
+  - a crash while an MCP confirmation is pending (it lives only in memory, so the expected outcome is that nothing is committed);
+  - a crash during an import commit (one transaction, so it is committed whole or not at all, by the same journal rule).
