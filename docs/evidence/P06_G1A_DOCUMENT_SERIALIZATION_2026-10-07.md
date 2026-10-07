@@ -25,4 +25,18 @@ Part of P06 gate 1 (deterministic document serialization, #100).
 
 The seeded PRNG is `tests/support/prng.mjs` (mulberry32, no dependency).
 
+## Review delta 1: validation reachable from untrusted text
+
+`parseDocument` gives untrusted text a path into `validateDocument`. The security judge found four pre-existing problems that this makes reachable. All are fixed:
+- Recursive traversal overflowed the stack on a 20,000-node parent chain. The walk is now iterative, and a 30,000-node chain passes.
+- The per-child `children.filter` check was quadratic: one root with 40,000 children took about 20 s. It is now linear, through a referenced-child set.
+- `document.nodes[id]` resolved inherited names, so `parentId: "toString"` threw a `TypeError` instead of `DocumentInvariantError`. Lookups are now own-key only.
+- Error messages echoed ids of any length. Ids in messages are now cut to 80 characters, and the unreachable-node list stops after 10.
+
+All four tests fail on the pre-delta validator.
+
+In-memory key order is code-unit order except that JS always lists integer-like keys first. The canonical order is the one written by `serializeDocument`.
+
+Deferred to later gates (#100): an input size cap on `parseDocument`, with document size and depth limits under gate 3, and rejection of unknown top-level and node keys under gate 11's schema work.
+
 Not covered here: locale-dependent ordering in other packages, which is G1b.

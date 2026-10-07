@@ -23,7 +23,7 @@ const GOLDEN_SHA256 = "5313b064142a1bff683b86f1c44c8a16d4891b457623a3ae4c6f8eb23
 
 // Keys whose order differs between code-unit and locale collation (sv_SE puts
 // a-ring and a-umlaut after z; en_US interleaves them with a).
-const TRICKY_IDS = ["a", "aa", "B", "z", "\u00e4", "\u00e5", "I", "\u0131", "e\u0301", "\u{1f600}"];
+const TRICKY_IDS = ["a", "aa", "B", "z", "\u00e4", "\u00e5", "I", "\u0131", "e\u0301", "\u{1f600}", "\ud800", "\udfff", "10", "2"];
 
 function randomValue(prng, depth) {
   const kind = prng.int(0, depth > 2 ? 4 : 6);
@@ -108,7 +108,11 @@ test("node key order and bytes are identical under every process locale", () => 
   ));
   for (const result of results.slice(1)) assert.equal(result, results[0]);
   const { keys } = JSON.parse(results[0]);
-  assert.deepEqual(keys, [...TRICKY_IDS].sort(), "code-unit order");
+  // JS enumerates integer-like keys first whatever the insertion order, so the
+  // in-memory order is code-unit order for the other keys; the bytes are canonical.
+  const named = (ids) => ids.filter((id) => !/^\d+$/u.test(id));
+  assert.deepEqual(named(keys), named([...TRICKY_IDS].sort()), "code-unit order");
+  assert.match(JSON.parse(results[0]).text, /"nodes":\{"10":.*"2":/u, "serialized node keys are in code-unit order");
 });
 
 test("persistence stores exactly the model serialization", () => {
@@ -184,4 +188,59 @@ test("non-canonical text is rejected by parseDocument", () => {
   assert.throws(() => parseDocument("{"), DocumentInvariantError);
   assert.throws(() => parseDocument(42), DocumentInvariantError);
   assert.throws(() => parseDocument('{"id":"x"}'), DocumentInvariantError, "valid canonical JSON that is not a document");
+});
+
+// Untrusted text reaches validateDocument through parseDocument, so validation
+// must stay linear, iterative, own-key only, and bounded in what it echoes.
+function chainDocument(length) {
+  const nodes = Array.from({ length }, (_, index) => ({
+    id: `n${index}`, type: "frame", parentId: index === 0 ? null : `n${index - 1}`,
+    children: index === length - 1 ? [] : [`n${index + 1}`], props: {}, metadata: {},
+  }));
+  return { schemaVersion: 1, id: "doc-1", name: "Chain", revision: 0, rootIds: ["n0"], nodes: Object.fromEntries(nodes.map((node) => [node.id, node])), metadata: {} };
+}
+
+test("a long parent chain validates without overflowing the stack", () => {
+  const text = serializeDocument(chainDocument(30000));
+  assert.equal(Object.keys(parseDocument(text).nodes).length, 30000);
+});
+
+test("validation is linear in the number of children", () => {
+  const count = 40000;
+  const children = Array.from({ length: count }, (_, index) => `c${index}`);
+  const document = {
+    schemaVersion: 1, id: "doc-1", name: "Wide", revision: 0, rootIds: ["root"], metadata: {},
+    nodes: Object.fromEntries([
+      ["root", { id: "root", type: "frame", parentId: null, children, props: {}, metadata: {} }],
+      ...children.map((id) => [id, { id, type: "frame", parentId: "root", children: [], props: {}, metadata: {} }]),
+    ]),
+  };
+  const started = performance.now();
+  parseDocument(serializeDocument(document));
+  assert.ok(performance.now() - started < 3000, "40k siblings must validate well under the quadratic cost");
+});
+
+test("inherited property names are not treated as nodes", () => {
+  for (const parentId of ["toString", "__proto__", "constructor", "hasOwnProperty"]) {
+    const text = serializeDocument(createDocument({ id: "doc-1", nodes: [{ id: "n", type: "frame" }] }))
+      .replace('"parentId":null', `"parentId":${JSON.stringify(parentId)}`)
+      .replace('"rootIds":["n"]', '"rootIds":[]');
+    assert.throws(() => parseDocument(text), DocumentInvariantError, parentId);
+  }
+  const child = serializeDocument(createDocument({ id: "doc-1", nodes: [{ id: "n", type: "frame" }] }))
+    .replace('"children":[]', '"children":["constructor"]');
+  assert.throws(() => parseDocument(child), /missing child constructor/u);
+});
+
+test("error messages do not echo oversized ids", () => {
+  const long = "x".repeat(100000);
+  const document = createDocument({ id: "doc-1", nodes: [{ id: "n", type: "frame" }] });
+  document.nodes.n.parentId = long;
+  document.rootIds = [];
+  assert.throws(() => serializeDocument(document), (error) => error instanceof DocumentInvariantError && error.message.length < 300);
+  const many = createDocument({ id: "doc-1", nodes: [{ id: "n", type: "frame" }] });
+  for (let index = 0; index < 50; index += 1) {
+    many.nodes[`o${index}`] = { id: `o${index}`, type: "frame", parentId: `o${(index + 1) % 50}`, children: [`o${(index + 49) % 50}`], props: {}, metadata: {} };
+  }
+  assert.throws(() => serializeDocument(many), (error) => /Unreachable nodes: .*\(and 40 more\)/u.test(error.message));
 });
