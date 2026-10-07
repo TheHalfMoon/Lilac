@@ -646,7 +646,7 @@ function validateBrowserUrl(value, { allowPrivateNetwork = false } = {}) {
 // The browser resolves again when it fetches and follows redirects and loads
 // subresources itself, so this blocks targets that are private at scan time; it
 // cannot prevent DNS rebinding, redirects or subresource loads to private hosts.
-// Those residuals are recorded in the P06 G5a evidence (#112).
+// Those residuals are recorded in the P06 G5a evidence (#112) and tracked in #114.
 async function assertPublicResolution(hostname, lookup) {
   const host = hostname.replace(/^\[|\]$/gu, "");
   if (isIP(host) !== 0) return;
