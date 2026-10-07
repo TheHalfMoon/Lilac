@@ -21,6 +21,10 @@ import { PROJECT_FILES } from "./types.ts";
 // flag; there the lstat check before open leaves a narrow residual race, documented in the
 // evidence file.
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+// O_NONBLOCK makes opening a FIFO return at once instead of waiting for a writer, so a
+// FIFO swapped in after the regular-file check cannot hang the store. It has no effect
+// on regular files.
+const NONBLOCK = constants.O_NONBLOCK ?? 0;
 
 function isMissing(error: unknown): boolean {
   return (error as NodeJS.ErrnoException)?.code === "ENOENT";
@@ -33,8 +37,49 @@ export function assertNotSymlink(path: string, label: string): boolean {
     return true;
   } catch (error) {
     if (isMissing(error)) return false;
+    if ((error as NodeJS.ErrnoException)?.code === "ENOTDIR") {
+      throw new PersistenceValidationError(`${label} is under a path component that is not a directory`);
+    }
     throw error;
   }
+}
+
+/** Real path plus device and inode of a directory, for detecting a swapped project directory. */
+export interface DirectoryIdentity {
+  path: string;
+  dev: bigint;
+  ino: bigint;
+}
+
+/**
+ * True when `path` still resolves, without symlinks, to the pinned directory. A path that
+ * no longer resolves to a directory counts as changed; other errors (EACCES, EMFILE, ...)
+ * are rethrown so they are not misreported as a swap.
+ */
+export function isSameDirectory(path: string, pinned: DirectoryIdentity): boolean {
+  let current: DirectoryIdentity;
+  try {
+    current = directoryIdentity(path, "project directory");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (error instanceof PersistenceValidationError || code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
+  }
+  return current.path === pinned.path && current.dev === pinned.dev && current.ino === pinned.ino;
+}
+
+export function directoryIdentity(path: string, label: string): DirectoryIdentity {
+  let real: string;
+  try {
+    real = realpathSync(path);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT" || code === "ENOTDIR") throw new PersistenceValidationError(`${label} is missing`);
+    throw error;
+  }
+  const stat = lstatSync(real, { bigint: true });
+  if (!stat.isDirectory()) throw new PersistenceValidationError(`${label} must be a directory`);
+  return { path: real, dev: stat.dev, ino: stat.ino };
 }
 
 /** Resolve `<root>/.lilac`, requiring an absolute existing root and a non-symlink project directory. */
@@ -67,7 +112,9 @@ export function ensureDirectory(path: string, label: string): void {
 export function fsyncDirectory(path: string): void {
   let fd: number | null = null;
   try {
-    fd = openSync(path, "r");
+    // O_DIRECTORY refuses anything but a directory, and O_NONBLOCK keeps a FIFO swapped
+    // in at this path from blocking the open.
+    fd = openSync(path, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | NONBLOCK);
     fsyncSync(fd);
   } catch {
     // Directory fsync is unsupported on some platforms (Windows); rename atomicity still holds.
@@ -76,12 +123,27 @@ export function fsyncDirectory(path: string): void {
   }
 }
 
-/** Read a regular, non-symlink file of at most `maxBytes`, or return null when it is missing. */
-export function readBounded(path: string, maxBytes: number, label: string): Buffer | null {
-  if (!assertNotSymlink(path, label)) return null;
+/**
+ * Read a regular, non-symlink file of at most `maxBytes`, or return null when it is missing.
+ * A non-regular file (FIFO, socket, device, directory) is refused before it is opened.
+ * `singleLink` additionally refuses a hard-linked file.
+ */
+export function readBounded(path: string, maxBytes: number, label: string, { singleLink = false }: { singleLink?: boolean } = {}): Buffer | null {
+  let entry;
+  try {
+    entry = lstatSync(path);
+  } catch (error) {
+    if (isMissing(error)) return null;
+    if ((error as NodeJS.ErrnoException)?.code === "ENOTDIR") {
+      throw new PersistenceValidationError(`${label} is under a path component that is not a directory`);
+    }
+    throw error;
+  }
+  if (entry.isSymbolicLink()) throw new PersistenceValidationError(`${label} must not be a symbolic link`);
+  if (!entry.isFile()) throw new PersistenceValidationError(`${label} must be a regular file`);
   let fd: number;
   try {
-    fd = openSync(path, constants.O_RDONLY | NOFOLLOW);
+    fd = openSync(path, constants.O_RDONLY | NOFOLLOW | NONBLOCK);
   } catch (error) {
     if (isMissing(error)) return null;
     if ((error as NodeJS.ErrnoException)?.code === "ELOOP") throw new PersistenceValidationError(`${label} must not be a symbolic link`);
@@ -90,6 +152,7 @@ export function readBounded(path: string, maxBytes: number, label: string): Buff
   try {
     const stat = fstatSync(fd);
     if (!stat.isFile()) throw new PersistenceValidationError(`${label} must be a regular file`);
+    if (singleLink && stat.nlink > 1) throw new PersistenceValidationError(`${label} must not be hard-linked`);
     if (stat.size > maxBytes) throw new PersistenceValidationError(`${label} exceeds ${maxBytes} bytes`);
     const buffer = Buffer.alloc(stat.size);
     let offset = 0;
@@ -188,7 +251,7 @@ export function appendDurable(path: string, data: string, label: string, expecte
   assertNotSymlink(path, label);
   let fd: number;
   try {
-    fd = openSync(path, constants.O_RDWR | constants.O_APPEND | NOFOLLOW);
+    fd = openSync(path, constants.O_RDWR | constants.O_APPEND | NOFOLLOW | NONBLOCK);
   } catch (error) {
     if (isMissing(error)) throw new PersistenceCorruptionError(`${label} is missing`);
     throw error;
