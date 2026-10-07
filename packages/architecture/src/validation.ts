@@ -31,6 +31,7 @@ export const IMPLEMENTED_PACKAGES = [
   "@lilac/network-policy",
   "@lilac/intake",
   "@lilac/studio-host",
+  "@lilac/studio-web",
   "@lilac/renderer",
   "@lilac/canvas",
 ] as const;

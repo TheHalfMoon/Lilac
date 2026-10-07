@@ -23,6 +23,8 @@ export interface StudioActor {
  */
 export interface ChangeEvent {
   type: "transaction";
+  /** The project the change was committed to. */
+  project: string;
   revision: number;
   transactionId: string;
   actor: string;
@@ -55,6 +57,8 @@ const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 // Names Windows reserves for devices, with or without an extension.
 const RESERVED_NAME = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/iu;
 const MAX_UNDO = 200;
+// The history panel's log: the latest changes since the project was opened, without operations.
+const MAX_LOG = 500;
 export const MAX_OPERATIONS_PER_EDIT = 5_000;
 
 export function assertProjectName(name: unknown): string {
@@ -84,6 +88,7 @@ export class StudioSession {
   #undo = new Map<string, UndoEntry[]>();
   #redo = new Map<string, UndoEntry[]>();
   #listeners = new Set<(event: ChangeEvent) => void>();
+  #log: Array<Omit<ChangeEvent, "operations">> = [];
   #closed = false;
   #failure: string | null = null;
 
@@ -142,6 +147,11 @@ export class StudioSession {
 
   canRedo(actor: StudioActor = this.owner): boolean {
     return (this.#redo.get(actor.actorId)?.length ?? 0) > 0;
+  }
+
+  /** The changes committed since the project was opened, newest last (at most 500). */
+  get log(): ReadonlyArray<Omit<ChangeEvent, "operations">> {
+    return this.#log;
   }
 
   onChange(listener: (event: ChangeEvent) => void): () => void {
@@ -256,6 +266,7 @@ export class StudioSession {
     }
     const event: ChangeEvent = {
       type: "transaction",
+      project: this.name,
       revision: committed.revision,
       transactionId,
       actor: actor.actorId,
@@ -267,6 +278,9 @@ export class StudioSession {
       ...(input.link?.undoOf ? { undoOf: input.link.undoOf } : {}),
       ...(input.link?.redoOf ? { redoOf: input.link.redoOf } : {}),
     };
+    const { operations: _operations, ...summary } = event;
+    this.#log.push(summary);
+    if (this.#log.length > MAX_LOG) this.#log.shift();
     for (const listener of this.#listeners) {
       try {
         listener(event);

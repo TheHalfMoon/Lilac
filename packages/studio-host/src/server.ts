@@ -1,7 +1,8 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { join } from "node:path";
+import { extname, join, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { isLoopbackAddress } from "@lilac/network-policy";
 import { StudioError } from "./errors.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
@@ -15,6 +16,8 @@ export interface StudioHostOptions {
   owner?: StudioActor;
   /** Clock for transaction timestamps (ISO-8601 UTC). */
   now?: () => string;
+  /** Directory holding the browser packages served to the editor (default: this repository's packages/). */
+  packagesRoot?: string;
 }
 
 export interface StudioHost {
@@ -22,6 +25,8 @@ export interface StudioHost {
   readonly port: number;
   /** Per-launch secret every API request must carry; never logged or persisted. */
   readonly token: string;
+  /** Open this once in a browser: the editor trades its single-use ticket for the token. */
+  launchUrl(): string;
   readonly session: StudioSession | null;
   close(): Promise<void>;
 }
@@ -33,6 +38,14 @@ const MAX_STREAMS = 32;
 // A stream whose client has stopped reading is dropped rather than buffered without bound;
 // the client reconnects and resynchronizes from GET /api/document.
 const MAX_STREAM_BUFFER = 1024 * 1024;
+// The editor and the browser-loadable packages it imports; nothing else is served.
+const BROWSER_PACKAGES = new Set(["studio-web", "document-model", "history", "renderer", "canvas"]);
+const STATIC_FILE = /^\/packages\/([a-z-]+)\/src\/([a-z0-9-]+\.(?:mjs|css|html))$/u;
+const STATIC_TYPES: Record<string, string> = { ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".html": "text/html; charset=utf-8" };
+const TICKET_TTL_MS = 120_000;
+// The editor page may load only its own modules and styles, talk only to this host, and
+// frame only same-origin documents (the renderer's srcdoc frame inherits this policy).
+const APP_CSP = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; child-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const DEFAULT_OWNER: StudioActor = { actorId: "local-user", kind: "user", accessClass: "member", displayName: "You" };
 
 /**
@@ -50,6 +63,20 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   const now = options.now ?? (() => new Date().toISOString());
   const token = randomBytes(32).toString("base64url");
   const tokenBytes = Buffer.from(token);
+  const packagesRoot = realpathSync(options.packagesRoot ?? fileURLToPath(new URL("../../", import.meta.url)));
+  const tickets = new Map<string, number>();
+  const issueTicket = () => {
+    const ticket = randomBytes(24).toString("base64url");
+    for (const [old, expires] of tickets) if (expires < Date.now()) tickets.delete(old);
+    tickets.set(ticket, Date.now() + TICKET_TTL_MS);
+    return ticket;
+  };
+  const redeemTicket = (ticket: string | null): boolean => {
+    if (ticket === null) return false;
+    const expires = tickets.get(ticket);
+    tickets.delete(ticket);
+    return expires !== undefined && expires >= Date.now();
+  };
   const streams = new Set<ServerResponse>();
   let session: StudioSession | null = null;
   let unsubscribe: (() => void) | null = null;
@@ -97,19 +124,21 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     return { project: session.name, revision: session.revision, canUndo: session.canUndo(owner), canRedo: session.canRedo(owner), recovery: session.recovery };
   };
 
-  // The token comes in the Authorization header, except on the event stream, which
-  // EventSource opens without custom headers and so may carry it in the query.
-  const authorized = (request: IncomingMessage, url: URL): boolean => {
-    const header = request.headers.authorization;
-    const queryAllowed = request.method === "GET" && url.pathname === "/api/events";
-    const presented = typeof header === "string" && header.startsWith("Bearer ") ? header.slice(7) : queryAllowed ? url.searchParams.get("token") : null;
+  const matches = (presented: unknown): boolean => {
     if (typeof presented !== "string") return false;
     const bytes = Buffer.from(presented);
     return bytes.length === tokenBytes.length && timingSafeEqual(bytes, tokenBytes);
   };
+  // The token comes in the Authorization header, except on the event stream, which
+  // EventSource opens without custom headers and so may carry it in the query.
+  const authorized = (request: IncomingMessage, url: URL): boolean => {
+    const header = request.headers.authorization;
+    if (typeof header === "string" && header.startsWith("Bearer ")) return matches(header.slice(7));
+    return request.method === "GET" && url.pathname === "/api/events" && matches(url.searchParams.get("token"));
+  };
 
   const routes: Record<string, (body: any) => unknown> = {
-    "GET /api/session": () => describe(),
+    "GET /api/session": () => ({ ...describe(), user: { actorId: owner.actorId, displayName: owner.displayName ?? owner.actorId } }),
     "GET /api/projects": () => ({
       projects: readdirSync(projectsRoot, { withFileTypes: true })
         .filter((entry) => entry.isDirectory() && existsSync(join(projectsRoot, entry.name, ".lilac")))
@@ -138,8 +167,9 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     },
     "GET /api/document": () => {
       const current = requireSession();
-      return { revision: current.revision, document: current.document };
+      return { project: current.name, revision: current.revision, document: current.document };
     },
+    "GET /api/history": () => ({ entries: requireSession().log }),
     "POST /api/edit": (body) => requireSession().edit(owner, body),
     "POST /api/undo": () => requireSession().undo(owner),
     "POST /api/redo": () => requireSession().redo(owner),
@@ -158,7 +188,21 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     const origin = request.headers.origin;
     if (origin !== undefined && !allowedHosts.some((host) => origin === `http://${host}`)) throw new StudioError(403, "foreign-origin", "requests from other origins are refused");
     const url = new URL(request.url ?? "/", `http://${LOOPBACK}:${port}`);
-    if (!url.pathname.startsWith("/api/")) throw new StudioError(404, "not-found", "not found");
+    // The editor's files are public source and carry no secret, so they are served without
+    // the token; the Host and Origin checks above still apply.
+    if (!url.pathname.startsWith("/api/")) {
+      serveStatic(response, request.method, url.pathname);
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/launch") {
+      // The editor page trades the single-use ticket from its launch URL for the token. A
+      // browser always sends Origin on a POST, and only this host's own origin is accepted.
+      if (origin === undefined) throw new StudioError(403, "origin-required", "the launch ticket is redeemed only by the editor page");
+      const { ticket } = ((await readJson(request)) ?? {}) as { ticket?: unknown };
+      if (!redeemTicket(typeof ticket === "string" ? ticket : null)) throw new StudioError(401, "invalid-ticket", "this launch link has been used or has expired; open Lilac again");
+      respondJson(response, 200, { token });
+      return;
+    }
     if (!authorized(request, url)) throw new StudioError(401, "unauthorized", "a valid studio token is required");
 
     if (request.method === "GET" && url.pathname === "/api/events") {
@@ -169,6 +213,24 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     if (route === undefined) throw new StudioError(404, "not-found", "not found");
     const body = request.method === "POST" ? await readJson(request) : undefined;
     respondJson(response, 200, route(body));
+  }
+
+  function serveStatic(response: ServerResponse, method: string | undefined, pathname: string): void {
+    if (method !== "GET") throw new StudioError(405, "method-not-allowed", "only GET is served here");
+    const path = pathname === "/" ? "/packages/studio-web/src/index.html" : pathname;
+    const match = STATIC_FILE.exec(path);
+    if (match === null || !BROWSER_PACKAGES.has(match[1])) throw new StudioError(404, "not-found", "not found");
+    let file: string;
+    try {
+      file = realpathSync(join(packagesRoot, match[1], "src", match[2]));
+    } catch {
+      throw new StudioError(404, "not-found", "not found");
+    }
+    if (!file.startsWith(`${packagesRoot}${sep}`)) throw new StudioError(404, "not-found", "not found");
+    const body = readFileSync(file);
+    const type = STATIC_TYPES[extname(file)];
+    response.writeHead(200, { ...SECURITY_HEADERS, "content-type": type, "content-length": body.length, ...(type.startsWith("text/html") ? { "content-security-policy": APP_CSP } : {}) });
+    response.end(body);
   }
 
   function openStream(response: ServerResponse): void {
@@ -204,6 +266,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     url: `http://${LOOPBACK}:${port}`,
     port,
     token,
+    launchUrl: () => `http://${LOOPBACK}:${port}/?ticket=${issueTicket()}`,
     get session() {
       return session;
     },

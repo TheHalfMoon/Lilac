@@ -1,0 +1,20 @@
+{
+  "name": "@lilac/studio-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The Lilac editor: the browser application the studio host serves.",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./client": "./src/client.mjs",
+    "./provenance": "./src/provenance.mjs"
+  },
+  "dependencies": {
+    "@lilac/canvas": "0.0.0",
+    "@lilac/document-model": "0.0.0",
+    "@lilac/history": "0.0.0"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}
