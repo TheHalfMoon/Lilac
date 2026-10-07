@@ -69,9 +69,19 @@ async function browse() {
   return browser;
 }
 
-async function openTab(browser, origin, link) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+// A tab whose page may not reach "ready" (a used link); its requests are still recorded.
+async function openTabUnready(browser, origin, link) {
+  return openTab(browser, origin, link, { ready: false });
+}
+
+async function openTab(browser, origin, link, { ready = true } = {}) {
+  // Service workers are blocked so every request goes through the route below, WebSockets too.
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
   const foreign = [];
+  await context.routeWebSocket(/.*/u, (socket) => {
+    foreign.push(socket.url());
+    socket.close();
+  });
   const errors = [];
   await context.route("**/*", (route) => {
     const url = route.request().url();
@@ -85,7 +95,7 @@ async function openTab(browser, origin, link) {
     if (message.type() === "error") errors.push(message.text());
   });
   await page.goto(link);
-  await page.waitForFunction(() => document.documentElement.dataset.ready === "true");
+  if (ready) await page.waitForFunction(() => document.documentElement.dataset.ready === "true");
   return { page, foreign, errors };
 }
 
@@ -100,12 +110,23 @@ test("the network trap refuses connections off this computer and allows loopback
       try { await (await import("node:dns")).promises.lookup("example.com"); } catch { resolved = "refused"; }
       let spawned = "allowed";
       try { (await import("node:child_process")).spawn("true"); } catch { spawned = "refused"; }
-      console.log(JSON.stringify({ local, remote, resolved, spawned }));
+      const refused = async (attempt) => { try { await attempt(); return "allowed"; } catch { return "refused"; } };
+      const { ChildProcess } = await import("node:child_process");
+      const net = await import("node:net");
+      const others = {
+        worker: await refused(async () => new (await import("node:worker_threads")).Worker("process.exit(0)", { eval: true })),
+        childProcessClass: await refused(() => new ChildProcess().spawn({ file: "true", args: ["true"], stdio: [] })),
+        binding: await refused(() => process.binding("tcp_wrap")),
+        dlopen: await refused(() => process.dlopen({}, "/nonexistent.node")),
+        customLookup: await refused(() => net.connect({ host: "localhost", port: 9, lookup: (name, options, done) => done(null, "10.255.255.1", 4) })),
+        udp: await refused(async () => new (await import("node:dgram")).Socket("udp4").send("x", 9, "127.0.0.1")),
+      };
+      console.log(JSON.stringify({ local, remote, resolved, spawned, ...others }));
       server.close();
     });
   `]);
   assert.equal(await probe.exited, 0);
-  assert.deepEqual(JSON.parse(probe.output.stdout), { local: "ok", remote: "refused", resolved: "refused", spawned: "refused" });
+  assert.deepEqual(JSON.parse(probe.output.stdout), { local: "ok", remote: "refused", resolved: "refused", spawned: "refused", worker: "refused", childProcessClass: "refused", binding: "refused", dlopen: "refused", customLookup: "refused", udp: "refused" });
   assert.ok(attemptsIn(probe.output.stderr).length >= 3, "every refused attempt is reported");
 });
 
@@ -120,6 +141,7 @@ test("one command serves Lilac on this computer only, with single-use links, and
     assert.equal(url.hostname, "127.0.0.1");
     // Not reachable on any other address of this computer.
     const others = Object.values(networkInterfaces()).flat().filter((entry) => entry && !entry.internal && entry.family === "IPv4").map((entry) => entry.address);
+    assert.ok(others.length > 0, "this machine has another IPv4 address to probe");
     for (const address of others) {
       const refused = await new Promise((resolve) => {
         const socket = connect({ host: address, port: Number(url.port) });
@@ -139,13 +161,12 @@ test("one command serves Lilac on this computer only, with single-use links, and
     await tab.page.locator("#action-insert-box").click();
     await waitRevision(tab.page, 1);
     // A link works once; Enter prints a fresh one, which opens a second editor on the same project.
-    const reused = await (await browser.newContext()).newPage();
-    await reused.goto(lilac.first);
-    await reused.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Open Lilac from its launcher");
+    const reused = await openTabUnready(browser, lilac.origin, lilac.first);
+    await reused.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Open Lilac from its launcher");
     const fresh = await openTab(browser, lilac.origin, await lilac.newLink());
     await waitRevision(fresh.page, 1);
     assert.equal(await layerCount(fresh.page), 2);
-    assert.deepEqual([...tab.foreign, ...fresh.foreign], []);
+    assert.deepEqual([...tab.foreign, ...fresh.foreign, ...reused.foreign], []);
     assert.deepEqual([...tab.errors, ...fresh.errors], []);
   } finally {
     await browser.close();
@@ -167,8 +188,10 @@ test("offline smoke: create, import, edit, code, an agent over stdio, save, rest
   let lilac = await startLilac(projects);
   const browser = await browse();
   const attempts = [];
+  const tabs = [];
   try {
     let tab = await openTab(browser, lilac.origin, lilac.first);
+    tabs.push(tab);
     let { page: editor } = tab;
     // Create a project and import a page that links to the network.
     await editor.locator("#new-project-name").fill("offline");
@@ -205,13 +228,13 @@ test("offline smoke: create, import, edit, code, an agent over stdio, save, rest
     await editor.locator("#action-save").click();
     await editor.waitForFunction(() => document.getElementById("status").textContent.startsWith("Saved."));
     const layersBefore = await layerCount(editor);
-    attempts.push(...tab.foreign);
     assert.deepEqual(tab.errors, []);
     // Stop Lilac and start it again: everything is there.
     assert.equal(await lilac.stop(), 0);
     attempts.push(...attemptsIn(lilac.output.stderr));
     lilac = await startLilac(projects);
     tab = await openTab(browser, lilac.origin, lilac.first);
+    tabs.push(tab);
     editor = tab.page;
     await editor.locator("#dialog[open] [data-project=offline]").click();
     await waitRevision(editor, 4);
@@ -220,9 +243,10 @@ test("offline smoke: create, import, edit, code, an agent over stdio, save, rest
     assert.ok(names.includes("Landing page") && names.includes("From agent") && names.includes("Badge"), names.join(", "));
     const h1 = await editor.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("h1")?.getAttribute("data-lilac-id"));
     assert.equal(await rendered(editor, h1, "color"), "rgb(51, 85, 119)");
-    attempts.push(...tab.foreign);
     assert.deepEqual(tab.errors, []);
   } finally {
+    // Everything every tab requested, from opening until the browser closes.
+    for (const opened of tabs) attempts.push(...opened.foreign);
     await browser.close();
     await lilac.stop();
     attempts.push(...attemptsIn(lilac.output.stderr));
@@ -247,5 +271,13 @@ test("stopping Lilac does not wait for open connections", { timeout: 10_000 }, a
     idle.destroy();
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the command refuses options it does not understand", async () => {
+  for (const args of [["--projects", "--open"], ["--port"], ["--port", "70000"], ["--frobnicate"]]) {
+    const lilac = run(["scripts/lilac.mjs", ...args]);
+    assert.equal(await lilac.exited, 2, args.join(" "));
+    assert.match(lilac.output.stderr, /^lilac: /mu);
   }
 });
