@@ -23,7 +23,7 @@ button {
   background: var(--panel); cursor: pointer;
 }
 button:hover:not(:disabled) { border-color: var(--accent); }
-button:disabled { color: #77748a; background: #efeef4; cursor: not-allowed; }
+button:disabled { color: #5c596e; background: #efeef4; cursor: not-allowed; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 button.danger { border-color: var(--danger); color: var(--danger); }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
@@ -45,7 +45,7 @@ button.danger { border-color: var(--danger); color: var(--danger); }
 [role="tree"] { padding: 0 4px 12px; }
 [role="treeitem"] > .row { display: flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 4px; cursor: default; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 [role="treeitem"] > .row .twisty { width: 1em; color: var(--muted); }
-[role="treeitem"][aria-selected="true"] > .row { background: #e6e0ff; color: #2b1d74; }
+[role="treeitem"][aria-selected="true"] > .row { background: #e6e0ff; color: #2b1d74; box-shadow: inset 3px 0 0 var(--accent); }
 [role="treeitem"]:focus { outline: none; }
 [role="treeitem"]:focus-visible > .row { outline: 3px solid var(--focus); outline-offset: -1px; }
 .inspector { display: grid; gap: 8px; padding: 0 12px 12px; }
@@ -79,3 +79,22 @@ dialog .agent-row button { width: auto; }
 .history .revert { justify-self: start; min-height: 24px; padding: 0 8px; font-size: 12px; }
 dialog h3 { font-size: 14px; margin: 8px 0 0; }
 dialog textarea { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 6px; border: 1px solid #8e8aa3; border-radius: 4px; width: 100%; }
+.inspector .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.inspector .steps button { min-height: 32px; padding: 2px; font-size: 12px; }
+/* Reflow (WCAG 1.4.10): below 900px the panels stack under the canvas instead of beside it. */
+@media (max-width: 900px) {
+  body { grid-template-rows: auto auto auto; height: auto; min-height: 100%; }
+  .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: auto; }
+  .layers-panel { order: 2; border-right: 0; border-top: 1px solid var(--line); max-height: 40vh; }
+  .canvas-area { order: 1; min-height: 60vh; }
+  .side-panel { order: 3; border-left: 0; border-top: 1px solid var(--line); }
+  .toolbar .tool-group { border-left: 0; padding-left: 0; }
+}
+/* Panels never grow wider than their column: inputs and grids shrink to fit. */
+.side-panel { grid-template-columns: minmax(0, 1fr); }
+.inspector input, .inspector textarea { width: 100%; min-width: 0; }
+.inspector .pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.inspector .steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* Dialog content never grows wider than the dialog (WCAG 1.4.10). */
+dialog form, dialog #dialog-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+dialog input, dialog textarea { max-width: 100%; min-width: 0; }

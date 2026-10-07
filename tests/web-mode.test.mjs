@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { browserTestOptions, findBrowser } from "./support/browser.mjs";
+import { browserTestOptions } from "./support/browser.mjs";
 import { layerCount, rendered, waitRevision } from "./support/editor.mjs";
+import { attemptsIn, browse, openTab, run, startLilac } from "./support/lilac-process.mjs";
 
 // PC7 (#146): local web mode and the offline, local-first smoke flow, through the product.
 // One command (npm start, scripts/lilac.mjs) runs Lilac; it and the MCP relay run under a
@@ -15,89 +15,8 @@ import { layerCount, rendered, waitRevision } from "./support/editor.mjs";
 // helper process, and the browser refuses every request outside Lilac's origin. Closes PC
 // gates 6 and 16.
 
-const PRELOAD = "./tests/support/no-network.mjs";
-const attemptsIn = (text) => text.split("\n").filter((line) => line.startsWith("LILAC-NETWORK-ATTEMPT"));
-
-function run(args, env = {}) {
-  const child = spawn(process.execPath, ["--import", PRELOAD, ...args], { env: { ...process.env, ...env }, stdio: ["pipe", "pipe", "pipe"] });
-  const output = { stdout: "", stderr: "" };
-  child.stdout.on("data", (chunk) => {
-    output.stdout += chunk;
-  });
-  child.stderr.on("data", (chunk) => {
-    output.stderr += chunk;
-  });
-  const exited = new Promise((resolve) => child.on("close", (code) => resolve(code)));
-  return { child, output, exited };
-}
-
-async function startLilac(projects) {
-  const lilac = run(["scripts/lilac.mjs", "--projects", projects, "--port", "0"], { LILAC_STDIN_LINKS: "1" });
-  const links = [];
-  const nextLink = async () => {
-    const seen = links.length;
-    for (let tries = 0; tries < 500; tries += 1) {
-      const all = [...lilac.output.stdout.matchAll(/^Open Lilac: (\S+)$/gmu)].map((match) => match[1]);
-      if (all.length > seen) {
-        links.push(...all.slice(seen));
-        return all[seen];
-      }
-      if (lilac.child.exitCode !== null) throw new Error(`lilac exited: ${lilac.output.stderr}`);
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    throw new Error("lilac printed no link");
-  };
-  const first = await nextLink();
-  return {
-    ...lilac,
-    first,
-    origin: new URL(first).origin,
-    async newLink() {
-      lilac.child.stdin.write("\n");
-      return nextLink();
-    },
-    async stop() {
-      lilac.child.kill("SIGTERM");
-      return lilac.exited;
-    },
-  };
-}
-
-async function browse() {
-  const { chromium } = await import("playwright-core");
-  const browser = await chromium.launch({ executablePath: findBrowser(), headless: true, args: ["--no-sandbox"] });
-  return browser;
-}
-
 // A tab whose page may not reach "ready" (a used link); its requests are still recorded.
-async function openTabUnready(browser, origin, link) {
-  return openTab(browser, origin, link, { ready: false });
-}
-
-async function openTab(browser, origin, link, { ready = true } = {}) {
-  // Service workers are blocked so every request goes through the route below, WebSockets too.
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
-  const foreign = [];
-  await context.routeWebSocket(/.*/u, (socket) => {
-    foreign.push(socket.url());
-    socket.close();
-  });
-  const errors = [];
-  await context.route("**/*", (route) => {
-    const url = route.request().url();
-    if (url.startsWith(`${origin}/`)) return route.continue();
-    foreign.push(url);
-    return route.abort();
-  });
-  const page = await context.newPage();
-  page.on("pageerror", (error) => errors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
-  await page.goto(link);
-  if (ready) await page.waitForFunction(() => document.documentElement.dataset.ready === "true");
-  return { page, foreign, errors };
-}
+const openTabUnready = (browser, origin, link) => openTab(browser, origin, link, { ready: false });
 
 test("the network trap refuses connections off this computer and allows loopback", async () => {
   const probe = run(["--input-type=module", "-e", `
