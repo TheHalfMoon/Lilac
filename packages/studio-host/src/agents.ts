@@ -35,8 +35,12 @@ export class AgentRegistry {
   readonly #owner: StudioActor;
   #agents: AgentRecord[];
 
-  /** Set when the registry could not be read; Lilac starts with no agents connected. */
-  readonly problem: string | null;
+  #problem: string | null;
+
+  /** Why the registry could not be read (Lilac started with no agents), until it is saved again. */
+  get problem(): string | null {
+    return this.#problem;
+  }
 
   constructor(projectsRoot: string, owner: StudioActor) {
     this.#path = join(projectsRoot, REGISTRY_FILE);
@@ -56,7 +60,7 @@ export class AgentRegistry {
       }
     }
     this.#agents = agents;
-    this.problem = problem;
+    this.#problem = problem;
   }
 
   list(): AgentSummary[] {
@@ -116,6 +120,7 @@ export class AgentRegistry {
       throw new StudioError(500, "agents-unwritable", "the agent registry could not be saved");
     }
     this.#agents = next;
+    this.#problem = null;
   }
 }
 

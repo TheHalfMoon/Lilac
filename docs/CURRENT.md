@@ -65,15 +65,15 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (630/630 test
 
 | # | PC gate | State |
 |---:|---|---|
-| 1 | Editor application shell | OPEN |
-| 2 | Canvas and rendering surface | OPEN |
-| 3 | Document interaction and editing | OPEN |
-| 4 | Persistence and reopen workflow | OPEN |
+| 1 | Editor application shell | CLOSED_CANONICAL |
+| 2 | Canvas and rendering surface | CLOSED_CANONICAL |
+| 3 | Document interaction and editing | CLOSED_CANONICAL |
+| 4 | Persistence and reopen workflow | CLOSED_CANONICAL |
 | 5 | Desktop bridge | OPEN |
 | 6 | Local web mode | OPEN |
 | 7 | MCP server and authorization integration | OPEN |
 | 8 | MCP and agent mutations visible live on the canvas | OPEN |
-| 9 | Mutation attribution, history and undo/redo through the real UI | OPEN |
+| 9 | Mutation attribution, history and undo/redo through the real UI | CLOSED_CANONICAL |
 | 10 | Import → edit → save → reopen through the UI | OPEN |
 | 11 | Design/code workflow through the product | OPEN |
 | 12 | Accessibility qualification | OPEN |

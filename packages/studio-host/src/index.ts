@@ -4,3 +4,4 @@ export { MAX_OPERATIONS_PER_EDIT, StudioSession, assertProjectName, type ChangeE
 export { startStudioHost, type StudioHost, type StudioHostOptions } from "./server.ts";
 export { AGENT_CAPABILITIES, AgentRegistry, type AgentSummary } from "./agents.ts";
 export { CONFIRMATION_WAIT_MS, ConfirmationBroker, MCP_PROTOCOL_VERSIONS, handleMcpMessage, mcpToolDefinitions, type PendingConfirmation } from "./mcp.ts";
+export { assertLoopbackUrl, discoverMcpUrl, runRelay, type RelayOptions } from "./relay.ts";

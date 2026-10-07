@@ -159,8 +159,8 @@ const SUBSYSTEMS = [
     title: "Agent runtime MCP surface",
     owner: "@lilac/mcp-protocol",
     status: "stub",
-    boundary: "MCP contract validation (client, tool, server-config, and Paper tool-set compatibility) and tool-call authorization through the collaboration access oracle exist. The capability-scoped local MCP endpoint for project discovery, inspection, queries, and transaction-aware edits is planned (#82) and must authorize every call.",
-    dependsOn: ["agent-runtime", "document-model", "history", "collaboration"],
+    boundary: "MCP contract validation (client, tool, server-config, and Paper tool-set compatibility) and tool-call authorization through the collaboration access oracle. The local MCP endpoint runs in the studio host (PC5, #82): Streamable HTTP on loopback plus a stdio relay, agents connected by the person with their own credentials, every call through requireMCPToolCall, agent edits as attributed history transactions, and the person's confirmation in the editor for consequential tools. 15 of Paper's 36 tools are implemented; workspace tools stay denied, and screenshots, JSX export, tokens, comments and HTML import are later grains.",
+    dependsOn: ["agent-runtime", "document-model", "history", "collaboration", "studio-host"],
   },
   {
     id: "design-assurance",
@@ -247,7 +247,7 @@ const SUBSYSTEMS = [
     title: "Studio host",
     owner: "@lilac/studio-host",
     status: "stub",
-    boundary: "Single writer of an open project for the product surfaces: a loopback-only HTTP API (127.0.0.1, per-launch token, Host and Origin checks) over persistence, history and collaboration attribution, with undo/redo as committed inverse transactions, a server-sent change stream, and lock and recovery reporting (PC1). The editor, MCP endpoint, web mode and desktop shell build on it in later PC grains.",
+    boundary: "Single writer of an open project for the product surfaces: a loopback-only HTTP API (127.0.0.1, per-launch token, Host and Origin checks) over persistence, history and collaboration attribution, with undo/redo as committed inverse transactions, a server-sent change stream, and lock and recovery reporting (PC1); it serves the editor (PC4) and hosts the MCP endpoint and agent registry (PC5). Web mode and the desktop shell build on it in later PC grains.",
     dependsOn: ["persistence", "history", "collaboration", "network-policy"],
   },
   {

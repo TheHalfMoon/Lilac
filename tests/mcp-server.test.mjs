@@ -351,6 +351,11 @@ test("a damaged registry fails closed without stopping Lilac; the discovery file
       assert.deepEqual(listing.agents, []);
       assert.match(listing.problem, /not valid JSON/u);
       assert.ok(readdirSync(root).some((name) => name.startsWith(".lilac-agents.json.unreadable-")), "the damaged file is set aside");
+      // Connecting an agent writes a fresh registry, and the problem is no longer reported.
+      await fetch(`${host.url}/api/agents/create`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify({ name: "Fresh" }) });
+      const after = await fetch(`${host.url}/api/agents`, { headers: { authorization: `Bearer ${host.token}` } }).then((response) => response.json());
+      assert.equal(after.problem, undefined);
+      assert.equal(after.agents.length, 1);
     } finally {
       await host.close();
     }
