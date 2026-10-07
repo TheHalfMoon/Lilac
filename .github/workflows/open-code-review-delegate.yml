@@ -63,23 +63,27 @@ jobs:
           // Check-run annotation readable through the REST API; workflow-command
           // data must escape %, CR and LF.
           const escape = (value) => String(value).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
-          const crypto = require('node:crypto');
-          const digest = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-          const rules = JSON.parse(result.stdout);
-          const groups = (rules.groups ?? []).map((group) => `${group.group_id}:${group.source}:${(group.files ?? []).length}`);
-          const excluded = (preview.excluded_files ?? preview.excludedFiles ?? []).length;
-          const version = spawnSync('ocr', ['--version'], { encoding: 'utf8' }).stdout.split('\n')[0];
-          console.log(`::notice title=OCR delegation evidence::${escape([
-            `version=${version}`,
-            `reviewable=${paths.length}`,
-            `excluded=${excluded}`,
-            `rule_groups=${groups.join(',')}`,
-            `preview_sha256=${digest('ocr-preview.json')}`,
-            `rules_sha256=${digest('ocr-rules.json')}`,
-            `files=${paths.join(',')}`,
-          ].join('; '))}`);
+          try {
+            const crypto = require('node:crypto');
+            const digest = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+            const rules = JSON.parse(result.stdout);
+            const groups = (rules.groups ?? []).map((group) => `${group.group_id}:${group.source}:${(group.files ?? []).length}`);
+            const excluded = (preview.excluded_files ?? preview.excludedFiles ?? []).length;
+            const version = spawnSync('ocr', ['--version'], { encoding: 'utf8' }).stdout.split('\n')[0];
+            console.log(`::notice title=OCR delegation evidence::${escape([
+              `version=${version}`,
+              `reviewable=${paths.length}`,
+              `excluded=${excluded}`,
+              `rule_groups=${groups.join(',')}`,
+              `preview_sha256=${digest('ocr-preview.json')}`,
+              `rules_sha256=${digest('ocr-rules.json')}`,
+              `files=${paths.join(',')}`,
+            ].join('; '))}`);
+          } catch (error) {
+            console.log(`::warning title=OCR delegation evidence::annotation skipped: ${escape(error.message)}`);
+          }
           console.log(`OCR_REVIEWABLE_COUNT=${paths.length}`);
-          console.log(`OCR_REVIEWABLE_FILES=${paths.join(',')}`);
+          console.log(`OCR_REVIEWABLE_FILES=${escape(paths.join(','))}`);
           NODE
           echo '--- OCR PREVIEW ---'
           cat ocr-preview.json

@@ -120,11 +120,11 @@ jobs:
             `secret_leak=${secret.yes} (p=${secret.noul})`,
           ].join('; ');
           console.log(`::notice title=Jev exact-head evidence::${escape(summary)}`);
-          console.log(`JEV_PROVIDER=${evidence.provider}`);
-          console.log(`JEV_MODEL=${evidence.model}`);
-          console.log(`JEV_CHANGE_TYPE=${raw.answers.type.choice}`);
+          console.log(`JEV_PROVIDER=${escape(`${evidence.provider}`)}`);
+          console.log(`JEV_MODEL=${escape(`${evidence.model}`)}`);
+          console.log(`JEV_CHANGE_TYPE=${escape(`${raw.answers.type.choice}`)}`);
           console.log(`JEV_BREAKING=${raw.answers.breaking.yes}`);
-          console.log(`JEV_RISK=${raw.answers.risk.label} (${raw.answers.risk.score})`);
+          console.log(`JEV_RISK=${escape(`${raw.answers.risk.label} (${raw.answers.risk.score})`)}`);
           console.log(`JEV_SECRET_LEAK=${secret.yes} (p=${secret.noul})`);
 
           if (secret.yes === true) {

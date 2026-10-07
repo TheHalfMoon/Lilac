@@ -32,4 +32,4 @@ jobs:
         run: |
           # Check-run annotation readable through the REST API.
           totals=$(grep -E '^# (tests|pass|fail|cancelled|skipped|todo) [0-9]+$' check.log 2>/dev/null | sed 's/^# //' | paste -sd ' ' - || true)
-          echo "::notice title=Test totals::sha=${{ github.event.pull_request.head.sha || github.sha }} ${totals:-no test summary found}"
+          echo "::notice title=Test totals::head=${{ github.event.pull_request.head.sha || github.sha }} tested=${{ github.sha }} ${totals:-no test summary found}"
