@@ -33,3 +33,9 @@ jobs:
           # Check-run annotation readable through the REST API.
           totals=$(grep -E '^# (tests|pass|fail|cancelled|skipped|todo) [0-9]+$' check.log 2>/dev/null | sed 's/^# //' | paste -sd ' ' - || true)
           echo "::notice title=Test totals::head=${{ github.event.pull_request.head.sha || github.sha }} tested=${{ github.sha }} ${totals:-no test summary found}"
+          # Name the failing tests too, since job logs are not always readable. Annotation
+          # text escapes % and CR, and names are joined with ";"; at most 20, each cut to 200 characters.
+          failing=$(grep -E '^ *not ok [0-9]+ - ' check.log 2>/dev/null | sed -E 's/^ *not ok [0-9]+ - //' | cut -c1-200 | head -n 20 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | paste -sd ';' - || true)
+          if [ -n "$failing" ]; then
+            echo "::warning title=Failing tests::head=${{ github.event.pull_request.head.sha || github.sha }} ${failing}"
+          fi
