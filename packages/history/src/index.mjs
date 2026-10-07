@@ -5,8 +5,8 @@ import {
   getNodeIndex,
   getSubtreeNodeIds,
   isDescendant,
-  normalizeDocument,
   validateDocument,
+  withSortedNodes,
 } from "../../document-model/src/index.mjs";
 
 export class TransactionError extends Error {
@@ -320,7 +320,9 @@ export function applyTransaction(document, transaction, { enforceBaseRevision = 
     );
   }
 
-  const working = cloneDocument(document);
+  // The input was validated above, so a private structured clone suffices;
+  // cloneDocument/normalizeDocument would validate and clone it twice more.
+  const working = cloneData(document);
   const inverseOperations = [];
   const affectedNodeIds = new Set();
   for (const operation of normalizedTransaction.operations) {
@@ -329,7 +331,7 @@ export function applyTransaction(document, transaction, { enforceBaseRevision = 
     inverseOperations.unshift(inverse);
   }
   working.revision = document.revision + 1;
-  const normalizedDocument = normalizeDocument(working);
+  const normalizedDocument = withSortedNodes(working);
   validateDocument(normalizedDocument);
 
   const inverse = createTransaction({

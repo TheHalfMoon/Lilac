@@ -8,12 +8,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  DOCUMENT_LIMITS,
   DocumentInvariantError,
   createDocument,
   getNode,
   normalizeDocument,
   parseDocument,
   serializeDocument,
+  validateDocument,
 } from "../packages/document-model/src/index.mjs";
 import { PROJECT_FILES, createProject } from "../packages/persistence/src/index.ts";
 import { createPrng, propertySeeds } from "./support/prng.mjs";
@@ -201,9 +203,12 @@ function chainDocument(length) {
   return { schemaVersion: 1, id: "doc-1", name: "Chain", revision: 0, rootIds: ["n0"], nodes: Object.fromEntries(nodes.map((node) => [node.id, node])), metadata: {} };
 }
 
-test("a long parent chain validates without overflowing the stack", () => {
-  const text = serializeDocument(chainDocument(30000));
-  assert.equal(Object.keys(parseDocument(text).nodes).length, 30000);
+test("a parent chain at the depth limit validates and a deeper one fails closed", () => {
+  const limit = DOCUMENT_LIMITS.maxTreeDepth;
+  assert.equal(Object.keys(parseDocument(serializeDocument(chainDocument(limit))).nodes).length, limit);
+  assert.throws(() => validateDocument(chainDocument(limit + 1)), /deeper than 1024 levels/u);
+  // Far beyond the limit the iterative walk still fails with the limit error, not a stack overflow.
+  assert.throws(() => validateDocument(chainDocument(30000)), DocumentInvariantError);
 });
 
 test("validation is linear in the number of children", () => {
