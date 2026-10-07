@@ -220,9 +220,14 @@ export function normalizeDocument(document) {
 }
 
 export function getNode(document, nodeId) {
-  const node = typeof nodeId === "string" && Object.hasOwn(document.nodes, nodeId) ? document.nodes[nodeId] : undefined;
+  // Same key coercion as a property lookup (so getNode(doc, 5) still finds
+  // node "5"), but own keys only: inherited names such as toString are not nodes.
+  const key = typeof nodeId === "symbol" ? undefined : String(nodeId);
+  const node = key !== undefined && Object.hasOwn(document.nodes, key) ? document.nodes[key] : undefined;
   if (!node) {
-    throw new DocumentInvariantError(`Unknown node id ${nodeId}`);
+    let shown = "(symbol)";
+    if (key !== undefined) shown = key.length > 80 ? `${key.slice(0, 77)}...` : key;
+    throw new DocumentInvariantError(`Unknown node id ${shown}`);
   }
   return node;
 }

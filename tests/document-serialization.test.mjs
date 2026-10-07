@@ -251,6 +251,10 @@ test("getNode and duplicate-id errors are own-key and bounded", () => {
   for (const id of ["toString", "__proto__", "constructor"]) {
     assert.throws(() => getNode(document, id), DocumentInvariantError, id);
   }
+  // Property-key coercion is kept for compatibility with persisted transactions.
+  const numeric = createDocument({ id: "doc-1", nodes: [{ id: "5", type: "frame" }] });
+  assert.equal(getNode(numeric, 5).id, "5");
+  assert.throws(() => getNode(numeric, Symbol("5")), DocumentInvariantError);
   const long = "y".repeat(100000);
   assert.throws(
     () => createDocument({ id: "doc-1", nodes: [{ id: long, type: "frame" }], rootIds: [long, long] }),
