@@ -64,6 +64,7 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
     await page.keyboard.type("alpha");
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => document.getElementById("project-name").textContent === "alpha");
+    await waitRevision(page, 0);
     assert.equal(await page.locator("#dialog[open]").count(), 0);
 
     // Insert a box from the toolbar with the keyboard: the empty project gets a page too.
@@ -193,6 +194,7 @@ test("changes made elsewhere appear live, typing in progress is kept, and undo f
     await page.locator("#new-project-name").fill("live");
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => document.getElementById("project-name").textContent === "live");
+    await waitRevision(page, 0);
     await page.locator("#action-insert-box").click();
     await waitRevision(page, 1);
     const boxId = await page.locator("#layers [role=treeitem][aria-selected=true]").getAttribute("data-node-id");
@@ -354,6 +356,7 @@ test("a change that arrives while the editor is refreshing is not lost", browser
     await page.locator("#new-project-name").fill("first");
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => document.getElementById("project-name").textContent === "first");
+    await waitRevision(page, 0);
     await page.locator("#action-insert-box").click();
     await waitRevision(page, 1);
     // Hold the editor's next history fetch, so its refresh is in flight while changes land.
@@ -381,6 +384,81 @@ test("a change that arrives while the editor is refreshing is not lost", browser
     assert.equal(await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelectorAll("[data-lilac-id]").length), 2);
     assert.deepEqual(editor.foreign, []);
     assert.deepEqual(editor.errors, []);
+  } finally {
+    await editor.close();
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a project switch during a load ends on the project the host has open", browserTestOptions(), async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-switch-")));
+  const host = await startStudioHost({ projectsRoot: root, now });
+  const call = (path, body) => fetch(`${host.url}${path}`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify(body ?? {}) }).then((response) => response.json());
+  const insert = (revision, id) => call("/api/edit", { baseRevision: revision, intent: id, operations: [{ type: "insert-node", parentId: null, index: 0, node: { id, type: "element", props: { tag: "div" } } }] });
+  await call("/api/projects/create", { name: "b" });
+  await call("/api/projects/create", { name: "a" });
+  await insert(0, "a1");
+  const editor = await openEditor(host);
+  try {
+    const { page } = editor;
+    await waitRevision(page, 1);
+    // The next session answer is fetched at once but delivered late: it names b.
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    let hold = true;
+    await page.route("**/api/session", async (route) => {
+      if (!hold) return route.continue();
+      hold = false;
+      const response = await route.fetch();
+      await gate;
+      return route.fulfill({ response });
+    });
+    await call("/api/projects/open", { name: "b" });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await call("/api/projects/open", { name: "a" });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+    await insert(1, "a2");
+    await insert(2, "a3");
+    await waitRevision(page, 3);
+    assert.equal(await page.locator("#project-name").textContent(), "a");
+    assert.equal(await layerCount(page), 3);
+    assert.deepEqual(editor.foreign, []);
+    assert.deepEqual(editor.errors, []);
+  } finally {
+    await editor.close();
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a refused event stream is retried with backoff, not in a loop, and resumes", browserTestOptions(), async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-streams-")));
+  const host = await startStudioHost({ projectsRoot: root, now });
+  // Another token holder takes every stream slot.
+  const taken = [];
+  for (let index = 0; index < 32; index += 1) {
+    const controller = new AbortController();
+    await fetch(`${host.url}/api/events?token=${host.token}`, { signal: controller.signal });
+    taken.push(controller);
+  }
+  const editor = await openEditor(host);
+  try {
+    const { page } = editor;
+    let streams = 0;
+    page.on("request", (request) => {
+      if (request.url().includes("/api/events")) streams += 1;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    assert.ok(streams <= 4, `${streams} stream attempts in 3 s`);
+    // Slots free up: the editor reconnects, refreshes, and sees changes again.
+    for (const controller of taken) controller.abort();
+    await fetch(`${host.url}/api/projects/create`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify({ name: "later" }) });
+    await page.waitForFunction(() => document.getElementById("project-name").textContent === "later", null, { timeout: 20_000 });
+    assert.deepEqual(editor.foreign, []);
   } finally {
     await editor.close();
     await host.close();
