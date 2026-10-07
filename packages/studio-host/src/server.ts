@@ -29,6 +29,10 @@ export interface StudioHost {
 const LOOPBACK = "127.0.0.1";
 const MAX_BODY_BYTES = 1024 * 1024;
 const HEARTBEAT_MS = 15_000;
+const MAX_STREAMS = 32;
+// A stream whose client has stopped reading is dropped rather than buffered without bound;
+// the client reconnects and resynchronizes from GET /api/document.
+const MAX_STREAM_BUFFER = 1024 * 1024;
 const DEFAULT_OWNER: StudioActor = { actorId: "local-user", kind: "user", accessClass: "member", displayName: "You" };
 
 /**
@@ -51,29 +55,51 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   let unsubscribe: (() => void) | null = null;
   let port = 0;
 
-  const broadcast = (name: string, data: unknown) => {
-    const frame = `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const stream of streams) stream.write(frame);
+  const send = (stream: ServerResponse, frame: string) => {
+    if (stream.writableLength > MAX_STREAM_BUFFER) {
+      streams.delete(stream);
+      stream.destroy();
+      return;
+    }
+    stream.write(frame);
   };
-  const replaceSession = (next: StudioSession | null) => {
+  const broadcast = (name: string, data: unknown, id?: number) => {
+    const frame = `${id === undefined ? "" : `id: ${id}\n`}event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const stream of [...streams]) send(stream, frame);
+  };
+  const closeSession = () => {
     unsubscribe?.();
     unsubscribe = null;
     session?.close();
+    session = null;
+  };
+  // Open `open()`'s project in place of the current one. The current project stays open if
+  // the new one cannot be opened, unless it is the same project, which must be closed first
+  // so its own lock does not block the reopen.
+  const switchTo = (name: string, open: () => StudioSession) => {
+    if (session !== null && session.name === name) closeSession();
+    const next = open();
+    closeSession();
     session = next;
-    if (next) unsubscribe = next.onChange((event: ChangeEvent) => broadcast("change", event));
+    unsubscribe = next.onChange((event: ChangeEvent) => broadcast("change", event, event.revision));
     broadcast("project", describe());
   };
   const requireSession = (): StudioSession => {
     if (session === null) throw new StudioError(409, "no-project", "no project is open");
     return session;
   };
-  const describe = () => (session === null
-    ? { project: null }
-    : { project: session.name, revision: session.revision, canUndo: session.canUndo, canRedo: session.canRedo, recovery: session.recovery });
+  const describe = () => {
+    if (session === null) return { project: null };
+    if (session.failure !== null) return { project: session.name, failure: session.failure };
+    return { project: session.name, revision: session.revision, canUndo: session.canUndo(owner), canRedo: session.canRedo(owner), recovery: session.recovery };
+  };
 
+  // The token comes in the Authorization header, except on the event stream, which
+  // EventSource opens without custom headers and so may carry it in the query.
   const authorized = (request: IncomingMessage, url: URL): boolean => {
     const header = request.headers.authorization;
-    const presented = typeof header === "string" && header.startsWith("Bearer ") ? header.slice(7) : url.searchParams.get("token");
+    const queryAllowed = request.method === "GET" && url.pathname === "/api/events";
+    const presented = typeof header === "string" && header.startsWith("Bearer ") ? header.slice(7) : queryAllowed ? url.searchParams.get("token") : null;
     if (typeof presented !== "string") return false;
     const bytes = Buffer.from(presented);
     return bytes.length === tokenBytes.length && timingSafeEqual(bytes, tokenBytes);
@@ -88,8 +114,8 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
         .sort(),
     }),
     "POST /api/projects/create": (body) => {
-      replaceSession(null);
-      replaceSession(StudioSession.open({ projectsRoot, name: body?.name, owner, now, create: { title: body?.title } }));
+      const name = assertProjectName(body?.name);
+      switchTo(name, () => StudioSession.open({ projectsRoot, name, owner, now, create: { title: body?.title } }));
       return describe();
     },
     "POST /api/projects/open": (body) => {
@@ -98,12 +124,12 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       if (breakStaleLock !== undefined && (typeof breakStaleLock?.reason !== "string" || breakStaleLock.reason.trim() === "")) {
         throw new StudioError(400, "invalid-lock-override", "breakStaleLock needs a non-empty reason");
       }
-      replaceSession(null);
-      replaceSession(StudioSession.open({ projectsRoot, name, owner, now, ...(breakStaleLock ? { breakStaleLock: { reason: breakStaleLock.reason.slice(0, 500) } } : {}) }));
+      switchTo(name, () => StudioSession.open({ projectsRoot, name, owner, now, ...(breakStaleLock ? { breakStaleLock: { reason: breakStaleLock.reason.slice(0, 500) } } : {}) }));
       return describe();
     },
     "POST /api/projects/close": () => {
-      replaceSession(null);
+      closeSession();
+      broadcast("project", describe());
       return describe();
     },
     "GET /api/document": () => {
@@ -141,10 +167,11 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   }
 
   function openStream(response: ServerResponse): void {
+    if (streams.size >= MAX_STREAMS) throw new StudioError(503, "too-many-streams", `at most ${MAX_STREAMS} event streams may be open`);
     response.writeHead(200, { ...SECURITY_HEADERS, "content-type": "text/event-stream; charset=utf-8", connection: "keep-alive" });
     response.write(`event: project\ndata: ${JSON.stringify(describe())}\n\n`);
     streams.add(response);
-    const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), HEARTBEAT_MS);
+    const heartbeat = setInterval(() => send(response, ": keep-alive\n\n"), HEARTBEAT_MS);
     heartbeat.unref();
     response.on("close", () => {
       clearInterval(heartbeat);
@@ -152,6 +179,10 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     });
   }
 
+  // Loopback only, but a stuck client still must not hold sockets open indefinitely.
+  server.headersTimeout = 10_000;
+  server.requestTimeout = 30_000;
+  server.maxConnections = 128;
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port ?? 0, LOOPBACK, () => resolve());
@@ -173,7 +204,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     async close() {
       for (const stream of streams) stream.end();
       streams.clear();
-      replaceSession(null);
+      closeSession();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeAllConnections?.();
     },

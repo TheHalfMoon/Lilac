@@ -57,3 +57,34 @@ So they are durable, attributed history like any other edit. The undo stack itse
 
 ## Catalog
 `studio-host` is a new subsystem (owner `@lilac/studio-host`, status `stub` for this slice). It depends on persistence, history, collaboration and network-policy, and appears in `IMPLEMENTED_PACKAGES`.
+
+## Review delta 1
+
+Two judges reviewed the first head: a combined correctness judge and a security judge. Their probes are in the session scratchpad. Must-fix findings:
+
+- **Unbounded collaboration log.** The session kept one collaboration room, whose fact log grew with every edit. Each commit re-normalized the whole log (the judge measured 1.2 s and then 8.2 s per 200 edits), and the log would eventually fill at 16,384 facts. Attribution already lives in the persisted transaction, so the room is now built per commit from the session's grants. New test 8 runs 1,800 edits and requires the sixth batch to stay near the first.
+- **A failed open or create closed the current project.** The new project is now opened before the current one is closed. The current one is closed first only when it is the same project, whose own lock would otherwise block the reopen.
+  - A missing project is now `404 project-not-found`.
+  - A corrupt or unreadable project is `422 project-unreadable`.
+  - A project from another version is `422 project-version`.
+  - New test 5 covers these.
+- **Internals in errors.** Edit failures used to forward any error message, including a filesystem error carrying an absolute path, as `400 invalid-edit`. Now only typed, path-free validation errors (history, document-model, collaboration validation and store validation) are echoed. A store that cannot be written, or whose files changed, marks the session `project-needs-reopen` (409). `GET /api/session` reports that state, and no path is shown. Anything else is the generic 500. New test 6 covers this.
+
+Also taken:
+- **Project names.** A project directory that is a symbolic link out of the root is refused (`invalid-project`). Windows device names (CON, NUL, COM1 and the like) and names ending in a dot are refused.
+- **Locks.** `breakStaleLock` refuses to break a lock whose recorded process is still running (`409 lock-held-by-live-process`). The lock test now overrides a lock left by a process that no longer exists.
+- **Event stream.**
+  - At most 32 streams can be open.
+  - A stream whose client stops reading is dropped once 1 MiB is buffered; the client resynchronizes from `GET /api/document`.
+  - Change events carry an SSE `id` (the revision) and the committed `operations`, so a client can apply a change without refetching.
+- **Token.** The query token is accepted only on `GET /api/events`.
+- **Limits.** An edit may hold at most 5,000 operations (413). Header and request timeouts are 10 s and 30 s, with at most 128 connections.
+- **Undo.**
+  - Undo and redo stacks are per actor, so an agent's edits (PC5) never enter the user's undo.
+  - An undo or redo that history can no longer apply is a `409` conflict and is kept on the stack.
+  - New test 7 checks every operation type (insert, remove of a deep subtree, move, set-props with unset, restore-subtree, and several operations per edit). Undo-all restores the start and redo-all the end, both deep-equal, and the persisted state equals the session's after reopen.
+- **Create.** A failed create removes the directory it made.
+
+Recorded, not changed:
+- The undo stack holds operations and inverses for up to 200 edits per actor, which is bounded by the 5,000-operation cap per edit.
+- The pattern for the editor's token is set in PC4: a one-time bootstrap rather than a token in the page URL.

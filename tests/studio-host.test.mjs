@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { startStudioHost } from "../packages/studio-host/src/index.ts";
+import { MAX_OPERATIONS_PER_EDIT, StudioSession, startStudioHost } from "../packages/studio-host/src/index.ts";
 
 // PC1 (#146): the studio host composes persistence, history and collaboration behind a
 // loopback-only API, and streams attributed changes. Advances PC gate 4.
@@ -142,6 +142,9 @@ test("create, edit, undo and redo are attributed transactions streamed live and 
     const stale = await api(host, "POST", "/api/edit", { baseRevision: 0, operations: [insertFrame("frame-2")] });
     assert.equal(stale.status, 409);
     assert.equal(stale.json.error.code, "stale-revision");
+    assert.equal(edit.json.operations[0].node.id, "frame-1", "the event carries the committed operations");
+    const tooMany = await api(host, "POST", "/api/edit", { baseRevision: 1, operations: Array.from({ length: MAX_OPERATIONS_PER_EDIT + 1 }, (_, i) => insertFrame(`x${i}`)) });
+    assert.equal(tooMany.status, 413);
     const invalid = await api(host, "POST", "/api/edit", { baseRevision: 1, operations: [{ type: "set-props", nodeId: "missing", set: { a: 1 } }] });
     assert.equal(invalid.status, 400);
     assert.equal(invalid.json.error.code, "invalid-edit");
@@ -203,10 +206,19 @@ test("locks and recovery are reported, and a stale lock is replaced only with a 
     assert.equal(locked.status, 409);
     assert.equal(locked.json.error.code, "project-locked");
     assert.equal((await api(second, "POST", "/api/projects/open", { name: "shared", breakStaleLock: { reason: " " } })).json.error.code, "invalid-lock-override");
+    // The holder (this test process) is alive, so its lock is not stale and is not broken.
+    const live = await api(second, "POST", "/api/projects/open", { name: "shared", breakStaleLock: { reason: "the other studio crashed" } });
+    assert.equal(live.status, 409);
+    assert.equal(live.json.error.code, "lock-held-by-live-process");
+    assert.equal((await api(first, "GET", "/api/session")).json.revision, 1, "the live holder keeps the project");
+    // A lock left by a process that no longer exists is broken with a reason, and reported.
+    await first.close();
+    const lockPath = join(root, "shared", ".lilac", "lock");
+    writeFileSync(lockPath, JSON.stringify({ owner: "crashed-studio", pid: 2 ** 22 + 4321, at: "2026-10-07T11:00:00.000Z", nonce: "dead" }));
     const taken = await api(second, "POST", "/api/projects/open", { name: "shared", breakStaleLock: { reason: "the other studio crashed" } });
     assert.equal(taken.status, 200);
     assert.equal(taken.json.recovery.lockOverride.reason, "the other studio crashed");
-    assert.equal(taken.json.recovery.lockOverride.previous.owner, "local-user");
+    assert.equal(taken.json.recovery.lockOverride.previous.owner, "crashed-studio");
     await api(second, "POST", "/api/projects/close");
 
     // A torn journal tail from a crash is repaired on open and reported.
@@ -224,4 +236,116 @@ test("locks and recovery are reported, and a stale lock is replaced only with a 
 
 test("the host refuses a projects root that is not a directory", async () => {
   await assert.rejects(() => startStudioHost({ projectsRoot: join(tmpdir(), "lilac-missing-root-for-test") }), /projectsRoot/u);
+});
+
+test("a failed open or create keeps the current project, and failures have specific codes", () => withHost(async (host, root) => {
+  await api(host, "POST", "/api/projects/create", { name: "keep" });
+  const missing = await api(host, "POST", "/api/projects/open", { name: "nope" });
+  assert.equal(missing.status, 404);
+  assert.equal(missing.json.error.code, "project-not-found");
+  assert.equal((await api(host, "POST", "/api/projects/create", { name: "keep" })).json.error.code, "project-exists");
+  for (const name of ["CON", "nul.txt", "com1", "trailing."]) assert.equal((await api(host, "POST", "/api/projects/create", { name })).json.error.code, "invalid-project-name", name);
+  mkdirSync(join(root, "plain"));
+  assert.equal((await api(host, "POST", "/api/projects/open", { name: "plain" })).json.error.code, "project-not-found", "a plain directory is not a project");
+  await api(host, "POST", "/api/projects/create", { name: "broken" });
+  await api(host, "POST", "/api/projects/open", { name: "keep" });
+  writeFileSync(join(root, "broken", ".lilac", "project.json"), "{not json");
+  const unreadable = await api(host, "POST", "/api/projects/open", { name: "broken" });
+  assert.equal(unreadable.status, 422);
+  assert.equal(unreadable.json.error.code, "project-unreadable");
+  // A project directory that is a link to somewhere outside the root is refused.
+  const outside = realpathSync(mkdtempSync(join(tmpdir(), "lilac-outside-")));
+  try {
+    renameSync(join(root, "broken"), join(outside, "victim"));
+    symlinkSync(join(outside, "victim"), join(root, "link"));
+    assert.equal((await api(host, "POST", "/api/projects/open", { name: "link" })).json.error.code, "invalid-project");
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+  assert.equal((await api(host, "GET", "/api/session")).json.project, "keep", "every failure above left the open project open");
+  // The query token is accepted only by the event stream.
+  assert.equal((await raw(host, { method: "POST", path: `/api/projects/close?token=${host.token}` })).status, 401);
+}));
+
+test("a store that can no longer be written is reported as needing a reopen, without paths", () => withHost(async (host, root) => {
+  await api(host, "POST", "/api/projects/create", { name: "p" });
+  await api(host, "POST", "/api/edit", { baseRevision: 0, operations: [insertFrame("a")] });
+  appendFileSync(join(root, "p", ".lilac", "journal.log"), "tampered\n");
+  const failed = await api(host, "POST", "/api/edit", { baseRevision: 1, operations: [insertFrame("b")] });
+  assert.equal(failed.status, 409);
+  assert.equal(failed.json.error.code, "project-needs-reopen");
+  assert.ok(!failed.json.error.message.includes(root), "no filesystem path is reported");
+  assert.equal((await api(host, "POST", "/api/undo")).json.error.code, "project-needs-reopen");
+  const session = (await api(host, "GET", "/api/session")).json;
+  assert.equal(session.project, "p");
+  assert.match(session.failure, /reopen/u);
+}));
+
+test("undo and redo restore every operation type exactly, across reopen", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-undo-")));
+  const owner = { actorId: "local-user", kind: "user", accessClass: "member", displayName: "You" };
+  const strip = ({ revision, ...rest }) => JSON.stringify(rest);
+  const node = (id, props = {}) => ({ id, type: "frame", props });
+  let session = StudioSession.open({ projectsRoot: root, name: "p", owner, now, create: {} });
+  const edit = (operations) => session.edit(owner, { baseRevision: session.revision, operations });
+  try {
+    edit([{ type: "insert-node", node: node("r", { z: 1, a: 2, m: 3 }), parentId: null }]);
+    edit([{ type: "insert-node", node: node("a"), parentId: "r" }, { type: "insert-node", node: node("b"), parentId: "a" }, { type: "insert-node", node: node("c"), parentId: "b" }, { type: "insert-node", node: node("d", { k: [1, { x: 2 }] }), parentId: "c" }, { type: "insert-node", node: node("e"), parentId: "r" }]);
+    session.close();
+    session = StudioSession.open({ projectsRoot: root, name: "p", owner, now });
+    const start = strip(session.document);
+    for (const operations of [
+      [{ type: "set-props", nodeId: "r", set: { q: 9, a: 5 }, unset: ["z"] }],
+      [{ type: "move-node", nodeId: "b", parentId: "e", index: 0 }, { type: "set-props", nodeId: "d", unset: ["k"] }],
+      [{ type: "remove-node", nodeId: "a" }],
+      [{ type: "remove-node", nodeId: "b" }, { type: "insert-node", node: node("f"), parentId: "e" }],
+      [{ type: "move-node", nodeId: "e", parentId: null, index: 0 }],
+      [{ type: "restore-subtree", rootId: "g", parentId: "e", index: 0, nodes: [{ id: "g", type: "frame", props: {}, children: ["h"] }, { id: "h", type: "frame", props: { deep: { a: [1] } }, parentId: "g" }] }],
+    ]) edit(operations);
+    const final = strip(session.document);
+    while (session.canUndo()) session.undo(owner);
+    assert.deepEqual(JSON.parse(strip(session.document)), JSON.parse(start), "undo-all restores the start");
+    while (session.canRedo()) session.redo(owner);
+    assert.deepEqual(JSON.parse(strip(session.document)), JSON.parse(final), "redo-all restores the end");
+    const inMemory = strip(session.document);
+    session.close();
+    session = StudioSession.open({ projectsRoot: root, name: "p", owner, now });
+    assert.equal(strip(session.document), inMemory, "the persisted state equals the session's");
+    // Undo stacks are per actor; a new edit clears the editing actor's redo.
+    const agent = { actorId: "agent-1", kind: "agent", accessClass: "service", displayName: "Agent", ownerActorId: "local-user" };
+    assert.equal(session.canUndo(agent), false);
+    edit([{ type: "insert-node", node: node("tmp"), parentId: null }]);
+    edit([{ type: "remove-node", nodeId: "tmp" }]);
+    session.undo(owner);
+    session.edit(owner, { baseRevision: session.revision, operations: [{ type: "remove-node", nodeId: "tmp" }] });
+    assert.equal(session.canRedo(), false, "a new edit clears redo");
+    session.undo(owner);
+    assert.ok(session.document.nodes.tmp, "undoing the second removal restores tmp");
+  } finally {
+    session.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("many edits in one session keep a flat per-edit cost", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-many-")));
+  const owner = { actorId: "local-user", kind: "user", accessClass: "member", displayName: "You" };
+  const session = StudioSession.open({ projectsRoot: root, name: "p", owner, now, create: {} });
+  try {
+    session.edit(owner, { baseRevision: 0, operations: [insertFrame("r")] });
+    const batch = () => {
+      const start = performance.now();
+      for (let i = 0; i < 300; i += 1) session.edit(owner, { baseRevision: session.revision, operations: [{ type: "set-props", nodeId: "r", set: { i } }] });
+      return performance.now() - start;
+    };
+    const first = batch();
+    for (let i = 0; i < 4; i += 1) batch();
+    const last = batch();
+    assert.equal(session.revision, 1 + 300 * 6);
+    // The collaboration log is not accumulated, so the sixth batch is not much slower than the first.
+    assert.ok(last < first * 3 + 200, `first batch ${first.toFixed(0)} ms, sixth ${last.toFixed(0)} ms`);
+  } finally {
+    session.close();
+    rmSync(root, { recursive: true, force: true });
+  }
 });

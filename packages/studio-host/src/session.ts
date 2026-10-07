@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { LocalCollaborationRoom, createCollaborationState } from "@lilac/collaboration";
 import { createDocument } from "@lilac/document-model";
 import { createHistoryState } from "@lilac/history";
-import { PersistenceLockError, createProject, openProject, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
+import { createProject, openProject, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
 import { StudioError } from "./errors.ts";
 
 /** Who is acting. People act through the editor; agents act through MCP (PC5). */
@@ -17,7 +17,10 @@ export interface StudioActor {
   workerTaskId?: string;
 }
 
-/** One committed change, as the change stream reports it. */
+/**
+ * One committed change, as the change stream reports it. `operations` are the committed
+ * operations, so a client holding revision `revision - 1` can apply them itself.
+ */
 export interface ChangeEvent {
   type: "transaction";
   revision: number;
@@ -27,6 +30,7 @@ export interface ChangeEvent {
   intent: string | null;
   tool: string | null;
   affectedNodeIds: string[];
+  operations: unknown[];
   undoOf?: string;
   redoOf?: string;
 }
@@ -48,77 +52,96 @@ interface UndoEntry {
 // The local person at the keyboard owns the document; agents get grants they are given.
 const OWNER_CAPABILITIES = ["read", "presence", "document-write", "comments", "admin"];
 const PROJECT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
+// Names Windows reserves for devices, with or without an extension.
+const RESERVED_NAME = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/iu;
 const MAX_UNDO = 200;
+export const MAX_OPERATIONS_PER_EDIT = 5_000;
 
 export function assertProjectName(name: unknown): string {
-  if (typeof name !== "string" || !PROJECT_NAME.test(name) || name.includes("..")) {
-    throw new StudioError(400, "invalid-project-name", "project name must be 1-64 letters, digits, dots, dashes or underscores");
+  if (typeof name !== "string" || !PROJECT_NAME.test(name) || name.includes("..") || name.endsWith(".") || RESERVED_NAME.test(name)) {
+    throw new StudioError(400, "invalid-project-name", "project name must be 1-64 letters, digits, dots, dashes or underscores, not end in a dot, and not be a reserved device name");
   }
   return name;
 }
 
 /**
  * One open project: the persisted store is the single writer and the only document authority;
- * collaboration attributes each edit; undo and redo commit inverse transactions, so they are
- * themselves durable, attributed history. The undo stack lives for the session only.
+ * collaboration authorizes and attributes each edit; undo and redo commit inverse
+ * transactions, so they are themselves durable, attributed history.
+ *
+ * Undo stacks are per actor and live for the session only. An actor's undo applies the
+ * inverse of that actor's last change; if another actor's later edit made it inapplicable,
+ * history refuses it and the undo is reported as a conflict (409) and kept.
  */
 export class StudioSession {
   readonly name: string;
   readonly owner: StudioActor;
   readonly recovery: Readonly<RecoveryReport>;
   #store: ProjectStore;
-  #room: LocalCollaborationRoom;
+  #documentId: string;
+  #grants: Array<{ principalKind: "actor"; principalId: string; capabilities: string[] }>;
   #now: () => string;
-  #undo: UndoEntry[] = [];
-  #redo: UndoEntry[] = [];
+  #undo = new Map<string, UndoEntry[]>();
+  #redo = new Map<string, UndoEntry[]>();
   #listeners = new Set<(event: ChangeEvent) => void>();
   #closed = false;
+  #failure: string | null = null;
 
   private constructor(name: string, store: ProjectStore, owner: StudioActor, now: () => string) {
     this.name = name;
     this.owner = owner;
     this.recovery = store.recovery;
     this.#store = store;
+    this.#documentId = store.document.id;
+    this.#grants = [{ principalKind: "actor", principalId: owner.actorId, capabilities: OWNER_CAPABILITIES }];
     this.#now = now;
-    this.#room = new LocalCollaborationRoom(createCollaborationState(store.document.id, [
-      { principalKind: "actor", principalId: owner.actorId, capabilities: OWNER_CAPABILITIES },
-    ]));
   }
 
-  /** Open `<projectsRoot>/<name>`, creating it first when `create` is set. */
+  /**
+   * Open `<projectsRoot>/<name>`, creating it first when `create` is set. The project
+   * directory must be a real directory inside the root, not a link to somewhere else.
+   */
   static open(input: { projectsRoot: string; name: string; owner: StudioActor; create?: { title?: string }; breakStaleLock?: { reason: string }; now: () => string }): StudioSession {
     const name = assertProjectName(input.name);
     const root = `${input.projectsRoot}/${name}`;
     const at = input.now();
-    if (input.create !== undefined) {
-      createProjectDirectory(root, name, input.create.title, at);
-    }
-    let store: ProjectStore;
+    if (input.create !== undefined) createProjectDirectory(root, name, input.create.title, at);
+    let entry;
     try {
-      store = openProject(root, { owner: input.owner.actorId, at, ...(input.breakStaleLock ? { breakStaleLock: input.breakStaleLock } : {}) });
-    } catch (error) {
-      if (error instanceof PersistenceLockError) throw new StudioError(409, "project-locked", error.message);
-      throw error;
+      entry = lstatSync(root);
+    } catch {
+      throw new StudioError(404, "project-not-found", `no project named ${name}`);
     }
-    return new StudioSession(name, store, input.owner, input.now);
+    if (entry.isSymbolicLink() || !entry.isDirectory()) throw new StudioError(400, "invalid-project", `${name} is not a project directory inside the projects root`);
+    if (input.breakStaleLock !== undefined) assertLockHolderGone(root);
+    try {
+      return new StudioSession(name, openProject(root, { owner: input.owner.actorId, at, ...(input.breakStaleLock ? { breakStaleLock: input.breakStaleLock } : {}) }), input.owner, input.now);
+    } catch (error) {
+      throw asOpenError(error, name);
+    }
   }
 
   get document() {
-    this.#assertOpen();
+    this.#assertUsable();
     return this.#store.document;
   }
 
   get revision(): number {
-    this.#assertOpen();
+    this.#assertUsable();
     return this.#store.revision;
   }
 
-  get canUndo(): boolean {
-    return this.#undo.length > 0;
+  /** Why the project must be reopened, or null when it is healthy. */
+  get failure(): string | null {
+    return this.#failure;
   }
 
-  get canRedo(): boolean {
-    return this.#redo.length > 0;
+  canUndo(actor: StudioActor = this.owner): boolean {
+    return (this.#undo.get(actor.actorId)?.length ?? 0) > 0;
+  }
+
+  canRedo(actor: StudioActor = this.owner): boolean {
+    return (this.#redo.get(actor.actorId)?.length ?? 0) > 0;
   }
 
   onChange(listener: (event: ChangeEvent) => void): () => void {
@@ -128,45 +151,52 @@ export class StudioSession {
 
   /** Commit an edit as `actor`. A stale `baseRevision` is refused rather than rebased. */
   edit(actor: StudioActor, input: EditInput, transport: "http" | "mcp" | "agent" = "http"): ChangeEvent {
-    this.#assertOpen();
+    this.#assertUsable();
     if (input === null || typeof input !== "object" || !Number.isSafeInteger(input.baseRevision)) throw new StudioError(400, "invalid-edit", "baseRevision must be an integer");
     if (input.baseRevision !== this.#store.revision) {
       throw new StudioError(409, "stale-revision", `edit is based on revision ${input.baseRevision}; the project is at ${this.#store.revision}`);
     }
     if (!Array.isArray(input.operations) || input.operations.length === 0) throw new StudioError(400, "invalid-edit", "operations must be a non-empty array");
+    if (input.operations.length > MAX_OPERATIONS_PER_EDIT) throw new StudioError(413, "too-many-operations", `an edit may hold at most ${MAX_OPERATIONS_PER_EDIT} operations`);
     const intent = typeof input.intent === "string" ? input.intent.slice(0, 500) : null;
     const tool = typeof input.tool === "string" ? input.tool.slice(0, 200) : null;
     const { event, inverse } = this.#commit(actor, transport, { operations: input.operations, intent, tool });
-    this.#pushUndo({ transactionId: event.transactionId, intent, operations: input.operations, inverse });
-    this.#redo = [];
+    this.#push(this.#undo, actor, { transactionId: event.transactionId, intent, operations: input.operations, inverse });
+    this.#redo.delete(actor.actorId);
     return event;
   }
 
-  /** Undo the last change made in this session by committing its inverse. */
+  /** Undo `actor`'s last change in this session by committing its inverse. */
   undo(actor: StudioActor): ChangeEvent {
-    this.#assertOpen();
-    const entry = this.#undo.at(-1);
+    this.#assertUsable();
+    const stack = this.#undo.get(actor.actorId);
+    const entry = stack?.at(-1);
     if (entry === undefined) throw new StudioError(409, "nothing-to-undo", "there is nothing to undo");
-    const { event } = this.#commit(actor, "http", { operations: entry.inverse, intent: entry.intent === null ? "Undo" : `Undo: ${entry.intent}`.slice(0, 500), tool: "lilac:undo", link: { undoOf: entry.transactionId } });
-    this.#undo.pop();
-    this.#redo.push(entry);
+    const { event } = this.#commit(actor, "http", { operations: entry.inverse, intent: entry.intent === null ? "Undo" : `Undo: ${entry.intent}`.slice(0, 500), tool: "lilac:undo", link: { undoOf: entry.transactionId } }, "undo-conflict");
+    stack!.pop();
+    this.#push(this.#redo, actor, entry);
     return event;
   }
 
-  /** Re-apply the last undone change; the state is exactly as before it, so its operations apply. */
+  /** Re-apply `actor`'s last undone change. */
   redo(actor: StudioActor): ChangeEvent {
-    this.#assertOpen();
-    const entry = this.#redo.at(-1);
+    this.#assertUsable();
+    const stack = this.#redo.get(actor.actorId);
+    const entry = stack?.at(-1);
     if (entry === undefined) throw new StudioError(409, "nothing-to-redo", "there is nothing to redo");
-    const { event, inverse } = this.#commit(actor, "http", { operations: entry.operations, intent: entry.intent, tool: "lilac:redo", link: { redoOf: entry.transactionId } });
-    this.#redo.pop();
-    this.#pushUndo({ transactionId: event.transactionId, intent: entry.intent, operations: entry.operations, inverse });
+    const { event, inverse } = this.#commit(actor, "http", { operations: entry.operations, intent: entry.intent, tool: "lilac:redo", link: { redoOf: entry.transactionId } }, "redo-conflict");
+    stack!.pop();
+    this.#push(this.#undo, actor, { transactionId: event.transactionId, intent: entry.intent, operations: entry.operations, inverse });
     return event;
   }
 
   checkpoint(): { revision: number } {
-    this.#assertOpen();
-    return { revision: this.#store.checkpoint().revision };
+    this.#assertUsable();
+    try {
+      return { revision: this.#store.checkpoint().revision };
+    } catch (error) {
+      throw this.#storeFailure(error);
+    }
   }
 
   close(): void {
@@ -176,21 +206,25 @@ export class StudioSession {
     this.#store.close();
   }
 
-  #pushUndo(entry: UndoEntry): void {
-    this.#undo.push(entry);
-    if (this.#undo.length > MAX_UNDO) this.#undo.shift();
+  #push(stacks: Map<string, UndoEntry[]>, actor: StudioActor, entry: UndoEntry): void {
+    const stack = stacks.get(actor.actorId) ?? [];
+    stack.push(entry);
+    if (stack.length > MAX_UNDO) stack.shift();
+    stacks.set(actor.actorId, stack);
   }
 
-  #commit(actor: StudioActor, transport: "http" | "mcp" | "agent", input: { operations: unknown[]; intent: string | null; tool: string | null; link?: { undoOf?: string; redoOf?: string } }): { event: ChangeEvent; inverse: unknown[] } {
+  #commit(actor: StudioActor, transport: "http" | "mcp" | "agent", input: { operations: unknown[]; intent: string | null; tool: string | null; link?: { undoOf?: string; redoOf?: string } }, conflictCode?: string): { event: ChangeEvent; inverse: unknown[] } {
     const at = this.#now();
     const transactionId = `tx-${randomUUID()}`;
     let attributed: Record<string, unknown>;
     let inverse: unknown[];
     let affectedNodeIds: string[];
     try {
-      // Collaboration authorizes the actor and attributes the transaction; the store is the
-      // only writer and re-validates it against the persisted document before appending.
-      const result = this.#room.commitTransaction({
+      // Collaboration authorizes the actor and attributes the transaction. The room is built
+      // per commit from the session's grants: its fact log is not kept (attribution lives in
+      // the persisted transaction), so commits stay O(document), not O(session length).
+      const room = new LocalCollaborationRoom(createCollaborationState(this.#documentId, this.#grants));
+      const result = room.commitTransaction({
         actor,
         transport,
         history: createHistoryState(this.#store.document),
@@ -212,13 +246,13 @@ export class StudioSession {
       inverse = entry.inverse.operations;
       affectedNodeIds = [...result.summary.affectedNodeIds];
     } catch (error) {
-      throw asEditError(error);
+      throw asEditError(error, conflictCode);
     }
     let committed: { revision: number };
     try {
       committed = this.#store.commit(attributed);
     } catch (error) {
-      throw asEditError(error);
+      throw this.#storeFailure(error);
     }
     const event: ChangeEvent = {
       type: "transaction",
@@ -229,6 +263,7 @@ export class StudioSession {
       intent: input.intent,
       tool: input.tool,
       affectedNodeIds,
+      operations: attributed.operations as unknown[],
       ...(input.link?.undoOf ? { undoOf: input.link.undoOf } : {}),
       ...(input.link?.redoOf ? { redoOf: input.link.redoOf } : {}),
     };
@@ -242,27 +277,84 @@ export class StudioSession {
     return { event, inverse };
   }
 
-  #assertOpen(): void {
-    if (this.#closed) throw new StudioError(409, "project-closed", "the project is closed");
+  // The store refused or failed to write: an edit the collaboration layer accepted that the
+  // store's own validation rejects is still the client's fault; anything else means the
+  // project must be reopened, and nothing about the filesystem is reported to the client.
+  #storeFailure(error: unknown): StudioError {
+    const name = error instanceof Error ? error.name : "";
+    const message = error instanceof Error ? error.message : "";
+    const storeBroken = /reopen|changed outside|changed since|no longer holds|changed while|lock/iu.test(message);
+    if ((name === "PersistenceValidationError" || name === "PersistenceCorruptionError") && !storeBroken) {
+      return new StudioError(400, "invalid-edit", message.slice(0, 300));
+    }
+    this.#failure = "the project's files changed or could not be written; reopen the project";
+    return new StudioError(409, "project-needs-reopen", this.#failure);
   }
+
+  #assertUsable(): void {
+    if (this.#closed) throw new StudioError(409, "project-closed", "the project is closed");
+    if (this.#failure !== null) throw new StudioError(409, "project-needs-reopen", this.#failure);
+  }
+}
+
+/** Refuse to break a lock whose holder is a process still running on this machine. */
+function assertLockHolderGone(root: string): void {
+  const lockPath = `${root}/.lilac/lock`;
+  if (!existsSync(lockPath)) return;
+  let pid: unknown;
+  try {
+    pid = JSON.parse(readFileSync(lockPath, "utf8").slice(0, 4096)).pid;
+  } catch {
+    return; // an unreadable lock is exactly what an override is for
+  }
+  if (!Number.isSafeInteger(pid) || (pid as number) <= 0) return;
+  let alive = false;
+  try {
+    process.kill(pid as number, 0);
+    alive = true;
+  } catch (error) {
+    alive = (error as NodeJS.ErrnoException)?.code === "EPERM";
+  }
+  // Our own pid holding it means another session in this process: still live.
+  if (alive) throw new StudioError(409, "lock-held-by-live-process", "the project is open in a process that is still running");
 }
 
 function createProjectDirectory(root: string, name: string, title: string | undefined, at: string): void {
   const document = createDocument({ id: `doc-${randomUUID()}`, name: typeof title === "string" && title.trim() !== "" ? title.slice(0, 200) : name });
   try {
     mkdirSync(root, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "EEXIST") throw new StudioError(409, "project-exists", `${name} already exists`);
+    throw error;
+  }
+  try {
     createProject(root, { projectId: `project-${randomUUID()}`, document, createdAt: at });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === "EEXIST" || (error instanceof Error && /already exists/u.test(error.message))) throw new StudioError(409, "project-exists", `project ${name} already exists`);
+    // Do not leave an empty directory that would block the name.
+    rmSync(root, { recursive: true, force: true });
     throw error;
   }
 }
 
+// Messages are passed through only for errors whose messages are fixed, path-free
+// descriptions of the request; anything else becomes the generic internal error.
+const CLIENT_ERRORS = new Set(["TransactionError", "DocumentInvariantError", "CollaborationValidationError"]);
 
-function asEditError(error: unknown): StudioError {
+function asEditError(error: unknown, conflictCode?: string): Error {
   const name = error instanceof Error ? error.name : "";
-  const message = error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300);
+  const message = error instanceof Error ? error.message.slice(0, 300) : "";
   if (name === "CollaborationAuthorizationError") return new StudioError(403, "forbidden", message);
-  if (name === "PersistenceLockError") return new StudioError(409, "project-locked", message);
-  return new StudioError(400, "invalid-edit", message);
+  if (CLIENT_ERRORS.has(name)) return conflictCode ? new StudioError(409, conflictCode, `the change can no longer be applied: ${message}`) : new StudioError(400, "invalid-edit", message);
+  if (error instanceof RangeError) return new StudioError(400, "invalid-edit", "the edit is too deeply nested");
+  return error instanceof Error ? error : new Error("edit failed");
+}
+
+function asOpenError(error: unknown, name: string): Error {
+  const kind = error instanceof Error ? error.name : "";
+  const message = error instanceof Error ? error.message : "";
+  if (kind === "PersistenceLockError") return new StudioError(409, "project-locked", message.slice(0, 300));
+  if (kind === "PersistenceValidationError" && /no Lilac project exists/u.test(message)) return new StudioError(404, "project-not-found", `no project named ${name}`);
+  if (kind === "PersistenceVersionError") return new StudioError(422, "project-version", message.slice(0, 300));
+  if (kind === "PersistenceCorruptionError" || kind === "PersistenceValidationError") return new StudioError(422, "project-unreadable", message.slice(0, 300));
+  return error instanceof Error ? error : new Error("open failed");
 }
