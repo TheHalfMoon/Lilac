@@ -25,14 +25,17 @@ function nodeIds(document) {
 
 function randomOperation(prng, document, counter) {
   const ids = nodeIds(document);
-  const kind = prng.pick(["insert-node", "remove-node", "set-props", "move-node", "set-props", "insert-node"]);
+  // Weighted: inserts and prop edits twice as often as removes and moves.
+  const kind = prng.pick(["insert-node", "insert-node", "set-props", "set-props", "remove-node", "move-node"]);
   const anyParent = () => (prng.next() < 0.25 || ids.length === 0 ? null : prng.pick(ids));
   if (kind === "insert-node" || ids.length === 0) {
+    const reserved = prng.next() < 0.1;
+    const insertedId = reserved ? prng.pick(["__proto__", "constructor", "toString"]) : `n${counter.next++}`;
     return {
       type: "insert-node",
       parentId: anyParent(),
       index: prng.pick([undefined, 0, 1, 99]),
-      node: { id: prng.next() < 0.1 ? prng.pick(["__proto__", "constructor", "toString"]) : `n${counter.next++}`, type: prng.pick(["frame", "text", "group"]), props: { x: prng.int(0, 9) } },
+      node: { id: insertedId, type: prng.pick(["frame", "text", "group"]), props: { x: prng.int(0, 9) } },
     };
   }
   const nodeId = prng.pick(ids);
@@ -74,7 +77,19 @@ function initialDocument() {
   });
 }
 
-function runSeed(seed) {
+function runSeed(seed, stats) {
+  let currentStep = "setup";
+  try {
+    runSteps(seed, stats, (step) => { currentStep = step; });
+  } catch (error) {
+    // Assertion messages already carry seed and step; anything else thrown by
+    // undo, redo or validation is attributed here so the seed can be replayed.
+    if (String(error?.message).startsWith(`seed ${seed}`)) throw error;
+    throw new Error(`seed ${seed} step ${currentStep}: ${error?.message}`, { cause: error });
+  }
+}
+
+function runSteps(seed, stats, setStep) {
   const prng = createPrng(seed);
   const counter = { next: 0 };
   let history = createHistoryState(initialDocument());
@@ -82,6 +97,7 @@ function runSeed(seed) {
   const where = (step, detail) => `seed ${seed} step ${step}: ${detail}`;
 
   for (let step = 0; step < 25; step += 1) {
+    setStep(step);
     const action = prng.next();
     if (action < 0.55 || !canUndo(history)) {
       const transaction = randomTransaction(prng, history, counter, step);
@@ -91,8 +107,11 @@ function runSeed(seed) {
         next = commitTransaction(history, transaction);
       } catch {
         assert.deepEqual(history, before, where(step, "a rejected transaction must leave history untouched"));
+        stats.rejected += 1;
         continue;
       }
+      for (const operation of transaction.operations) stats[operation.type] += 1;
+      if (transaction.operations.length > 1) stats.multiOperation += 1;
       validateDocument(next.document);
       assert.equal(next.document.revision, history.document.revision + 1, where(step, "commit advances revision by one"));
       const [only] = transaction.operations;
@@ -112,6 +131,7 @@ function runSeed(seed) {
       history = next;
     } else if (action < 0.85) {
       const depth = history.past.length;
+      if (history.past[depth - 1].inverse.operations.some((operation) => operation.type === "restore-subtree")) stats["restore-subtree"] += 1;
       const next = undo(history);
       validateDocument(next.document);
       assert.equal(next.past.length, depth - 1, where(step, "undo pops one entry"));
@@ -127,6 +147,7 @@ function runSeed(seed) {
   }
 
   // Undo everything, then redo everything.
+  setStep("undo-all/redo-all");
   const finalContent = content(history.document);
   const depth = history.past.length;
   while (canUndo(history)) history = undo(history);
@@ -136,7 +157,14 @@ function runSeed(seed) {
 }
 
 test("undo and redo restore exact content across generated transactions", () => {
-  for (const seed of propertySeeds(300)) runSeed(seed);
+  const stats = { "insert-node": 0, "remove-node": 0, "move-node": 0, "set-props": 0, "restore-subtree": 0, multiOperation: 0, rejected: 0 };
+  const seeds = propertySeeds(300);
+  for (const seed of seeds) runSeed(seed, stats);
+  // Guard the generator itself: a weighting change must not silently stop
+  // exercising an operation type, multi-operation commits, or rejections.
+  if (seeds.length > 1) {
+    for (const [name, count] of Object.entries(stats)) assert.ok(count > 0, `generator never produced ${name}`);
+  }
 });
 
 test("set-props keeps reserved-looking keys as own data and undo removes them", () => {
@@ -169,5 +197,5 @@ test("reserved-looking node ids are ordinary nodes through insert, remove and un
     assert.deepEqual(history.document.nodes[id].props, { v: 1 }, `${id} restored by undo`);
     assert.equal(Object.getPrototypeOf(history.document.nodes), Object.prototype);
   }
-  assert.ok(createDocument({ id: "doc-1", nodes: [{ id: "__proto__", type: "frame" }] }).nodes.__proto__.id === "__proto__");
+  assert.equal(createDocument({ id: "doc-1", nodes: [{ id: "__proto__", type: "frame" }] }).nodes.__proto__.id, "__proto__");
 });
