@@ -51,6 +51,20 @@ export function externalPackages(lock) {
     .sort((a, b) => compare(purlFor(a.name, a.version), purlFor(b.name, b.version)) || compare(a.path, b.path));
 }
 
+// A bundled entry needs no integrity of its own only if it sits inside a package whose
+// tarball is hashed (directly, or through a chain of bundled parents).
+function hashedByEnclosingPackage(packages, path) {
+  for (let current = path; ;) {
+    const cut = current.lastIndexOf("/node_modules/");
+    if (cut < 0) return false;
+    current = current.slice(0, cut);
+    const parent = packages[current];
+    if (parent === undefined) return false;
+    if (integrityHashes(parent.integrity).length > 0) return true;
+    if (!parent.inBundle) return false;
+  }
+}
+
 // npm's lookup: <path>/node_modules/<dep>, then each enclosing node_modules, then the root.
 function resolveDependency(packages, fromPath, dependency) {
   let base = fromPath;
@@ -113,11 +127,18 @@ export function buildSbom(lockText, policy) {
   // component's scope is the strongest of them (it ships if any copy ships).
   const RANK = { required: 2, optional: 1, excluded: 0 };
   const scopeOf = (pkg) => (pkg.dev ? "excluded" : pkg.optional || pkg.devOptional || pkg.peer ? "optional" : "required");
+  // Likewise its hash comes from any copy that has one, and it is "bundled" only if every
+  // copy is.
   const strongest = new Map();
+  const hashOf = new Map();
+  const allBundled = new Map();
   for (const pkg of externals) {
     const ref = purlFor(pkg.name, pkg.version);
     const scope = scopeOf(pkg);
     if (!strongest.has(ref) || RANK[scope] > RANK[strongest.get(ref)]) strongest.set(ref, scope);
+    const hashes = integrityHashes(pkg.integrity);
+    if (hashes.length > 0 && !hashOf.has(ref)) hashOf.set(ref, hashes);
+    allBundled.set(ref, (allBundled.get(ref) ?? true) && pkg.inBundle === true);
   }
   for (const pkg of externals) {
     const ref = purlFor(pkg.name, pkg.version);
@@ -129,7 +150,7 @@ export function buildSbom(lockText, policy) {
       ...(pkg.cpu ? [{ name: "npm:cpu", value: pkg.cpu.join(",") }] : []),
       ...(pkg.license !== undefined && pkg.license !== license ? [{ name: "npm:declaredLicense", value: String(pkg.license) }] : []),
       ...(license === null ? [{ name: "lilac:license", value: "NOASSERTION" }] : []),
-      ...(pkg.inBundle ? [{ name: "npm:inBundle", value: "true" }] : []),
+      ...(allBundled.get(ref) ? [{ name: "npm:inBundle", value: "true" }] : []),
     ];
     components.set(ref, {
       type: "library",
@@ -138,7 +159,7 @@ export function buildSbom(lockText, policy) {
       version: pkg.version,
       purl: ref,
       scope: strongest.get(ref),
-      hashes: integrityHashes(pkg.integrity),
+      hashes: hashOf.get(ref) ?? [],
       // Only allowlisted ids are SPDX ids this tool vouches for; anything else is a name.
       ...(license === null ? {} : { licenses: [allowed.has(license) ? { license: { id: license } } : { license: { name: license } }] }),
       ...(pkg.resolved ? { externalReferences: [{ type: "distribution", url: pkg.resolved }] } : {}),
@@ -180,7 +201,9 @@ export function checkPolicy(lockText, policy, notices, { nodeModules = join(ROOT
   for (const pkg of externalPackages(lock)) {
     const id = `${pkg.name}@${pkg.version}`;
     // A bundled dependency ships inside its parent's tarball, which the lockfile hashes.
-    if (!pkg.inBundle && integrityHashes(pkg.integrity).length === 0) problems.push(`${id} at ${pkg.path}: no sha512 integrity in the lockfile`);
+    if (integrityHashes(pkg.integrity).length === 0 && !(pkg.inBundle && hashedByEnclosingPackage(lock.packages, pkg.path))) {
+      problems.push(`${id} at ${pkg.path}: no sha512 integrity in the lockfile${pkg.inBundle ? " (marked inBundle, but no enclosing package is hashed)" : ""}`);
+    }
     if (seen.has(id)) continue;
     seen.add(id);
     const stale = policy.overrides.find((entry) => entry.name === pkg.name && entry.version !== pkg.version);

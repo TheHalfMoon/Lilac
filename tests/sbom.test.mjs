@@ -174,4 +174,16 @@ test("lockfile shapes beyond today's are handled, and unsafe shapes fail closed"
   const workspaceEdges = Object.fromEntries(buildSbom(workspace, policy).dependencies.map((entry) => [entry.ref, entry.dependsOn]));
   assert.deepEqual(workspaceEdges["workspace:w"], ["pkg:npm/ok@1.0.0"]);
   assert.deepEqual(checkPolicy(workspace, policy, "`ok@1.0.0` `inner@1.0.0`", { nodeModules: join(ROOT, "no-such-dir") }), []);
+  // inBundle does not excuse a missing hash at the top level, or under an unhashed parent.
+  const claims = (packages) => checkPolicy(lockWith(packages), policy, "`x@1.0.0` `p@1.0.0`", { nodeModules: join(ROOT, "no-such-dir") }).join("\n");
+  assert.match(claims({ "node_modules/x": { version: "1.0.0", license: "MIT", inBundle: true, resolved: "https://evil.test/x.tgz" } }), /marked inBundle, but no enclosing package is hashed/u);
+  assert.match(claims({ "node_modules/p": pkg("MIT", { integrity: undefined }), "node_modules/p/node_modules/x": { version: "1.0.0", license: "MIT", inBundle: true } }), /x@1\.0\.0 at node_modules\/p\/node_modules\/x: no sha512/u);
+  // A hashed copy gives the component its hash, and it is bundled only if every copy is.
+  const copies = buildSbom(lockWith({
+    "node_modules/a": pkg("MIT"),
+    "node_modules/a/node_modules/x": { version: "1.0.0", license: "MIT", inBundle: true },
+    "node_modules/x": pkg("MIT"),
+  }), policy).components.find((component) => component.name === "x");
+  assert.equal(copies.hashes.length, 1);
+  assert.equal((copies.properties ?? []).some((property) => property.name === "npm:inBundle"), false);
 });

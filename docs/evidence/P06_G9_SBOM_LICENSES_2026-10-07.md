@@ -99,3 +99,11 @@ Its worth-considering items are fixed:
 Test 7 covers each of these and fails on `bd0ec2b`.
 
 The delta-2 commit `aa484bf` was pushed with a duplicate `const edges` declaration in `tests/sbom.test.mjs`, a syntax error that made the whole file fail. It was fixed in the next commit before any review or merge.
+
+## Review delta 3
+
+The delta-2 re-review had no must-fix. It confirmed the real SBOM is unchanged and still validates against the schema, and that bundled packages still get the license and notice checks. Its worth-considering items are fixed:
+- **`inBundle` excuses a missing hash only when nested inside a hashed package.** That means a nested entry whose enclosing package is hashed, directly or through a chain of bundled parents. A top-level entry that claims `inBundle`, or one under an unhashed parent, fails the check.
+- **A component's hash comes from any copy that has one,** and it is marked `npm:inBundle` only if every copy is bundled.
+
+Test 7 covers both. The ps-review cap of three delta cycles is reached with this delta's re-review.
