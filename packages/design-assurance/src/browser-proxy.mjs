@@ -2,7 +2,7 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import { createServer, request as httpRequest } from "node:http";
 import { connect, isIP } from "node:net";
 
-import { classifyAddress } from "@lilac/network-policy";
+import { classifyAddress, isLinkLocalOrMetadataAddress } from "@lilac/network-policy";
 
 import { DesignAssuranceError } from "./errors.mjs";
 
@@ -13,22 +13,18 @@ import { DesignAssuranceError } from "./errors.mjs";
 // scan's pre-check and the browser's contact (rebinding) is therefore checked again
 // and cannot be used after the check.
 
-export const BROWSER_PROXY_LIMITS = Object.freeze({ maxDenials: 100, maxOpenSockets: 256, headerTimeoutMs: 10_000 });
+export const BROWSER_PROXY_LIMITS = Object.freeze({ maxDenials: 100, maxOpenSockets: 256, headerTimeoutMs: 10_000, upstreamIdleMs: 30_000 });
 
 const HOP_BY_HOP = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "proxy-connection", "te", "trailer", "transfer-encoding", "upgrade"]);
 
-function isLinkLocal(address) {
-  if (isIP(address) === 4) return address.startsWith("169.254.");
-  const lower = address.toLowerCase();
-  return /^fe[89ab]/u.test(lower) || lower.startsWith("::ffff:169.254.") || lower === "fd00:ec2::254";
-}
-
 // Public addresses are always allowed. With allowPrivateNetwork, loopback and private
-// ranges are allowed too, but never unspecified or link-local (cloud metadata) addresses.
+// ranges are allowed too, but never unspecified, link-local or cloud-metadata addresses,
+// in any spelling.
 function addressDenial(address, privateAllowed) {
   const kind = classifyAddress(address);
   if (kind === "public") return null;
-  if (!privateAllowed || kind === "unspecified" || kind === "invalid" || isLinkLocal(address)) return `${kind === "forbidden" ? "private" : kind} address ${address}`;
+  if (isLinkLocalOrMetadataAddress(address)) return `link-local or metadata address ${address}`;
+  if (!privateAllowed || kind === "unspecified" || kind === "invalid") return `${kind === "forbidden" ? "private" : kind} address ${address}`;
   return null;
 }
 
@@ -72,8 +68,11 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
     return { address: addresses[0] };
   }
 
+  // Every client and upstream socket is tracked, so close() ends them all and nothing the
+  // scan opened keeps the process alive afterwards.
+  let closed = false;
   function track(socket) {
-    if (sockets.size >= BROWSER_PROXY_LIMITS.maxOpenSockets) {
+    if (closed || sockets.size >= BROWSER_PROXY_LIMITS.maxOpenSockets) {
       socket.destroy();
       return false;
     }
@@ -92,12 +91,14 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
       return;
     }
     if (target.protocol !== "http:" || target.username || target.password) {
-      deny(target.host, `refused ${target.protocol} request`);
+      deny(target.host, target.protocol === "http:" ? "refused URL with credentials" : `refused ${target.protocol} request`);
       response.writeHead(403).end();
       return;
     }
     const port = parsePort(target.port, 80);
     const pinned = await pin(target.hostname);
+    // The browser may have gone, or the scan ended, during the lookup.
+    if (closed || response.destroyed) return;
     if (pinned.address === undefined) {
       response.writeHead(pinned.unresolved ? 502 : 403).end();
       return;
@@ -108,10 +109,15 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
     const upstream = httpRequest({ host: pinned.address, port, method: request.method, path: `${target.pathname}${target.search}`, headers, setHost: false }, (reply) => {
       const replyHeaders = {};
       for (const [name, value] of Object.entries(reply.headers)) if (!HOP_BY_HOP.has(name)) replyHeaders[name] = value;
+      reply.on("error", () => response.destroy());
       response.writeHead(reply.statusCode ?? 502, replyHeaders);
       reply.pipe(response);
     });
-    upstream.on("error", () => { if (!response.headersSent) response.writeHead(502); response.end(); });
+    upstream.on("socket", (socket) => { if (!sockets.has(socket)) track(socket); });
+    upstream.setTimeout(BROWSER_PROXY_LIMITS.upstreamIdleMs, () => upstream.destroy());
+    upstream.on("error", () => { if (!response.headersSent && !response.destroyed) response.writeHead(502); response.end(); });
+    response.on("close", () => upstream.destroy());
+    response.on("error", () => upstream.destroy());
     request.pipe(upstream);
   });
 
@@ -126,6 +132,7 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
       return;
     }
     const pinned = await pin(match[1]);
+    if (closed || client.destroyed) return;
     if (pinned.address === undefined) {
       client.end(pinned.unresolved ? "HTTP/1.1 502 Bad Gateway\r\n\r\n" : "HTTP/1.1 403 Forbidden\r\n\r\n");
       return;
@@ -141,8 +148,8 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
       upstream.pipe(client);
       client.pipe(upstream);
     });
-    upstream.once("error", () => client.destroy());
-    client.once("error", () => upstream.destroy());
+    upstream.once("close", () => client.destroy());
+    client.once("close", () => upstream.destroy());
   });
 
   server.headersTimeout = BROWSER_PROXY_LIMITS.headerTimeoutMs;
@@ -156,6 +163,7 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
     url: `http://127.0.0.1:${port}`,
     denials: () => denials.slice(),
     async close() {
+      closed = true;
       for (const socket of sockets) socket.destroy();
       await new Promise((resolve) => server.close(() => resolve()));
     },

@@ -518,7 +518,8 @@ async function writeBrowserWrapper(browserExecutable, proxyUrl, extraFlags = [])
   const directory = await mkdtemp(join(tmpdir(), "lilac-browser-"));
   const path = join(directory, "browser");
   const flags = [...browserProxyFlags(proxyUrl), ...extraFlags].map(shellQuote).join(" ");
-  const filter = OVERRIDABLE.map((name) => `${name}|${name}=*`).join("|");
+  // Chromium also accepts single-dash switches on POSIX.
+  const filter = OVERRIDABLE.flatMap((name) => [name, `${name}=*`, name.slice(1), `${name.slice(1)}=*`]).join("|");
   const script = `#!/bin/sh
 for argument do
   shift
@@ -568,6 +569,7 @@ export function createImpeccableCliRunner({
   return Object.freeze({
     // With proxyUrl, the engine's browser is a private wrapper that forces every contact
     // through that proxy; the real browser is never given to the engine directly.
+    // browserExecutable and browserFlags apply only to such scans.
     async scanTarget(target, { viewport = null, scopes = [], proxyUrl = null } = {}) {
       assertNonEmptyString(target, "scan target");
       // The pinned engine keeps parsing options after "--", so a target that

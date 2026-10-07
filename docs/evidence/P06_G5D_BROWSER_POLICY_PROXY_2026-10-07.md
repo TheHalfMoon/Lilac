@@ -15,7 +15,11 @@ A probe in this container pointed `IMPECCABLE_BROWSER` at a wrapper. The wrapper
    - checks every answer;
    - connects to the pinned address, so the browser never resolves or connects on its own.
 
-   **What it allows.** Public addresses are always allowed. With `allowPrivateNetwork === true`, loopback and private ranges are allowed too. Unspecified, invalid and link-local addresses (cloud metadata) are never allowed.
+   **What it allows.** Public addresses are always allowed. With `allowPrivateNetwork === true`, loopback and private ranges are allowed too. Some addresses are never allowed in any mode:
+   - unspecified and invalid addresses;
+   - link-local and cloud-metadata addresses, in every IPv4 and IPv6 spelling.
+
+   The last group is decided by `isLinkLocalOrMetadataAddress` in `@lilac/network-policy`, which parses the address. It covers 169.254.0.0/16, fe80::/10, `100.100.100.200` and `fd00:ec2::254`, including mapped, compatible, translated, NAT64 and 6to4 forms.
 
    **Handling.**
    - Non-http absolute-form requests and URLs with credentials are refused.
@@ -26,14 +30,14 @@ A probe in this container pointed `IMPECCABLE_BROWSER` at a wrapper. The wrapper
 
    When `scanTarget` is given a `proxyUrl` (which must be a `http://127.0.0.1:<port>` URL), it writes a mode-0700 wrapper in a fresh temp directory. All three variables point the engine at the wrapper, and the wrapper is removed after the scan. The wrapper:
    - starts the real browser with these flags first: `--proxy-server`, `--proxy-bypass-list=<-loopback>`, `--disable-quic`, `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` and `--dns-prefetch-disable`;
-   - drops any proxy, QUIC, WebRTC-policy or `--host-resolver-rules` switch the launcher passes.
+   - drops any proxy, QUIC, WebRTC-policy or `--host-resolver-rules` switch the launcher passes, in both `--` and single-dash form.
 
    On Windows a wrapper cannot be exec'd without a shell, so URL scans fail closed with a typed error.
 3. **`scanBrowserUrl`** always runs the browser behind the proxy and keeps the existing pre-checks. It throws when the proxy recorded any policy denial, from the target, a redirect or a subresource, and names up to five of them.
 
 ## Tests
 
-`tests/browser-proxy.test.mjs` has 9 tests. To check them against base `15c6158`, the package changes were removed and the tests that do not import the new export were run. Tests 4 to 9 fail there; tests 1 to 3 exercise the new proxy directly.
+`tests/browser-proxy.test.mjs` has 12 tests. Tests 10 to 12 were added in review delta 1, below. To check them against base `15c6158`, the package changes were removed and the tests that do not import the new export were run. Tests 4 to 9 fail there; tests 1 to 3 exercise the new proxy directly.
 
 1. By default the proxy refuses loopback (by name and by literal), private, IPv6 loopback and metadata destinations, over HTTP and `CONNECT`. Nothing reaches the server.
 2. An unresolvable host gets a 502 and is not recorded as a denial.
@@ -45,11 +49,30 @@ A probe in this container pointed `IMPECCABLE_BROWSER` at a wrapper. The wrapper
 8. A stand-in engine that passes `--no-proxy-server`, `--proxy-server=direct://`, `--proxy-bypass-list=*`, `--host-resolver-rules` and `--enable-quic` has all of them dropped.
 9. **End to end with a real Chromium.** This runs when one is found (`LILAC_TEST_BROWSER` or the usual paths). A page with a metadata image fails the scan, and the page itself was fetched through the proxy. It passed here with Playwright's Chromium 1194 (`--no-sandbox`, because the container runs as root). It is skipped when no browser is installed.
 
+**Review delta 1.** The combined judge returned two must-fix findings, both confirmed with probes. The security judge returned no must-fix and independently reported the first one.
+- **Metadata spellings.** In private mode, the metadata exception was a string-prefix check. Metadata written as hex IPv4-mapped (`[::ffff:a9fe:a9fe]`) or IPv4-compatible IPv6 got through, and so did Alibaba's `100.100.100.200`. The exception now uses the parsing classifier, and denials are checked in every mode.
+- **Leaked upstream sockets.** Upstream HTTP requests were not tracked or aborted, so a silent upstream outlived `close()` and kept the process alive. They are now:
+  - tracked, and destroyed by `close()`;
+  - aborted when the browser's response closes;
+  - subject to a 30 s idle timeout.
+
+  CONNECT tunnels end both sides on close, and an upstream connection is not opened if the client left during the lookup.
+- **Smaller fixes.** The wrapper also drops single-dash switches. A URL with credentials gets its own denial reason. The trailing-dot test now asserts a policy refusal rather than accepting a 502.
+
+New tests, each failing on `d5fdc86`:
+
+10. The classifier recognises every spelling (and the private/loopback/public controls are not caught).
+11. With `allowPrivateNetwork`, five metadata spellings over HTTP and four over `CONNECT` are refused.
+12. `close()` ends an upstream connection that never answered.
+
+Test 8 now also passes single-dash switches, and it fails on `d5fdc86` too.
+
 ## Gate
 
 I ran `npm run check` as root here twice.
 - **Run 1:** "model and history operations on 50k nodes stay within budget" failed once. The same test passed when run alone straight afterwards; this machine was loaded, and no browser process was left over.
 - **Run 2:** every test passed except "a failed journal write poisons the store until reopen". That test needs `chmod` to be enforced, which root ignores. It passes as non-root and in CI.
+- **After review delta 1:** 551 passed. The same root-only test failed, and the real-browser test was skipped because `LILAC_TEST_BROWSER` was not set in the full run. Run on its own with Playwright Chromium, the real-browser test passed.
 
 ## Residual
 

@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createImpeccableCliRunner, scanBrowserUrl, startBrowserPolicyProxy } from "../packages/design-assurance/src/index.mjs";
+import { isLinkLocalOrMetadataAddress } from "../packages/network-policy/src/index.ts";
 
 // P06 gate 5, grain d (#114): browser scans run behind a policy proxy, so DNS
 // rebinding, redirects and subresource loads to private hosts fail closed.
@@ -54,14 +55,14 @@ const lookupTable = (table) => async (host) => {
 
 test("the proxy refuses private, loopback and metadata destinations by default", async () => {
   await withServer((_request, response) => response.end("secret"), async (port, hits) => {
-    const proxy = await startBrowserPolicyProxy({ lookup: lookupTable({ "rebind.test": ["127.0.0.1"], "lan.test": ["10.0.0.5"] }) });
+    const proxy = await startBrowserPolicyProxy({ lookup: lookupTable({ "rebind.test": ["127.0.0.1"], "lan.test": ["10.0.0.5"], localhost: ["127.0.0.1"] }) });
     try {
       assert.equal((await viaProxy(proxy.url, `http://rebind.test:${port}/`)).status, 403);
       assert.equal((await viaProxy(proxy.url, `http://127.0.0.1:${port}/`)).status, 403);
       assert.equal((await viaProxy(proxy.url, "http://lan.test/")).status, 403);
       assert.match(await connectViaProxy(proxy.url, "169.254.169.254:443"), / 403 /u);
       assert.match(await connectViaProxy(proxy.url, `[::1]:${port}`), / 403 /u);
-      assert.match(await connectViaProxy(proxy.url, `localhost.:${port}`), / (403|502) /u);
+      assert.match(await connectViaProxy(proxy.url, `localhost.:${port}`), / 403 /u, "a trailing dot is normalized before lookup");
       assert.equal(hits.length, 0, "nothing reached the private server");
       const reasons = proxy.denials().map((entry) => entry.host);
       assert.ok(["rebind.test", "127.0.0.1", "lan.test", "169.254.169.254", "::1"].every((host) => reasons.includes(host)), JSON.stringify(proxy.denials()));
@@ -69,6 +70,58 @@ test("the proxy refuses private, loopback and metadata destinations by default",
       await proxy.close();
     }
   });
+});
+
+test("metadata and link-local destinations are recognised in every spelling", () => {
+  for (const address of ["169.254.169.254", "::ffff:169.254.169.254", "::ffff:a9fe:a9fe", "::a9fe:a9fe", "::ffff:0:a9fe:a9fe", "64:ff9b::a9fe:a9fe", "2002:a9fe:a9fe::1", "fe80::1", "FE80::1", "fd00:ec2::254", "fd00:ec2:0:0:0:0:0:254", "100.100.100.200"]) {
+    assert.equal(isLinkLocalOrMetadataAddress(address), true, address);
+  }
+  for (const address of ["10.0.0.1", "127.0.0.1", "::1", "8.8.8.8", "fd00::1", "100.100.100.201", "not-an-ip"]) {
+    assert.equal(isLinkLocalOrMetadataAddress(address), false, address);
+  }
+});
+
+test("with allowPrivateNetwork, metadata stays refused whatever its spelling", async () => {
+  const proxy = await startBrowserPolicyProxy({ allowPrivateNetwork: true, lookup: lookupTable({ "meta.test": ["::ffff:a9fe:a9fe"] }) });
+  try {
+    for (const url of ["http://[::ffff:169.254.169.254]/", "http://[::169.254.169.254]/", "http://100.100.100.200/", "http://[fd00:ec2::254]/", "http://meta.test/"]) {
+      assert.equal((await viaProxy(proxy.url, url)).status, 403, url);
+    }
+    for (const authority of ["[::ffff:a9fe:a9fe]:80", "[::a9fe:a9fe]:443", "[fe80::1]:443", "100.100.100.200:80"]) {
+      assert.match(await connectViaProxy(proxy.url, authority), / 403 /u, authority);
+    }
+    assert.equal(proxy.denials().length, 9);
+  } finally {
+    await proxy.close();
+  }
+});
+
+test("closing the proxy ends upstream connections the browser left open", async () => {
+  let upstreamOpened = false;
+  let upstreamClosed = false;
+  const server = createServer(() => { /* never answers */ });
+  server.on("connection", (socket) => { upstreamOpened = true; socket.on("close", () => { upstreamClosed = true; }); });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  try {
+    const proxy = await startBrowserPolicyProxy({ allowPrivateNetwork: true, lookup: lookupTable({ "slow.test": ["127.0.0.1"] }) });
+    const target = new URL(proxy.url);
+    const pending = httpRequest({ host: target.hostname, port: target.port, path: `http://slow.test:${port}/`, headers: { host: `slow.test:${port}` } });
+    pending.on("error", () => {});
+    pending.end();
+    const waitFor = async (condition) => {
+      const started = Date.now();
+      while (!condition() && Date.now() - started < 2_000) await new Promise((resolve) => setTimeout(resolve, 10));
+      return condition();
+    };
+    assert.ok(await waitFor(() => upstreamOpened), "the proxy connected upstream");
+    pending.destroy();
+    await proxy.close();
+    assert.ok(await waitFor(() => upstreamClosed), "the upstream socket was closed");
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("an unresolvable host is a gateway error, not a policy denial", async () => {
@@ -190,7 +243,7 @@ test("the wrapper drops proxy switches the launcher passes", { skip: process.pla
     await chmod(fakeBrowser, 0o755);
     // A stand-in engine that launches $IMPECCABLE_BROWSER with hostile switches.
     const engine = join(dir, "engine.mjs");
-    await writeFile(engine, `import { spawnSync } from "node:child_process";\nspawnSync(process.env.IMPECCABLE_BROWSER, ["--no-proxy-server", "--proxy-server=direct://", "--proxy-bypass-list=*", "--host-resolver-rules=MAP * 127.0.0.1", "--enable-quic", "--keep"]);\nprocess.stdout.write("[]");\n`);
+    await writeFile(engine, `import { spawnSync } from "node:child_process";\nspawnSync(process.env.IMPECCABLE_BROWSER, ["--no-proxy-server", "--proxy-server=direct://", "--proxy-bypass-list=*", "--host-resolver-rules=MAP * 127.0.0.1", "--enable-quic", "-no-proxy-server", "-proxy-server=direct://", "--keep"]);\nprocess.stdout.write("[]");\n`);
     const runner = createImpeccableCliRunner({ cliPath: engine, browserExecutable: fakeBrowser });
     await runner.scanTarget("http://site.test/", { proxyUrl: "http://127.0.0.1:9" });
     const argv = readFileSync(record, "utf8").trim().split("\n");
