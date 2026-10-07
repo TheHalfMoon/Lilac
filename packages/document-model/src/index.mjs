@@ -1,5 +1,13 @@
 export const DOCUMENT_SCHEMA_VERSION = 1;
 
+// Hard limits; documents beyond them are refused rather than processed slowly.
+// maxDocumentBytes matches persistence's object size limit.
+export const DOCUMENT_LIMITS = Object.freeze({
+  maxNodes: 100_000,
+  maxTreeDepth: 1_024,
+  maxDocumentBytes: 64 * 1024 * 1024,
+});
+
 export const NODE_TYPES = Object.freeze([
   "page",
   "frame",
@@ -118,12 +126,33 @@ export function serializeDocument(document) {
   return canonicalValue(document, 0);
 }
 
+// UTF-8 byte length without Buffer, so the model stays environment-neutral.
+function utf8Length(text) {
+  let bytes = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const unit = text.charCodeAt(index);
+    if (unit < 0x80) bytes += 1;
+    else if (unit < 0x800) bytes += 2;
+    else if (unit >= 0xd800 && unit <= 0xdbff && index + 1 < text.length
+      && text.charCodeAt(index + 1) >= 0xdc00 && text.charCodeAt(index + 1) <= 0xdfff) {
+      bytes += 4;
+      index += 1;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
 /**
  * Parse canonical document text. Only the exact canonical form is accepted, so one
  * document has exactly one byte representation.
  */
 export function parseDocument(text) {
   if (typeof text !== "string") throw new DocumentInvariantError("document text must be a string");
+  // UTF-16 length bounds UTF-8 bytes from below (x1) and above (x3); count exactly only near the limit.
+  if (text.length > DOCUMENT_LIMITS.maxDocumentBytes
+    || (text.length * 3 > DOCUMENT_LIMITS.maxDocumentBytes && utf8Length(text) > DOCUMENT_LIMITS.maxDocumentBytes)) {
+    throw new DocumentInvariantError(`document text exceeds ${DOCUMENT_LIMITS.maxDocumentBytes} bytes`);
+  }
   let value;
   try {
     value = JSON.parse(text);
@@ -221,6 +250,15 @@ export function normalizeDocument(document) {
   return copy;
 }
 
+/**
+ * Canonical node order for a document the caller already owns (for example a
+ * private working copy): no validation and no clone, so it is cheap on large
+ * documents. Returns a new top-level object; node objects are shared.
+ */
+export function withSortedNodes(document) {
+  return { ...document, nodes: sortNodeRecord(document.nodes) };
+}
+
 export function getNode(document, nodeId) {
   // Same key coercion as a property lookup (so getNode(doc, 5) still finds
   // node "5"), but own keys only: inherited names such as toString are not nodes.
@@ -296,6 +334,11 @@ export function validateDocument(document) {
     return text.length > 80 ? `${text.slice(0, 77)}...` : text;
   };
 
+  const nodeTotal = Object.keys(nodes).length;
+  if (nodeTotal > DOCUMENT_LIMITS.maxNodes) {
+    throw new DocumentInvariantError(`document has ${nodeTotal} nodes; the limit is ${DOCUMENT_LIMITS.maxNodes}`);
+  }
+
   const rootSet = new Set(document.rootIds);
   const referenced = new Set();
   for (const [id, node] of Object.entries(nodes)) {
@@ -370,6 +413,9 @@ export function validateDocument(document) {
         frame[1] += 1;
         if (onPath.has(childId)) throw new DocumentInvariantError(`Cycle detected at node ${shown(childId)}`);
         if (visited.has(childId)) continue;
+        if (stack.length >= DOCUMENT_LIMITS.maxTreeDepth) {
+          throw new DocumentInvariantError(`document tree is deeper than ${DOCUMENT_LIMITS.maxTreeDepth} levels`);
+        }
         onPath.add(childId);
         stack.push([childId, 0]);
       } else {
@@ -380,8 +426,7 @@ export function validateDocument(document) {
     }
   }
 
-  const nodeCount = Object.keys(nodes).length;
-  if (visited.size !== nodeCount) {
+  if (visited.size !== nodeTotal) {
     const unreachable = Object.keys(nodes).filter((id) => !visited.has(id));
     const listed = unreachable.slice(0, 10).map(shown).join(", ");
     const more = unreachable.length > 10 ? ` (and ${unreachable.length - 10} more)` : "";
