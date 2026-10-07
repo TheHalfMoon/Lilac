@@ -40,16 +40,39 @@ function bareText(node: any): string | null {
 export function exportJsx(document: any, nodeId: unknown): { componentName: string; code: string; layers: number } {
   if (typeof nodeId !== "string" || !Object.hasOwn(document.nodes, nodeId)) throw new StudioError(404, "node-not-found", "no such layer");
   let layers = 0;
-  // The ids labels in this subtree point to (for), so their controls keep them.
-  const referenced = new Set<string>();
-  const usedIds = new Set<string>();
-  const collect = (id: string, depth: number) => {
-    if (depth > MAX_EXPORT_DEPTH) return;
-    const target = document.nodes[id]?.props?.attributes?.for;
-    if (typeof target === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(target)) referenced.add(target);
-    for (const child of document.nodes[id]?.children ?? []) collect(child, depth + 1);
+  // Labels and the controls they name (for → id). The canvas never renders ids, but the
+  // code needs them: each control a label in this export points to keeps an id, unique in
+  // the export (a second copy of a form gets email-2), and its label points to that id. A
+  // label names the next control with its id in document order, or else the last before.
+  const order: string[] = [];
+  const walkOrder = (id: string, depth: number) => {
+    if (depth > MAX_EXPORT_DEPTH || !document.nodes[id]) return;
+    order.push(id);
+    for (const child of document.nodes[id].children) walkOrder(child, depth + 1);
   };
-  collect(nodeId, 1);
+  walkOrder(nodeId, 1);
+  const SIMPLE_ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u;
+  const attr = (id: string, name: string) => {
+    const value = document.nodes[id]?.props?.attributes?.[name];
+    return typeof value === "string" && SIMPLE_ID.test(value) ? value : null;
+  };
+  const exportedId = new Map<string, string>(); // control node → id in the code
+  const labelTarget = new Map<string, string>(); // label node → id in the code
+  const taken = new Set<string>();
+  order.forEach((labelId, position) => {
+    const wanted = attr(labelId, "for");
+    if (wanted === null) return;
+    const controls = order.filter((id) => attr(id, "id") === wanted && id !== labelId);
+    const control = controls.find((id) => order.indexOf(id) > position) ?? controls.filter((id) => order.indexOf(id) < position).at(-1);
+    if (control === undefined) return;
+    if (!exportedId.has(control)) {
+      let candidate = wanted;
+      for (let copy = 2; taken.has(candidate); copy += 1) candidate = `${wanted}-${copy}`;
+      taken.add(candidate);
+      exportedId.set(control, candidate);
+    }
+    labelTarget.set(labelId, exportedId.get(control)!);
+  });
   const convert = (id: string, depth: number): DesignDocNode => {
     if (depth > MAX_EXPORT_DEPTH) throw new StudioError(422, "export-too-deep", `layers nested more than ${MAX_EXPORT_DEPTH} deep cannot be exported`);
     layers += 1;
@@ -63,13 +86,9 @@ export function exportJsx(document: any, nodeId: unknown): { componentName: stri
       else if (name === "for") props.htmlFor = value;
       else if (/^[A-Za-z_][A-Za-z0-9_:.-]*$/u.test(name) && !/[\r\n]/u.test(value)) props[name] = value;
     }
-    // The canvas never renders ids, but a label's htmlFor needs its control's id in the
-    // code: an id is kept only when a label in this export points to it, and only once.
-    const ownId = node.props?.attributes?.id;
-    if (typeof ownId === "string" && referenced.has(ownId) && !usedIds.has(ownId)) {
-      props.id = ownId;
-      usedIds.add(ownId);
-    }
+    if (exportedId.has(id)) props.id = exportedId.get(id)!;
+    if (labelTarget.has(id)) props.htmlFor = labelTarget.get(id)!;
+    else if (props.htmlFor !== undefined) delete props.htmlFor; // names nothing in this export
     if (Object.keys(plan.style).length > 0) props.style = cssText(plan.style);
     const out: DesignDocNode = { tag: plan.tag, props };
     const childIds: string[] = node.children;

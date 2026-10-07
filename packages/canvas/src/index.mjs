@@ -191,6 +191,10 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
   container.appendChild(stage);
   const { frame, renderer } = await mountSandboxedRenderer(world);
   frame.setAttribute("style", "border:0;display:block;background:#fff;");
+  // The frame is not a stop of its own: the canvas takes the keys, and the layers tree is
+  // the design's accessible form.
+  frame.setAttribute("tabindex", "-1");
+  frame.setAttribute("aria-hidden", "true");
   const frameDocument = frame.contentDocument;
 
   let document = null;
@@ -428,10 +432,11 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
 
   // A visible focus ring when the canvas is reached from the keyboard (WCAG 2.4.7).
   stage.addEventListener("focus", () => {
-    if (stage.matches(":focus-visible")) stage.style.boxShadow = "inset 0 0 0 3px #1a5fd0";
+    // Drawn on the overlay, the top layer, so the design never covers it.
+    if (stage.matches(":focus-visible")) overlay.style.boxShadow = "inset 0 0 0 3px #1a5fd0";
   });
   stage.addEventListener("blur", () => {
-    stage.style.boxShadow = "";
+    overlay.style.boxShadow = "";
   });
   stage.addEventListener("keydown", (event) => {
     if (document === null) return;

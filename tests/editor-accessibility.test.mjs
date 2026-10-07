@@ -38,7 +38,7 @@ const snapshot = (page) => page.evaluate(() => {
     for (const attribute of element.attributes) attributes[attribute.name] = attribute.value;
     const computed = getComputedStyle(element);
     if (computed.display === "none" || computed.visibility === "hidden" || (element.localName === "dialog" && !element.open)) attributes.hidden = "";
-    if (!attributes.hidden && (computed.backgroundImage !== "none" || Number(computed.opacity) < 1 || !/^rgba?\(/u.test(computed.color))) unresolved.push(`${element.localName}#${element.id} ${computed.backgroundImage} ${computed.opacity} ${computed.color}`);
+    if (!attributes.hidden && (computed.backgroundImage !== "none" || Number(computed.opacity) < 1 || !/^rgba?\(/u.test(computed.color) || !/^rgba?\(/u.test(computed.backgroundColor))) unresolved.push(`${element.localName}#${element.id} ${computed.backgroundImage} ${computed.opacity} ${computed.color}`);
     if (element.inert || element.closest("[inert]")) attributes.hidden = "";
     const node = { tag: element.localName, attributes, children: [], style: `color: ${computed.color}; background-color: ${backgroundOf(element)}; font-size: ${computed.fontSize}; font-weight: ${computed.fontWeight}` };
     let text = "";
@@ -199,8 +199,19 @@ test("every editor action works from the keyboard, with visible focus", browserT
     await page.locator(".skip-link").focus();
     assert.ok(await page.evaluate(() => document.querySelector(".skip-link").getBoundingClientRect().top >= 0), "visible on focus");
     await page.keyboard.press("Enter");
-    const landed = await page.evaluate(() => ({ role: document.activeElement.getAttribute("role"), ring: document.activeElement.style.boxShadow }));
-    assert.deepEqual(landed, { role: "application", ring: "rgb(26, 95, 208) 0px 0px 0px 3px inset" }, "focus lands on the canvas, with a ring");
+    const landed = await page.evaluate(() => ({ role: document.activeElement.getAttribute("role") }));
+    assert.deepEqual(landed, { role: "application" }, "focus lands on the canvas");
+    // The ring is painted on top of the design, even zoomed in so the design fills the canvas.
+    for (let index = 0; index < 6; index += 1) await page.keyboard.press("Control+=");
+    const stageBox = await page.locator("[role=application]").boundingBox();
+    const shot = await page.screenshot({ clip: { x: stageBox.x, y: stageBox.y + stageBox.height / 2, width: 2, height: 1 } });
+    const { PNG } = await import("./support/png.mjs");
+    const pixel = PNG.firstPixel(shot);
+    assert.deepEqual(pixel, [26, 95, 208], `the ring is visible at the canvas edge (got ${pixel})`);
+    // The design frame is not a tab stop: Tab leaves the canvas for the next control.
+    await page.keyboard.press("Tab");
+    assert.notEqual(await page.evaluate(() => document.activeElement.localName), "iframe", "Tab does not stop on the design frame");
+    await page.locator("[role=application]").focus();
     // With nothing selected, the arrows pan the view.
     await page.keyboard.press("Escape");
     const before = await page.evaluate(() => document.querySelector("[role=application] > div").style.transform);
@@ -323,4 +334,5 @@ test("generated output audits clean: exported code and code brought into the des
   twice.nodes[formId] = { ...twice.nodes[formId], parentId: "both" };
   const exported = exportJsx(twice, "both").code;
   assert.equal((exported.match(/ id="email"/gu) ?? []).length, 1, "an id appears once");
+  assert.match(exported, /htmlFor="email"[\s\S]*id="email"[\s\S]*htmlFor="email-2"[\s\S]*id="email-2"/u, "each copy's label names its own control");
 });

@@ -12,7 +12,7 @@
 - **A:** `auditAccessibility` from `@lilac/design-assurance`, run on the live DOM of every editor state, using the colours the browser actually paints (part of T);
 - **I:** assessed by inspection of the source and behaviour, with the reasoning given.
 
-**The canvas.** The rendered design inside the canvas frame is `inert`: it is outside the accessibility tree and takes no input (PC2, PC3). It is the person's own content, not editor chrome. The layers tree, the inspector, and the keyboard commands are its accessible form.
+**The canvas.** The rendered design inside the canvas frame is `inert`, and the frame itself is `aria-hidden` and not a Tab stop. The design is therefore outside the accessibility tree and takes no input (PC2, PC3, PC8a). It is the person's own content, not editor chrome. The layers tree, the inspector, and the keyboard commands are its accessible form.
 
 **Generated output.** Exported code carries the person's design faithfully, so its accessibility is the design's. T checks that an accessibly made design exports to code that audits clean, and that missing alt text or button names in exported output are found.
 
@@ -57,7 +57,7 @@
 | 2.4.4 Link Purpose (In Context) | A | Supports | A: `link-name` gives no findings. The editor's only link is the skip link. |
 | 2.4.5 Multiple Ways | AA | Not applicable | The editor is one application screen, not a set of pages. |
 | 2.4.6 Headings and Labels | AA | Supports | A: there are headings for the brand, every panel and every dialog. Every field has a visible label. |
-| 2.4.7 Focus Visible | AA | Supports | T: every toolbar control shows a 3 px focus ring when reached by Tab. The canvas, reached by keyboard or by the skip link, shows an inset 3 px ring (added in PC8a: it used to show none). Tree rows and fields use the same ring. |
+| 2.4.7 Focus Visible | AA | Supports | T: every toolbar control shows a 3 px focus ring when reached by Tab. The canvas, reached by keyboard or by the skip link, shows an inset 3 px ring, drawn on its top layer so the design never covers it. T samples the painted pixel, zoomed in until the design fills the canvas. The design frame is not a Tab stop. Both were added in PC8a: the canvas used to show no ring, and the frame was an invisible stop. Tree rows and fields use the same ring. |
 | 2.4.11 Focus Not Obscured (Minimum) | AA | Supports | I: nothing is sticky or overlaid apart from modal dialogs, which hold the focus themselves. |
 | 2.5.1 Pointer Gestures | A | Supports | I: the canvas uses no path-based or multipoint gestures. Wheel zoom has the Zoom buttons and Ctrl+−/= as alternatives, and wheel panning has the arrow keys and Fit. |
 | 2.5.2 Pointer Cancellation | A | Supports | I: buttons act on click, on the up event. A drag commits on release, and moving the pointer back before release commits nothing (T, PC3). Selection on press can be undone by clicking empty canvas or pressing Escape. |
@@ -105,7 +105,7 @@ Each of these was found by the audit, the tests, or this walk through the criter
 - **Non-text contrast (1.4.11).** A selected layer row gets a 3 px accent bar.
 - **Contrast (1.4.3).** Disabled text is darkened to 5.86:1.
 - **Focus on start.** The editor is ready only once the projects dialog is open, so focus starts in the project name field (T).
-- **Labels in code (1.3.1).** Code brought in maps `htmlFor` to `for`. Export maps it back, and keeps a control's id only when a label in the same export points to it, and only once.
+- **Labels in code (1.3.1).** Code brought in maps `htmlFor` to `for`. Export maps it back. A control a label in the export points to gets an id unique in the export (a second copy of a form gets `email-2`), and its label points to that id.
 - **Canvas focus and panning (2.4.7, 2.1.1).** The canvas shows a focus ring, the skip link lands on it, and the arrows pan the view when nothing is selected.
 - **Dialog reflow (1.4.10).** Dialog fields never grow wider than the dialog.
 
@@ -139,3 +139,13 @@ The judge found the evidence genuine: the snapshot's hidden handling is sound, a
 - **2.4.3** notes the visual order at narrow widths.
 
 **Recorded:** repeated clicks on a step button faster than each change completes are skipped with a message, as fast arrow-key nudges are. The revision contract refuses to send a change computed from an older document.
+
+## Review delta 2
+
+The cycle-1 re-review confirmed the reflow, panning, skip-link and id fixes, with no regressions in the PC3 canvas tests. It found two must-fix focus issues, both now fixed:
+- **The canvas ring was painted under the design.** It was an inset shadow on the canvas element, below the white frame, so zooming in hid it. It is now drawn on the overlay, the canvas's top layer. T zooms in until the frame fills the canvas and samples the painted pixel at the edge; against the previous placement, it reads white.
+- **The design frame was an invisible Tab stop.** It is now `tabindex="-1"` and `aria-hidden="true"`. T checks that Tab leaves the canvas for the next control.
+
+**Also taken:**
+- **Labels in a second copy.** Each copy of a labelled control gets its own id (`email`, `email-2`), and each label points to its own control. A second label used to point at the first input. T checks the pairing.
+- **Backgrounds.** The snapshot's unresolved-colour guard checks background colours as well as text colours.
