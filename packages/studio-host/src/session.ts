@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, lstatSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
-import { LocalCollaborationRoom, createCollaborationState } from "@lilac/collaboration";
+import { LocalCollaborationRoom, createAccessPolicy, createCollaborationState } from "@lilac/collaboration";
 import { createDocument } from "@lilac/document-model";
 import { createHistoryState } from "@lilac/history";
 import { createProject, openProject, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
@@ -27,6 +27,8 @@ export interface ChangeEvent {
   transactionId: string;
   actor: string;
   actorKind: "user" | "agent";
+  /** The actor's display name, for attribution in the editor. */
+  actorName: string;
   intent: string | null;
   tool: string | null;
   affectedNodeIds: string[];
@@ -122,6 +124,23 @@ export class StudioSession {
     } catch (error) {
       throw asOpenError(error, name);
     }
+  }
+
+  get documentId(): string {
+    return this.#documentId;
+  }
+
+  /**
+   * Replace the agents' grants (the owner's own grant is fixed). Takes effect for the next
+   * commit and authorization check, so revoking an agent stops it at once.
+   */
+  setAgentGrants(grants: ReadonlyArray<{ principalKind: "actor"; principalId: string; capabilities: string[] }>): void {
+    this.#grants = [this.#grants[0], ...grants.filter((grant) => grant.principalId !== this.owner.actorId).map((grant) => ({ ...grant, capabilities: [...grant.capabilities] }))];
+  }
+
+  /** The document access policy every MCP call is authorized against. */
+  accessPolicy() {
+    return createAccessPolicy(this.#documentId, this.#grants);
   }
 
   get document() {
@@ -268,6 +287,7 @@ export class StudioSession {
       transactionId,
       actor: actor.actorId,
       actorKind: actor.kind,
+      actorName: actor.displayName,
       intent: input.intent,
       tool: input.tool,
       affectedNodeIds,
