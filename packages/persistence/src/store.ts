@@ -19,6 +19,7 @@ import {
   projectDirectory,
   readBounded,
   removeFile,
+  removeStaleFiles,
   removeStaleTemporaries,
 } from "./fsio.ts";
 import { encodeJournalLine, genesisDigest, parseJournal } from "./journal.ts";
@@ -277,23 +278,31 @@ function releaseLock(lockPath: string, record: LockRecord): void {
   if (sameHolder(readLock(lockPath), record)) removeFile(lockPath);
 }
 
-/** Open a project for writing: lock, verify, recover a torn journal tail, and replay. */
 // The object store's two-hex fan-out directories (real directories only, never links).
 function objectFanOutDirectories(projectDir: string): string[] {
   const root = join(projectDir, PROJECT_FILES.objects);
-  let info;
+  // Best effort, like the cleanup it feeds: anything but a readable real directory is left
+  // for the object store's own typed checks. Only filesystem errors are absorbed.
   try {
-    info = lstatSync(root);
+    if (!lstatSync(root).isDirectory()) return [];
+    return readdirSync(root).filter((name) => {
+      if (!/^[0-9a-f]{2}$/u.test(name)) return false;
+      try { return lstatSync(join(root, name)).isDirectory(); } catch (error) { if (isFilesystemError(error)) return false; throw error; }
+    }).map((name) => join(root, name));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (isFilesystemError(error)) return [];
     throw error;
   }
-  // Anything but a real directory is left for the object store's own typed checks.
-  if (!info.isDirectory()) return [];
-  const names = readdirSync(root);
-  return names.filter((name) => /^[0-9a-f]{2}$/u.test(name) && lstatSync(join(root, name)).isDirectory()).map((name) => join(root, name));
 }
 
+const LEFTOVER_LOCK = new RegExp(`^${PROJECT_FILES.lock.replace(".", "\\.")}\\.broken-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, "u");
+
+// An errno-style error from the filesystem (ENOENT, EACCES, ...), as opposed to a bug.
+function isFilesystemError(error: unknown): boolean {
+  return typeof (error as NodeJS.ErrnoException)?.code === "string";
+}
+
+/** Open a project for writing: lock, verify, recover a torn journal tail, and replay. */
 export function openProject(root: string, options: OpenProjectOptions): ProjectStore {
   const projectDir = projectDirectory(root);
   assertId(options?.owner, "owner");
@@ -316,7 +325,10 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
     // An interrupted atomic write leaves an unreferenced temporary next to its target; the
     // target itself still holds the last durable content. Clear them under the lock.
     const staleTemporaryFiles = removeStaleTemporaries(projectDir, (target) => [PROJECT_FILES.manifest, PROJECT_FILES.snapshot, PROJECT_FILES.journal].includes(target))
-      + objectFanOutDirectories(projectDir).reduce((total, directory) => total + removeStaleTemporaries(directory, (target) => /^[0-9a-f]{62}$/u.test(target)), 0);
+      + objectFanOutDirectories(projectDir).reduce((total, directory) => total + removeStaleTemporaries(directory, (target) => /^[0-9a-f]{62}$/u.test(target)), 0)
+      // A lock override renames the stale lock aside before reading it; a crash in between
+      // leaves that renamed copy behind. The previous holder is already in the override record.
+      + removeStaleFiles(projectDir, (name) => LEFTOVER_LOCK.test(name));
     const rawManifest = readJsonFile(files.manifest, "manifest");
     const { manifest: migrated, migratedFrom } = migrateManifest(rawManifest, options.migrations ?? PROJECT_MIGRATIONS);
     const manifest = readManifest(migrated);

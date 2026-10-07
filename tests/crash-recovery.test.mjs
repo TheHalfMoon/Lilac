@@ -97,7 +97,7 @@ test("losing journal bytes below a checkpoint fails closed; above it recovers", 
   try {
     const bytes = readFileSync(lilac(root, PROJECT_FILES.journal));
     const ends = lineEnds(bytes);
-    for (let offset = ends[1]; offset <= bytes.length; offset += 7) {
+    for (let offset = ends[1]; offset <= bytes.length; offset += 1) {
       const complete = ends.filter((end) => end <= offset).length;
       withCopy(root, (copy) => truncateSync(lilac(copy, PROJECT_FILES.journal), offset), (copy) => {
         const result = outcome(copy);
@@ -121,6 +121,7 @@ test("a flipped byte in the last entry fails closed or, if only its terminator i
     const bytes = readFileSync(lilac(root, PROJECT_FILES.journal));
     const ends = lineEnds(bytes);
     let failedClosed = 0;
+    let terminatorRecovered = false;
     for (let index = ends[2]; index < bytes.length; index += 1) {
       withCopy(root, (copy) => {
         const flipped = Buffer.from(bytes);
@@ -133,12 +134,16 @@ test("a flipped byte in the last entry fails closed or, if only its terminator i
           failedClosed += 1;
           return;
         }
-        // Never a wrong document: whatever revision opens has exactly that revision's state.
-        assert.equal(result.title, title(result.revision), `byte ${index}`);
-        assert.ok(result.revision === 4 || (result.revision === 3 && index === bytes.length - 1), `byte ${index} opened revision ${result.revision}`);
+        // Only losing the terminator opens anything: the previous revision, exactly.
+        assert.equal(index, bytes.length - 1, `byte ${index} opened revision ${result.revision}`);
+        assert.equal(result.revision, 3);
+        assert.equal(result.title, title(3));
+        assert.equal(result.recovery.tornTailBytes, bytes.length - ends[2]);
+        terminatorRecovered = true;
       });
     }
-    assert.ok(failedClosed > 0);
+    assert.equal(failedClosed, bytes.length - ends[2] - 1, "every other flip fails closed");
+    assert.equal(terminatorRecovered, true, "the terminator case was exercised and recovered");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -177,24 +182,30 @@ test("an interrupted atomic write of the manifest, snapshot or journal recovers 
   }
 });
 
-test("an interrupted object write and an orphaned object both recover", () => {
-  const root = project(2);
+test("a checkpoint interrupted before its snapshot reference moved, and an interrupted object write, recover", () => {
+  const root = project(3);
   try {
     withCopy(root, (copy) => {
-      // A checkpoint that wrote its document object but crashed before moving the snapshot
-      // reference leaves an orphan; an object write that crashed leaves a temporary.
+      // The checkpoint wrote its document object, then crashed before the snapshot
+      // reference was replaced: restore the old reference, so the new object is an orphan.
+      const snapshotPath = lilac(copy, PROJECT_FILES.snapshot);
+      const before = readFileSync(snapshotPath);
+      const store = open(copy);
+      store.checkpoint();
+      store.close();
+      writeFileSync(snapshotPath, before);
+      // An object write that crashed leaves a temporary in its fan-out directory.
       const objects = lilac(copy, PROJECT_FILES.objects);
       const fanOut = readdirSync(objects).find((name) => /^[0-9a-f]{2}$/u.test(name));
-      const object = readdirSync(join(objects, fanOut))[0];
-      writeFileSync(join(objects, fanOut, temporaryName(object)), "half an object");
-      mkdirSync(join(objects, "ff"), { recursive: true });
-      writeFileSync(join(objects, "ff", "f".repeat(62)), "orphaned and never referenced");
+      writeFileSync(join(objects, fanOut, temporaryName(readdirSync(join(objects, fanOut))[0])), "half an object");
     }, (copy) => {
       const result = outcome(copy);
-      assert.equal(result.revision, 2);
-      assert.equal(result.title, title(2));
+      assert.equal(result.revision, 3);
+      assert.equal(result.title, title(3));
+      assert.equal(result.recovery.replayedEntries, 3, "the previous snapshot is used and the journal replayed");
       assert.equal(result.recovery.staleTemporaryFiles, 1);
-      assert.equal(existsSync(join(lilac(copy, PROJECT_FILES.objects), "ff", "f".repeat(62))), true, "an orphan is left alone: it may be referenced later");
+      const objectCount = readdirSync(lilac(copy, PROJECT_FILES.objects)).flatMap((dir) => readdirSync(join(lilac(copy, PROJECT_FILES.objects), dir))).length;
+      assert.equal(objectCount, 2, "the orphaned object is kept: it may be referenced later");
     });
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -257,12 +268,57 @@ test("cleanup removes only regular files named as a known target's temporary", (
       writeFileSync(join(copy, "outside.txt"), "keep");
       writeFileSync(join(dir, "notes.tmp-1-not-a-uuid"), "keep");
       writeFileSync(join(dir, temporaryName("unknown.json")), "keep");
+      // In the object store: a symlinked fan-out directory, a non-hex directory and the
+      // objects root itself are never scanned.
+      const outside = join(copy, "outside-objects");
+      mkdirSync(outside);
+      writeFileSync(join(outside, temporaryName("a".repeat(62))), "keep");
+      symlinkSync(outside, join(dir, PROJECT_FILES.objects, "ab"));
+      mkdirSync(join(dir, PROJECT_FILES.objects, "zz"));
+      writeFileSync(join(dir, PROJECT_FILES.objects, "zz", temporaryName("b".repeat(62))), "keep");
+      writeFileSync(join(dir, PROJECT_FILES.objects, temporaryName("c".repeat(62))), "keep");
     }, (copy) => {
       const result = outcome(copy);
       assert.equal(result.revision, 1);
       assert.equal(result.recovery.staleTemporaryFiles, 0);
       assert.equal(readdirSync(join(copy, PROJECT_FILES.directory)).filter((name) => name.includes(".tmp-")).length, 4, "directory, symlink and foreign names stay");
       assert.equal(readFileSync(join(copy, "outside.txt"), "utf8"), "keep");
+      assert.equal(readdirSync(join(copy, "outside-objects")).length, 1, "a symlinked fan-out directory is not followed");
+      assert.equal(readdirSync(join(copy, PROJECT_FILES.directory, PROJECT_FILES.objects, "zz")).length, 1);
+      assert.equal(readdirSync(join(copy, PROJECT_FILES.directory, PROJECT_FILES.objects)).filter((name) => name.includes(".tmp-")).length, 1);
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a lock file left empty or partial by a crash fails closed until explicitly overridden", () => {
+  const root = project(1);
+  try {
+    for (const content of ["", "{\"owner\":\"writer-1\",\"pi"]) {
+      withCopy(root, (copy) => writeFileSync(lilac(copy, PROJECT_FILES.lock), content), (copy) => {
+        const refused = outcome(copy);
+        assert.equal(refused.error?.name, "PersistenceLockError", JSON.stringify(content));
+        const store = open(copy, { breakStaleLock: { reason: "the writer crashed while creating its lock" } });
+        assert.equal(store.revision, 1);
+        assert.equal(store.recovery.lockOverride.previous, null, "an unreadable lock has no previous owner");
+        store.close();
+        assert.equal(outcome(copy).revision, 1);
+      });
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a lock override interrupted after renaming the stale lock aside leaves nothing behind", () => {
+  const root = project(1);
+  try {
+    withCopy(root, (copy) => writeFileSync(lilac(copy, `${PROJECT_FILES.lock}.broken-${randomUUID()}`), "{\"owner\":\"writer-0\"}"), (copy) => {
+      const result = outcome(copy);
+      assert.equal(result.revision, 1);
+      assert.equal(result.recovery.staleTemporaryFiles, 1);
+      assert.deepEqual(readdirSync(join(copy, PROJECT_FILES.directory)).filter((name) => name.includes(".broken-")), []);
     });
   } finally {
     rmSync(root, { recursive: true, force: true });

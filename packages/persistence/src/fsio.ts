@@ -284,24 +284,38 @@ const TEMPORARY_NAME = /^(.+)\.tmp-\d{1,10}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-
  * Remove temporary files that an interrupted atomicWrite left in `directory`: regular
  * files (never symlinks or directories) whose name is exactly a temporary name for a
  * target `isTarget` accepts. A temporary is never referenced, so removing it loses
- * nothing. Returns how many were removed.
+ * nothing, and failing to remove one is no reason to refuse the project: this is best
+ * effort, and anything it cannot list, inspect or remove is left in place. Returns how
+ * many were removed.
  */
 export function removeStaleTemporaries(directory: string, isTarget: (name: string) => boolean): number {
+  return removeStaleFiles(directory, (name) => {
+    const match = TEMPORARY_NAME.exec(name);
+    return match !== null && isTarget(match[1]);
+  });
+}
+
+/** Remove the regular files in `directory` whose name `matches` accepts; best effort. */
+export function removeStaleFiles(directory: string, matches: (name: string) => boolean): number {
   let removed = 0;
   let names: string[];
   try {
     names = readdirSync(directory);
   } catch (error) {
-    if (isMissing(error)) return 0;
+    if (typeof (error as NodeJS.ErrnoException)?.code === "string") return 0;
     throw error;
   }
   for (const name of names) {
-    const match = TEMPORARY_NAME.exec(name);
-    if (match === null || !isTarget(match[1])) continue;
+    if (!matches(name)) continue;
     const path = join(directory, name);
-    if (!lstatSync(path).isFile()) continue;
-    removeFile(path);
-    removed += 1;
+    try {
+      if (!lstatSync(path).isFile()) continue;
+      unlinkSync(path);
+      removed += 1;
+    } catch (error) {
+      // Gone already, or not ours to remove: leave it. Anything else is a bug.
+      if (typeof (error as NodeJS.ErrnoException)?.code !== "string") throw error;
+    }
   }
   return removed;
 }

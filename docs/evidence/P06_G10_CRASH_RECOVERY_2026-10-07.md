@@ -15,11 +15,11 @@ A temporary is never referenced, so removing it loses nothing. The recovery repo
 
 ## Tests
 
-`tests/crash-recovery.test.mjs` has 8 tests.
+`tests/crash-recovery.test.mjs` had 8 tests in the first version; review delta 1 brought it to 10.
 - **Tests 1 to 3** pass on base `b320820`. They pin, offset by offset, behaviour that was already correct.
 - **Tests 4 to 8** fail on base, because they need the cleanup.
 
-1. **Truncation at every byte offset.** A 6-entry journal with multi-byte text is truncated at every offset of its last 4 entries (more than 800 cases).
+1. **Truncation at every byte offset.** A 6-entry journal with multi-byte text is truncated at every offset of its last 3 entries (904 cases).
    - Each recovers to the last complete, newline-terminated entry, with that revision's document and the exact `tornTailBytes`.
    - The repair is durable: the next open reports 0 torn bytes, and a further commit continues from the recovered head.
 2. **With a checkpoint at entry 4.** Truncating below the checkpoint fails closed with `PersistenceCorruptionError` ("snapshot reference points past the end of the journal"). Truncating at or above it recovers.
@@ -41,3 +41,25 @@ A whole-entry truncation at an exact line boundary below the head looks the same
 - **What does catch it.** The checkpoint snapshot is the only independent head record, and losing data below it fails closed (test 2).
 
 Detecting loss above the last checkpoint would need a second, separately fsynced head record. That is recorded here as a residual, not claimed as detected.
+
+## Review delta 1
+
+The judge returned no must-fix. Probes confirmed that cleanup cannot reach outside the project or anything still referenced. Its worth-considering items:
+
+**Product.**
+- **Best-effort cleanup.** It used to throw on an unreadable directory or a vanishing entry, which would have refused a project because of garbage. It now leaves anything it cannot list, inspect or remove. Only filesystem (errno) errors are absorbed: while making this change, a dropped declaration turned cleanup into a silent no-op behind a blanket `catch`, so both catches now rethrow anything that is not a filesystem error.
+- **Leftover renamed locks.** A lock override renames the stale lock aside before reading it, so a crash in between left a `lock.broken-<uuid>`. It is now removed by the same cleanup and counted in `staleTemporaryFiles`. The previous holder is already recorded in the persisted override.
+
+**Tests.**
+- **Byte flips (test 3).** The assertion is strict: every flip fails closed except the terminator flip, which recovers revision 3 with `tornTailBytes` equal to the line length.
+- **Checkpoint (test 2).** Every offset is covered.
+- **Real orphan (test 5).** A checkpoint is taken in a copy and the old snapshot reference restored. The test asserts the previous snapshot is used, all 3 entries are replayed, and the orphan is kept.
+- **Cleanup scope (test 8).** It now also covers a symlinked fan-out directory, a non-hex directory and the `objects` root.
+- **New test 9.** A lock left empty or partial fails closed with `PersistenceLockError` until explicitly overridden, and the override records no previous owner.
+- **New test 10.** A leftover renamed lock is removed. Test 10 fails on `bf5aa74`.
+
+**Residuals recorded:**
+- **Interrupted `createProject`.** It leaves a `.lilac.tmp-<pid>-<uuid>` staging directory beside the project, in the user's directory. It is never cleaned, because nothing in Lilac owns that location. A retry is unaffected: staging names are unique, and creation refuses an existing `.lilac`.
+- **Loss above the last checkpoint.** Whole-entry loss there stays undetectable, as described under Disposition.
+
+`tests/crash-recovery.test.mjs` now has 10 tests.
