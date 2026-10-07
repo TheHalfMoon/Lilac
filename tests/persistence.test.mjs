@@ -434,6 +434,17 @@ test("values JSON cannot represent are refused, and memory always equals replay"
   reopened.close();
 }));
 
+test("memory equals replay in key order too: a later style shorthand still wins after reopen", () => withProject((root) => {
+  const store = open(root);
+  // Insertion order is not sorted order; the order of style entries decides what is drawn.
+  store.commit({ id: "tx-order", actor: "user-1", baseRevision: 0, operations: [{ type: "set-props", nodeId: "node-1", set: { style: { "margin-left": "5px", margin: "0px" }, zeta: 1, alpha: { b: 1, a: 2 } } }] });
+  const inMemory = JSON.stringify(store.document);
+  store.close();
+  const reopened = open(root);
+  assert.equal(JSON.stringify(reopened.document), inMemory, "the same document, key for key and in the same order");
+  reopened.close();
+}));
+
 test("an existing .lilac of any kind is never replaced by project creation", () => {
   const root = tempRoot();
   try {

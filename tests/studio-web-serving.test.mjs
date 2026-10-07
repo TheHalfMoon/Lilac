@@ -82,3 +82,18 @@ test("the editor's routes: the user, the history log, and project-named changes 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a request body over the limit is answered, not left waiting", { timeout: 15_000 }, async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-too-large-")));
+  const host = await startStudioHost({ projectsRoot: root, now });
+  try {
+    const started = Date.now();
+    const response = await fetch(`${host.url}/api/edit`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify({ padding: "x".repeat(3 * 1024 * 1024) }) });
+    assert.equal(response.status, 413);
+    assert.equal((await response.json()).error.code, "too-large");
+    assert.ok(Date.now() - started < 5000, `answered in ${Date.now() - started} ms`);
+  } finally {
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
