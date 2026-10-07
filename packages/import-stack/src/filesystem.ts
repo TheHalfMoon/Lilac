@@ -15,6 +15,8 @@ export async function canonicalFileWithinRoots(path: string, roots: string[], la
   if (!Array.isArray(roots) || roots.length === 0) throw new ImportSecurityError(`${label} requires at least one authorized root`);
   const info = await lstat(path);
   if (info.isSymbolicLink() || !info.isFile()) throw new ImportSecurityError(`${label} must be a regular non-symlink file`);
+  // A hard link inside a root can name a file that lives outside it; realpath cannot tell.
+  if (info.nlink > 1) throw new ImportSecurityError(`${label} must not be hard-linked`);
   const source = await realpath(path);
   for (const rootInput of roots) {
     const root = await canonicalDirectory(rootInput, `${label} authorized root`);
@@ -23,6 +25,9 @@ export async function canonicalFileWithinRoots(path: string, roots: string[], la
   }
   throw new ImportSecurityError(`${label} escapes authorized roots`);
 }
+
+/** The name createImportJobDirectory gives a job directory: `<prefix>-<24 hex>`. */
+export const IMPORT_JOB_DIRECTORY_NAME = /^[a-z][a-z0-9-]{0,31}-[0-9a-f]{24}$/u;
 
 export async function createImportJobDirectory(
   workRootInput: string,
@@ -58,6 +63,10 @@ export async function safeRemoveImportJobDirectory(workRootInput: string, jobDir
   const rel = relative(root, target);
   if (rel === "" || rel === ".." || rel.startsWith(".." + sep) || isAbsolute(rel)) {
     throw new ImportSecurityError("refusing to remove import job path outside the configured work root");
+  }
+  // Only a job directory itself: a direct child of the work root named as created.
+  if (rel.includes(sep) || !IMPORT_JOB_DIRECTORY_NAME.test(rel)) {
+    throw new ImportSecurityError("refusing to remove a path that is not an import job directory");
   }
   await rm(target, { recursive: true, force: true });
 }

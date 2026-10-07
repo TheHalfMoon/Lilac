@@ -91,6 +91,24 @@ export async function createEvidenceStore(options: EvidenceStoreOptions): Promis
     }
   }
   await mkdir(root, { recursive: true });
+  // Pin the root's identity. Before each write the root must still be the same directory,
+  // reached without symlinks; otherwise a root swapped for a link after creation would
+  // receive the bundle. A swap between this check and the write remains possible.
+  const pinned = await lstat(root, { bigint: true });
+
+  async function assertRootUnchanged(): Promise<void> {
+    let current;
+    let canonical;
+    try {
+      current = await lstat(root, { bigint: true });
+      canonical = await realpath(root);
+    } catch {
+      throw new DeliveryValidationError("evidence root changed since the store was created");
+    }
+    if (current.isSymbolicLink() || !current.isDirectory() || canonical !== root || current.dev !== pinned.dev || current.ino !== pinned.ino) {
+      throw new DeliveryValidationError("evidence root changed since the store was created");
+    }
+  }
 
   async function writeBundle(
     bundleInput: Omit<EvidenceBundle, "schemaVersion" | "bundleId">,
@@ -114,6 +132,7 @@ export async function createEvidenceStore(options: EvidenceStoreOptions): Promis
     if (typeof bundle.qualificationId !== "string" || bundle.qualificationId.trim() === "") {
       throw new DeliveryValidationError("evidence bundle qualificationId is required");
     }
+    await assertRootUnchanged();
     const path = join(root, `${bundle.bundleId}.evidence.json`);
     const stat = await lstat(path).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return null;

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { ImportAdapterError, ImportSecurityError, ImportValidationError } from "./errors.ts";
 import { canonicalFileWithinRoots, createImportJobDirectory, safeRemoveImportJobDirectory } from "./filesystem.ts";
@@ -158,11 +159,22 @@ export async function runLocalDocling(
     if (result.exitCode !== 0) {
       return { status: "failed", reason: `Docling exited with code ${result.exitCode}` };
     }
-    const outputStat = await stat(outputPath);
-    if (!outputStat.isFile() || outputStat.size === 0 || outputStat.size > policy.maxDocumentOutputBytes) {
-      throw new ImportSecurityError("Docling output size is outside policy bounds");
+    // Read the output like every other file the package reads: no symlink, a regular file,
+    // bounded, opened without following links or blocking on a FIFO.
+    const outputEntry = await lstat(outputPath);
+    if (outputEntry.isSymbolicLink() || !outputEntry.isFile()) throw new ImportSecurityError("Docling output must be a regular non-symlink file");
+    const handle = await open(outputPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    let encoded: string;
+    try {
+      const outputStat = await handle.stat();
+      if (!outputStat.isFile() || outputStat.size === 0 || outputStat.size > policy.maxDocumentOutputBytes) {
+        throw new ImportSecurityError("Docling output size is outside policy bounds");
+      }
+      encoded = await handle.readFile({ encoding: "utf8" });
+    } finally {
+      await handle.close();
     }
-    const encoded = await readFile(outputPath, "utf8");
+    if (Buffer.byteLength(encoded, "utf8") > policy.maxDocumentOutputBytes) throw new ImportSecurityError("Docling output size is outside policy bounds");
     let parsed: unknown;
     try { parsed = JSON.parse(encoded); } catch { throw new ImportValidationError("Docling output is malformed JSON"); }
     const normalized = normalizeImportJson(parsed, "Docling output");

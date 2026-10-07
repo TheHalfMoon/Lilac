@@ -3,7 +3,7 @@ import { lookup } from "node:dns/promises";
 import { readFile, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { createAssetRecord } from "./assets.ts";
 import { ImportConflictError, ImportSecurityError, ImportValidationError } from "./errors.ts";
 import { canonicalDirectory, canonicalFileWithinRoots, createImportJobDirectory, safeRemoveImportJobDirectory } from "./filesystem.ts";
@@ -331,6 +331,11 @@ async function verifyStaticMirrorResult(
   assertAllowedKeys(result, ["jobDirectory", "manifest"], "static mirror result");
   assertBoundedString(result.jobDirectory, "static mirror jobDirectory", 4096);
   const jobDirectory = await canonicalDirectory(result.jobDirectory, "static mirror job directory");
+  // The proposal step is not given the work root, so the directory is bound to the shape
+  // mirrorStaticSite creates; every object it serves is still hash-verified below.
+  if (!/^mirror-[0-9a-f]{24}$/u.test(basename(jobDirectory))) {
+    throw new ImportSecurityError("static mirror job directory is not a mirror job directory");
+  }
 
   assertPlainObject(result.manifest, "static mirror manifest");
   assertAllowedKeys(

@@ -2,6 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { devNull } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { SupervisorOwnershipError, SupervisorRecordError, SupervisorRuntimeError, SupervisorWorktreeError } from "./errors.ts";
@@ -19,17 +20,64 @@ function compareCodeUnits(left: string, right: string): number {
 
 const execFileAsync = promisify(execFile);
 
-async function git(cwd: string, args: string[]): Promise<string> {
+// An inspected worktree is untrusted, and Git reads that worktree's own config: core.fsmonitor
+// is a command `git status` runs, and filter drivers can run during status. Every command
+// therefore runs with repository-controlled execution switched off on the command line
+// (which outranks repository config), with no system or global config, and with Git's
+// environment overrides removed.
+const GIT_ENV_OVERRIDES = /^GIT_/u;
+
+function inspectionEnvironment(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) if (!GIT_ENV_OVERRIDES.test(key)) env[key] = value;
+  return { ...env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: devNull, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" };
+}
+
+const SAFE_GIT_OPTIONS = [
+  "-c", "core.fsmonitor=false",
+  "-c", `core.hooksPath=${devNull}`,
+  "-c", "core.untrackedCache=false",
+  "-c", "core.pager=cat",
+  "-c", "diff.external=",
+  "--no-optional-locks",
+];
+
+async function runGit(cwd: string, options: string[], args: string[]): Promise<string> {
   try {
-    const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
+    const { stdout } = await execFileAsync("git", ["-C", cwd, ...SAFE_GIT_OPTIONS, ...options, ...args], {
       encoding: "utf8",
       windowsHide: true,
       maxBuffer: 4 * 1024 * 1024,
+      env: inspectionEnvironment(),
     });
     return stdout;
   } catch (error) {
     throw new SupervisorWorktreeError(error instanceof Error ? error.message : "Git inspection failed");
   }
+}
+
+// Filter driver names are chosen by the repository, so they are read from its config (a
+// read executes nothing) and each driver's commands are overridden to empty, which Git
+// treats as no filter.
+async function filterOverrides(cwd: string): Promise<string[]> {
+  let listing = "";
+  try {
+    listing = await runGit(cwd, [], ["config", "--includes", "--name-only", "--get-regexp", "^filter\\."]);
+  } catch {
+    return [];
+  }
+  const drivers = new Set<string>();
+  for (const key of listing.split("\n")) {
+    const match = /^filter\.(.+)\.(?:clean|smudge|process|required)$/u.exec(key.trim());
+    if (match) drivers.add(match[1]);
+  }
+  return [...drivers].flatMap((driver) => [
+    "-c", `filter.${driver}.clean=`, "-c", `filter.${driver}.smudge=`, "-c", `filter.${driver}.process=`, "-c", `filter.${driver}.required=false`,
+  ]);
+}
+
+async function git(cwd: string, args: string[]): Promise<string> {
+  return runGit(cwd, await filterOverrides(cwd), args);
 }
 
 export class GitWorktreeInspector {
@@ -59,7 +107,9 @@ export class GitWorktreeInspector {
     const repositoryId = await realpath(resolve(canonicalPath, commonDir));
     const branch = (await git(canonicalPath, ["branch", "--show-current"])).trim();
     const head = (await git(canonicalPath, ["rev-parse", "HEAD"])).trim();
-    const status = await git(canonicalPath, ["status", "--porcelain=v1", "--untracked-files=all"]);
+    // Submodule worktrees carry their own config, whose filters are not overridden here, so
+    // status compares submodule commits without running Git inside them.
+    const status = await git(canonicalPath, ["status", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=dirty"]);
     const dirtyDigest = createHash("sha256").update(status, "utf8").digest("hex");
     return {
       exists: true,
