@@ -2,13 +2,15 @@ import { spawn } from "node:child_process";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { createRequire } from "node:module";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { statSync } from "node:fs";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 
 import { validateDocument } from "@lilac/document-model";
 import { classifyAddress } from "@lilac/network-policy";
 
+import { assertNoPolicyDenials, startBrowserPolicyProxy } from "./browser-proxy.mjs";
 import { DesignAssuranceError } from "./errors.mjs";
 import { compareCodeUnits } from "./order.mjs";
 
@@ -49,6 +51,7 @@ const SCANNABLE_SOURCE_EXTENSIONS = Object.freeze([
 
 export { DesignAssuranceError };
 export * from "./accessibility.mjs";
+export { BROWSER_PROXY_LIMITS, startBrowserPolicyProxy } from "./browser-proxy.mjs";
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -424,12 +427,13 @@ function resolveImpeccableCli() {
   return join(dirname(packagePath), "cli", "bin", "cli.js");
 }
 
-function runProcess(command, args, { cwd, timeoutMs }) {
+function runProcess(command, args, { cwd, timeoutMs, env = process.env }) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
       shell: false,
       windowsHide: true,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -472,6 +476,64 @@ function runProcess(command, args, { cwd, timeoutMs }) {
   });
 }
 
+const BROWSER_CANDIDATES = Object.freeze([
+  "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser",
+  "/usr/bin/microsoft-edge", "/usr/bin/brave-browser", "/snap/bin/chromium",
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+  "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+]);
+
+function isExecutableFile(path) {
+  try { return statSync(path).isFile(); } catch { return false; }
+}
+
+function findBrowserExecutable(env = process.env) {
+  for (const name of ["IMPECCABLE_BROWSER", "PUPPETEER_EXECUTABLE_PATH", "CHROME_PATH"]) {
+    if (typeof env[name] === "string" && env[name] !== "" && isExecutableFile(env[name])) return env[name];
+  }
+  return BROWSER_CANDIDATES.find(isExecutableFile) ?? null;
+}
+
+const shellQuote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
+
+// Flags placed before the launcher's own arguments. Chromium takes the last value of a
+// repeated switch, so the launcher could override them; the wrapper therefore also drops
+// any proxy-related switch it is given.
+function browserProxyFlags(proxyUrl) {
+  return [
+    `--proxy-server=${proxyUrl}`,
+    "--proxy-bypass-list=<-loopback>",
+    "--disable-quic",
+    "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+    "--dns-prefetch-disable",
+  ];
+}
+
+const OVERRIDABLE = ["--proxy-server", "--proxy-bypass-list", "--proxy-pac-url", "--proxy-auto-detect", "--no-proxy-server", "--enable-quic", "--force-webrtc-ip-handling-policy", "--host-resolver-rules"];
+
+async function writeBrowserWrapper(browserExecutable, proxyUrl, extraFlags = []) {
+  if (process.platform === "win32") throw new DesignAssuranceError("policy-enforced browser scans are not supported on Windows");
+  const directory = await mkdtemp(join(tmpdir(), "lilac-browser-"));
+  const path = join(directory, "browser");
+  const flags = [...browserProxyFlags(proxyUrl), ...extraFlags].map(shellQuote).join(" ");
+  const filter = OVERRIDABLE.map((name) => `${name}|${name}=*`).join("|");
+  const script = `#!/bin/sh
+for argument do
+  shift
+  case "$argument" in
+    ${filter}) ;;
+    *) set -- "$@" "$argument" ;;
+  esac
+done
+exec ${shellQuote(browserExecutable)} ${flags} "$@"
+`;
+  await writeFile(path, script, { mode: 0o700, flag: "wx" });
+  await chmod(path, 0o700);
+  return { path, dispose: () => rm(directory, { recursive: true, force: true }) };
+}
+
 function parseEngineJson(stdout) {
   if (stdout.trim() === "") return [];
   let parsed;
@@ -491,12 +553,22 @@ export function createImpeccableCliRunner({
   cliPath = resolveImpeccableCli(),
   nodePath = process.execPath,
   timeoutMs = 30_000,
+  browserExecutable = null,
+  browserFlags = [],
 } = {}) {
+  if (browserExecutable !== null && (typeof browserExecutable !== "string" || browserExecutable === "")) {
+    throw new DesignAssuranceError("browserExecutable must be a non-empty path");
+  }
+  if (!Array.isArray(browserFlags) || browserFlags.some((flag) => typeof flag !== "string" || !flag.startsWith("--"))) {
+    throw new DesignAssuranceError("browserFlags must be an array of --switches");
+  }
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
     throw new DesignAssuranceError("timeoutMs must be a positive safe integer");
   }
   return Object.freeze({
-    async scanTarget(target, { viewport = null, scopes = [] } = {}) {
+    // With proxyUrl, the engine's browser is a private wrapper that forces every contact
+    // through that proxy; the real browser is never given to the engine directly.
+    async scanTarget(target, { viewport = null, scopes = [], proxyUrl = null } = {}) {
       assertNonEmptyString(target, "scan target");
       // The pinned engine keeps parsing options after "--", so a target that
       // starts with "-" would become an option; such targets are refused.
@@ -517,7 +589,21 @@ export function createImpeccableCliRunner({
       }
       if (scopes.length > 0) args.push("--scope", scopes.join(","));
       args.push(target);
-      const result = await runProcess(nodePath, args, { cwd, timeoutMs });
+      let wrapper = null;
+      let env = process.env;
+      if (proxyUrl !== null) {
+        if (typeof proxyUrl !== "string" || !/^http:\/\/127\.0\.0\.1:\d{1,5}$/u.test(proxyUrl)) throw new DesignAssuranceError("proxyUrl must be a loopback http proxy");
+        const browser = browserExecutable ?? findBrowserExecutable();
+        if (browser === null) throw new DesignAssuranceError("no Chromium-based browser was found for URL scanning");
+        wrapper = await writeBrowserWrapper(browser, proxyUrl, browserFlags);
+        env = { ...process.env, IMPECCABLE_BROWSER: wrapper.path, PUPPETEER_EXECUTABLE_PATH: wrapper.path, CHROME_PATH: wrapper.path };
+      }
+      let result;
+      try {
+        result = await runProcess(nodePath, args, { cwd, timeoutMs, env });
+      } finally {
+        await wrapper?.dispose();
+      }
       if (result.code !== 0 && result.code !== 2) {
         const detail = result.stderr.trim() || `exit ${String(result.code)} signal ${String(result.signal)}`;
         throw new DesignAssuranceError(`Impeccable scan failed: ${detail}`);
@@ -642,11 +728,9 @@ function validateBrowserUrl(value, { allowPrivateNetwork = false } = {}) {
   return parsed;
 }
 
-// A DNS name is resolved before the scan and refused unless every answer is public.
-// The browser resolves again when it fetches and follows redirects and loads
-// subresources itself, so this blocks targets that are private at scan time; it
-// cannot prevent DNS rebinding, redirects or subresource loads to private hosts.
-// Those residuals are recorded in the P06 G5a evidence (#112) and tracked in #114.
+// A DNS name is resolved before the scan and refused unless every answer is public, so a
+// private target fails before any browser starts. The browser's own contacts (redirects,
+// subresources, a host that resolves differently later) are checked by the policy proxy.
 async function assertPublicResolution(hostname, lookup) {
   const host = hostname.replace(/^\[|\]$/gu, "");
   if (isIP(host) !== 0) return;
@@ -677,7 +761,17 @@ export async function scanBrowserUrl({
   if (!privateAllowed) await assertPublicResolution(parsed.hostname, lookup);
   const normalizedUrl = parsed.toString();
   const packs = defaultRulePacks(rulePacks);
-  const upstream = await runner.scanTarget(normalizedUrl, { viewport });
+  // The browser fetches for itself, so it runs behind a policy proxy: redirects,
+  // subresources and re-resolved (rebound) hosts are checked at every contact, and any
+  // policy denial fails the scan.
+  const proxy = await startBrowserPolicyProxy({ allowPrivateNetwork: privateAllowed, lookup });
+  let upstream;
+  try {
+    upstream = await runner.scanTarget(normalizedUrl, { viewport, proxyUrl: proxy.url });
+  } finally {
+    await proxy.close();
+  }
+  assertNoPolicyDenials(proxy.denials());
   const context = { surface: "browser", url: normalizedUrl, viewport };
   const findings = [
     ...normalizeUpstream(upstream.findings, { surface: "browser", url: normalizedUrl }),
