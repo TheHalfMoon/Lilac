@@ -521,7 +521,8 @@ function failedElementEnd(state: ParserState, startIndex: number): number {
     let selfClosing = false;
     for (;;) {
       const headerChar = source[index];
-      if (headerChar === undefined) return -1;
+      // An element as an attribute value (x=<B/>) would end the header early.
+      if (headerChar === undefined || headerChar === "<") return -1;
       if (headerChar === '"' || headerChar === "'") {
         const end = source.indexOf(headerChar, index + 1);
         if (end < 0) return -1;

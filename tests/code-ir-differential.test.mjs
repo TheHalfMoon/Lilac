@@ -133,6 +133,11 @@ test("recovery stops rather than guess when the failed element's structure is am
     "<A>{/'/.test(s) ? '}' : \"</A>\"}<h1>inner</h1></A>",
     "<A>{`${`}`}</A>`}<h1>inner</h1></A>",
     "<A x={h}>{`${`}`}</A>`}<h1>inner</h1></A>",
+    "<A x=<B/>><h1>inner</h1></A>",
+    "<A x=<B />><h1>inner</h1></A>",
+    "<A x={a} y=<B/>><h1>inner</h1></A>",
+    "<A x=<B y=\"1\"/>>{z}<h1>inner</h1></A>",
+    "<A x=<B x=<C/>/>><h1>inner</h1></A>",
   ]) {
     assert.throws(() => buildCodeIr([{ path: "R.jsx", content: source }]), /no supported elements/u, source);
   }

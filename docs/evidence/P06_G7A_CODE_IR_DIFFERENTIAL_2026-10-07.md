@@ -79,6 +79,10 @@ The two regex repros were added to test 9, and a new test 12 checks binding spee
 
 The three template repros were added to test 9, and test 13 checks that a 30-parameter destructured component binds. Both fail on `edd0ee3`. `tests/code-ir-differential.test.mjs` now has 13 tests.
 
+**Review delta 4.** The delta-3 re-review read the recovery design as a whole. It judged the rule complete for brace bodies and children text, but found one remaining gap in tag headers. An element-valued attribute (`<A x=<B/>>…`) has a `/>` that the header scan read as the end of the failed element. Any `<` inside a tag header now stops recovery. Its five repros were added to test 9; they fail on `ce77a51` and pass now.
+
+The ps-review cap of three delta cycles was reached at the delta-3 re-review. Delta 4 is a one-line fix in the fail-closed direction, verified by these repros and the mechanical gate, not by a fourth judge.
+
 ## Jev breaking judgment
 
 At `05c21d0` and again at `edd0ee3`, Jev judged this change `breaking=true`. That is accurate, and the break is intended. Each of these changes fixes a divergence or a fail-open:
