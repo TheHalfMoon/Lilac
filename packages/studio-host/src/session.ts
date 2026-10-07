@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, lstatSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
-import { LocalCollaborationRoom, createCollaborationState } from "@lilac/collaboration";
+import { LocalCollaborationRoom, createAccessPolicy, createCollaborationState } from "@lilac/collaboration";
 import { createDocument } from "@lilac/document-model";
 import { createHistoryState } from "@lilac/history";
 import { createProject, openProject, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
@@ -29,12 +29,15 @@ export interface ChangeEvent {
   transactionId: string;
   actor: string;
   actorKind: "user" | "agent";
+  /** The actor's display name, for attribution in the editor. */
+  actorName: string;
   intent: string | null;
   tool: string | null;
   affectedNodeIds: string[];
   operations: unknown[];
   undoOf?: string;
   redoOf?: string;
+  revertOf?: string;
 }
 
 export interface EditInput {
@@ -126,6 +129,23 @@ export class StudioSession {
     }
   }
 
+  get documentId(): string {
+    return this.#documentId;
+  }
+
+  /**
+   * Replace the agents' grants (the owner's own grant is fixed). Takes effect for the next
+   * commit and authorization check, so revoking an agent stops it at once.
+   */
+  setAgentGrants(grants: ReadonlyArray<{ principalKind: "actor"; principalId: string; capabilities: string[] }>): void {
+    this.#grants = [this.#grants[0], ...grants.filter((grant) => grant.principalId !== this.owner.actorId).map((grant) => ({ ...grant, capabilities: [...grant.capabilities] }))];
+  }
+
+  /** The document access policy every MCP call is authorized against. */
+  accessPolicy() {
+    return createAccessPolicy(this.#documentId, this.#grants);
+  }
+
   get document() {
     this.#assertUsable();
     return this.#store.document;
@@ -200,6 +220,28 @@ export class StudioSession {
     return event;
   }
 
+  /**
+   * `actor` (a person) reverts an agent's latest change in this session: its inverse is
+   * committed as `actor`'s own change, linked to the reverted one. Only the agent's latest
+   * change can be reverted, so its earlier changes stay consistent; a later conflicting
+   * change is reported as a conflict (409).
+   */
+  revert(actor: StudioActor, transactionId: unknown): ChangeEvent {
+    this.#assertUsable();
+    if (actor.kind !== "user") throw new StudioError(403, "forbidden", "only a person can revert an agent's change");
+    for (const [actorId, stack] of this.#undo) {
+      const entry = stack.at(-1);
+      if (entry === undefined || entry.transactionId !== transactionId) continue;
+      if (actorId === actor.actorId) return this.undo(actor);
+      const { event, inverse } = this.#commit(actor, "http", { operations: entry.inverse, intent: `Revert: ${entry.intent ?? "agent change"}`.slice(0, 500), tool: "lilac:revert", link: { revertOf: entry.transactionId } }, "revert-conflict");
+      stack.pop();
+      this.#push(this.#undo, actor, { transactionId: event.transactionId, intent: event.intent, operations: entry.inverse, inverse });
+      this.#redo.delete(actor.actorId);
+      return event;
+    }
+    throw new StudioError(409, "not-revertible", "only an agent's latest change in this session can be reverted");
+  }
+
   checkpoint(): { revision: number } {
     this.#assertUsable();
     try {
@@ -223,7 +265,7 @@ export class StudioSession {
     stacks.set(actor.actorId, stack);
   }
 
-  #commit(actor: StudioActor, transport: "http" | "mcp" | "agent", input: { operations: unknown[]; intent: string | null; tool: string | null; link?: { undoOf?: string; redoOf?: string } }, conflictCode?: string): { event: ChangeEvent; inverse: unknown[] } {
+  #commit(actor: StudioActor, transport: "http" | "mcp" | "agent", input: { operations: unknown[]; intent: string | null; tool: string | null; link?: { undoOf?: string; redoOf?: string; revertOf?: string } }, conflictCode?: string): { event: ChangeEvent; inverse: unknown[] } {
     const at = this.#now();
     const transactionId = `tx-${randomUUID()}`;
     let attributed: Record<string, unknown>;
@@ -247,7 +289,8 @@ export class StudioSession {
           intent: input.intent,
           tool: input.tool,
           timestamp: at,
-          metadata: input.link ? { lilac: input.link } : {},
+          // How the change arrived (editor, MCP), with its undo/redo/revert link, kept durably.
+          metadata: { lilac: { transport, ...(input.link ?? {}) } },
           operations: input.operations,
         },
       });
@@ -271,12 +314,14 @@ export class StudioSession {
       transactionId,
       actor: actor.actorId,
       actorKind: actor.kind,
+      actorName: actor.displayName,
       intent: input.intent,
       tool: input.tool,
       affectedNodeIds,
       operations: attributed.operations as unknown[],
       ...(input.link?.undoOf ? { undoOf: input.link.undoOf } : {}),
       ...(input.link?.redoOf ? { redoOf: input.link.redoOf } : {}),
+      ...(input.link?.revertOf ? { revertOf: input.link.revertOf } : {}),
     };
     const { operations: _operations, ...summary } = event;
     this.#log.push(summary);
