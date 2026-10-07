@@ -8,6 +8,7 @@ import {
   mkdirSync,
   openSync,
   readSync,
+  readdirSync,
   realpathSync,
   renameSync,
   unlinkSync,
@@ -274,6 +275,35 @@ export function appendDurable(path: string, data: string, label: string, expecte
   } finally {
     closeSync(fd);
   }
+}
+
+// The name atomicWrite gives its temporary file: <target>.tmp-<pid>-<uuid>.
+const TEMPORARY_NAME = /^(.+)\.tmp-\d{1,10}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+
+/**
+ * Remove temporary files that an interrupted atomicWrite left in `directory`: regular
+ * files (never symlinks or directories) whose name is exactly a temporary name for a
+ * target `isTarget` accepts. A temporary is never referenced, so removing it loses
+ * nothing. Returns how many were removed.
+ */
+export function removeStaleTemporaries(directory: string, isTarget: (name: string) => boolean): number {
+  let removed = 0;
+  let names: string[];
+  try {
+    names = readdirSync(directory);
+  } catch (error) {
+    if (isMissing(error)) return 0;
+    throw error;
+  }
+  for (const name of names) {
+    const match = TEMPORARY_NAME.exec(name);
+    if (match === null || !isTarget(match[1])) continue;
+    const path = join(directory, name);
+    if (!lstatSync(path).isFile()) continue;
+    removeFile(path);
+    removed += 1;
+  }
+  return removed;
 }
 
 export function removeFile(path: string): void {

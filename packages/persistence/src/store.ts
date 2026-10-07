@@ -1,5 +1,5 @@
 import { createHash, randomUUID, type Hash } from "node:crypto";
-import { lstatSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { cloneDocument, normalizeDocument, validateDocument } from "@lilac/document-model";
 import { applyTransaction } from "@lilac/history";
@@ -19,6 +19,7 @@ import {
   projectDirectory,
   readBounded,
   removeFile,
+  removeStaleTemporaries,
 } from "./fsio.ts";
 import { encodeJournalLine, genesisDigest, parseJournal } from "./journal.ts";
 import { PROJECT_MIGRATIONS, migrateManifest, type ManifestMigration } from "./migrations.ts";
@@ -277,6 +278,22 @@ function releaseLock(lockPath: string, record: LockRecord): void {
 }
 
 /** Open a project for writing: lock, verify, recover a torn journal tail, and replay. */
+// The object store's two-hex fan-out directories (real directories only, never links).
+function objectFanOutDirectories(projectDir: string): string[] {
+  const root = join(projectDir, PROJECT_FILES.objects);
+  let info;
+  try {
+    info = lstatSync(root);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  // Anything but a real directory is left for the object store's own typed checks.
+  if (!info.isDirectory()) return [];
+  const names = readdirSync(root);
+  return names.filter((name) => /^[0-9a-f]{2}$/u.test(name) && lstatSync(join(root, name)).isDirectory()).map((name) => join(root, name));
+}
+
 export function openProject(root: string, options: OpenProjectOptions): ProjectStore {
   const projectDir = projectDirectory(root);
   assertId(options?.owner, "owner");
@@ -296,6 +313,10 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   const lockOverride = acquireLock(files.lock, lockRecord, options.breakStaleLock);
   try {
     unchanged();
+    // An interrupted atomic write leaves an unreferenced temporary next to its target; the
+    // target itself still holds the last durable content. Clear them under the lock.
+    const staleTemporaryFiles = removeStaleTemporaries(projectDir, (target) => [PROJECT_FILES.manifest, PROJECT_FILES.snapshot, PROJECT_FILES.journal].includes(target))
+      + objectFanOutDirectories(projectDir).reduce((total, directory) => total + removeStaleTemporaries(directory, (target) => /^[0-9a-f]{62}$/u.test(target)), 0);
     const rawManifest = readJsonFile(files.manifest, "manifest");
     const { manifest: migrated, migratedFrom } = migrateManifest(rawManifest, options.migrations ?? PROJECT_MIGRATIONS);
     const manifest = readManifest(migrated);
@@ -349,7 +370,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       journalIdentity: fileIdentity(files.journal, "journal"),
       lock: lockRecord,
       directory,
-      recovery: { tornTailBytes: parsed.tornTailBytes, replayedEntries: replayed, migratedFrom, lockOverride },
+      recovery: { tornTailBytes: parsed.tornTailBytes, staleTemporaryFiles, replayedEntries: replayed, migratedFrom, lockOverride },
     });
   } catch (error) {
     // After a swap, the lock path points elsewhere; only release a lock in the pinned
