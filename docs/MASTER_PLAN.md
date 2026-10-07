@@ -232,10 +232,15 @@ Acceptance gates. Each needs real implementation and end-to-end evidence through
 9. Mutation attribution, history and undo/redo through the real UI.
 10. Import → edit → save → reopen through the UI.
 11. Design/code workflow through the product: export JSX through `code-ir`, and bring code into the design.
-12. Accessibility qualification of the editor UI and its generated output: `auditAccessibility` finds nothing in the editor chrome or in exported output, every editor action is keyboard operable, and the rest is judged against WCAG 2.2 AA. This closes P06 G4's editor-UI disposition.
-13. Large-document canvas and render performance qualification, including the architecture's 10,000-node edit/render benchmark. In headless Chromium on CI, the first render of a 10,000-node document takes at most 2 s, and a single-node edit is re-rendered within 100 ms at p95. This closes the renderer budget P06 G3 deferred (#108).
+12. Accessibility qualification of the editor UI and its generated output: `auditAccessibility` finds nothing in the editor chrome or in exported output, every editor action is keyboard operable, and the remaining WCAG 2.2 AA success criteria are assessed in a per-criterion checklist in `docs/evidence/`. This closes P06 G4's editor-UI disposition.
+13. Large-document canvas and render performance qualification, including the architecture's 10,000-node edit/render benchmark. Budgets, set by this plan and measured in headless Chromium on CI:
+    - the first render of a 10,000-node document takes at most 2 s;
+    - for a single-node edit, applying the DOM patch takes at most 100 ms at p95, measured from receipt of the change-stream event;
+    - on a 10,000-node project, the end-to-end edit (request, persisted commit, event, patch) takes at most 750 ms at p95. This is consistent with the persisted-commit cost P06 G3 measured (about 156 ms) and does not depend on #108.
+
+    This gate closes the renderer and canvas frame budget that the P06 G3 evidence deferred to the renderer grain.
 14. Crash and recovery behaviour through the actual app surface.
-15. Supported desktop packaging (Windows, macOS and Linux where supported) with a smoke test of the packaged app. Supported means Linux x64, macOS arm64 and Windows x64, each built on its GitHub-hosted runner. Code signing and notarization need owner-provided certificates and are recorded separately.
+15. Supported desktop packaging (Windows, macOS and Linux where supported) with a smoke test of the packaged app. Supported means Linux x64, macOS arm64 and Windows x64, each built on its GitHub-hosted runner. Code signing and notarization need owner-provided certificates and are tracked as a P07 release prerequisite on #139.
 16. Offline/local-first smoke flow through the product surface.
 17. A release-candidate end-to-end test covering the whole user journey.
 
