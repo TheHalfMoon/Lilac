@@ -180,7 +180,11 @@ export class StudioSession {
   }
 
   /** Commit an edit as `actor`. A stale `baseRevision` is refused rather than rebased. */
-  edit(actor: StudioActor, input: EditInput, transport: "http" | "mcp" | "agent" = "http"): ChangeEvent {
+  /**
+   * `provenance` (host-internal callers only, never from a request body) is kept in the
+   * transaction's `metadata.lilac`, for example what an import came from.
+   */
+  edit(actor: StudioActor, input: EditInput, transport: "http" | "mcp" | "agent" = "http", provenance?: Record<string, unknown>): ChangeEvent {
     this.#assertUsable();
     if (input === null || typeof input !== "object" || !Number.isSafeInteger(input.baseRevision)) throw new StudioError(400, "invalid-edit", "baseRevision must be an integer");
     if (input.baseRevision !== this.#store.revision) {
@@ -190,7 +194,7 @@ export class StudioSession {
     if (input.operations.length > MAX_OPERATIONS_PER_EDIT) throw new StudioError(413, "too-many-operations", `an edit may hold at most ${MAX_OPERATIONS_PER_EDIT} operations`);
     const intent = typeof input.intent === "string" ? input.intent.slice(0, 500) : null;
     const tool = typeof input.tool === "string" ? input.tool.slice(0, 200) : null;
-    const { event, inverse } = this.#commit(actor, transport, { operations: input.operations, intent, tool });
+    const { event, inverse } = this.#commit(actor, transport, { operations: input.operations, intent, tool, ...(provenance ? { provenance } : {}) });
     this.#push(this.#undo, actor, { transactionId: event.transactionId, intent, operations: input.operations, inverse });
     this.#redo.delete(actor.actorId);
     return event;
@@ -265,7 +269,7 @@ export class StudioSession {
     stacks.set(actor.actorId, stack);
   }
 
-  #commit(actor: StudioActor, transport: "http" | "mcp" | "agent", input: { operations: unknown[]; intent: string | null; tool: string | null; link?: { undoOf?: string; redoOf?: string; revertOf?: string } }, conflictCode?: string): { event: ChangeEvent; inverse: unknown[] } {
+  #commit(actor: StudioActor, transport: "http" | "mcp" | "agent", input: { operations: unknown[]; intent: string | null; tool: string | null; link?: { undoOf?: string; redoOf?: string; revertOf?: string }; provenance?: Record<string, unknown> }, conflictCode?: string): { event: ChangeEvent; inverse: unknown[] } {
     const at = this.#now();
     const transactionId = `tx-${randomUUID()}`;
     let attributed: Record<string, unknown>;
@@ -290,7 +294,7 @@ export class StudioSession {
           tool: input.tool,
           timestamp: at,
           // How the change arrived (editor, MCP), with its undo/redo/revert link, kept durably.
-          metadata: { lilac: { transport, ...(input.link ?? {}) } },
+          metadata: { lilac: { transport, ...(input.link ?? {}), ...(input.provenance ? { provenance: input.provenance } : {}) } },
           operations: input.operations,
         },
       });
