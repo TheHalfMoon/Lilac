@@ -101,7 +101,7 @@ async function openProjectsDialog() {
         try {
           await state.client.post("/api/projects/create", { name: name.value.trim() });
           close();
-          await loadProject();
+          await requestLoad();
         } catch (failure) {
           error.textContent = describeError(failure);
         }
@@ -123,7 +123,7 @@ async function openProject(name, errorNode, close, breakStaleLock) {
   try {
     await state.client.post("/api/projects/open", { name, ...(breakStaleLock ? { breakStaleLock } : {}) });
     close();
-    await loadProject();
+    await requestLoad();
   } catch (error) {
     if (error instanceof HostError && error.code === "project-locked") {
       close();
@@ -208,9 +208,18 @@ async function loadProject() {
     showReopen(session.failure);
     return session;
   }
-  await resync();
+  await requestResync();
   showRecovery(session.recovery);
   return session;
+}
+
+// One load at a time: the open/create path and the stream's project event both ask for one.
+let loading = null;
+function requestLoad() {
+  loading ??= loadProject().finally(() => {
+    loading = null;
+  });
+  return loading;
 }
 
 function clearProject() {
@@ -224,34 +233,62 @@ function clearProject() {
   renderAll();
 }
 
-/** Fetch the document and history again: the copy is replaced, never merged. */
+/**
+ * Fetch the document and history again: the copy is replaced, never merged. Change events
+ * that arrive meanwhile are held, and replayed on top of the fetched copy afterwards (those
+ * at or below its revision are already in it), so none is lost or applied twice.
+ */
 async function resync() {
   const [{ revision, document: next }, { entries }, session] = await Promise.all([
     state.client.get("/api/document"),
     state.client.get("/api/history"),
     state.client.get("/api/session"),
   ]);
+  if (session.project !== state.project) throw new Error("the open project changed during the refresh");
   state.revision = revision;
   state.document = next;
-  state.history = entries.slice(-MAX_HISTORY_SHOWN);
-  state.seen = new Set(entries.map((entry) => entry.transactionId));
+  state.history = entries.filter((entry) => entry.revision <= revision).slice(-MAX_HISTORY_SHOWN);
+  state.seen = new Set(state.history.map((entry) => entry.transactionId));
   state.canUndo = Boolean(session.canUndo);
   state.canRedo = Boolean(session.canRedo);
   canvas.setDocument(next);
   state.selection = canvas.selection;
-  renderAll();
 }
 
 let resyncing = null;
+let held = [];
 function requestResync() {
-  resyncing ??= resync().catch((error) => setStatus(describeError(error))).finally(() => {
-    resyncing = null;
-  });
+  resyncing ??= (async () => {
+    let failed = false;
+    try {
+      await resync();
+    } catch (error) {
+      failed = true;
+      canvas.clearPreview();
+      if (!handleSessionEnded(error)) setStatus(error instanceof HostError ? describeError(error) : "The project changed; refreshing again.");
+    } finally {
+      resyncing = null;
+    }
+    const replay = held.sort((a, b) => a.revision - b.revision);
+    held = [];
+    if (failed) {
+      // The project changed under the refresh (or the host is unreachable): start over.
+      if (state.client !== null && state.document !== null) setTimeout(() => requestLoad().catch(() => {}), 250);
+      return;
+    }
+    for (const event of replay) applyChange(event);
+    renderAll();
+  })();
   return resyncing;
 }
 
 /** Apply one committed change event to the local copy, in revision order. */
 function applyChange(event) {
+  if (event.project !== undefined && event.project !== state.project) return; // another project's
+  if (resyncing !== null) {
+    held.push(event);
+    return;
+  }
   if (state.document === null || event.revision <= state.revision) return; // already applied
   if (event.revision !== state.revision + 1) {
     requestResync();
@@ -299,7 +336,21 @@ function enqueue(task) {
   return run;
 }
 
+/** A 401 means this page's session is over (Lilac restarted); say so once. */
+let ended = false;
+function handleSessionEnded(error) {
+  if (!(error instanceof HostError) || error.status !== 401) return false;
+  if (!ended) {
+    ended = true;
+    forgetToken(window);
+    state.events?.close();
+    showDialog("This Lilac session has ended", () => [el("p", {}, "Lilac was restarted or the link expired. Open Lilac again from its launcher.")], { dismissable: false });
+  }
+  return true;
+}
+
 function handleEditError(error) {
+  if (handleSessionEnded(error)) return;
   if (error instanceof HostError) {
     if (error.code === "project-needs-reopen") {
       showReopen(error.message);
@@ -328,7 +379,7 @@ function commit(operations, intent, computedAt = state.document?.revision) {
   return enqueue(async () => {
     if (state.document === null || computedAt !== state.document.revision) {
       canvas.clearPreview();
-      setStatus("The project changed while you were editing, so that edit was not applied. Try it again.");
+      setStatus("That change was skipped: it was made before the previous change had finished. Try it again.");
       return null;
     }
     try {
@@ -394,10 +445,23 @@ function listenForChanges() {
       return;
     }
     if (info.failure && info.project === state.project) showReopen(info.failure);
-    else if (info.project !== state.project) loadProject().catch((error) => setStatus(describeError(error)));
+    else if (info.project !== state.project) {
+      // The copy belongs to the old project: stop applying to it until the new one is loaded.
+      state.project = info.project;
+      state.document = null;
+      requestLoad().catch((error) => {
+        if (!handleSessionEnded(error)) setStatus(describeError(error));
+      });
+    }
   });
   events.addEventListener("error", () => {
     dropped = true;
+    // A closed stream is not retried by the browser; find out whether the session ended.
+    if (events.readyState === 2) {
+      state.client.get("/api/session").then(() => listenForChanges(), (error) => {
+        if (!handleSessionEnded(error)) setTimeout(listenForChanges, 1000);
+      });
+    }
   });
   events.addEventListener("open", () => {
     // Changes may have been missed while the stream was down.
@@ -590,7 +654,7 @@ function renderInspector() {
   // Keep what someone is typing when a change from elsewhere redraws the inspector.
   const active = form.contains(document.activeElement) ? document.activeElement : null;
   const typing = active && active.dataset.original !== undefined && active.value !== active.dataset.original
-    ? { field: active.name, value: active.value, node: form.dataset.nodeId }
+    ? { field: active.name, value: active.value, node: form.dataset.nodeId, start: active.selectionStart, end: active.selectionEnd }
     : null;
   const activeField = active?.name ?? null;
   if (doc === null || state.selection.length !== 1 || !doc.nodes[state.selection[0]]) {
@@ -619,7 +683,11 @@ function renderInspector() {
     const input = form.elements.namedItem(typing.field);
     if (input) input.value = typing.value;
   }
-  if (activeField) form.elements.namedItem(activeField)?.focus();
+  if (activeField) {
+    const input = form.elements.namedItem(activeField);
+    input?.focus();
+    if (typing && typing.node === node.id && typing.start !== null) input?.setSelectionRange(typing.start, typing.end);
+  }
 }
 
 function onInspectorChange(event) {
@@ -743,7 +811,7 @@ async function main() {
   }
   let session;
   try {
-    session = await loadProject();
+    session = await requestLoad();
   } catch (error) {
     if (error instanceof HostError && error.status === 401) {
       forgetToken(window);
