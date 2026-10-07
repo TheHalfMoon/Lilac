@@ -23,9 +23,10 @@ function attributesOf(proposal, node) {
   return Object.entries(attributes).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
-// Inside SVG or MathML no element is void, until an HTML integration point.
+// Inside SVG no element is void, until an HTML integration point (MathML is never
+// imported: <math> is a forbidden tag).
 const FOREIGN_ROOTS = new Set(["svg", "math"]);
-const HTML_INTEGRATION = new Set(["foreignobject", "desc", "title", "annotation-xml", "mi", "mo", "mn", "ms", "mtext"]);
+const HTML_INTEGRATION = new Set(["foreignobject", "desc", "title"]);
 
 function serializeNode(proposal, id, rawText = false, foreign = false) {
   const node = proposal.nodes[id];

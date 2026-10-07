@@ -54,6 +54,18 @@ const TABLE_SECTIONS = new Set(["table", "tbody", "thead", "tfoot", "tr"]);
 // closed by a block start tag.
 const BUTTON_SCOPE_BOUNDARIES = new Set(["button", "html", "table", "td", "th", "caption", "marquee", "object", "applet", "template"]);
 
+// Whether an li, dd or dt sits anywhere below the node.
+function containsListItem(node: any): boolean {
+  const pending = [...(node.childNodes ?? [])];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    const tag = String(current?.tagName ?? "").toLowerCase();
+    if (tag === "li" || tag === "dd" || tag === "dt") return true;
+    pending.push(...(current?.content?.childNodes ?? current?.childNodes ?? []));
+  }
+  return false;
+}
+
 function insideOpenParagraph(node: any): boolean {
   for (let current = node.parentNode; current && current.tagName !== undefined; current = current.parentNode) {
     if (current.namespaceURI !== HTML_NAMESPACE) return false;
@@ -206,6 +218,20 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     return out;
   };
 
+  // An unwrapped element's attributes are dropped with it; count them as the attribute loop
+  // below would have, so the security summary does not depend on how an element was removed.
+  const countRemovedAttributes = (node: any, rawTag: string): void => {
+    for (const attr of Array.isArray(node.attrs) ? node.attrs : []) {
+      const name = (attr.prefix ? `${String(attr.prefix)}:${String(attr.name ?? "")}` : String(attr.name ?? "")).toLowerCase();
+      const rawValue = String(attr.value ?? "");
+      if (FORM_AUTHORITY_ATTRIBUTES.has(name) || REMOTE_AUTHORITY_ATTRIBUTES.has(name) || HOST_AUTHORITY_ATTRIBUTES.has(name) || name === "srcset") security.dangerousUrlsRemoved += 1;
+      else if (name.startsWith("on") || name === "srcdoc") security.eventHandlersRemoved += 1;
+      else if (name === "style") { if (sanitizeImportedCssText(rawValue, request.policy.maxCssBytes).unsafe) security.unsafeStylesRemoved += 1; }
+      else if (PRESENTATION_URL_ATTRIBUTES.has(name) && sanitizeImportedCssText(rawValue, Math.min(request.policy.maxAttributeBytes, request.policy.maxCssBytes)).unsafe) security.dangerousUrlsRemoved += 1;
+      else if (URL_ATTRIBUTES.has(name) && safeUrl(rawValue, rawTag, name, baseUrl) === null) security.dangerousUrlsRemoved += 1;
+    }
+  };
+
   // A string id, or several when an element is unwrapped into its parent.
   const walk = (node: any, parentId: string | null, domPath: string, depth: number): string | string[] | null => {
     if (depth > request.policy.maxDomDepth) throw new ImportSecurityError("DOM exceeds maxDomDepth");
@@ -269,10 +295,12 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     const attrs = Array.isArray(node.attrs) ? node.attrs : [];
     if (attrs.length > request.policy.maxAttributesPerNode) throw new ImportSecurityError(`<${rawTag}> exceeds maxAttributesPerNode`);
 
-    // Only an HTML <link> can load a stylesheet; a foreign "link" element is dropped.
+    // Only an HTML <link> can load a stylesheet. A foreign "link" element is unwrapped: it
+    // has no authority, and its children (SVG text, for example) are kept.
     if (rawTag === "link" && node.namespaceURI !== HTML_NAMESPACE) {
       recordRemoval("link", domPath, node.sourceCodeLocation);
-      return null;
+      countRemovedAttributes(node, rawTag);
+      return walkChildren(node, parentId, domPath, depth);
     }
     if (rawTag === "link") {
       const attrMap: Record<string, string> = Object.create(null);
@@ -292,18 +320,15 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     // foreign element), in a table section (where the parser keeps <form> empty but would
     // move a <div> out of the table) and under an open <p> (reachable only through
     // table-mode insertion; a <div> would close the <p>). There the form is unwrapped,
-    // children kept.
+    // children kept. Above an li, dd or dt it becomes a <section> instead: a <form> stops
+    // their search for an open list item and so does a <section>, but a <div> does not.
+    // An unlabelled <section> is a generic block, as a <div> is.
     if (rawTag === "form" && (node.namespaceURI !== HTML_NAMESPACE || TABLE_SECTIONS.has(String(node.parentNode?.tagName ?? "").toLowerCase()) || insideOpenParagraph(node))) {
       recordRemoval("form", domPath, node.sourceCodeLocation);
-      // The form's own attributes go with it; count what they carried, as the <div> path does.
-      for (const attr of Array.isArray(node.attrs) ? node.attrs : []) {
-        const name = String(attr.name ?? "").toLowerCase();
-        if (name.startsWith("on") || name === "srcdoc") security.eventHandlersRemoved += 1;
-        else if (FORM_AUTHORITY_ATTRIBUTES.has(name) || REMOTE_AUTHORITY_ATTRIBUTES.has(name) || HOST_AUTHORITY_ATTRIBUTES.has(name)) security.dangerousUrlsRemoved += 1;
-      }
+      countRemovedAttributes(node, rawTag);
       return walkChildren(node, parentId, domPath, depth);
     }
-    const tag = rawTag === "form" ? "div" : rawTag;
+    const tag = rawTag !== "form" ? rawTag : containsListItem(node) ? "section" : "div";
     const id = nodeId(proposalId, domPath);
     if (rawTag === "form") recordRemoval("form", domPath, node.sourceCodeLocation, id);
     const attributes: Record<string, string> = Object.create(null);
@@ -432,7 +457,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
       ? {
         code: "form-element-neutralized",
         severity: "warning",
-        message: `Neutralized ${entry.count} <form> element${plural} into <div>; children kept, submission removed`,
+        message: `Neutralized ${entry.count} <form> element${plural}; children kept, submission removed`,
         nodeId: entry.nodeId,
         sourceBinding: binding(request, entry.domPath, entry.location),
       }
