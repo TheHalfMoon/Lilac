@@ -51,13 +51,19 @@ export interface DirectoryIdentity {
   ino: bigint;
 }
 
-/** True when `path` still resolves, without symlinks, to the pinned directory. */
+/**
+ * True when `path` still resolves, without symlinks, to the pinned directory. A path that
+ * no longer resolves to a directory counts as changed; other errors (EACCES, EMFILE, ...)
+ * are rethrown so they are not misreported as a swap.
+ */
 export function isSameDirectory(path: string, pinned: DirectoryIdentity): boolean {
   let current: DirectoryIdentity;
   try {
     current = directoryIdentity(path, "project directory");
-  } catch {
-    return false;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (error instanceof PersistenceValidationError || code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
   }
   return current.path === pinned.path && current.dev === pinned.dev && current.ino === pinned.ino;
 }
@@ -66,8 +72,10 @@ export function directoryIdentity(path: string, label: string): DirectoryIdentit
   let real: string;
   try {
     real = realpathSync(path);
-  } catch {
-    throw new PersistenceValidationError(`${label} is missing`);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT" || code === "ENOTDIR") throw new PersistenceValidationError(`${label} is missing`);
+    throw error;
   }
   const stat = lstatSync(real, { bigint: true });
   if (!stat.isDirectory()) throw new PersistenceValidationError(`${label} must be a directory`);

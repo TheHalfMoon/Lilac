@@ -88,6 +88,8 @@ The P06 gate-5 probe found two escapes in this package, plus two weaker behaviou
 - `openProject` pins the real path and device/inode of its project directory before it reads anything.
 - It re-checks them before any migration or torn-tail write and once more before returning the store. Review delta 1 moved the pin here: a first version pinned only after open, so a swap during open (about 51 ms with 2,000 journal entries) was accepted.
 - Every later write re-checks both.
+- Residual (read side): an attacker who can rename the root's parent can swap the root out and back between two reads during open, so the open reads from another copy. Writes still go only to the pinned directory. Node has no `openat` to prevent this.
+- Only a path that no longer resolves to a directory counts as changed. Other errors from the identity check, such as `EACCES` or `EMFILE`, are rethrown rather than reported as a swap.
 - `close()`, and failed opens, only release a lock in the pinned directory. After a move or swap the lock stays where it is, for `breakStaleLock`, instead of a file being removed elsewhere.
 - Residual: a swap between that check and the write remains possible, because Node has no `openat`-style directory-descriptor API.
 

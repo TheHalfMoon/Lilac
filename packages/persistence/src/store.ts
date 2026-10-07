@@ -273,8 +273,9 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   assertTimestamp(options.at, "at");
   if (!assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("no Lilac project exists at this root");
   // Pin the project directory before anything is read or written, and re-check it before
-  // every write during open and once more before the store is handed out, so a root swapped
-  // at any point during open is refused.
+  // every write during open and once more before the store is handed out, so no write lands
+  // in a swapped directory. Residual: a swap out and back between two reads can feed this
+  // open from another copy; writes still go to the pinned directory (Node has no openat).
   const directory = directoryIdentity(projectDir, "project directory");
   if (directory.path !== projectDir) throw new PersistenceValidationError("project directory must not be reached through a symbolic link");
   const unchanged = (): void => {
