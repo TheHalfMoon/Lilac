@@ -3,15 +3,17 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { DOCUMENT_SCHEMA_VERSION, createDocument } from "../packages/document-model/src/index.mjs";
-import { MCP_CONFIRMATION_WINDOW_MS, MCP_TRANSPORTS, PAPER_MCP_OBSERVED_AT, PAPER_MCP_TOOL_NAMES, classifyPaperTool } from "../packages/mcp-protocol/src/index.mjs";
+import { MCP_CONFIRMATION_WINDOW_MS, MCP_TRANSPORTS, PAPER_MCP_OBSERVED_AT, PAPER_MCP_TOOL_NAMES, authorizeMCPToolCall, classifyPaperTool, mcpArgumentsSha256 } from "../packages/mcp-protocol/src/index.mjs";
+import { createAccessPolicy } from "../packages/collaboration/src/index.ts";
 import { PROJECT_FILES, PROJECT_MIGRATIONS, PROJECT_SCHEMA_VERSION, createProject, openProject } from "../packages/persistence/src/index.ts";
 
 // P07a (#140): the release documents must describe the code as it is. Every cited path
 // exists, and every number or example they state is checked against the implementation.
 
-const ROOT = new URL("../", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const DOCS = ["SECURITY.md", "docs/MCP.md", "docs/MIGRATION.md"];
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
 
@@ -45,15 +47,36 @@ test("the MCP documentation matches the tool surface, classes and confirmation w
   assert.equal(MCP_CONFIRMATION_WINDOW_MS, 5 * 60 * 1000);
   assert.match(doc, /`MCP_CONFIRMATION_WINDOW_MS` \(5 minutes\)/);
   // Every tool named in the doc is a real tool, and the class it is listed under is its class.
+  // Every tool named in a class row is a real tool of that class, and an authorized call for
+  // it reports exactly the capability the row states.
+  const AT = "2026-10-07T12:00:00.000Z";
+  const user = { actorId: "user-1", kind: "user", accessClass: "member", displayName: "User" };
+  const policy = createAccessPolicy("doc-1", [{ principalKind: "actor", principalId: user.actorId, capabilities: ["read", "document-write", "comments"] }]);
+  const decide = (toolName) => {
+    const args = {};
+    const confirmation = classifyPaperTool(toolName) === "consequential"
+      ? { confirmation: { documentId: "doc-1", toolName, argumentsSha256: mcpArgumentsSha256(args), actorId: user.actorId, confirmedAt: AT } }
+      : {};
+    return authorizeMCPToolCall(policy, { actor: user, toolName, arguments: args, at: AT, ...confirmation });
+  };
   let listed = 0;
-  for (const [, cls, cell] of doc.matchAll(/^\| (read|write|consequential) \| ([^|]+) \|/gm)) {
+  for (const [, label, cell, capabilityCell] of doc.matchAll(/^\| (read|write|comments|consequential) \| ([^|]+) \| ([^|]+) \|$/gm)) {
+    const cls = label === "comments" ? "write" : label;
+    const capability = /`([a-z-]+)`/.exec(capabilityCell)[1];
     for (const [, name] of cell.matchAll(/`([a-z_]+)`/g)) {
       assert.equal(classifyPaperTool(name), cls, `${name} is listed as ${cls}`);
+      const decision = decide(name);
+      assert.equal(decision.outcome, "allowed", `${name} with every capability`);
+      assert.equal(decision.capability, capability, `${name} needs ${capability}`);
       listed += 1;
     }
   }
   assert.ok(listed >= 10, `the class table names ${listed} tools`);
-  for (const name of ["open_file", "create_file", "list_resources", "rename_resource"]) assert.ok(doc.includes(`\`${name}\``));
+  for (const name of ["open_file", "create_file", "list_resources", "rename_resource"]) {
+    assert.ok(doc.includes(`\`${name}\``));
+    assert.equal(decide(name).outcome, "denied", `${name} is always denied`);
+  }
+  assert.ok(decide("x".repeat(1000)).reason.length <= 100, "an unknown tool's reason is bounded");
   assert.match(doc, /\*\*Not implemented\*\* \| #82/);
 });
 
@@ -67,6 +90,19 @@ test("the migration documentation matches the version constants and layout", () 
     assert.ok(doc.includes(`\`${name}`), `the layout table names ${name}`);
   }
   assert.ok(doc.includes(`\`<root>/${PROJECT_FILES.directory}\``));
+  // The "exactly these fields" lists match what createProject writes.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-layout-doc-")));
+  try {
+    createProject(root, { projectId: "layout", document: createDocument({ id: "doc-1" }), createdAt: "2026-10-07T12:00:00.000Z" });
+    for (const [name, label] of [[PROJECT_FILES.manifest, "manifest"], [PROJECT_FILES.snapshot, "snapshot reference"]]) {
+      const keys = Object.keys(JSON.parse(readFileSync(join(root, PROJECT_FILES.directory, name), "utf8"))).sort();
+      const row = doc.split("\n").find((line) => line.startsWith(`| \`${name}\``));
+      const documented = /\{ ([^}]+) \}/.exec(row)[1].split(", ").map((field) => field.split(":")[0].trim()).sort();
+      assert.deepEqual(documented, keys, `the ${label} fields`);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("the migration example runs as written", () => {

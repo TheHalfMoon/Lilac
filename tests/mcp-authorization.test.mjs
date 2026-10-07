@@ -117,6 +117,9 @@ test("unknown tools are denied without consulting the policy", () => {
     assert.equal(decision.toolClass, "unknown");
     assert.equal(decision.policyRevision, null, "the policy was not consulted");
   }
+  // The reason echoes the name bounded and quoted, so a host can log it.
+  assert.equal(authorizeMCPToolCall(policy, call("shell")).reason, 'unknown tool "shell"');
+  assert.ok(authorizeMCPToolCall(policy, call("x".repeat(100_000))).reason.length <= 100);
   // Even a malformed policy is never consulted for an unknown tool.
   assert.equal(authorizeMCPToolCall({ not: "a policy" }, call("shell")).outcome, "denied");
   assert.throws(() => authorizeMCPToolCall(policy, call("")), MCPContractError);

@@ -91,7 +91,7 @@ export function authorizeMCPToolCall(policy, call) {
   const at = timestamp(call.at, "tool call at");
   const toolClass = classifyPaperTool(call.toolName);
   if (toolClass === "unknown") {
-    return { outcome: "denied", toolClass, capability: null, documentId: null, reason: `unknown tool ${call.toolName}`, policyRevision: null };
+    return { outcome: "denied", toolClass, capability: null, documentId: null, reason: `unknown tool ${JSON.stringify(call.toolName).slice(0, 80)}`, policyRevision: null };
   }
   canonicalArguments(call.arguments);
   if (WORKSPACE_TOOLS.has(call.toolName)) {

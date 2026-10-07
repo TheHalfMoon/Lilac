@@ -21,9 +21,9 @@ There is no MCP endpoint to connect a client to yet. Nothing on this page descri
 
 | Class | Tools | Capability required |
 | --- | --- | --- |
-| read | the 21 read-only tools, such as `get_selection`, `get_node_info`, `get_jsx`, `find_nodes`, `export` and `get_tokens` | `read` |
+| read | the 21 read-only tools (except the workspace tools below), such as `get_selection`, `get_node_info`, `get_jsx`, `find_nodes`, `export` and `get_tokens` | `read` |
 | write | for example `write_html`, `update_styles`, `move_nodes`, `set_text_content` and `create_tokens` | `document-write` |
-| write | `set_comment_thread_status` | `comments` |
+| comments | `set_comment_thread_status` (a write-class tool) | `comments` |
 | consequential | `delete_nodes` | `document-write` plus a confirmation |
 | unknown | any other name | denied without consulting a policy |
 
@@ -42,19 +42,22 @@ const decision = authorizeMCPToolCall(policy, {
   linkGrantId,       // optional
   confirmation,      // required for consequential tools
 });
-// decision.outcome: "allowed" | "denied" | "confirmation-required" | another access-oracle outcome
+// decision.outcome: "allowed" | "denied" | "confirmation-required" | "not-found"
 ```
 
-`policy` is a collaboration document access policy, evaluated by `evaluateAccess` with transport `"mcp"`. A decision carries `toolClass`, `capability`, `documentId`, `policyRevision` and a bounded `reason`. `requireMCPToolCall` throws `MCPAuthorizationError` (with `.decision`) unless the outcome is `allowed`. Malformed calls throw `MCPContractError`. Malformed calls include:
-- unsupported keys;
-- a non-object or non-JSON `arguments`;
-- an `at` value that is not a real ISO-8601 UTC instant.
+`policy` is a collaboration document access policy, evaluated by `evaluateAccess` with transport `"mcp"`. A decision carries `toolClass`, `capability`, `documentId`, `policyRevision` and a `reason`; an unknown tool's name appears in it quoted and truncated. Besides `allowed` and `confirmation-required`, the outcomes are `denied`, and `not-found` for a deleted document. `requireMCPToolCall` throws `MCPAuthorizationError` (with `.decision`) unless the outcome is `allowed`.
+
+Malformed input throws:
+- **`MCPContractError`** for unsupported keys, an empty `toolName`, or an `at` value that is not a real ISO-8601 UTC instant. For a known tool, it also covers an `arguments` value that is not a JSON object.
+- **`CollaborationValidationError`** from `evaluateAccess`, for a malformed `actor` or `policy` on a known tool.
+
+An unknown tool is denied as soon as `toolName` and `at` are read, before its arguments, actor or policy are looked at.
 
 ### Confirmation for consequential tools
 
 A consequential call needs `confirmation: { documentId, toolName, argumentsSha256, actorId, confirmedAt }`. It must meet all of these conditions:
 - **It binds to this exact call on this document.** It names the same document and tool, and `argumentsSha256` equals `mcpArgumentsSha256(arguments)`, the SHA-256 of the canonical JSON of the arguments.
-- **A person confirms it.** That is the calling user, or for an agent, the agent's owning user, and never the agent itself. The confirming person must hold `document-write` on the document.
+- **A person confirms it.** That is the calling user, or for an agent, the agent's owning user, and never the agent itself. The confirming person must hold `document-write` on the document through an actor grant; a link grant does not count.
 - **It is recent.** `confirmedAt` is not after `at`, and it is within `MCP_CONFIRMATION_WINDOW_MS` (5 minutes) of it.
 
 ## Obligations on the future server (#82)
