@@ -76,50 +76,83 @@ export function exportJsx(document: any, nodeId: unknown): { componentName: stri
 export function importJsx(source: unknown): { operations: unknown[]; frameId: string; componentName: string; layers: number } {
   if (typeof source !== "string" || source.trim() === "") throw new StudioError(400, "invalid-code", "code must be a non-empty string");
   if (Buffer.byteLength(source) > MAX_CODE_BYTES) throw new StudioError(413, "code-too-large", "code is limited to 256 KiB");
-  const declared = /export\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9]*)/u.exec(source)?.[1] ?? "Imported";
-  let design: DesignDoc;
+  const refuse = (message: string) => new StudioError(422, "code-refused", message.slice(0, 300));
+  const declared = /export\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9]*)/u.exec(source)?.[1] ?? null;
+  let ir: any;
   try {
-    const ir = buildCodeIr([{ path: `${declared}.jsx`, content: source }]);
-    if (ir.rootIds.length === 0) throw new Error("the code has no JSX element to bring in");
-    design = codeToDesign(ir, ir.rootIds[0], declared);
+    ir = buildCodeIr([{ path: `${declared ?? "Imported"}.jsx`, content: source }]);
   } catch (error) {
-    throw new StudioError(422, "code-refused", error instanceof Error ? error.message.slice(0, 300) : "the code could not be read");
+    throw refuse(error instanceof Error ? error.message : "the code could not be read");
   }
+  // Anything code-ir could not read is refused as a whole, never partly imported.
+  if (ir.unsupported.length > 0) {
+    const first = ir.unsupported[0];
+    throw refuse(`this code uses something Lilac cannot bring in yet (${String(first.reason ?? first.kind ?? "unsupported construct")}, line ${first.range?.startLine ?? "?"})`);
+  }
+  // The exported component's own element, by name, not whichever element came first.
+  const symbols = Object.values(ir.symbols) as any[];
+  const component = declared === null ? null : symbols.find((symbol) => symbol.kind === "component" && symbol.name === declared && symbol.children.length > 0);
+  const rootId = component ? component.children[0] : (declared === null && ir.rootIds.length === 1 ? ir.rootIds[0] : null);
+  if (!rootId) throw refuse(declared === null ? "bring in one exported function component, e.g. export function Card() { return <section>…</section>; }" : `${declared} does not return a JSX element`);
+  const componentName = declared ?? "Imported";
+  // Keep the subset codeToDesign accepts (literal props, element trees) as the gate.
+  try {
+    codeToDesign(ir, rootId, componentName);
+  } catch (error) {
+    throw refuse(error instanceof Error ? error.message : "the code could not be read");
+  }
+
   const frameId = `page-code-${randomUUID().slice(0, 12)}`;
   const suffix = randomUUID().slice(0, 8);
   let count = 0;
   const nodes: unknown[] = [];
-  const convert = (node: DesignDocNode, parentId: string): string => {
-    count += 1;
-    const id = `code-${suffix}-${count}`;
+  const nextId = () => `code-${suffix}-${++count}`;
+  const convert = (symbolId: string, parentId: string, name?: string): string => {
+    const symbol = ir.symbols[symbolId];
+    const id = nextId();
     const attributes: Record<string, string> = {};
     let style: Record<string, string> = {};
-    for (const [name, value] of Object.entries(node.props)) {
-      if (name === "className") attributes.class = String(value);
-      else if (name === "style" && typeof value === "string") style = styleProperties({ cssText: value });
-      else attributes[name] = String(value);
+    for (const prop of symbol.props) {
+      const value = prop.literal.value;
+      if (value === false) continue; // absent, as in JSX
+      const text = value === true ? "" : String(value);
+      if (prop.name === "className") attributes.class = text;
+      else if (prop.name === "style" && typeof value === "string") style = styleProperties({ cssText: value });
+      else attributes[prop.name] = text;
     }
-    // A component (Button, Card) is kept as a named layer; the renderer draws it as a box.
-    const component = /^[A-Z]/u.test(node.tag);
-    const record = {
+    // A component (Button, Card) is kept as a named layer; the canvas draws it as a box.
+    const isComponent = /^[A-Z]/u.test(symbol.name);
+    const record: any = {
       id,
       type: "element",
       parentId,
-      children: [] as string[],
-      props: {
-        tag: component ? "div" : node.tag,
-        ...(component ? { name: node.tag } : {}),
-        ...(node.text === undefined ? {} : { text: node.text }),
-        attributes,
-        style,
-      },
+      children: [],
+      props: { tag: isComponent ? "div" : symbol.name, ...(isComponent || name ? { name: name ?? symbol.name } : {}), attributes, style },
       metadata: {},
     };
     nodes.push(record);
-    record.children = (node.children ?? []).map((child) => convert(child, id));
+    // Text and elements in the order they appear in the source: text alone is the
+    // element's own text; mixed with elements, each run of text is its own text layer.
+    const pieces = [
+      ...symbol.texts.map((entry: any) => ({ at: entry.range.startOffset, text: entry.value })),
+      ...symbol.children.map((child: string) => ({ at: ir.symbols[child].range.startOffset, child })),
+    ].sort((a, b) => a.at - b.at);
+    if (symbol.children.length === 0) {
+      const text = symbol.texts.map((entry: any) => entry.value).join("");
+      if (text !== "") record.props.text = text;
+    } else {
+      for (const piece of pieces) {
+        if (piece.child !== undefined) record.children.push(convert(piece.child, id));
+        else if (piece.text !== "") {
+          const textId = nextId();
+          nodes.push({ id: textId, type: "text", parentId: id, children: [], props: { text: piece.text }, metadata: {} });
+          record.children.push(textId);
+        }
+      }
+    }
     return id;
   };
-  const frame = { id: frameId, type: "frame", parentId: null, children: [] as string[], props: { tag: "div", name: design.componentName, style: { position: "relative", width: "800px", "min-height": "400px", background: "#ffffff" } }, metadata: {} };
-  frame.children = [convert(design.root, frameId)];
-  return { operations: [{ type: "restore-subtree", rootId: frameId, parentId: null, nodes: [frame, ...nodes] }], frameId, componentName: design.componentName, layers: count };
+  const frame = { id: frameId, type: "frame", parentId: null, children: [] as string[], props: { tag: "div", name: componentName, style: { position: "relative", width: "800px", "min-height": "400px", background: "#ffffff" } }, metadata: {} };
+  frame.children = [convert(rootId, frameId, componentName)];
+  return { operations: [{ type: "restore-subtree", rootId: frameId, parentId: null, nodes: [frame, ...nodes] }], frameId, componentName, layers: count };
 }

@@ -19,12 +19,17 @@ PC6b closes PC gate 11: the design/code workflow through the product, which mean
   - the style is written as a CSS string prop, which Preact, Solid and Qwik accept;
   - a text layer with no tag, attributes or style of its own folds into its parent's text when it is the parent's only content.
 - **Output** is deterministic.
-- **Bounds:** 5,000 layers, and a depth of 32 (code-ir's own limit).
+- **Bounds:** 5,000 layers, and a depth of 32.
+- **code-ir's emitter limits** are reported as a clean refusal: text over 4,096 characters, more than 256 children on one layer, and a value containing a line break.
 
 **Bring code in** (`importJsx`):
-- A JSX function component of at most 256 KiB, in code-ir's subset (elements, text, literal props), is parsed by code-ir. Unsupported constructs, such as fragments, are refused with code-ir's reason, not guessed.
+- A JSX function component of at most 256 KiB, in code-ir's subset (elements, text, literal props), is parsed by code-ir.
+- Code containing anything code-ir cannot read, such as fragments, spreads or expression props, is refused whole, with the reason. It is never partly imported.
+- The element brought in is the declared export's own, found by its component symbol, and the root layer is named after it.
 - The code becomes layers inside a new page frame, as one `restore-subtree` committed as the person's change, with intent `Bring in <Name>` and tool `lilac:code`:
-  - `className` becomes `class`, and a style string becomes style properties;
+  - `className` becomes `class`, and a style string becomes style properties, keeping custom properties (`--brand`);
+  - `{true}` becomes an empty attribute, and `{false}` is left out, as in JSX;
+  - text keeps its order around elements: alone, it is the element's text; mixed with elements, each run of text is its own text layer;
   - a component (`<Button>`) is kept as a named layer, which the canvas draws as a box.
 - Undo removes it in one step.
 
@@ -38,7 +43,7 @@ PC6b closes PC gate 11: the design/code workflow through the product, which mean
 
 **Limits of the subset.** These come from code-ir and are stated, not hidden:
 - JSX expressions other than literals are not brought in;
-- mixed text and elements keep each text as its own `span`;
+- when exported, text mixed with elements is written as `span`s, so a mixed paragraph re-imports with those spans;
 - style objects are not read; style strings are.
 
 ## Tests
@@ -56,3 +61,23 @@ PC6b closes PC gate 11: the design/code workflow through the product, which mean
 4. **MCP.** Code brought in through the route is attributed (`lilac:code`, `Bring in Note`), and an agent's `get_jsx` returns the layer's JSX.
 
 The MCP tool count assertion is now 16.
+
+## Review delta 1
+
+The security and correctness judge found nothing that injects code or makes anything executable. It confirmed that export escaping is sound against hostile titles, classes, text and data values, that `componentName` is constrained, and that `el()`'s deeper flattening only ever appends text nodes. Bounds, ids, attribution, undo and `get_jsx`'s classification are correct. It found two must-fix issues, both now fixed.
+
+**Fixed:**
+- **Partial or misdirected code import.** code-ir records constructs it cannot read and carries on, and the import used the first element under the first export's name. One component could be imported under another's name, or a spread silently dropped. Now any unsupported region refuses the whole import, and the root is the declared export's own element, found through its component symbol.
+- **Mixed text was reordered.** For example, `<p>Click <a>here</a> to start</p>` came in as "Click  to start" followed by the link. Text and elements are now placed in source order using code-ir's ranges.
+
+**Also taken:**
+- the root layer is named after the component, so export → import → export keeps the name;
+- CSS custom properties survive;
+- `{true}` and `{false}` follow JSX;
+- the emitter limits are stated above.
+
+**New test cases (test 2):**
+- the declared export is chosen, by name, over an earlier helper;
+- the judge's two partial-import cases are refused;
+- mixed text keeps its order;
+- booleans and custom properties.

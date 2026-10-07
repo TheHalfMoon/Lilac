@@ -146,7 +146,9 @@ export function styleProperties(style: unknown): Record<string, string> {
       if (at <= 0) continue;
       const property = declaration.slice(0, at).trim().toLowerCase();
       const text = declaration.slice(at + 1).trim();
-      if (/^-?[a-z][a-z0-9-]{0,63}$/u.test(property) && text !== "" && text.length <= 2000) out[property] = text;
+      // Custom properties (--brand) keep their case; other names are lowercased.
+      const name = declaration.slice(0, at).trim().startsWith("--") ? declaration.slice(0, at).trim() : property;
+      if ((/^-?[a-z][a-z0-9-]{0,63}$/u.test(name) || /^--[A-Za-z0-9_-]{1,64}$/u.test(name)) && text !== "" && text.length <= 2000) out[name] = text;
     }
   }
   return out;

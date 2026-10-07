@@ -73,6 +73,26 @@ test("JSX comes into the design as layers, and refused code is reported, not gue
   assert.deepEqual([header.props.tag, header.props.attributes, header.props.style], ["header", { class: "hero" }, { background: "#eef", padding: "24px" }]);
   assert.deepEqual([nodes[2].props.tag, nodes[2].props.text, nodes[2].props.attributes], ["h1", "Hello", { title: "Main" }]);
   assert.deepEqual([nodes[3].props.tag, nodes[3].props.name, nodes[3].props.attributes.variant], ["div", "Button", "primary"], "a component is kept as a named layer");
+  assert.equal(header.props.name, "Hero", "the root layer carries the component's name");
+  // The declared export's own element, by name.
+  const pick = importJsx("function Icon() { return <svg />; }\nexport function Card() { return <div>card</div>; }");
+  assert.equal(pick.componentName, "Card");
+  assert.deepEqual([pick.operations[0].nodes[1].props.tag, pick.operations[0].nodes[1].props.text], ["div", "card"]);
+  const second = importJsx("export function A() { return <p>a</p>; }\nfunction B() { return <i>b</i>; }");
+  assert.equal(second.operations[0].nodes[1].props.tag, "p");
+  // Code with anything code-ir cannot read is refused whole, never partly imported.
+  for (const partial of [
+    "export function A() { return <div onClick={go}>a</div>; }\nexport function B() { return <p>b</p>; }",
+    "export function X() { return <p>a</p>; }\n<div {...rest}>b</div>",
+  ]) assert.throws(() => importJsx(partial), (error) => error.code === "code-refused", partial);
+  // Mixed text keeps its order around the elements.
+  const mixed = importJsx("export function T() { return <p>Click <a href=\"https://example.com\">here</a> to start</p>; }").operations[0].nodes;
+  const paragraph = mixed[1];
+  assert.deepEqual(paragraph.children.map((id) => mixed.find((node) => node.id === id)).map((node) => node.props.tag ?? node.props.text), ["Click ", "a", " to start"]);
+  // Booleans read as JSX means them; custom properties survive.
+  const flags = importJsx("export function F() { return <div hidden={false} draggable={true} style=\"--brand: red; color: var(--brand)\">x</div>; }").operations[0].nodes[1].props;
+  assert.deepEqual(flags.attributes, { draggable: "" });
+  assert.deepEqual(flags.style, { "--brand": "red", color: "var(--brand)" });
   assert.throws(() => importJsx(""), /non-empty/u);
   assert.throws(() => importJsx("export function A() { return <>x</>; }"), (error) => error.code === "code-refused");
   assert.throws(() => importJsx("x".repeat(256 * 1024 + 1)), (error) => error.status === 413);
