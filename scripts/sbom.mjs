@@ -7,7 +7,7 @@
 // number derived from the lockfile bytes.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -21,10 +21,14 @@ export function purlFor(name, version) {
   return `pkg:npm/${scope === null ? "" : `%40${scope}/`}${encodeURIComponent(bare)}@${encodeURIComponent(version)}`;
 }
 
-// The sha512 an npm integrity string carries, as hex.
+// The sha512 an npm integrity string carries, as hex (the string may list several hashes).
 function integrityHashes(integrity) {
-  const match = /^sha512-([A-Za-z0-9+/=]+)$/u.exec(integrity ?? "");
-  return match === null ? [] : [{ alg: "SHA-512", content: Buffer.from(match[1], "base64").toString("hex") }];
+  // Only a well-formed 64-byte digest counts; anything else is a missing hash.
+  for (const entry of String(integrity ?? "").split(/\s+/u)) {
+    if (!/^sha512-[A-Za-z0-9+/]{86}==$/u.test(entry)) continue;
+    return [{ alg: "SHA-512", content: Buffer.from(entry.slice("sha512-".length), "base64").toString("hex") }];
+  }
+  return [];
 }
 
 // A deterministic RFC 4122 version-8 style UUID from bytes.
@@ -38,16 +42,30 @@ function serialFor(bytes) {
 
 const nameOf = (path, entry) => entry.name ?? path.slice(path.lastIndexOf("node_modules/") + "node_modules/".length);
 
+// Paths are lockfile keys (node_modules/a/node_modules/b); the same name and version can
+// sit at several paths, and the same name at several versions.
 export function externalPackages(lock) {
   return Object.entries(lock.packages ?? {})
-    .filter(([path, entry]) => path.startsWith("node_modules/") && entry.link !== true)
-    .map(([path, entry]) => ({ path, name: nameOf(path, entry), ...entry }))
-    .sort((a, b) => compare(purlFor(a.name, a.version), purlFor(b.name, b.version)));
+    .filter(([path, entry]) => /(^|\/)node_modules\//u.test(path) && entry.link !== true)
+    .map(([path, entry]) => ({ ...entry, path, name: nameOf(path, entry) }))
+    .sort((a, b) => compare(purlFor(a.name, a.version), purlFor(b.name, b.version)) || compare(a.path, b.path));
+}
+
+// npm's lookup: <path>/node_modules/<dep>, then each enclosing node_modules, then the root.
+function resolveDependency(packages, fromPath, dependency) {
+  let base = fromPath;
+  for (;;) {
+    const candidate = base === "" ? `node_modules/${dependency}` : `${base}/node_modules/${dependency}`;
+    if (packages[candidate] !== undefined) return candidate;
+    if (base === "") return null;
+    const cut = base.lastIndexOf("/node_modules/");
+    base = cut < 0 ? "" : base.slice(0, cut);
+  }
 }
 
 function workspacePackages(lock) {
   return Object.entries(lock.packages ?? {})
-    .filter(([path]) => path !== "" && !path.startsWith("node_modules/"))
+    .filter(([path]) => path !== "" && !/(^|\/)node_modules\//u.test(path))
     .map(([path, entry]) => ({ path, name: entry.name, version: entry.version, dependencies: entry.dependencies ?? {} }))
     .sort((a, b) => compare(a.name, b.name));
 }
@@ -61,49 +79,60 @@ function resolveLicense(pkg, policy) {
 
 export function buildSbom(lockText, policy) {
   const lock = JSON.parse(lockText);
+  const packages = lock.packages ?? {};
+  const allowed = new Set(policy.allowed);
   const externals = externalPackages(lock);
   const workspaces = workspacePackages(lock);
-  const byName = new Map(externals.map((pkg) => [pkg.name, pkg]));
-  const workspaceByName = new Map(workspaces.map((pkg) => [pkg.name, pkg]));
-  const refOf = (name) => {
-    if (byName.has(name)) return purlFor(name, byName.get(name).version);
-    if (workspaceByName.has(name)) return `workspace:${name}`;
-    return null;
+  const workspaceByPath = new Map(workspaces.map((pkg) => [pkg.path, pkg]));
+  // The bom-ref a lockfile path stands for: a purl, a workspace, or null.
+  const refAt = (path) => {
+    const entry = packages[path];
+    if (entry === undefined) return null;
+    if (entry.link === true) return workspaceByPath.has(entry.resolved) ? `workspace:${workspaceByPath.get(entry.resolved).name}` : null;
+    if (workspaceByPath.has(path)) return `workspace:${workspaceByPath.get(path).name}`;
+    return purlFor(nameOf(path, entry), entry.version);
   };
-  const root = lock.packages?.[""] ?? {};
+  const edgesFrom = (path, entry) => {
+    const names = Object.keys({ ...entry.dependencies, ...entry.optionalDependencies, ...entry.peerDependencies, ...(path === "" ? entry.devDependencies : {}) });
+    return names.map((name) => resolveDependency(packages, path, name)).filter((target) => target !== null).map(refAt).filter((ref) => ref !== null);
+  };
+  const root = packages[""] ?? {};
   const rootRef = `workspace:${lock.name ?? root.name ?? "root"}`;
-  const components = [
+  const components = new Map();
+  const graph = new Map();
+  const addEdges = (ref, refs) => { const set = graph.get(ref) ?? new Set(); for (const target of refs) set.add(target); graph.set(ref, set); };
+  addEdges(rootRef, [...edgesFrom("", root), ...workspaces.map((pkg) => `workspace:${pkg.name}`)]);
+  for (const pkg of workspaces) {
     // Lilac declares no license yet (a founder decision); an unknown license is recorded as
     // a property, because CycloneDX license expressions must be SPDX.
-    ...workspaces.map((pkg) => ({ type: "library", "bom-ref": `workspace:${pkg.name}`, name: pkg.name, version: pkg.version ?? "0.0.0", properties: [{ name: "lilac:first-party", value: "true" }, { name: "lilac:license", value: "NOASSERTION" }] })),
-    ...externals.map((pkg) => {
-      const { license } = resolveLicense(pkg, policy);
-      const properties = [
-        ...(pkg.os ? [{ name: "npm:os", value: pkg.os.join(",") }] : []),
-        ...(pkg.cpu ? [{ name: "npm:cpu", value: pkg.cpu.join(",") }] : []),
-        ...(pkg.license !== undefined && pkg.license !== license ? [{ name: "npm:declaredLicense", value: pkg.license }] : []),
-        ...(license === null ? [{ name: "lilac:license", value: "NOASSERTION" }] : []),
-      ];
-      return {
-        type: "library",
-        "bom-ref": purlFor(pkg.name, pkg.version),
-        name: pkg.name,
-        version: pkg.version,
-        purl: purlFor(pkg.name, pkg.version),
-        scope: pkg.optional ? "optional" : "required",
-        hashes: integrityHashes(pkg.integrity),
-        ...(license === null ? {} : { licenses: [{ license: { id: license } }] }),
-        ...(pkg.resolved ? { externalReferences: [{ type: "distribution", url: pkg.resolved }] } : {}),
-        ...(properties.length > 0 ? { properties } : {}),
-      };
-    }),
-  ].sort((a, b) => compare(a["bom-ref"], b["bom-ref"]));
-  const edges = (dependencies) => [...new Set(Object.keys(dependencies ?? {}).map(refOf).filter((ref) => ref !== null))].sort(compare);
-  const dependencies = [
-    { ref: rootRef, dependsOn: edges({ ...root.dependencies, ...root.devDependencies, ...Object.fromEntries(workspaces.map((pkg) => [pkg.name, pkg.version])) }) },
-    ...workspaces.map((pkg) => ({ ref: `workspace:${pkg.name}`, dependsOn: edges(lock.packages[pkg.path]?.dependencies) })),
-    ...externals.map((pkg) => ({ ref: purlFor(pkg.name, pkg.version), dependsOn: edges({ ...pkg.dependencies, ...pkg.optionalDependencies }) })),
-  ].sort((a, b) => compare(a.ref, b.ref));
+    components.set(`workspace:${pkg.name}`, { type: "library", "bom-ref": `workspace:${pkg.name}`, name: pkg.name, version: pkg.version ?? "0.0.0", properties: [{ name: "lilac:first-party", value: "true" }, { name: "lilac:license", value: "NOASSERTION" }] });
+    addEdges(`workspace:${pkg.name}`, edgesFrom(pkg.path, packages[pkg.path]));
+  }
+  for (const pkg of externals) {
+    const ref = purlFor(pkg.name, pkg.version);
+    addEdges(ref, edgesFrom(pkg.path, pkg));
+    if (components.has(ref)) continue; // the same name and version at another path
+    const { license } = resolveLicense(pkg, policy);
+    const properties = [
+      ...(pkg.os ? [{ name: "npm:os", value: pkg.os.join(",") }] : []),
+      ...(pkg.cpu ? [{ name: "npm:cpu", value: pkg.cpu.join(",") }] : []),
+      ...(pkg.license !== undefined && pkg.license !== license ? [{ name: "npm:declaredLicense", value: String(pkg.license) }] : []),
+      ...(license === null ? [{ name: "lilac:license", value: "NOASSERTION" }] : []),
+    ];
+    components.set(ref, {
+      type: "library",
+      "bom-ref": ref,
+      name: pkg.name,
+      version: pkg.version,
+      purl: ref,
+      scope: pkg.dev ? "excluded" : pkg.optional || pkg.devOptional || pkg.peer ? "optional" : "required",
+      hashes: integrityHashes(pkg.integrity),
+      // Only allowlisted ids are SPDX ids this tool vouches for; anything else is a name.
+      ...(license === null ? {} : { licenses: [allowed.has(license) ? { license: { id: license } } : { license: { name: license } }] }),
+      ...(pkg.resolved ? { externalReferences: [{ type: "distribution", url: pkg.resolved }] } : {}),
+      ...(properties.length > 0 ? { properties } : {}),
+    });
+  }
   return {
     bomFormat: "CycloneDX",
     specVersion: "1.5",
@@ -117,8 +146,8 @@ export function buildSbom(lockText, policy) {
       tools: { components: [{ type: "application", name: "lilac-sbom", version: "1" }] },
       properties: [{ name: "lilac:lockfileSha256", value: sha256(Buffer.from(lockText, "utf8")) }],
     },
-    components,
-    dependencies,
+    components: [...components.values()].sort((a, b) => compare(a["bom-ref"], b["bom-ref"])),
+    dependencies: [...graph.entries()].map(([ref, set]) => ({ ref, dependsOn: [...set].filter((target) => target !== ref).sort(compare) })).sort((a, b) => compare(a.ref, b.ref)),
   };
 }
 
@@ -126,19 +155,35 @@ export function buildSbom(lockText, policy) {
 export function checkPolicy(lockText, policy, notices, { nodeModules = join(ROOT, "node_modules") } = {}) {
   const problems = [];
   const allowed = new Set(policy.allowed);
+  const lock = JSON.parse(lockText);
+  if (!(lock.lockfileVersion >= 2) || lock.packages === null || typeof lock.packages !== "object" || lock.packages[""] === undefined) {
+    return [`package-lock.json must be lockfileVersion 2 or later with a "packages" map (got lockfileVersion ${JSON.stringify(lock.lockfileVersion ?? null)})`];
+  }
+  let overridesApplied = 0;
+  let overridesVerified = 0;
   for (const override of policy.overrides) {
     if (!allowed.has(override.license)) problems.push(`override for ${override.name}@${override.version} resolves to disallowed ${override.license}`);
   }
-  for (const pkg of externalPackages(JSON.parse(lockText))) {
+  const seen = new Set();
+  for (const pkg of externalPackages(lock)) {
     const id = `${pkg.name}@${pkg.version}`;
+    if (integrityHashes(pkg.integrity).length === 0) problems.push(`${id} at ${pkg.path}: no sha512 integrity in the lockfile`);
+    if (seen.has(id)) continue;
+    seen.add(id);
     const stale = policy.overrides.find((entry) => entry.name === pkg.name && entry.version !== pkg.version);
     const { license, override } = resolveLicense(pkg, policy);
     if (override !== undefined) {
+      overridesApplied += 1;
       if (override.declared !== pkg.license) problems.push(`${id}: override expects declared license ${JSON.stringify(override.declared)}, lockfile has ${JSON.stringify(pkg.license)}`);
-      const file = join(nodeModules, pkg.name, override.licenseFile);
-      if (existsSync(join(nodeModules, pkg.name, "package.json"))) {
-        const installed = JSON.parse(readFileSync(join(nodeModules, pkg.name, "package.json"), "utf8")).version;
+      const packageDir = join(nodeModules, pkg.name);
+      const file = resolve(packageDir, override.licenseFile);
+      const inside = relative(packageDir, file);
+      if (inside === "" || inside.startsWith(`..${sep}`) || inside === "..") {
+        problems.push(`${id}: override licenseFile ${JSON.stringify(override.licenseFile)} is outside the package`);
+      } else if (existsSync(join(packageDir, "package.json"))) {
+        const installed = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).version;
         if (installed === pkg.version) {
+          overridesVerified += 1;
           if (!existsSync(file)) problems.push(`${id}: override names ${override.licenseFile}, which is not installed`);
           else if (sha256(readFileSync(file)) !== override.licenseSha256) problems.push(`${id}: ${override.licenseFile} does not match the override's sha256`);
         }
@@ -150,6 +195,9 @@ export function checkPolicy(lockText, policy, notices, { nodeModules = join(ROOT
     }
     if (!notices.includes(`\`${pkg.name}@`) && !notices.includes(`\`${pkg.name}\``)) problems.push(`${id}: not named in THIRD_PARTY_NOTICES.md`);
   }
+  // Overrides are only as good as their verification: at least one must be checked
+  // against an installed license file (npm installs one platform binary per host).
+  if (overridesApplied > 0 && overridesVerified === 0) problems.push(`none of the ${overridesApplied} license overrides could be verified against an installed license file (is node_modules installed?)`);
   return problems;
 }
 

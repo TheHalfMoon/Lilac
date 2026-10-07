@@ -50,7 +50,7 @@ Lilac declares no license for itself: there is no `license` field and no `LICENS
 
 ## Tests
 
-`tests/sbom.test.mjs` has 6 tests:
+`tests/sbom.test.mjs` has 7 tests:
 
 1. The repository's lockfile passes the policy, and `--check` exits 0.
 2. The SBOM is byte-identical across runs, has no timestamp, and its components and graph do not depend on lockfile key order.
@@ -63,3 +63,23 @@ Lilac declares no license for itself: there is no `license` field and no `LICENS
 4. Each violation in a synthetic lockfile is reported: GPL, UNLICENSED, missing, invalid SPDX, `SEE LICENSE` without an override, a stale override version, an override that resolves to GPL, and a missing notice.
 5. An override is checked against an installed license file: a matching hash passes, while a wrong hash, a changed declaration and a missing file each fail.
 6. `--check` exits 1, naming the problem, when run against a copy of the repository layout with a GPL dependency.
+7. **Lockfile shapes beyond today's** (review delta 1):
+   - nested installs resolve by npm's nearest-`node_modules` rule;
+   - the same package at two paths becomes one component;
+   - `dev` packages are `excluded`;
+   - multi-hash integrity strings are read correctly;
+   - a non-allowlisted id becomes a license name;
+   - these fail closed: lockfile v1 or a missing `packages` map, a missing or truncated sha512, no verifiable override, and an override `licenseFile` outside its package.
+
+## Review delta 1
+
+The judge returned no must-fix for the current lockfile. Its run validated the real SBOM against the official CycloneDX 1.5 schema with ajv: valid. Its worth-considering items were latent gaps that would let the gate pass, or the SBOM be wrong, if the lockfile changed shape. All of them are fixed:
+- **Dependency resolution.** Dependencies now resolve by npm's nearest-`node_modules` rule, so `a -> b` points at the nested `b`, not the hoisted one.
+- **Duplicates.** The same name and version at several paths is one component, with merged edges, so bom-refs are unique.
+- **Lockfile version.** A lockfile below version 2, or without a `packages` map, fails the check instead of passing on nothing.
+- **Hashes.** Integrity strings with several hashes are read correctly. Only a well-formed 64-byte sha512 counts, so the SBOM stays schema-valid. An external package without one fails the check.
+- **Scope.** `dev` packages get scope `excluded`; `peer` and `devOptional` packages get `optional`.
+- **License ids.** A license id that is not allowlisted is emitted as a license name, never as a claimed SPDX id.
+- **Override verification.** If overrides apply but none can be verified against an installed license file (for example, `node_modules` is missing), the check fails. An override `licenseFile` outside its package directory fails too.
+
+Test 7 covers these and fails on `34d64e3`. The judge's remaining items were skip-its and are unchanged: enforcement through the test, overrides unverified on hosts where they are not installed (pinned by version, declaration and lock integrity), and npm aliases (none in the lock).

@@ -68,7 +68,8 @@ test("the SBOM has the CycloneDX 1.5 shape, correct purls, hashes, scopes and gr
 
 // Synthetic lockfiles for each failure mode.
 const lockWith = (packages) => JSON.stringify({ name: "fixture", version: "1.0.0", lockfileVersion: 3, packages: { "": { name: "fixture", version: "1.0.0" }, ...packages } });
-const pkg = (license, extra = {}) => ({ version: "1.0.0", resolved: "https://registry.example/x.tgz", integrity: "sha512-AAAA", ...(license === undefined ? {} : { license }), ...extra });
+const SHA512 = `sha512-${Buffer.alloc(64, 7).toString("base64")}`;
+const pkg = (license, extra = {}) => ({ version: "1.0.0", resolved: "https://registry.example/x.tgz", integrity: SHA512, ...(license === undefined ? {} : { license }), ...extra });
 const NOTICE = "`ok@1.0.0` `gpl@1.0.0` `none@1.0.0` `seelic@1.0.0` `unlicensed@1.0.0` `odd@1.0.0`";
 
 test("each policy violation is reported", () => {
@@ -119,4 +120,39 @@ test("the --check command exits non-zero on a violation", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("lockfile shapes beyond today's are handled, and unsafe shapes fail closed", () => {
+  // Nested installs resolve by npm's nearest-node_modules rule, and duplicates merge.
+  const nested = lockWith({
+    "node_modules/a": pkg("MIT", { dependencies: { b: "^1" } }),
+    "node_modules/a/node_modules/b": pkg("MIT"),
+    "node_modules/b": pkg("MIT", { version: "2.0.0" }),
+    "node_modules/c": pkg("MIT", { dependencies: { b: "^2" } }),
+    "node_modules/c/node_modules/d": pkg("MIT"),
+    "node_modules/e/node_modules/d": pkg("MIT"),
+    "node_modules/e": pkg("MIT", { dev: true, dependencies: { d: "^1" } }),
+  });
+  const sbom = buildSbom(nested, policy);
+  const edges = Object.fromEntries(sbom.dependencies.map((entry) => [entry.ref, entry.dependsOn]));
+  assert.deepEqual(edges["pkg:npm/a@1.0.0"], ["pkg:npm/b@1.0.0"], "the nested b, not the hoisted one");
+  assert.deepEqual(edges["pkg:npm/c@1.0.0"], ["pkg:npm/b@2.0.0"]);
+  const refs = sbom.components.map((component) => component["bom-ref"]);
+  assert.equal(new Set(refs).size, refs.length, "d@1.0.0 at two paths is one component");
+  assert.equal(sbom.components.find((component) => component.name === "e").scope, "excluded", "dev packages are excluded from the runtime");
+  // Several hashes in one integrity string.
+  const multi = buildSbom(lockWith({ "node_modules/ok": pkg("MIT", { integrity: `sha1-xyz ${SHA512}` }) }), policy);
+  assert.equal(multi.components.find((component) => component.name === "ok").hashes[0].content, "07".repeat(64));
+  assert.match(checkPolicy(lockWith({ "node_modules/ok": pkg("MIT", { integrity: "sha512-AAAA" }) }), policy, NOTICE, { nodeModules: join(ROOT, "no-such-dir") }).join("\n"), /no sha512 integrity/u, "a truncated digest is not a hash");
+  // A license id that is not allowlisted is a name in the SBOM, never a claimed SPDX id.
+  const odd = buildSbom(lockWith({ "node_modules/gpl": pkg("mit") }), policy);
+  assert.deepEqual(odd.components.find((component) => component.name === "gpl").licenses, [{ license: { name: "mit" } }]);
+  const check = (text, overrides = []) => checkPolicy(text, { ...policy, overrides }, NOTICE + " `a@1.0.0` `b@1.0.0` `c@1.0.0` `d@1.0.0` `e@1.0.0`", { nodeModules: join(ROOT, "no-such-dir") });
+  assert.match(check(JSON.stringify({ lockfileVersion: 1, dependencies: {} })).join("\n"), /lockfileVersion 2 or later/u);
+  assert.match(check(JSON.stringify({ lockfileVersion: 3 })).join("\n"), /lockfileVersion 2 or later/u);
+  assert.match(check(lockWith({ "node_modules/ok": pkg("MIT", { integrity: undefined }) })).join("\n"), /no sha512 integrity/u);
+  const seelic = { name: "seelic", version: "1.0.0", declared: "SEE LICENSE IN LICENSE", license: "MIT", licenseFile: "LICENSE", licenseSha256: "0".repeat(64) };
+  assert.match(check(lockWith({ "node_modules/seelic": pkg("SEE LICENSE IN LICENSE") }), [seelic]).join("\n"), /none of the 1 license overrides could be verified/u);
+  assert.match(check(lockWith({ "node_modules/seelic": pkg("SEE LICENSE IN LICENSE") }), [{ ...seelic, licenseFile: "../../etc/passwd" }]).join("\n"), /outside the package/u);
+  assert.deepEqual(check(nested), []);
 });
