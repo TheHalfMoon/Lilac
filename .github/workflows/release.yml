@@ -1,0 +1,42 @@
+name: Release Evidence
+
+# Builds the SBOM and attribution bundle for a release tag and signs it with keyless
+# Sigstore attestations through GitHub OIDC (no stored signing key). Publishing a tag is the
+# release decision; this workflow never creates tags itself.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-evidence:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npm run check
+      - name: Build the release bundle
+        run: node scripts/release-bundle.mjs dist/release --source-commit "$GITHUB_SHA"
+      - name: Verify the bundle against its manifest
+        run: node scripts/release-bundle.mjs --verify dist/release
+      - name: Sign the bundle (Sigstore build provenance)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/release/**"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lilac-release-evidence-${{ github.sha }}
+          path: dist/release
+          if-no-files-found: error
