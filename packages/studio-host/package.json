@@ -1,0 +1,17 @@
+{
+  "name": "@lilac/studio-host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "@lilac/collaboration": "0.0.0",
+    "@lilac/document-model": "0.0.0",
+    "@lilac/history": "0.0.0",
+    "@lilac/network-policy": "0.0.0",
+    "@lilac/persistence": "0.0.0"
+  }
+}
