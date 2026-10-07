@@ -36,7 +36,7 @@
 | 1.4.3 Contrast (Minimum) | AA | Supports | A: `text-contrast` is checked on computed colours in every editor state, with no findings. Muted text is #55526a on white (7.50:1), and disabled text is #5c596e on #efeef4 (5.86:1), so even inactive controls clear 4.5:1. |
 | 1.4.4 Resize Text | AA | Supports | I: text sizes are CSS pixels, so browser zoom scales all text and controls to 200 %. At 200 % zoom on a 640 px-wide window the layout is the reflowed one T checks at 320 px. |
 | 1.4.5 Images of Text | AA | Supports | I: the editor uses no images of text. |
-| 1.4.10 Reflow | AA | Supports | T: at 320 px there is no horizontal scrolling, and the canvas, layers, inspector and history are all within the viewport width (panels stack). This was fixed in PC8a: the three-column layout used to need 840 px. |
+| 1.4.10 Reflow | AA | Supports | T: at 320 px there is no horizontal scrolling. The canvas, layers, inspector and history are all within the viewport width (panels stack), and so is every dialog (import, agents, code, projects). Both were fixed in PC8a: the layout used to need 840 px, and the import dialog's file field widened it. |
 | 1.4.11 Non-text Contrast | AA | Supports | I: the focus ring (#1a5fd0, 3 px) is 5.85:1 against white and 5.44:1 against the page background. Input borders (#8e8aa3) are 3.33:1 against white. A selected layer row is marked by a 3 px accent bar (#5b3fd6), added in PC8a; it is 5.27:1 against the row's own background, where the light background alone was 1.27:1. The canvas selection outline (#6d4aff) is 4.26:1 against the stage. All ratios were computed with `contrastRatio` from `@lilac/design-assurance`. |
 | 1.4.12 Text Spacing | AA | Supports | I: no text container has a fixed height that would clip. Buttons use `min-height`, panels scroll, and line height is relative. |
 | 1.4.13 Content on Hover or Focus | AA | Supports | I: the editor shows no hover or focus popups or tooltips. The skip link appears on focus, in place, and goes away on blur. |
@@ -45,7 +45,7 @@
 
 | Criterion | Level | Status | Evidence |
 |---|---|---|---|
-| 2.1.1 Keyboard | A | Supports | T: one keyboard-only journey covers creating a project, every toolbar button, inserting, the layers tree (Home, arrows, collapse and expand, select), renaming and the step buttons in the inspector, the skip link to the canvas, nudge, delete, undo, a dialog open and close, and save. The other dialogs (import, code, agents, approval, lock, recovery, reopen) are plain forms and buttons, opened from the toolbar. |
+| 2.1.1 Keyboard | A | Supports | T: one keyboard-only journey covers:<br>• creating a project, and Tab reaching every toolbar button;<br>• inserting;<br>• the layers tree (Home, arrows, collapse and expand, select);<br>• renaming and the step buttons in the inspector;<br>• the skip link, which lands on the canvas;<br>• panning the canvas with the arrows when nothing is selected (added in PC8a: panning used to need the wheel);<br>• nudge, delete, undo and redo;<br>• opening a dialog and closing it with Escape;<br>• save.<br>I: the remaining controls (the other dialogs, Revert, Disconnect, the file field) are native buttons and fields, reached by Tab like the ones tested. |
 | 2.1.2 No Keyboard Trap | A | Supports | I and T: dialogs are modal `<dialog>` elements. Dismissible ones close with Escape, returning focus to the opener (T). The ones that need an answer (approval, reopen, lock-held) have buttons to give it. The "open Lilac from its launcher" notice, shown when a page has no session, has nothing to operate and holds no focus. |
 | 2.1.4 Character Key Shortcuts | A | Supports | I: single-key commands (arrows, Delete, Escape) work only while the canvas or the layers tree has focus. Global shortcuts need Ctrl or Cmd, and are ignored while typing in a field. |
 | 2.2.1 Timing Adjustable | A | Supports | I: the editor imposes no time limits on the person. A launch link expires after two minutes as a security measure, and a new one is available at any time by pressing Enter where Lilac runs. An agent's request for approval waits 5 minutes and can be asked again. |
@@ -53,13 +53,13 @@
 | 2.3.1 Three Flashes or Below Threshold | A | Supports | I: nothing flashes. |
 | 2.4.1 Bypass Blocks | A | Supports | T: the first tab stop is "Skip to canvas", and it is visible when focused. Panels are landmarks. |
 | 2.4.2 Page Titled | A | Supports | I: the title is "<project> — Lilac", or "Lilac". |
-| 2.4.3 Focus Order | A | Supports | T: Tab follows the toolbar order. Dialogs take focus and return it when closed, and the layers tree has a single tab stop with roving focus. |
+| 2.4.3 Focus Order | A | Supports | T: Tab follows the toolbar order. Dialogs take focus and return it when closed, and the layers tree has a single tab stop with roving focus. I: below 900 px the canvas is shown above the layers panel while Tab still visits the layers first (DOM order). That order is meaningful, since the layers describe the canvas. |
 | 2.4.4 Link Purpose (In Context) | A | Supports | A: `link-name` gives no findings. The editor's only link is the skip link. |
 | 2.4.5 Multiple Ways | AA | Not applicable | The editor is one application screen, not a set of pages. |
 | 2.4.6 Headings and Labels | AA | Supports | A: there are headings for the brand, every panel and every dialog. Every field has a visible label. |
-| 2.4.7 Focus Visible | AA | Supports | T: every toolbar control shows a 3 px focus ring when reached by Tab. The tree rows and fields use the same ring. |
+| 2.4.7 Focus Visible | AA | Supports | T: every toolbar control shows a 3 px focus ring when reached by Tab. The canvas, reached by keyboard or by the skip link, shows an inset 3 px ring (added in PC8a: it used to show none). Tree rows and fields use the same ring. |
 | 2.4.11 Focus Not Obscured (Minimum) | AA | Supports | I: nothing is sticky or overlaid apart from modal dialogs, which hold the focus themselves. |
-| 2.5.1 Pointer Gestures | A | Supports | I: the canvas uses no path-based or multipoint gestures. Wheel zoom has the Zoom buttons and Ctrl+−/= as alternatives. |
+| 2.5.1 Pointer Gestures | A | Supports | I: the canvas uses no path-based or multipoint gestures. Wheel zoom has the Zoom buttons and Ctrl+−/= as alternatives, and wheel panning has the arrow keys and Fit. |
 | 2.5.2 Pointer Cancellation | A | Supports | I: buttons act on click, on the up event. A drag commits on release, and moving the pointer back before release commits nothing (T, PC3). Selection on press can be undone by clicking empty canvas or pressing Escape. |
 | 2.5.3 Label in Name | A | Supports | I: visible text is the accessible name for text buttons. The step buttons were changed in PC8a from "W+" style labels to "Narrower", "Wider", "Shorter" and "Taller". Symbol-only buttons (arrows, −, +) have names. |
 | 2.5.4 Motion Actuation | A | Not applicable | Nothing is operated by device motion. |
@@ -105,7 +105,9 @@ Each of these was found by the audit, the tests, or this walk through the criter
 - **Non-text contrast (1.4.11).** A selected layer row gets a 3 px accent bar.
 - **Contrast (1.4.3).** Disabled text is darkened to 5.86:1.
 - **Focus on start.** The editor is ready only once the projects dialog is open, so focus starts in the project name field (T).
-- **Labels in code (1.3.1).** Code brought in maps `htmlFor` to `for`. Export maps it back, and keeps the simple id a label points to, since the canvas itself never renders ids.
+- **Labels in code (1.3.1).** Code brought in maps `htmlFor` to `for`. Export maps it back, and keeps a control's id only when a label in the same export points to it, and only once.
+- **Canvas focus and panning (2.4.7, 2.1.1).** The canvas shows a focus ring, the skip link lands on it, and the arrows pan the view when nothing is selected.
+- **Dialog reflow (1.4.10).** Dialog fields never grow wider than the dialog.
 
 ## Tests
 
@@ -122,3 +124,18 @@ Each of these was found by the audit, the tests, or this walk through the criter
 3. **The keyboard journey**, with visible focus (2.1.1, 2.4.3, 2.4.7, 2.4.1).
 4. **Reflow at 320 px**, and every target at least 24 by 24 px (1.4.10, 2.5.8).
 5. **Generated output.** An accessibly made form exports to code whose design audits clean. A missing alt and an unnamed button in exported output are found.
+
+## Review delta 1
+
+The judge found the evidence genuine: the snapshot's hidden handling is sound, and every computed colour today is plain rgb with no images or translucency. Its probes confirmed 1.4.12, 1.4.4, 2.1.2, 4.1.3, 2.5.8 in dialogs, and 1.4.11. It found three claims false, all now fixed, with tests that fail against the previous code:
+- **2.4.7:** the focused canvas showed no ring, and the skip link landed on a ringless `main`;
+- **1.4.10:** the import dialog overflowed at 320 px;
+- **2.1.1:** panning the canvas needed the wheel.
+
+**Also taken:**
+- **Export ids.** Ids are kept only when a label in the export points to them, and only once. A form exported twice under one parent had duplicated `id="email"`.
+- **The snapshot fails loudly.** It reports any colour the contrast check cannot resolve (gradients, images, translucency, non-rgb colours), so findings cannot be masked silently.
+- **The keyboard test** drives the skip link to the canvas by Enter, checks the ring and the panning, and adds redo.
+- **2.4.3** notes the visual order at narrow widths.
+
+**Recorded:** repeated clicks on a step button faster than each change completes are skipped with a message, as fast arrow-key nudges are. The revision contract refuses to send a change computed from an older document.

@@ -426,11 +426,27 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     applyViewport();
   }, { passive: false });
 
+  // A visible focus ring when the canvas is reached from the keyboard (WCAG 2.4.7).
+  stage.addEventListener("focus", () => {
+    if (stage.matches(":focus-visible")) stage.style.boxShadow = "inset 0 0 0 3px #1a5fd0";
+  });
+  stage.addEventListener("blur", () => {
+    stage.style.boxShadow = "";
+  });
   stage.addEventListener("keydown", (event) => {
     if (document === null) return;
     const step = event.shiftKey ? nudge * 10 : nudge;
     const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
     const modified = event.ctrlKey || event.metaKey || event.altKey;
+    // With nothing selected, the arrows pan the view (40 px, 200 with Shift), so every part
+    // of a zoomed-in design can be reached from the keyboard.
+    if (Object.hasOwn(moves, event.key) && selection.length === 0 && !modified) {
+      event.preventDefault();
+      const [dx, dy] = moves[event.key].map((value) => -Math.sign(value) * (event.shiftKey ? 200 : 40));
+      viewport = panBy(viewport, dx, dy);
+      applyViewport();
+      return;
+    }
     if (Object.hasOwn(moves, event.key) && selection.length > 0 && !modified) {
       event.preventDefault();
       const [dx, dy] = moves[event.key];

@@ -22,6 +22,9 @@ const now = () => new Date(Date.UTC(2026, 9, 7, 12, 0, 0) + clock++ * 1000).toIS
 // The page's body as auditAccessibility's tree, skipping the canvas frame's content (it is
 // inert and not exposed; the layers tree is its accessible form) and closed dialogs.
 const snapshot = (page) => page.evaluate(() => {
+  // Colours the contrast check cannot resolve (gradients, images, translucency, colour
+  // spaces other than rgb) are reported, so a finding can never be masked by them.
+  const unresolved = [];
   const opaque = (value) => value && value !== "transparent" && !/rgba\([^)]*,\s*0\)$/u.test(value);
   const backgroundOf = (element) => {
     for (let node = element; node; node = node.parentElement) {
@@ -35,6 +38,7 @@ const snapshot = (page) => page.evaluate(() => {
     for (const attribute of element.attributes) attributes[attribute.name] = attribute.value;
     const computed = getComputedStyle(element);
     if (computed.display === "none" || computed.visibility === "hidden" || (element.localName === "dialog" && !element.open)) attributes.hidden = "";
+    if (!attributes.hidden && (computed.backgroundImage !== "none" || Number(computed.opacity) < 1 || !/^rgba?\(/u.test(computed.color))) unresolved.push(`${element.localName}#${element.id} ${computed.backgroundImage} ${computed.opacity} ${computed.color}`);
     if (element.inert || element.closest("[inert]")) attributes.hidden = "";
     const node = { tag: element.localName, attributes, children: [], style: `color: ${computed.color}; background-color: ${backgroundOf(element)}; font-size: ${computed.fontSize}; font-weight: ${computed.fontWeight}` };
     let text = "";
@@ -45,11 +49,14 @@ const snapshot = (page) => page.evaluate(() => {
     if (text.trim() !== "") node.text = text.trim();
     return node;
   };
-  return visit(document.body);
+  const tree = visit(document.body);
+  return { tree, unresolved };
 });
 
 async function audit(page, state) {
-  const { findings } = auditAccessibility(await snapshot(page));
+  const { tree, unresolved } = await snapshot(page);
+  assert.deepEqual(unresolved, [], `every colour is resolvable in: ${state}`);
+  const { findings } = auditAccessibility(tree);
   assert.deepEqual(findings.map((finding) => `${finding.ruleId} at ${finding.path}: ${finding.message}`), [], `no findings in: ${state}`);
 }
 
@@ -185,19 +192,36 @@ test("every editor action works from the keyboard, with visible focus", browserT
     const card = Object.values(host.session.document.nodes).find((node) => node.props.name === "Card");
     assert.deepEqual([card.props.style.left, card.props.style.width], ["42px", "170px"]);
     // The skip link reaches the canvas; arrows nudge; Delete removes; undo restores.
-    // The skip link is the first thing in the tab order, and is shown when focused.
+    // The skip link is the first thing in the tab order, is shown when focused, and lands
+    // on the canvas, which shows its focus.
     const first = await page.evaluate(() => [...document.querySelectorAll("a[href], button, input, textarea, [tabindex]")].find((element) => element.tabIndex >= 0 && element.getClientRects().length > 0)?.className);
     assert.equal(first, "skip-link");
     await page.locator(".skip-link").focus();
     assert.ok(await page.evaluate(() => document.querySelector(".skip-link").getBoundingClientRect().top >= 0), "visible on focus");
     await page.keyboard.press("Enter");
-    await page.locator("[role=application]").focus();
+    const landed = await page.evaluate(() => ({ role: document.activeElement.getAttribute("role"), ring: document.activeElement.style.boxShadow }));
+    assert.deepEqual(landed, { role: "application", ring: "rgb(26, 95, 208) 0px 0px 0px 3px inset" }, "focus lands on the canvas, with a ring");
+    // With nothing selected, the arrows pan the view.
+    await page.keyboard.press("Escape");
+    const before = await page.evaluate(() => document.querySelector("[role=application] > div").style.transform);
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Shift+ArrowDown");
+    assert.notEqual(await page.evaluate(() => document.querySelector("[role=application] > div").style.transform), before, "arrow keys pan the canvas");
+    // Select the card again from the tree, then nudge it on the canvas.
+    await page.locator(`#layers [role=treeitem][data-node-id="${card.id}"]`).focus();
+    await page.keyboard.press("Enter");
+    await page.locator(".skip-link").focus();
+    await page.keyboard.press("Enter");
     await page.keyboard.press("ArrowDown");
     await waitRevision(page, 6);
     await page.keyboard.press("Delete");
     await waitRevision(page, 7);
     await page.keyboard.press("Control+z");
     await waitRevision(page, 8);
+    await page.keyboard.press("Control+Shift+z");
+    await waitRevision(page, 9);
+    await page.keyboard.press("Control+z");
+    await waitRevision(page, 10);
     // Dialogs: open from the keyboard, Escape closes, focus returns to the opener.
     await page.locator("#action-agents").focus();
     await page.keyboard.press("Enter");
@@ -237,6 +261,20 @@ test("the editor reflows at 320 px and every target is at least 24 by 24 px", br
     });
     assert.ok(layout.scroll <= 320, `no horizontal scrolling at 320 px (width ${layout.scroll}) ${layout.rects}`);
     assert.deepEqual([layout.layers, layout.inspector, layout.history, layout.canvas], [true, true, true, true], `every panel is reachable without horizontal scrolling ${layout.rects}`);
+    // Every dialog fits too.
+    const fits = async (name) => {
+      const box = await page.evaluate(() => {
+        const dialog = document.querySelector("dialog[open]");
+        return { scroll: dialog.scrollWidth, client: dialog.clientWidth, right: Math.max(...[...dialog.querySelectorAll("*")].map((element) => element.getBoundingClientRect().right)) };
+      });
+      assert.ok(box.scroll <= box.client && box.right <= 320, `${name} fits at 320 px: ${JSON.stringify(box)}`);
+      await page.keyboard.press("Escape");
+    };
+    for (const [button, name] of [["#action-import", "import"], ["#action-agents", "agents"], ["#action-code", "code"], ["#action-projects", "projects"]]) {
+      await page.locator(button).click();
+      await page.locator("dialog[open]").waitFor();
+      await fits(name);
+    }
     await page.setViewportSize({ width: 1280, height: 800 });
     const small = await page.evaluate(() => [...document.querySelectorAll("button, input, textarea, [role=treeitem] > .row, a[href]")]
       .filter((element) => element.getClientRects().length > 0 && !element.closest("dialog:not([open])"))
@@ -277,4 +315,12 @@ test("generated output audits clean: exported code and code brought into the des
   const badIr = buildCodeIr([{ path: "Bad.jsx", content: badCode }]);
   const rules = auditAccessibility(accessibilityTreeFromDesignDoc(codeToDesign(badIr, badIr.rootIds[0], "Bad"))).findings.map((finding) => finding.ruleId).sort();
   assert.deepEqual(rules, ["a11y/button-name", "a11y/image-alt"]);
+  // Two copies of the form under one parent export each id at most once.
+  const twice = { ...document, rootIds: ["both"], nodes: { ...document.nodes, both: { id: "both", type: "element", parentId: null, children: [formId], props: { tag: "div" }, metadata: {} } } };
+  const second = importJsx(`export function Again() { return (<form aria-label="Again"><label htmlFor="email">Email</label><input id="email" /></form>); }`).operations[0].nodes.slice(1);
+  for (const node of second) twice.nodes[node.id] = { ...node, parentId: node.parentId.startsWith("page-code") ? "both" : node.parentId };
+  twice.nodes.both.children.push(second[0].id);
+  twice.nodes[formId] = { ...twice.nodes[formId], parentId: "both" };
+  const exported = exportJsx(twice, "both").code;
+  assert.equal((exported.match(/ id="email"/gu) ?? []).length, 1, "an id appears once");
 });

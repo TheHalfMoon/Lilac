@@ -1163,6 +1163,11 @@ async function main() {
   });
   canvas.stage.addEventListener("wheel", () => requestAnimationFrame(renderToolbar), { passive: true });
   canvas.stage.addEventListener("keyup", renderToolbar);
+  // The skip link lands on the canvas itself, which takes the keyboard commands.
+  document.querySelector(".skip-link").addEventListener("click", (event) => {
+    event.preventDefault();
+    canvas.stage.focus({ focusVisible: true });
+  });
   $("action-projects").addEventListener("click", openProjectsDialog);
   $("action-undo").addEventListener("click", () => undoRedo("undo"));
   $("action-redo").addEventListener("click", () => undoRedo("redo"));

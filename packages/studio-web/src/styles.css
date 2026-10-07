@@ -95,3 +95,6 @@ dialog textarea { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, 
 .inspector input, .inspector textarea { width: 100%; min-width: 0; }
 .inspector .pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .inspector .steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* Dialog content never grows wider than the dialog (WCAG 1.4.10). */
+dialog form, dialog #dialog-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+dialog input, dialog textarea { max-width: 100%; min-width: 0; }
