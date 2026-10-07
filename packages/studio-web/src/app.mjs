@@ -667,6 +667,8 @@ function applyChange(event) {
     applying = false;
   }
   state.selection = canvas.selection;
+  // A change that removed selected layers changes the selection; agents see it too.
+  if (state.selection.length !== selectionBefore.length || state.selection.some((id, index) => id !== selectionBefore[index])) shareSelection();
   if (event.actor === state.user.actorId) {
     // Only this user's own changes move this user's undo and redo stacks.
     refreshUndoState();

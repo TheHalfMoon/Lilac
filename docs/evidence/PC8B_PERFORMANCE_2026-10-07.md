@@ -31,13 +31,14 @@ The first measurement exceeded the budgets. Applying a property change took 527 
 - **The layers tree** was rebuilt on every change, and twice, because the canvas also reported the selection.
   - A change now reconciles the tree only under the parents it touches: rows that exist are kept and moved, missing rows are built, and removed rows are dropped.
   - A property change only relabels the affected rows.
-  - While a change is being applied, the canvas's selection report does not redraw anything, and an unchanged selection redraws nothing.
+  - While a change is being applied, the canvas's selection report does not redraw anything, and an unchanged selection redraws nothing. A change that removes selected layers still shares the new selection with the host, for agents' `get_selection`.
 
 **Host: an edit, 573 ms → about 260 ms (p50, 10,000 nodes).** Each edit validated and cloned the whole document several times.
 - **The history base.** Each edit re-derived the history state from a clone of the store's document, a full validation of about 180 ms. The session is the store's only writer, so it now keeps the document it last committed as the next edit's base. The store still validates and applies every transaction itself. The cached base is rebuilt whenever its revision does not match the store's.
 - **The store** applied each transaction twice: once to validate it, and once more from its journal form, so that memory always equals replay.
-  - When the journal form, read back, is exactly the validated transaction (compared value by value, with `Object.is`, so `-0` read back as `0` counts as different), the second application would give the same document, so the first result is used.
-  - Otherwise the store applies the journal form again, as before. The P06 test "values JSON cannot represent are refused, and memory always equals replay" exercises that fallback.
+  - The transaction is first given the journal form's key order (keys sorted, as `canonicalJson` writes them). Key order is part of the document: the renderer applies style entries in order, so a later shorthand overrides an earlier longhand.
+  - When the journal form, read back, is exactly the validated transaction, the second application would give the same document, so the first result is used. "Exactly" means the same keys in the same order and `Object.is` on every value, so `-0` read back as `0` counts as different.
+  - Otherwise the store applies the journal form again, as before. The P06 test "values JSON cannot represent are refused, and memory always equals replay" exercises that fallback. A new test, "memory equals replay in key order too", compares the serialized document in memory and after reopen. It failed against the first version of this change, which ignored key order.
 - **What remains** is collaboration's attributed apply and the store's own validated apply (each about 120 ms), plus the durable journal append.
 
 ## Tests

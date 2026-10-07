@@ -163,17 +163,37 @@ function persisted<T>(value: T): T {
   return JSON.parse(canonicalJson(value)) as T;
 }
 
-/** Exact equality of two plain JSON-shaped values: same keys, and Object.is on every leaf. */
+/**
+ * Exact equality of two plain JSON-shaped values: the same keys in the same order, and
+ * Object.is on every leaf.
+ */
 function sameValue(left: unknown, right: unknown): boolean {
   if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) return Object.is(left, right);
   if (Array.isArray(left) !== Array.isArray(right)) return false;
   const leftKeys = Object.keys(left);
   const rightKeys = Object.keys(right);
   if (leftKeys.length !== rightKeys.length) return false;
-  for (const key of leftKeys) {
-    if (!Object.hasOwn(right, key) || !sameValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key])) return false;
+  for (let index = 0; index < leftKeys.length; index += 1) {
+    const key = leftKeys[index];
+    if (key !== rightKeys[index] || !sameValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key])) return false;
   }
   return true;
+}
+
+/**
+ * `value` with every plain object's keys in canonicalJson's order (as JSON.parse of the
+ * journal form gives them). Anything else is left as it is, for validation to judge.
+ */
+function withSortedKeys(value: unknown, depth = 0): unknown {
+  if (typeof value !== "object" || value === null || depth > 256) return value;
+  if (Array.isArray(value)) return value.map((entry) => withSortedKeys(entry, depth + 1));
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    Object.defineProperty(out, key, { value: withSortedKeys((value as Record<string, unknown>)[key], depth + 1), writable: true, enumerable: true, configurable: true });
+  }
+  return out;
 }
 
 export interface CreateProjectOptions {
@@ -524,7 +544,9 @@ export class ProjectStore {
     this.#assertWritable();
     let validated;
     try {
-      validated = applyTransaction(this.#document, transaction);
+      // In the journal form's key order, so the document applied here has the same key
+      // order as the one replay builds (style order is meaningful: a later shorthand wins).
+      validated = applyTransaction(this.#document, withSortedKeys(transaction));
     } catch (error) {
       if ((error as Error)?.name === "DataCloneError") throw new PersistenceValidationError("transaction contains values that cannot be cloned");
       throw error;
@@ -532,9 +554,10 @@ export class ProjectStore {
     const stored = persisted(validated.transaction) as Record<string, unknown>;
     assertJournalFormat(stored, "transaction", false);
     // The document is built from the journal form, so it equals what replay produces. When
-    // the journal form, read back, is exactly the validated transaction (the usual case;
-    // not when JSON changed a value, such as -0 to 0), applying it again would give the
-    // same document, so the first result is used; otherwise it is applied again.
+    // the journal form, read back, is exactly the validated transaction, in the same key
+    // order (the usual case; not when JSON changed a value, such as -0 to 0), applying it
+    // again would give the same document, so the first result is used; otherwise it is
+    // applied again.
     const sameForm = sameValue(createTransaction(stored), validated.transaction);
     const next = (sameForm ? validated.document : applyTransaction(this.#document, stored).document) as LilacDocument;
     const entry = { seq: this.#seq + 1, revision: next.revision, transaction: stored };
