@@ -38,6 +38,14 @@ async function openEditor(host) {
   return { browser, page, foreign, errors, close: () => browser.close() };
 }
 
+// A rendered layer's centre in page coordinates, through the canvas's transformed frame.
+const screenOf = (page, id) => page.evaluate((nodeId) => {
+  const frame = document.querySelector("iframe");
+  const outer = frame.getBoundingClientRect();
+  const zoom = outer.width / frame.offsetWidth;
+  const inner = frame.contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`).getBoundingClientRect();
+  return { x: outer.left + (inner.left + inner.width / 2) * zoom, y: outer.top + (inner.top + inner.height / 2) * zoom };
+}, id);
 const layerCount = (page) => page.locator("#layers [role=treeitem]").count();
 const waitRevision = (page, revision) => page.waitForFunction((r) => document.getElementById("revision").textContent === `Revision ${r}`, revision);
 const historyIntents = (page) => page.locator("#history li .intent").allTextContents();
@@ -71,20 +79,45 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
     await page.keyboard.press("Tab");
     await waitRevision(page, 2);
     assert.equal(host.session.document.nodes[boxId].props.style.width, "200px");
+    // Drag it on the canvas, then resize it from the handle: one transaction each.
+    const centre = await screenOf(page, boxId);
+    await page.mouse.move(centre.x, centre.y);
+    await page.mouse.down();
+    await page.mouse.move(centre.x + 20, centre.y + 10, { steps: 4 });
+    await page.mouse.up();
+    await waitRevision(page, 3);
+    assert.deepEqual([host.session.document.nodes[boxId].props.style.left, host.session.document.nodes[boxId].props.style.top], ["52px", "42px"]);
+    const handle = await page.locator("[data-lilac-handle]").boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + handle.width / 2 - 20, handle.y + handle.height / 2 + 10, { steps: 4 });
+    await page.mouse.up();
+    await waitRevision(page, 4);
+    assert.deepEqual([host.session.document.nodes[boxId].props.style.width, host.session.document.nodes[boxId].props.style.height], ["180px", "110px"]);
+    // Put it back from the inspector.
+    await page.locator("#inspect-style-left").fill("32");
+    await page.keyboard.press("Tab");
+    await waitRevision(page, 5);
+    await page.locator("#inspect-style-top").fill("32");
+    await page.keyboard.press("Tab");
+    await waitRevision(page, 6);
+    await page.locator("#inspect-style-width").fill("200");
+    await page.keyboard.press("Tab");
+    await waitRevision(page, 7);
     await page.locator("#inspect-name").fill("Hero card");
     await page.keyboard.press("Tab");
-    await waitRevision(page, 3);
+    await waitRevision(page, 8);
     assert.equal(await page.locator(`#layer-${boxId} .label`).textContent(), "Hero card", "the layers tree shows the new name");
 
     // Insert text inside the box (it is selected) and edit the text.
     await page.locator("#action-insert-text").focus();
     await page.keyboard.press("Enter");
-    await waitRevision(page, 4);
+    await waitRevision(page, 9);
     const textId = await page.locator("#layers [role=treeitem][aria-selected=true]").getAttribute("data-node-id");
     assert.equal(host.session.document.nodes[textId].parentId, boxId);
     await page.locator("#inspect-text").fill("Hello from Lilac");
     await page.keyboard.press("Tab");
-    await waitRevision(page, 5);
+    await waitRevision(page, 10);
     assert.equal(host.session.document.nodes[textId].props.text, "Hello from Lilac");
 
     // Select the box from the layers tree with the keyboard, then nudge it on the canvas.
@@ -94,7 +127,7 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
     assert.equal(await page.locator(`#layer-${boxId}`).getAttribute("aria-selected"), "true");
     await page.locator("[role=application]").focus();
     await page.keyboard.press("Shift+ArrowRight");
-    await waitRevision(page, 6);
+    await waitRevision(page, 11);
     assert.equal(host.session.document.nodes[boxId].props.style.left, "42px");
     // The canvas shows it: the rendered element moved with the document.
     const left = await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${id}"]`).style.left, boxId);
@@ -102,20 +135,20 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
 
     // Undo and redo from the keyboard are committed, attributed transactions.
     await page.keyboard.press("Control+z");
-    await waitRevision(page, 7);
+    await waitRevision(page, 12);
     assert.equal(host.session.document.nodes[boxId].props.style.left, "32px");
     await page.keyboard.press("Control+Shift+z");
-    await waitRevision(page, 8);
+    await waitRevision(page, 13);
     assert.equal(host.session.document.nodes[boxId].props.style.left, "42px");
-    assert.deepEqual(await historyIntents(page), ["Nudge layer", "Undo: Nudge layer", "Nudge layer", "Edit text", "Insert text", "Rename layer", "Change style", "Insert box"]);
-    assert.equal(await page.locator("#history li").first().locator(".who").textContent(), "You · revision 8");
+    assert.deepEqual(await historyIntents(page), ["Nudge layer", "Undo: Nudge layer", "Nudge layer", "Edit text", "Insert text", "Rename layer", "Change style", "Change style", "Change style", "Resize layer", "Move layer", "Change style", "Insert box"]);
+    assert.equal(await page.locator("#history li").first().locator(".who").textContent(), "You · revision 13");
 
     // Delete the text from the layers tree.
     await page.locator(`#layer-${boxId}`).focus();
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await page.keyboard.press("Delete");
-    await waitRevision(page, 9);
+    await waitRevision(page, 14);
     assert.equal(host.session.document.nodes[textId], undefined);
     assert.equal(await layerCount(page), 2);
 
@@ -125,7 +158,7 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
     const saved = JSON.stringify(host.session.document);
     await page.reload();
     await page.waitForFunction(() => document.documentElement.dataset.ready === "true");
-    await waitRevision(page, 9);
+    await waitRevision(page, 14);
     assert.equal(await layerCount(page), 2);
     assert.deepEqual(editor.foreign, []);
     assert.deepEqual(editor.errors, []);
@@ -137,7 +170,7 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
     editor = await openEditor(host);
     page = editor.page;
     await page.locator("#dialog[open] [data-project=alpha]").click();
-    await waitRevision(page, 9);
+    await waitRevision(page, 14);
     assert.deepEqual(host.session.document, JSON.parse(saved));
     assert.equal(await page.locator(`#layer-${boxId} .label`).textContent(), "Hero card");
     // The renderer shows the reopened document.
@@ -221,6 +254,25 @@ test("lock takeover, crash recovery and reopen-after-failure are handled in the 
   const editor = await openEditor(host);
   try {
     const { page } = editor;
+    // While another live session holds the project, a takeover is refused, with a message.
+    const { StudioSession } = await import("../packages/studio-host/src/index.ts");
+    writeFileSync(join(root, "crashed", ".lilac", "lock.bak"), "");
+    rmSync(join(root, "crashed", ".lilac", "lock.bak"));
+    const { readFileSync: readLock } = await import("node:fs");
+    const deadLock = readLock(join(root, "crashed", ".lilac", "lock"), "utf8");
+    const torn = readLock(join(root, "crashed", ".lilac", "journal.log"));
+    rmSync(join(root, "crashed", ".lilac", "lock"));
+    const live = StudioSession.open({ projectsRoot: root, name: "crashed", owner: { actorId: "other", kind: "user", accessClass: "member", displayName: "Other" }, now });
+    await page.locator("#dialog[open] [data-project=crashed]").click();
+    await page.locator("#lock-reason").fill("I think it crashed");
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => /still running/u.test(document.querySelector("#dialog[open] .error")?.textContent ?? ""));
+    await page.keyboard.press("Escape");
+    live.close();
+    // Put the crash back: the dead session's lock and the torn tail.
+    writeFileSync(join(root, "crashed", ".lilac", "lock"), deadLock);
+    writeFileSync(join(root, "crashed", ".lilac", "journal.log"), torn);
+    await page.locator("#action-projects").click();
     await page.locator("#dialog[open] [data-project=crashed]").click();
     // The lock dialog explains, and refuses a takeover without a reason.
     await page.locator("#dialog[open] #lock-reason").waitFor();
@@ -288,6 +340,49 @@ test("the host serves only the editor's files, and the launch ticket works once"
     assert.equal((await redeem({ origin: host.url })).status, 401, "a used ticket");
     assert.equal((await fetch(`${host.url}/api/session`)).status, 401, "the API still needs the token");
   } finally {
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a change that arrives while the editor is refreshing is not lost", browserTestOptions(), async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-race-")));
+  const host = await startStudioHost({ projectsRoot: root, now });
+  const editor = await openEditor(host);
+  try {
+    const { page } = editor;
+    await page.locator("#new-project-name").fill("first");
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.getElementById("project-name").textContent === "first");
+    await page.locator("#action-insert-box").click();
+    await waitRevision(page, 1);
+    // Hold the editor's next history fetch, so its refresh is in flight while changes land.
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/api/history", async (route) => {
+      await gate;
+      await route.continue();
+    });
+    const call = (path, body) => fetch(`${host.url}${path}`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify(body) }).then((response) => response.json());
+    // Another client opens a second project and edits it at once.
+    await call("/api/projects/create", { name: "second" });
+    // The editor starts loading the new project; its history fetch is held.
+    await page.waitForRequest("**/api/history");
+    await call("/api/edit", { baseRevision: 0, intent: "First layer", operations: [{ type: "insert-node", node: { id: "b1", type: "element", props: { tag: "div" } }, parentId: null, index: 0 }] });
+    await call("/api/edit", { baseRevision: 1, intent: "Second layer", operations: [{ type: "insert-node", node: { id: "b2", type: "element", props: { tag: "div" } }, parentId: null, index: 1 }] });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    release();
+    await waitRevision(page, 2);
+    assert.equal(await page.locator("#project-name").textContent(), "second");
+    assert.equal(await layerCount(page), 2, "both changes are on the canvas and in the tree");
+    assert.deepEqual(await historyIntents(page), ["Second layer", "First layer"]);
+    assert.equal(await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelectorAll("[data-lilac-id]").length), 2);
+    assert.deepEqual(editor.foreign, []);
+    assert.deepEqual(editor.errors, []);
+  } finally {
+    await editor.close();
     await host.close();
     rmSync(root, { recursive: true, force: true });
   }

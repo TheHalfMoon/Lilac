@@ -23,6 +23,8 @@ export interface StudioActor {
  */
 export interface ChangeEvent {
   type: "transaction";
+  /** The project the change was committed to. */
+  project: string;
   revision: number;
   transactionId: string;
   actor: string;
@@ -283,6 +285,7 @@ export class StudioSession {
     }
     const event: ChangeEvent = {
       type: "transaction",
+      project: this.name,
       revision: committed.revision,
       transactionId,
       actor: actor.actorId,
