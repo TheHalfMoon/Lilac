@@ -138,6 +138,12 @@ Do not choose a CRDT library until the donor baseline is inspected. The contract
 - actor attribution;
 - server-optional local mode.
 
+## Studio host
+
+The PC phase adds one Node studio host (`@lilac/studio-host`). It composes persistence, history, collaboration and network-policy, and is the single writer of an open project. It serves the editor and a loopback-only API (127.0.0.1, a per-launch token, Host and Origin checks), and it hosts the MCP endpoint and its stdio relay. Hosting MCP here keeps the persistence single-writer lock intact.
+
+Local web mode runs the host directly. The desktop shell starts the same host and owns its lifecycle, which is how the shell's "local MCP lifecycle" below is met.
+
 ## Desktop boundary
 
 The desktop shell owns privileged operations:

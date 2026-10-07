@@ -6,15 +6,15 @@ Last updated: 2026-10-07
 
 **LILAC-P00 — Foundation, authorized-source intake, and staged product implementation**
 
-Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–9 are `CLOSED_CANONICAL`; P03 architecture ownership and P04 parity disposition are complete; repository-side Graft context policy is canonical; P05 differentiators D1–D7 have delivered slices; all 11 P06 Product Hardening gates are `CLOSED_CANONICAL` (umbrella #100 closes with this record); the program continues with P07 Release.
+Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–9 are `CLOSED_CANONICAL`; P03 architecture ownership and P04 parity disposition are complete; repository-side Graft context policy is canonical; P05 differentiators D1–D7 have delivered slices; all 11 P06 Product Hardening gates are `CLOSED_CANONICAL` (umbrella #100, closed); the scope-independent P07 artifacts have landed; the program is in the PC Product Completion phase, after which P07 Release closes.
 
 ## Canonical main
 
-`c73c48e5c0b7f9740a18dfec11ffaf0a98495357`
+`e702f58914cb4df13e005447889665b1ca36060c`
 
-This is the normal merge commit for PR #137 (P06 G11 file migration and version compatibility, Issue #136), the last P06 gate.
+This is the normal merge commit for PR #145 (P07c SBOM and attribution bundle with signed release evidence, Issue #144).
 
-Post-merge Foundation checks completed `SUCCESS` on that exact SHA (615/615 tests).
+Post-merge Foundation checks completed `SUCCESS` on that exact SHA (630/630 tests).
 
 ## Post-grain program state
 
@@ -52,7 +52,49 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (615/615 test
 | 11 | File migration/version compatibility | G11 #136 → #137 `c73c48e` (615/615) | `docs/evidence/P06_G11_VERSION_COMPATIBILITY_2026-10-07.md` |
 
 - Tooling during P06: CI surfaces Jev, OCR, and test-total evidence as check-run annotations (PR #99, merge `550baae`) and the names of failing tests (T1, PR #124, merge `0acf81c`), so exact-head evidence can be read from check-run annotations.
-- Next: P07 Release (umbrella #139). No editor application exists: the catalog entries `canvas-viewport`, `renderer`, and `desktop-bridge` are `planned` and `mcp-surface` is `stub` (#82), so the P07 desktop-build and local-web-mode artifacts depend on a founder scope decision; scope-independent P07 artifacts proceed.
+- P07 Release (umbrella #139). The scope-independent artifacts have landed:
+  - MCP documentation, migration docs, and security policy: #140 → PR #141, merge `9bca91b`, post-merge CI 620/620.
+  - Reproducible smoke test: #142 → PR #143, merge `285df27`, post-merge CI 625/625.
+  - SBOM and attribution bundle, and the signed-release workflow: #144 → PR #145, merge `e702f58`, post-merge CI 630/630.
+- Founder decisions (2026-10-07, recorded on #146):
+  - **Scope.** Lilac ships as a usable product. Desktop builds and local web mode are required, so the PC Product Completion phase was added before P07 closes.
+  - **License.** The target is Apache-2.0, applied only after an evidence-based compatibility audit.
+  - **Vulnerability reporting.** Enabling GitHub private vulnerability reporting is a required repository-administration action before release.
+  - **Tag.** No v1 tag until the product is usable and every release gate is green.
+- PC Product Completion: **ACTIVE** (umbrella #146). Its 17 acceptance gates are in `docs/MASTER_PLAN.md`; the grain plan is below.
+
+| # | PC gate | State |
+|---:|---|---|
+| 1 | Editor application shell | OPEN |
+| 2 | Canvas and rendering surface | OPEN |
+| 3 | Document interaction and editing | OPEN |
+| 4 | Persistence and reopen workflow | OPEN |
+| 5 | Desktop bridge | OPEN |
+| 6 | Local web mode | OPEN |
+| 7 | MCP server and authorization integration | OPEN |
+| 8 | MCP and agent mutations visible live on the canvas | OPEN |
+| 9 | Mutation attribution, history and undo/redo through the real UI | OPEN |
+| 10 | Import → edit → save → reopen through the UI | OPEN |
+| 11 | Design/code workflow through the product | OPEN |
+| 12 | Accessibility qualification | OPEN |
+| 13 | Large-document canvas and render performance qualification | OPEN |
+| 14 | Crash and recovery behaviour through the actual app surface | OPEN |
+| 15 | Supported desktop packaging | OPEN |
+| 16 | Offline/local-first smoke flow through the product surface | OPEN |
+| 17 | A release-candidate end-to-end test | OPEN |
+
+  Grain plan. A grain may advance a gate, but only the grain named as closing it may set it `CLOSED_CANONICAL`, after end-to-end evidence through the product surface:
+  1. PC1: studio host, loopback project API and change stream (advances 4)
+  2. PC2: renderer and the web-semantic props convention (advances 2)
+  3. PC3: canvas interaction, covering viewport, selection and transform (closes 2; advances 3)
+  4. PC4: editor shell, with panels, history, attribution, undo/redo and recovery reporting (closes 1, 3, 4, 9)
+  5. PC5: MCP server and stdio relay (#82), with live agent edits (closes 7, 8)
+  6. PC6: import and design/code workflows in the product (closes 10, 11)
+  7. PC7: local web mode and the offline product smoke (closes 6, 16)
+  8. PC8: accessibility, performance and crash/recovery qualification (closes 12, 13, 14)
+  9. PC9: desktop shell and packaging (closes 5, 15)
+  10. PC10: release-candidate end-to-end (closes 17)
+  11. PC-L: Apache-2.0 license and provenance audit, then adoption (P07 prerequisite)
 - Open, non-blocking: #64 (review-panel hardening follow-ups, including a shared hidden-text and input-hygiene policy across packages), #78, #79, #82, #89, #94, #108, #132, #135, #2. Issue #121 ("cirq.quantum") is unrelated to the program.
 
 ## Canonical implementation chain
@@ -111,7 +153,8 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (615/615 test
 | I08 Delivery Governance | PROVEN |
 | I09 Design Method and Resources | PROVEN |
 | P06 Product hardening (11 gates) | CLOSED_CANONICAL |
-| P07 Release | ACTIVE |
+| PC Product completion (17 gates) | ACTIVE |
+| P07 Release | ACTIVE (closes after PC) |
 
 ## Grain 6 — closed canonical
 
@@ -175,7 +218,8 @@ The remaining product program, in working order:
 8. P05 D6 - Local/private mode (complete for what exists today: D6a persistence, D6b network policy and offline guarantee; import-stack enforcement #83 complete; local MCP endpoint #82 open);
 9. P05 D7 - Website/app intake product experience (D7a review, semantics, commit, and network gate complete; #83 and #86 complete);
 10. P06 - Product hardening (complete; all 11 gates closed, #100);
-11. P07 - Release program with signed evidence and clean-machine verification.
+11. PC - Product completion (usable editor, canvas, renderer, MCP server, web mode, desktop);
+12. P07 - Release program with signed evidence and clean-machine verification.
 
 ## Integrity rule
 

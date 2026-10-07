@@ -9,7 +9,8 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 
 function planGates() {
   const plan = read("docs/MASTER_PLAN.md");
-  const section = plan.slice(plan.indexOf("### P06"), plan.indexOf("### P07"));
+  const start = plan.indexOf("### P06");
+  const section = plan.slice(start, plan.indexOf("\n### ", start + 1));
   return [...section.matchAll(/^- (.+?);?\.?$/gm)].map((match) => match[1].replace(/[;.]$/, ""));
 }
 
@@ -32,4 +33,37 @@ test("every repository path the program state cites exists", () => {
   const cited = [...current.matchAll(/`((?:docs|tests|scripts|packages)\/[^`\s]+)`/g)].map((match) => match[1]);
   assert.ok(cited.length > 0);
   for (const path of cited) assert.ok(existsSync(new URL(`../${path}`, import.meta.url)), `${path} does not exist`);
+});
+
+function productCompletionGates() {
+  const plan = read("docs/MASTER_PLAN.md");
+  const section = plan.slice(plan.indexOf("### PC "), plan.indexOf("### P07"));
+  return [...section.matchAll(/^(\d+)\. (.+)$/gm)].map((match) => ({ number: Number(match[1]), text: match[2] }));
+}
+
+test("the PC record mirrors every master-plan Product Completion gate in order", () => {
+  const gates = productCompletionGates();
+  assert.equal(gates.length, 17);
+  const current = read("docs/CURRENT.md");
+  const pc = current.slice(current.indexOf("- PC Product Completion:"), current.indexOf("Grain plan"));
+  const rows = [...pc.matchAll(/^\| (\d+) \| ([^|]+) \| ([A-Z_]+) \|$/gm)].map((match) => ({ number: Number(match[1]), gate: match[2].trim(), state: match[3] }));
+  assert.deepEqual(rows.map((row) => row.number), gates.map((gate) => gate.number));
+  for (const [index, row] of rows.entries()) {
+    assert.ok(gates[index].text.toLowerCase().startsWith(row.gate.toLowerCase()), `PC gate ${row.number} "${row.gate}" names the plan gate "${gates[index].text.slice(0, 60)}"`);
+    assert.ok(["OPEN", "CLOSED_CANONICAL"].includes(row.state), `PC gate ${row.number} has a known state`);
+  }
+});
+
+test("each PC gate has exactly one closing grain in the plan", () => {
+  const current = read("docs/CURRENT.md");
+  assert.match(current, /\| PC Product completion \(17 gates\) \| ACTIVE \|/);
+  const plan = current.slice(current.indexOf("Grain plan."), current.indexOf("11. PC-L:"));
+  const closers = new Map();
+  for (const [, grain, list] of plan.matchAll(/(PC\d+): .*\(closes ([\d, ]+)[;)]/g)) {
+    for (const gate of list.split(",").map((value) => Number(value.trim()))) {
+      assert.ok(!closers.has(gate), `PC gate ${gate} is closed by both ${closers.get(gate)} and ${grain}`);
+      closers.set(gate, grain);
+    }
+  }
+  assert.deepEqual([...closers.keys()].sort((a, b) => a - b), Array.from({ length: 17 }, (_, index) => index + 1));
 });

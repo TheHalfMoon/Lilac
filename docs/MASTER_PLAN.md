@@ -194,6 +194,58 @@ Quality gates:
 - crash recovery;
 - file migration/version compatibility.
 
+### PC — Product completion
+
+Goal: turn the P03–P06 core into a usable Lilac product before the P07 release closes. This phase reuses the existing packages and composes them. It is not an architectural restart. Founder decision, 2026-10-07: desktop builds and local web mode are required, not dispositioned. The first v1 tag waits for this phase and for every P07 gate.
+
+Foundations it must reuse, and must not rebuild:
+- `document-model`, `history`;
+- `persistence`;
+- `collaboration` (attribution, access oracle, presence);
+- `agent-runtime`, `agent-events`, `agent-workspace`;
+- `mcp-protocol` (classification and `requireMCPToolCall`);
+- `network-policy` (local-only decisions);
+- `import-stack` and `intake`;
+- `code-ir`, `design-components`;
+- `design-assurance` (`auditAccessibility`);
+- `visual-git`;
+- `scripts/smoke.mjs`, `scripts/release-bundle.mjs`.
+
+Shape:
+- **Studio host.** One Node studio host composes those packages. It serves a loopback-only HTTP API (127.0.0.1, a per-launch token, Host and Origin checks, a network-policy local-only decision) and a change stream.
+- **Web editor.** Built from the host's static modules and the canvas/renderer packages.
+- **Same host everywhere.** Local web mode runs the host directly. The desktop app is a thin, context-isolated shell around the same host. The MCP server runs inside the host, so the persistence single-writer lock is respected, and a stdio relay is provided for MCP clients.
+- **Renderer.** It emits web semantics into a sandboxed frame, with a stable node→DOM identity and no renderer-only document state.
+- **Edits.** Every edit, whether from a person or an agent, is a history transaction committed through the project store, with collaboration attribution.
+
+New third-party dependencies need an allowlisted license and an entry in `THIRD_PARTY_NOTICES.md`. They are added only where a grain shows they are needed. Browser end-to-end tests use `playwright-core` (Apache-2.0, no dependencies), driving the Chromium already present on CI runners.
+
+Acceptance gates. Each needs real implementation and end-to-end evidence through the product surface:
+1. Editor application shell: open or create a project; layers, inspector and history panels; keyboard operable.
+2. Canvas and rendering surface: pan, zoom, selection, hit testing, and incremental re-render from `affectedNodeIds`.
+3. Document interaction and editing: insert, move, resize, restyle, text edit and delete, all as history transactions.
+4. Persistence and reopen workflow, including stale-lock and recovery reporting in the UI.
+5. Desktop bridge: a context-isolated shell with a minimal preload and denied navigation and permissions.
+6. Local web mode: one command serves the editor locally with no network access beyond loopback.
+7. MCP server and authorization integration (#82): stdio relay and loopback HTTP, every call through `requireMCPToolCall`, and the confirmation flow for consequential tools. This discharges the server obligations P06 G8 recorded on #82.
+8. MCP and agent mutations visible live on the canvas.
+9. Mutation attribution, history and undo/redo through the real UI.
+10. Import → edit → save → reopen through the UI.
+11. Design/code workflow through the product: export JSX through `code-ir`, and bring code into the design.
+12. Accessibility qualification of the editor UI and its generated output: `auditAccessibility` finds nothing in the editor chrome or in exported output, every editor action is keyboard operable, and the remaining WCAG 2.2 AA success criteria are assessed in a per-criterion checklist in `docs/evidence/`. This closes P06 G4's editor-UI disposition.
+13. Large-document canvas and render performance qualification, including the architecture's 10,000-node edit/render benchmark. Budgets, set by this plan and measured in headless Chromium on CI:
+    - the first render of a 10,000-node document takes at most 2 s;
+    - for a single-node edit, applying the DOM patch takes at most 100 ms at p95, measured from receipt of the change-stream event;
+    - on a 10,000-node project, the end-to-end edit (request, persisted commit, event, patch) takes at most 750 ms at p95. This is consistent with the persisted-commit cost P06 G3 measured (about 156 ms) and does not depend on #108.
+
+    This gate closes the renderer and canvas frame budget that the P06 G3 evidence deferred to the renderer grain.
+14. Crash and recovery behaviour through the actual app surface.
+15. Supported desktop packaging (Windows, macOS and Linux where supported) with a smoke test of the packaged app. Supported means Linux x64, macOS arm64 and Windows x64, each built on its GitHub-hosted runner. Code signing and notarization need owner-provided certificates and are tracked as a P07 release prerequisite on #139.
+16. Offline/local-first smoke flow through the product surface.
+17. A release-candidate end-to-end test covering the whole user journey.
+
+Exit: every gate `CLOSED_CANONICAL` with exact-head evidence, the catalog updated for each surface delivered, and the "Definition of genuinely complete" journey demonstrated through the product.
+
 ### P07 — Release
 
 Required artifacts:
