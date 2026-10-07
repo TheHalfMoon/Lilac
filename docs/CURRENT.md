@@ -56,7 +56,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (630/630 test
   - MCP documentation, migration docs, and security policy: #140 → PR #141, merge `9bca91b`, post-merge CI 620/620.
   - Reproducible smoke test: #142 → PR #143, merge `285df27`, post-merge CI 625/625.
   - SBOM and attribution bundle, and the signed-release workflow: #144 → PR #145, merge `e702f58`, post-merge CI 630/630.
-- Founder decisions (2026-10-07, recorded at ):
+- Founder decisions (2026-10-07, recorded on #146):
   - **Scope.** Lilac ships as a usable product. Desktop builds and local web mode are required, so the PC Product Completion phase was added before P07 closes.
   - **License.** The target is Apache-2.0, applied only after an evidence-based compatibility audit.
   - **Vulnerability reporting.** Enabling GitHub private vulnerability reporting is a required repository-administration action before release.
