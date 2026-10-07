@@ -294,13 +294,16 @@ function normalizeDesignNode(value: unknown, label: string, depth: number): Desi
     if (typeof value.text !== "string" || value.text.length > 4096) {
       throw new CodeIrValidationError(`${label}.text must be a bounded string`);
     }
-    node.text = value.text as string;
+    // Empty text and an empty child list are the same design as none; the normal form
+    // omits them, so they fingerprint and round-trip identically.
+    if (value.text !== "") node.text = value.text as string;
   }
   if (value.children !== undefined) {
     if (!Array.isArray(value.children) || value.children.length > CODE_IR_HARD_LIMITS.maxChildrenPerSymbol) {
       throw new CodeIrValidationError(`${label}.children exceeds its bounded budget`);
     }
-    node.children = (value.children as unknown[]).map((child, index) => normalizeDesignNode(child, `${label}.children[${index}]`, depth + 1));
+    const children = (value.children as unknown[]).map((child, index) => normalizeDesignNode(child, `${label}.children[${index}]`, depth + 1));
+    if (children.length > 0) node.children = children;
   }
   return node;
 }

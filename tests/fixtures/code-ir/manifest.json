@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "file": "card.jsx",
+      "componentName": "Card",
+      "description": "Card with props of every literal kind",
+      "fingerprint": "23c1ba60a7895341fb08a2ded16c818a3dd9516ad5f4e6121db73328f3c1583c",
+      "design": {
+        "componentName": "Card",
+        "root": {
+          "tag": "div",
+          "props": {
+            "className": "card p-4"
+          },
+          "children": [
+            {
+              "tag": "h1",
+              "props": {
+                "title": "Hello"
+              },
+              "text": "Welcome"
+            },
+            {
+              "tag": "button",
+              "props": {
+                "count": 3,
+                "disabled": false
+              },
+              "text": "Don't click"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "file": "form.jsx",
+      "componentName": "SignIn",
+      "description": "Arrow component, single-quoted and expression attributes, numeric entities",
+      "fingerprint": "a569a0c1909990d6912b04051470949fcc248d6e09a30bfc3d41c0180fc3e6b1",
+      "design": {
+        "componentName": "SignIn",
+        "root": {
+          "tag": "form",
+          "props": {
+            "className": "stack gap-2",
+            "data-testid": "sign-in"
+          },
+          "children": [
+            {
+              "tag": "label",
+              "props": {
+                "htmlFor": "email"
+              },
+              "text": "Email (work)"
+            },
+            {
+              "tag": "input",
+              "props": {
+                "id": "email",
+                "type": "email",
+                "required": true,
+                "maxLength": 254
+              }
+            },
+            {
+              "tag": "button",
+              "props": {
+                "type": "submit",
+                "title": "Sign in \"now\""
+              },
+              "text": "Sign in"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "file": "pricing.jsx",
+      "componentName": "Pricing",
+      "description": "Multi-line text, named entities, string-literal child",
+      "fingerprint": "366ab46d8746eb740433e585328928021bae9117fb26970a4371eebf2ea6d9fc",
+      "design": {
+        "componentName": "Pricing",
+        "root": {
+          "tag": "section",
+          "props": {
+            "className": "pricing",
+            "aria-label": "Plans"
+          },
+          "children": [
+            {
+              "tag": "h2",
+              "props": {},
+              "text": "Plans & pricing"
+            },
+            {
+              "tag": "ul",
+              "props": {},
+              "children": [
+                {
+                  "tag": "li",
+                  "props": {
+                    "data-plan": "free"
+                  },
+                  "text": "Free",
+                  "children": [
+                    {
+                      "tag": "span",
+                      "props": {},
+                      "text": "for <3 seats"
+                    }
+                  ]
+                },
+                {
+                  "tag": "li",
+                  "props": {
+                    "data-plan": "team",
+                    "highlighted": true
+                  },
+                  "text": "Team",
+                  "children": [
+                    {
+                      "tag": "span",
+                      "props": {},
+                      "text": "  $12 / seat  "
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "p",
+              "props": {},
+              "text": "Prices exclude tax. Cancel any time."
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

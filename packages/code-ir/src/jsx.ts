@@ -3,7 +3,7 @@ import { CODE_IR_HARD_LIMITS, type SourceSymbol, type UnsupportedRegion } from "
 import { makeRange, symbolId } from "./validation.ts";
 
 interface JsxToken {
-  type: "lt" | "gt" | "slashGt" | "slash" | "equals" | "string" | "ident" | "lbrace" | "rbrace" | "text";
+  type: "lt" | "gt" | "slashGt" | "slash" | "equals" | "ident" | "lbrace" | "rbrace" | "text";
   value: string;
   start: number;
   end: number;
@@ -14,7 +14,7 @@ function isIdentStart(char: string): boolean {
 }
 
 function isIdentPart(char: string): boolean {
-  return /[A-Za-z0-9_.]/u.test(char);
+  return /[A-Za-z0-9_.-]/u.test(char);
 }
 
 function tokenizeJsx(source: string): JsxToken[] {
@@ -99,44 +99,122 @@ function skipWhitespace(state: ParserState): void {
   }
 }
 
+// JSX text and attribute strings carry HTML entities, not JS escapes. The entities Lilac
+// emits, and numeric references, are decoded; any other named entity is refused, because
+// JSX would decode it to a character this parser cannot know.
+const NAMED_ENTITIES: Readonly<Record<string, string>> = Object.freeze({ amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: "\u00a0" });
+
+function decodeJsxEntities(raw: string, label: string): string {
+  return raw.replace(/&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{0,31});/gu, (_match, body: string) => {
+    if (body.startsWith("#")) {
+      const code = body[1] === "x" || body[1] === "X" ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10);
+      if (!(code > 0 && code <= 0x10ffff) || (code >= 0xd800 && code <= 0xdfff)) throw new CodeIrValidationError(`${label} has an invalid character reference &${body};`);
+      return String.fromCodePoint(code);
+    }
+    const named = NAMED_ENTITIES[body];
+    if (named === undefined) throw new CodeIrValidationError(`${label} uses the unsupported entity &${body};`);
+    return named;
+  });
+}
+
+// JSX whitespace (Babel's cleanJSXElementLiteralChild): tabs become spaces, lines after the
+// first lose leading spaces, lines before the last lose trailing spaces, empty lines drop,
+// and the remaining lines join with one space.
+function cleanJsxText(value: string): string {
+  const lines = value.split(/\r\n|\n|\r/u);
+  let lastNonEmpty = 0;
+  lines.forEach((line, index) => { if (/[^ \t]/u.test(line)) lastNonEmpty = index; });
+  let out = "";
+  lines.forEach((line, index) => {
+    let trimmed = line.replace(/\t/gu, " ");
+    if (index !== 0) trimmed = trimmed.replace(/^[ ]+/u, "");
+    if (index !== lines.length - 1) trimmed = trimmed.replace(/[ ]+$/u, "");
+    if (trimmed === "") return;
+    out += index === lastNonEmpty ? trimmed : `${trimmed} `;
+  });
+  return out;
+}
+
+// A JSX attribute string: no escapes, ends at the matching quote, entities decoded.
 function scanStringLiteral(source: string, start: number): { value: string; end: number } {
   const quote = source[start];
   if (quote !== '"' && quote !== "'") throw new CodeIrValidationError("JSX attribute value must be a string or literal expression");
+  const end = source.indexOf(quote, start + 1);
+  if (end < 0) throw new CodeIrValidationError("JSX string literal is unterminated");
+  const raw = source.slice(start + 1, end);
+  if (/[\r\n]/u.test(raw)) throw new CodeIrValidationError("JSX string literal must not span lines");
+  return { value: decodeJsxEntities(raw, "JSX attribute string"), end: end + 1 };
+}
+
+// A single- or double-quoted JS string literal inside an expression container.
+function scanJsStringLiteral(source: string, start: number): { value: string; end: number } {
+  const quote = source[start];
   let out = "";
   let index = start + 1;
+  const hex = (text: string, label: string): number => {
+    if (!/^[0-9a-fA-F]+$/u.test(text)) throw new CodeIrValidationError(`JSX string literal has a malformed ${label} escape`);
+    return Number.parseInt(text, 16);
+  };
   while (index < source.length && source[index] !== quote) {
-    if (source[index] === "\\" && index + 1 < source.length) {
-      const escaped = source[index + 1];
-      out += escaped === "n" ? "\n" : escaped === "t" ? "\t" : escaped;
-      index += 2;
+    const char = source[index];
+    if (char === "\n" || char === "\r") throw new CodeIrValidationError("JSX string literal must not span lines");
+    if (char !== "\\") { out += char; index += 1; continue; }
+    const escaped = source[index + 1];
+    index += 2;
+    if (escaped === undefined || escaped === "\n" || escaped === "\r" || escaped === "\u2028" || escaped === "\u2029") {
+      throw new CodeIrValidationError("JSX string literal line continuations are outside the supported subset");
+    }
+    const simple: Record<string, string> = { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", v: "\v" };
+    if (escaped in simple) { out += simple[escaped]; continue; }
+    if (escaped === "0" && !/[0-9]/u.test(source[index] ?? "")) { out += "\0"; continue; }
+    if (/[1-9]/u.test(escaped)) throw new CodeIrValidationError("JSX string literal octal escapes are outside the supported subset");
+    if (escaped === "x") { out += String.fromCharCode(hex(source.slice(index, index + 2), "\\x")); index += 2; continue; }
+    if (escaped === "u" && source[index] === "{") {
+      const close = source.indexOf("}", index);
+      const code = close < 0 ? Number.NaN : hex(source.slice(index + 1, close), "\\u{}");
+      if (!(code <= 0x10ffff)) throw new CodeIrValidationError("JSX string literal has a malformed \\u{} escape");
+      out += String.fromCodePoint(code);
+      index = close + 1;
       continue;
     }
-    if (source[index] === "\n") throw new CodeIrValidationError("JSX string literal must not span lines");
-    out += source[index];
-    index += 1;
+    if (escaped === "u") { out += String.fromCharCode(hex(source.slice(index, index + 4), "\\u")); index += 4; continue; }
+    out += escaped;
   }
   if (index >= source.length) throw new CodeIrValidationError("JSX string literal is unterminated");
   return { value: out, end: index + 1 };
 }
 
-function parseExpressionLiteral(state: ParserState): { literal: SymbolProp["literal"]; end: number } | null {
-  const token = peek(state);
-  if (!token) return null;
-  if (token.type === "string") {
-    next(state);
-    return { literal: { kind: "string", value: parseStringLiteral(token) }, end: token.end };
+const NUMERIC_LITERAL = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/u;
+
+// The literal inside an expression container opened at `open`: true, false, a number or
+// a quoted string. Returns null for anything else. On success, the parser is moved past
+// the closing brace.
+function readLiteralExpression(state: ParserState, open: JsxToken): { literal: SymbolProp["literal"]; end: number } | null {
+  const { source } = state;
+  let index = open.end;
+  while (/\s/u.test(source[index] ?? "")) index += 1;
+  let literal: SymbolProp["literal"];
+  if (source[index] === '"' || source[index] === "'") {
+    const scanned = scanJsStringLiteral(source, index);
+    literal = { kind: "string", value: scanned.value };
+    index = scanned.end;
+  } else {
+    const close = source.indexOf("}", index);
+    if (close < 0) return null;
+    const body = source.slice(index, close).trim();
+    if (body === "true" || body === "false") literal = { kind: "boolean", value: body === "true" };
+    else if (NUMERIC_LITERAL.test(body)) {
+      const numeric = Number(body);
+      if (!Number.isFinite(numeric)) throw new CodeIrValidationError("JSX numeric literal must be finite");
+      literal = { kind: "number", value: numeric };
+    } else return null;
+    index = close;
   }
-  if (token.type === "ident" && (token.value === "true" || token.value === "false")) {
-    next(state);
-    return { literal: { kind: "boolean", value: token.value === "true" }, end: token.end };
-  }
-  if (token.type === "text" && /^-?\d+(\.\d+)?$/u.test(token.value.trim()) && token.value.trim() !== "") {
-    next(state);
-    const numeric = Number(token.value.trim());
-    if (!Number.isFinite(numeric)) throw new CodeIrValidationError("JSX numeric literal must be finite");
-    return { literal: { kind: "number", value: numeric }, end: token.end };
-  }
-  return null;
+  while (/\s/u.test(source[index] ?? "")) index += 1;
+  if (source[index] !== "}") return null;
+  const end = index + 1;
+  while (state.position < state.tokens.length && state.tokens[state.position].start < end) state.position += 1;
+  return { literal, end };
 }
 
 function skipBalancedBraces(state: ParserState, open: JsxToken): number {
@@ -212,18 +290,16 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
       throw new CodeIrValidationError(`JSX element ${name} has an unsupported attribute value`);
     }
     const valueToken = next(state);
-    const parsed = parseExpressionLiteral(state);
+    const parsed = readLiteralExpression(state, valueToken);
     if (!parsed) {
       const end = skipBalancedBraces(state, valueToken);
       unsupportedAt(state, `non-literal JSX expression attribute in ${name}`, valueToken.start, end);
       throw new CodeIrValidationError(`JSX element ${name} uses a non-literal expression attribute`);
     }
-    const close = next(state);
-    if (close.type !== "rbrace") throw new CodeIrValidationError(`JSX attribute in ${name} is unbalanced`);
     props.push({
       name: attrName.value,
       literal: parsed.literal,
-      range: makeRange(state.file, state.source, state.starts, attrName.start, close.end),
+      range: makeRange(state.file, state.source, state.starts, attrName.start, parsed.end),
     });
     continue;
   }
@@ -232,11 +308,11 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
     const textParts: { value: string; start: number; end: number }[] = [];
     const flushText = (): void => {
       if (textParts.length === 0) return;
-      const value = textParts.map((part) => part.value).join("");
       const first = textParts[0];
       const last = textParts[textParts.length - 1];
       textParts.length = 0;
-      if (value.trim() === "") return;
+      const value = cleanJsxText(decodeJsxEntities(state.source.slice(first.start, last.end), `JSX text in ${name}`));
+      if (value === "") return;
       if (value.length > 4096) throw new CodeIrValidationError(`JSX text in ${name} exceeds 4096 characters`);
       texts.push({
         value,
@@ -268,11 +344,24 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
       if (token.type === "lbrace") {
         flushText();
         const openBrace = next(state);
+        // A string literal child is exact text: {"  spaced  "} keeps its whitespace.
+        const literal = readLiteralExpression(state, openBrace);
+        if (literal !== null && literal.literal.kind === "string") {
+          if (literal.literal.value.length > 4096) throw new CodeIrValidationError(`JSX text in ${name} exceeds 4096 characters`);
+          if (literal.literal.value !== "") {
+            texts.push({ value: literal.literal.value, range: makeRange(state.file, state.source, state.starts, openBrace.start, literal.end) });
+          }
+          continue;
+        }
+        if (literal !== null) {
+          unsupportedAt(state, `non-string literal child in ${name}`, openBrace.start, literal.end);
+          throw new CodeIrValidationError(`JSX element ${name} contains a non-string literal child`);
+        }
         const end = skipBalancedBraces(state, openBrace);
         unsupportedAt(state, `expression child in ${name}`, openBrace.start, end);
         throw new CodeIrValidationError(`JSX element ${name} contains an expression child outside the supported subset`);
       }
-      if (token.type === "text" || token.type === "gt" || token.type === "slash" || token.type === "equals" || token.type === "ident" || token.type === "string" || token.type === "rbrace") {
+      if (token.type === "text" || token.type === "gt" || token.type === "slash" || token.type === "slashGt" || token.type === "equals" || token.type === "ident" || token.type === "rbrace") {
         const part = next(state);
         textParts.push({ value: part.value, start: part.start, end: part.end });
         continue;
@@ -356,6 +445,76 @@ function bindComponentDefinitions(state: ParserState, roots: SourceSymbol[]): vo
   }
 }
 
+// End offset of a braced expression starting at `start`, skipping quoted strings, template
+// literals and nested braces; -1 when it never closes.
+function bracedEnd(source: string, start: number): number {
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '"' || char === "'" || char === "`") {
+      for (index += 1; index < source.length && source[index] !== char; index += 1) if (source[index] === "\\") index += 1;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    else if (char === "}" && --depth === 0) return index + 1;
+  }
+  return -1;
+}
+
+// Where an element that failed to parse ends, by balancing its tags (quoted attribute
+// values and braces skipped). Returns -1 when the element never closes. Recovery resumes
+// after this offset, so no descendant of a failed element becomes a root.
+function failedElementEnd(state: ParserState, startIndex: number): number {
+  const { source, tokens } = state;
+  let depth = 0;
+  let offset = tokens[startIndex].start;
+  while (offset < source.length) {
+    const char = source[offset];
+    if (char === "{") {
+      const end = bracedEnd(source, offset);
+      if (end < 0) return -1;
+      offset = end;
+      continue;
+    }
+    if (char !== "<") { offset += 1; continue; }
+    if (source[offset + 1] === "/") {
+      const close = source.indexOf(">", offset);
+      if (close < 0) return -1;
+      depth -= 1;
+      offset = close + 1;
+      if (depth <= 0) return offset;
+      continue;
+    }
+    if (!isIdentStart(source[offset + 1] ?? "")) { offset += 1; continue; }
+    // An opening tag: scan its header to > or />.
+    let index = offset + 1;
+    let selfClosing = false;
+    for (;;) {
+      const headerChar = source[index];
+      if (headerChar === undefined) return -1;
+      if (headerChar === '"' || headerChar === "'") {
+        const end = source.indexOf(headerChar, index + 1);
+        if (end < 0) return -1;
+        index = end + 1;
+        continue;
+      }
+      if (headerChar === "{") {
+        const end = bracedEnd(source, index);
+        if (end < 0) return -1;
+        index = end;
+        continue;
+      }
+      if (headerChar === "/" && source[index + 1] === ">") { selfClosing = true; index += 2; break; }
+      if (headerChar === ">") { index += 1; break; }
+      index += 1;
+    }
+    offset = index;
+    if (!selfClosing) depth += 1;
+    else if (depth === 0) return offset;
+  }
+  return -1;
+}
+
 export function parseJsxFile(file: string, source: string): JsxParseResult {
   if (typeof source !== "string") throw new CodeIrValidationError("JSX source must be a string");
   if (source.length === 0) throw new CodeIrValidationError("JSX source must not be empty");
@@ -394,7 +553,10 @@ export function parseJsxFile(file: string, source: string): JsxParseResult {
           if (state.unsupported.length >= CODE_IR_HARD_LIMITS.maxUnsupported) throw error;
           const contextEnd = Math.min(state.tokens.length - 1, attempt + 8);
           unsupportedAt(state, `unparseable top-level JSX: ${error instanceof Error ? error.message : String(error)}`, token.start, state.tokens[contextEnd].end);
+          const resume = failedElementEnd(state, attempt);
           state.position = attempt + 1;
+          if (resume < 0) state.position = state.tokens.length;
+          else while (state.position < state.tokens.length && state.tokens[state.position].start < resume) state.position += 1;
         }
         continue;
       }
