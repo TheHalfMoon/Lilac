@@ -9,7 +9,7 @@ Lilac has no tagged release yet. Security fixes land on `main`, and only the cur
 Please report suspected vulnerabilities privately. Do not open a public issue, pull request or discussion that describes one.
 
 1. If this repository's **Security** tab offers **Report a vulnerability**, use it. That is GitHub's private vulnerability reporting.
-2. Otherwise, open an issue titled "Private contact request". Give no technical details and do not say what it concerns, and the maintainer will reply with a private channel.
+2. Otherwise, open an issue titled "Private contact request". Give no technical details and do not say what it concerns. The maintainer will open a draft repository security advisory, invite you to it, and continue there privately.
 
 Please include:
 - the affected package or file and the commit;

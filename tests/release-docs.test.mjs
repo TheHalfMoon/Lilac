@@ -60,8 +60,8 @@ test("the MCP documentation matches the tool surface, classes and confirmation w
     return authorizeMCPToolCall(policy, { actor: user, toolName, arguments: args, at: AT, ...confirmation });
   };
   let listed = 0;
-  for (const [, label, cell, capabilityCell] of doc.matchAll(/^\| (read|write|comments|consequential) \| ([^|]+) \| ([^|]+) \|$/gm)) {
-    const cls = label === "comments" ? "write" : label;
+  for (const [, label, cell, capabilityCell] of doc.matchAll(/^\| (read|write|consequential) \| ([^|]+) \| ([^|]+) \|$/gm)) {
+    const cls = label;
     const capability = /`([a-z-]+)`/.exec(capabilityCell)[1];
     for (const [, name] of cell.matchAll(/`([a-z_]+)`/g)) {
       assert.equal(classifyPaperTool(name), cls, `${name} is listed as ${cls}`);

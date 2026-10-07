@@ -65,9 +65,9 @@ The migrated manifest is written back atomically once the open succeeds. Migrati
 
 - **`PersistenceVersionError` saying "newer than supported" or "written by a newer Lilac".** The project was written by a later release; open it with that release.
 - **`PersistenceVersionError` saying "no migration from project schema N".** The manifest predates schema 1; supply a migration step as above.
-- **`PersistenceVersionError` saying "no migration from document schema N", or "has field X, which document schema 1 does not have".** The document is from another schema, or carries fields schema 1 lacks. Only the release that wrote it can read it, because documents are not migrated.
+- **`PersistenceVersionError` saying "no migration from document schema N", or "has field X" or "has node field X, which document schema 1 does not have".** The document is from another schema, or carries fields schema 1 lacks. Only the release that wrote it can read it, because documents are not migrated.
 - **`PersistenceCorruptionError`.** The files are damaged. Restore `.lilac` from a backup or version control. Lilac does not guess at repairs beyond the torn tail.
-- **`PersistenceValidationError` on open.** Examples: a project file that is a symbolic link or has extra hard links, a file over the size limits in `PERSISTENCE_LIMITS`, or a project directory that changed during the open. The project is refused without reading further. Check how the directory was copied or mounted.
+- **`PersistenceValidationError` on open.** Examples: a project file that is a symbolic link, a file over the size limits in `PERSISTENCE_LIMITS`, or a project directory that changed during the open. A hard-linked journal is refused at the first `commit`, not at open. The project is refused without reading further. Check how the directory was copied or mounted.
 - **`PersistenceLockError`.** Another writer holds the project. If the previous writer is known to be gone, the host may pass `breakStaleLock: { reason }`, where `reason` is a non-empty string of at most 500 characters.
   - Lilac does not check whether the holder is still alive; that decision is the host's.
   - The previous holder (or `null`, if its lock was unreadable) and the reason are recorded in the new lock and in `recovery.lockOverride`.

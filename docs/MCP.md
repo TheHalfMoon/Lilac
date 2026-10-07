@@ -23,7 +23,7 @@ There is no MCP endpoint to connect a client to yet. Nothing on this page descri
 | --- | --- | --- |
 | read | the 21 read-only tools (except the workspace tools below), such as `get_selection`, `get_node_info`, `get_jsx`, `find_nodes`, `export` and `get_tokens` | `read` |
 | write | for example `write_html`, `update_styles`, `move_nodes`, `set_text_content` and `create_tokens` | `document-write` |
-| comments | `set_comment_thread_status` (a write-class tool) | `comments` |
+| write | `set_comment_thread_status` | `comments` (an exception to the class default) |
 | consequential | `delete_nodes` | `document-write` plus a confirmation |
 | unknown | any other name | denied without consulting a policy |
 
@@ -48,8 +48,8 @@ const decision = authorizeMCPToolCall(policy, {
 `policy` is a collaboration document access policy, evaluated by `evaluateAccess` with transport `"mcp"`. A decision carries `toolClass`, `capability`, `documentId`, `policyRevision` and a `reason`; an unknown tool's name appears in it quoted and truncated. Besides `allowed` and `confirmation-required`, the outcomes are `denied`, and `not-found` for a deleted document. `requireMCPToolCall` throws `MCPAuthorizationError` (with `.decision`) unless the outcome is `allowed`.
 
 Malformed input throws:
-- **`MCPContractError`** for unsupported keys, an empty `toolName`, or an `at` value that is not a real ISO-8601 UTC instant. For a known tool, it also covers an `arguments` value that is not a JSON object.
-- **`CollaborationValidationError`** from `evaluateAccess`, for a malformed `actor` or `policy` on a known tool.
+- **`MCPContractError`** for unsupported keys on the call or the confirmation, an empty `toolName`, or an `at` or `confirmedAt` value that is not a real ISO-8601 UTC instant. For a known tool, it also covers an `arguments` value that is not a JSON object.
+- **`CollaborationValidationError`** from `evaluateAccess`, for a malformed `actor`, `policy` or `linkGrantId` on a known tool.
 
 An unknown tool is denied as soon as `toolName` and `at` are read, before its arguments, actor or policy are looked at.
 
