@@ -6,3 +6,4 @@ export { ImportDesk, MAX_IMPORT_HTML_BYTES, MAX_IMPORT_NODES, styleProperties, t
 export { AGENT_CAPABILITIES, AgentRegistry, type AgentSummary } from "./agents.ts";
 export { CONFIRMATION_WAIT_MS, ConfirmationBroker, MCP_PROTOCOL_VERSIONS, handleMcpMessage, mcpToolDefinitions, type PendingConfirmation } from "./mcp.ts";
 export { assertLoopbackUrl, discoverMcpUrl, runRelay, type RelayOptions } from "./relay.ts";
+export { exportJsx, importJsx } from "./code.ts";

@@ -77,3 +77,5 @@ dialog .agent-row { display: flex; justify-content: space-between; align-items: 
 dialog .agent-row button { width: auto; }
 .history li { position: relative; }
 .history .revert { justify-self: start; min-height: 24px; padding: 0 8px; font-size: 12px; }
+dialog h3 { font-size: 14px; margin: 8px 0 0; }
+dialog textarea { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 6px; border: 1px solid #8e8aa3; border-radius: 4px; width: 100%; }
