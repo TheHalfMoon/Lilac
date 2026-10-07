@@ -104,7 +104,9 @@ test("arguments and timestamps are validated for every known tool", () => {
   }
   assert.equal(authorizeMCPToolCall(policy, call("get_jsx", { at: "2026-10-07T12:00:00Z" })).outcome, "allowed");
   assert.equal(mcpArgumentsSha256(undefined), mcpArgumentsSha256({}));
-  assert.notEqual(mcpArgumentsSha256(null), mcpArgumentsSha256({}));
+  for (const args of [null, [], "ids", 42]) {
+    assert.throws(() => authorizeMCPToolCall(policy, call("get_jsx", { arguments: args })), /arguments must be an object/u, JSON.stringify(args));
+  }
 });
 
 test("unknown tools are denied without consulting the policy", () => {

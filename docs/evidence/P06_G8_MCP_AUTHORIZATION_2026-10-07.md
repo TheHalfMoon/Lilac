@@ -60,3 +60,17 @@ The combined and security judge returned one must-fix.
 - **Timestamps** must be real UTC instants: `2026-02-30`, `T24:00` and second 60 are refused.
 
 **Tests.** Test 3 gains the cross-document cases, test 4 is new (arguments and timestamps), and test 7 gains owner-permission and self-owned-agent cases. Test 1 now expects the workspace-scoped denials. Each of these fails on `0c3f8f8`. `tests/mcp-authorization.test.mjs` now has 7 tests.
+
+## Review delta 2
+
+The delta re-review had no must-fix. It confirmed delta 1 with probes covering:
+- document-id look-alikes;
+- confirmers who hold only a link grant, an expired grant or read access;
+- workspace-tool look-alikes;
+- the window boundary to the millisecond, and leap years;
+- `toJSON`, getters, cycles, BigInt and NaN in arguments.
+
+Its worth-considering items:
+- **Arguments must be an object (or absent).** Arrays, `null`, strings and numbers are refused. This is added to test 4 and fails on `966e4dd`.
+- **Owner identity.** The trust-boundary obligation on #82 now also says that an agent's `ownerActorId` must be an authenticated user identity.
+- **Link editors, intended.** A person whose only `document-write` comes from an edit link cannot confirm a consequential call: the confirmer is judged by an actor grant. Deleting through an agent needs a named, granted person behind it.

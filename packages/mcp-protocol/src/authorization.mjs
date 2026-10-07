@@ -11,7 +11,8 @@ import { MCPContractError, classifyPaperTool } from "./paper-tools.mjs";
 // confirmation bound to this exact call on this document.
 //
 // Trust boundary (an obligation on the MCP server, #82): `actor` must be the identity the
-// server authenticated for the session, and `confirmation` must come from the server's own
+// server authenticated for the session (for an agent, `ownerActorId` must be an
+// authenticated user identity), and `confirmation` must come from the server's own
 // confirmation flow with the responsible person. Neither may be taken from the MCP
 // client's request payload; this function cannot tell who built them.
 
@@ -41,7 +42,11 @@ const timestamp = (value, label) => {
   return parsed;
 };
 
+// MCP tool arguments are an object (or absent).
 function canonicalArguments(args) {
+  if (args !== undefined && (args === null || typeof args !== "object" || Array.isArray(args))) {
+    throw new MCPContractError("tool call arguments must be an object");
+  }
   try {
     return canonicalStringify(args === undefined ? {} : args);
   } catch (error) {
