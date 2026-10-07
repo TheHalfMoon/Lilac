@@ -6,7 +6,7 @@ Last updated: 2026-10-07
 
 **LILAC-P00 — Foundation, authorized-source intake, and staged product implementation**
 
-Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–9 are `CLOSED_CANONICAL`; P03 architecture ownership and P04 parity disposition are complete; repository-side Graft context policy is canonical; P05 differentiators D1–D7 have delivered slices; P06 Product Hardening is closed with all 11 gates `CLOSED_CANONICAL` (umbrella #100); the program continues with P07 Release.
+Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–9 are `CLOSED_CANONICAL`; P03 architecture ownership and P04 parity disposition are complete; repository-side Graft context policy is canonical; P05 differentiators D1–D7 have delivered slices; all 11 P06 Product Hardening gates are `CLOSED_CANONICAL` (umbrella #100 closes with this record); the program continues with P07 Release.
 
 ## Canonical main
 
@@ -35,7 +35,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (615/615 test
 - Persistence journal content pin: fixed via PR #91 (merge `af80efc`), Issue #88 closed. The in-session pin had compared ctime, which missed same-size in-place rewrites inside one filesystem timestamp tick (milliseconds, not the nanoseconds the D6a evidence first stated; reopen caught them by the hash chain). The store now keeps a SHA-256 of the bytes it validated at open and appended since, and verifies it through the write descriptor before every append; metadata-only changes no longer poison the store. The D6a evidence residuals are corrected (verify-to-write window up to about 341 ms at the 256 MiB cap; per-append cost grows with the journal until rotation exists).
 - Import-stack enforcement through the network policy: complete via PR #93 (merge `b10494f`), Issue #83 closed. Import requests may carry a `networkPolicy`; every import contact (entry, mirror pages and assets, redirects, Playwright subrequests and final URLs, mirror manifest re-validation) needs an allowed `import.fetch` decision and an `evaluateResolved` pass on the addresses used, in addition to the Grain 6 `ImportPolicy`. Without a policy the default offline policy applies, so network-mode imports fail closed; the policy is read only from an own property, so a polluted prototype cannot grant access. Cross-origin CSS references are skipped without contact. Proposals and ledger records do not embed the policy. Parked follow-ups: #94. Process note: #83 was auto-closed at merge by the commit subject "Close #83 ...", before post-merge CI finished; CI then succeeded and the closed state stands. This is recorded on the issue.
 - Import-stack removal counts and diagnostics: complete via PR #96 (merge `5ad4fab`), Issue #86 closed. Every forbidden element that does not survive as itself is counted once in the security summary (forms, `<meta>`, and `<link>` elements that do not become stylesheet resources now count in `dangerousElementsRemoved`). `<form>` stays neutralized into a `<div>` that keeps its children. Forms, links, and meta get bounded per-class diagnostics (`form-element-neutralized`, `forbidden-element-removed`). Review delta 1 also strips the form-authority attributes (`form`, `formmethod`, `formtarget`, `formenctype`, `formnovalidate`, plus `action`/`formaction`) on import, rejects them in proposal validation, and makes the `<link>` attribute lookup prototype-safe. Qualification ran in a cloud session without Jev or pstack: CI, OCR (rule groups applied by the host agent, re-resolved locally with the pinned 1.12.9), and a fresh-context judge panel ran; no Jev cells exist for this PR. Parked follow-ups: #94.
-- P06 product hardening: closed. All 11 gates are `CLOSED_CANONICAL` (umbrella #100). Each grain ran the exact-head chain: mechanical gate, ps-review, OCR delegation, Jev Exact-Head Qualification, CI, a normal merge, then post-merge CI.
+- P06 product hardening: all 11 gates are `CLOSED_CANONICAL` (umbrella #100). Each grain's PR head carries successful OCR delegation (`delegate-review`), Jev Exact-Head Qualification, and Foundation checks runs, and each merge commit's post-merge Foundation checks succeeded; ps-review panel results are recorded on each grain's issue and PR.
 
 | # | Gate | Grains (issue → PR, merge, post-merge CI) | Evidence |
 |---:|---|---|---|
@@ -43,7 +43,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (615/615 test
 | 2 | Undo/redo property tests | G2 #105 → #106 `dc40e9c` (438/438) | issue #105 |
 | 3 | Large-canvas performance budgets | G3 #107 → #109 `92505b6` (446/446) | issue #107; renderer budget dispositioned until a renderer exists; #108 |
 | 4 | Accessibility checks | G4 #110 → #111 `f4aafd8` (462/462) | issue #110; editor UI dispositioned until it exists |
-| 5 | Sandbox escape tests | G5a #112 → #113 `35c5272` (469/469); G5b #115 → #116 `462bf7a` (483/483); G5c #119 → #120 `15c6158` (541/541); G5d → #122 `b0e16d9` (555/555) | issues and PRs listed |
+| 5 | Sandbox escape tests | G5a #112 → #113 `35c5272` (469/469); G5b #115 → #116 `462bf7a` (483/483); G5c #119 → #120 `15c6158` (541/541); G5d #114 → #122 `b0e16d9` (555/555) | issues and PRs listed |
 | 6 | Malicious HTML/CSS/SVG corpus | G6 #117 → #118 `d0cdc7f` (532/532) | `tests/fixtures/malicious/` |
 | 7 | Import/export differential tests | G7a #123 → #125 `d45c2bb` (568/568); G7b #126 → #127 `8e509d7` (588/588) | #132 parked |
 | 8 | MCP authorization tests | G8 #128 → #129 `b320820` (575/575) | obligations on the future server recorded on #82 |
@@ -51,9 +51,9 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (615/615 test
 | 10 | Crash recovery | G10 #133 → #134 `94d6af7` (606/606) | `docs/evidence/P06_G10_CRASH_RECOVERY_2026-10-07.md` |
 | 11 | File migration / version compatibility | G11 #136 → #137 `c73c48e` (615/615) | `docs/evidence/P06_G11_VERSION_COMPATIBILITY_2026-10-07.md` |
 
-- Tooling during P06: CI now emits "Test totals" and "Failing tests" annotations (T1, merge `0acf81c`), so exact-head evidence can be read from check-run annotations.
-- Next: P07 Release. Editor UI, canvas, renderer, desktop bridge, and the local MCP endpoint (#82) remain `planned`/`stub` in the architecture catalog, so the P07 desktop-build and local-web-mode artifacts depend on a founder scope decision; scope-independent P07 artifacts proceed.
-- Open, non-blocking: #64 (review-panel hardening follow-ups, including a shared hidden-text and input-hygiene policy across packages), #78, #79, #82, #89, #94, #108, #132, #135, #2.
+- Tooling during P06: CI surfaces Jev, OCR, and test-total evidence as check-run annotations (PR #99, merge `550baae`) and the names of failing tests (T1, PR #124, merge `0acf81c`), so exact-head evidence can be read from check-run annotations.
+- Next: P07 Release (umbrella #139). No editor application exists: the catalog entries `canvas-viewport`, `renderer`, and `desktop-bridge` are `planned` and `mcp-surface` is `stub` (#82), so the P07 desktop-build and local-web-mode artifacts depend on a founder scope decision; scope-independent P07 artifacts proceed.
+- Open, non-blocking: #64 (review-panel hardening follow-ups, including a shared hidden-text and input-hygiene policy across packages), #78, #79, #82, #89, #94, #108, #132, #135, #2. Issue #121 ("cirq.quantum") is unrelated to the program.
 
 ## Canonical implementation chain
 
