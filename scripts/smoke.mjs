@@ -14,6 +14,7 @@ import { join, relative } from "node:path";
 const require = createRequire(import.meta.url);
 const AT = "2026-10-07T12:00:00.000Z";
 const REPORT_SCHEMA = 1;
+const DNS_METHODS = ["lookup", "lookupService", "resolve", "resolve4", "resolve6", "resolveAny", "resolveCaa", "resolveCname", "resolveMx", "resolveNaptr", "resolveNs", "resolvePtr", "resolveSoa", "resolveSrv", "resolveTxt", "reverse"];
 
 function trapNetwork() {
   const attempts = [];
@@ -31,10 +32,13 @@ function trapNetwork() {
   for (const name of ["node:http", "node:https"]) for (const key of ["request", "get"]) trap(require(name), key, `${name}.${key}`);
   trap(require("node:http2"), "connect", "http2.connect");
   trap(require("node:dgram"), "createSocket", "dgram.createSocket");
+  // The same DNS surface tests/offline-guarantee.test.mjs traps, including Resolver instances.
   const dns = require("node:dns");
-  for (const key of ["lookup", "lookupService", "resolve", "resolve4", "resolve6", "resolveAny", "resolveTxt", "reverse"]) {
+  for (const key of DNS_METHODS) {
     trap(dns, key, `dns.${key}`);
     trap(dns.promises, key, `dns.promises.${key}`);
+    trap(dns.Resolver.prototype, key, `dns.Resolver#${key}`);
+    trap(dns.promises.Resolver.prototype, key, `dns.promises.Resolver#${key}`);
   }
   const childProcess = require("node:child_process");
   for (const key of ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"]) trap(childProcess, key, `child_process.${key}`);
@@ -42,6 +46,13 @@ function trapNetwork() {
     attempts.push("fetch");
     throw new Error("network access attempted: fetch");
   };
+  for (const name of ["WebSocket", "EventSource"]) {
+    if (typeof globalThis[name] !== "function") continue;
+    globalThis[name] = function trapped() {
+      attempts.push(name);
+      throw new Error(`network access attempted: ${name}`);
+    };
+  }
   syncBuiltinESMExports();
   return attempts;
 }
@@ -84,6 +95,7 @@ async function main() {
     createProject(root, { projectId: "smoke", document: createDocument({ id: "doc-smoke", nodes: [{ id: "frame-1", type: "frame", props: { title: "Draft" } }] }), createdAt: AT });
     const store = openProject(root, { owner: "smoke-user", at: AT });
     store.commit({ id: "tx-1", actor: "smoke-user", baseRevision: 0, operations: [{ type: "set-props", nodeId: "frame-1", set: { title: "Edited" } }] });
+    check(store.document.nodes["frame-1"].props.title === "Edited", "the edit applied");
     store.checkpoint();
     steps.push("create-edit");
 
@@ -92,6 +104,7 @@ async function main() {
     const undone = undo(editing);
     check(undone.document.nodes["frame-1"].props.width === undefined, "undo removes the edit");
     const redone = redo(undone);
+    check(redone.document.nodes["frame-1"].props.width === 320, "redo restores the edit");
     store.commit(redone.past.at(-1).transaction);
     steps.push("undo-redo");
 
@@ -129,9 +142,16 @@ async function main() {
     check(reopened.revision === 4, `reopened at revision ${reopened.revision}`);
     check(reopened.document.nodes["frame-1"].props.title === "Agent edit", "agent edit survived reopen");
     check(reopened.document.nodes["frame-1"].props.width === 320, "redone edit survived reopen");
-    check(!JSON.stringify(reopened.document).includes("alert(1)"), "imported script was removed");
+    const nodes = Object.values(reopened.document.nodes);
+    check(!JSON.stringify(reopened.document).includes("alert(1)"), "imported script text was removed");
+    check(!nodes.some((node) => String(node.props?.tag ?? "").toLowerCase() === "script"), "no script element was imported");
+    check(nodes.some((node) => node.props?.text === "Pricing"), "the imported heading text landed");
+    check(nodes.some((node) => node.props?.tag === "img" && node.props?.attributes?.alt === "Plan chart"), "the imported image kept its alt text");
+    check(nodes.some((node) => node.props?.semantics?.role === "main"), "intake recorded the main landmark");
     const documentDigest = sha256(serializeDocument(reopened.document));
     reopened.close();
+    const journal = readFileSync(join(root, ".lilac", "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
+    check(journal.some((tx) => tx.id === "tx-agent" && tx.actor === agent.actorId && tx.metadata.collaboration.ownerActorId === owner.actorId), "the agent edit is durably attributed to its owner");
     steps.push("reopen");
 
     // 6. Code round trip: JSX to design and back is stable.
@@ -157,8 +177,17 @@ async function main() {
   }
 }
 
+const expectAt = process.argv.indexOf("--expect");
 main().then(
-  (report) => process.stdout.write(`${JSON.stringify(report, null, 2)}\n`),
+  (report) => {
+    const text = `${JSON.stringify(report, null, 2)}\n`;
+    process.stdout.write(text);
+    // --expect <file>: also require the report to equal a committed expected report.
+    if (expectAt >= 0 && readFileSync(process.argv[expectAt + 1], "utf8") !== text) {
+      process.stderr.write(`smoke report differs from ${process.argv[expectAt + 1]}\n`);
+      process.exitCode = 1;
+    }
+  },
   (error) => {
     process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
     process.exitCode = 1;
