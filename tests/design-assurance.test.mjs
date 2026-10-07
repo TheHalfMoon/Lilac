@@ -241,6 +241,8 @@ test("browser adapter uses the shared report contract and protects private targe
     url: "https://example.com/demo",
     viewport: { width: 390, height: 844 },
     runner,
+    // No real DNS in tests: a public answer for the pre-scan resolution check.
+    lookup: async () => [{ address: "93.184.215.14", family: 4 }],
   });
   assert.equal(report.surface, "browser");
   assert.equal(report.findings[0].location.url, "https://example.com/demo");

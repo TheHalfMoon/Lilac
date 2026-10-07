@@ -63,6 +63,10 @@ function mappedIpv4(parts: number[]): number[] | null {
   return null;
 }
 
+function isTranslatedIpv4(parts: number[]): boolean {
+  return parts[0] === 0 && parts[1] === 0 && parts[2] === 0 && parts[3] === 0 && parts[4] === 0xffff && parts[5] === 0;
+}
+
 export function isLoopbackAddress(address: string): boolean {
   const v4 = ipv4(address);
   if (v4) return v4[0] === 127;
@@ -89,6 +93,9 @@ export function isForbiddenRemoteAddress(address: string): boolean {
   if ((v6[0] & 0xff00) === 0xff00) return true;
   // Deprecated IPv4-compatible ::/96 can embed any IPv4 destination, including loopback.
   if (v6.slice(0, 6).every((value) => value === 0)) return true;
+  // IPv4-translated ::ffff:0:0:0/96 (SIIT) likewise embeds any IPv4 destination
+  // (::ffff:0:7f00:1 is 127.0.0.1) and is never a legitimate remote destination.
+  if (isTranslatedIpv4(v6)) return true;
 
   // IPv4 translation/transition prefixes can otherwise hide forbidden IPv4 destinations.
   if (v6[0] === 0x0064 && v6[1] === 0xff9b && (v6[2] === 0 || v6[2] === 1)) return true;
@@ -107,7 +114,8 @@ export type AddressClass = "unspecified" | "loopback" | "forbidden" | "public" |
  * Unspecified addresses are never a legitimate destination; on common stacks connecting to
  * them reaches local services, so they get their own class and are denied in every mode.
  * Covers 0.0.0.0/8, ::, and 0.x.x.x embedded in IPv4-mapped (::ffff:0:0/104),
- * IPv4-compatible (::/96, except ::1), NAT64 (64:ff9b::/96), and 6to4 (2002::/16) forms.
+ * IPv4-compatible (::/96, except ::1), IPv4-translated (::ffff:0:0:0/96), NAT64
+ * (64:ff9b::/96), and 6to4 (2002::/16) forms.
  */
 function isUnspecifiedAddress(address: string): boolean {
   const v4 = ipv4(address);
@@ -118,6 +126,7 @@ function isUnspecifiedAddress(address: string): boolean {
   const mapped = mappedIpv4(v6);
   if (mapped !== null) return mapped[0] === 0;
   const tailFirstOctet = v6[6] >> 8;
+  if (isTranslatedIpv4(v6)) return tailFirstOctet === 0;
   const isLoopbackV6 = v6.slice(0, 7).every((value) => value === 0) && v6[7] === 1;
   if (v6.slice(0, 6).every((value) => value === 0) && !isLoopbackV6) return tailFirstOctet === 0;
   if (v6[0] === 0x0064 && v6[1] === 0xff9b && v6.slice(2, 6).every((value) => value === 0)) return tailFirstOctet === 0;

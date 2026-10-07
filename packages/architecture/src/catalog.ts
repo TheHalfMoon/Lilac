@@ -167,8 +167,8 @@ const SUBSYSTEMS = [
     title: "Design assurance",
     owner: "@lilac/design-assurance",
     status: "implemented",
-    boundary: "Deterministic local design checks with rule packs; findings outrank probabilistic recommendations.",
-    dependsOn: ["document-model"],
+    boundary: "Deterministic local design checks with rule packs, including an accessibility audit of generated and imported output; findings outrank probabilistic recommendations. Browser-scan targets are classified by network-policy.",
+    dependsOn: ["document-model", "network-policy"],
   },
   {
     id: "decision-router",
@@ -231,7 +231,7 @@ const SUBSYSTEMS = [
     title: "Network capability policy and providers",
     owner: "@lilac/network-policy",
     status: "implemented",
-    boundary: "Default-deny network capability policy (offline, local-only, allowlist grants) with two-phase URL and resolved-address decisions, the single owner of address classification, a bring-your-own provider registry holding credential references only, and offline readiness reporting. Decides only; never opens connections, resolves names, or stores credential values.",
+    boundary: "Default-deny network capability policy (offline, local-only, allowlist grants) with two-phase URL and resolved-address decisions, the single owner of address classification (consumed by import-stack, intake, and design-assurance browser scans), a bring-your-own provider registry holding credential references only, and offline readiness reporting. Decides only; never opens connections, resolves names, or stores credential values.",
     dependsOn: [],
   },
   {
