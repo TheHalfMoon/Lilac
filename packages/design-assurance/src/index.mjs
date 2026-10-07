@@ -498,6 +498,9 @@ export function createImpeccableCliRunner({
   return Object.freeze({
     async scanTarget(target, { viewport = null, scopes = [] } = {}) {
       assertNonEmptyString(target, "scan target");
+      // The pinned engine keeps parsing options after "--", so a target that
+      // starts with "-" would become an option; such targets are refused.
+      if (target.startsWith("-")) throw new DesignAssuranceError("scan target must not start with '-'");
       if (!Array.isArray(scopes) || scopes.some((scope) => typeof scope !== "string")) {
         throw new DesignAssuranceError("scopes must be an array of strings");
       }
@@ -513,8 +516,7 @@ export function createImpeccableCliRunner({
         args.push("--viewport", `${viewport.width}x${viewport.height}`);
       }
       if (scopes.length > 0) args.push("--scope", scopes.join(","));
-      // "--" ends option parsing, so a target that starts with "-" stays an operand.
-      args.push("--", target);
+      args.push(target);
       const result = await runProcess(nodePath, args, { cwd, timeoutMs });
       if (result.code !== 0 && result.code !== 2) {
         const detail = result.stderr.trim() || `exit ${String(result.code)} signal ${String(result.signal)}`;
@@ -641,8 +643,10 @@ function validateBrowserUrl(value, { allowPrivateNetwork = false } = {}) {
 }
 
 // A DNS name is resolved before the scan and refused unless every answer is public.
-// The browser resolves again when it fetches, so this blocks names that are private
-// at scan time; it cannot prevent DNS rebinding between this check and the fetch.
+// The browser resolves again when it fetches and follows redirects and loads
+// subresources itself, so this blocks targets that are private at scan time; it
+// cannot prevent DNS rebinding, redirects or subresource loads to private hosts.
+// Those residuals are recorded in the P06 G5a evidence (#112).
 async function assertPublicResolution(hostname, lookup) {
   const host = hostname.replace(/^\[|\]$/gu, "");
   if (isIP(host) !== 0) return;
@@ -667,8 +671,10 @@ export async function scanBrowserUrl({
   rulePacks,
   policy,
 } = {}) {
-  const parsed = validateBrowserUrl(url, { allowPrivateNetwork });
-  if (!allowPrivateNetwork) await assertPublicResolution(parsed.hostname, lookup);
+  // Only an explicit true opts in; "false", 1 or {} must not.
+  const privateAllowed = allowPrivateNetwork === true;
+  const parsed = validateBrowserUrl(url, { allowPrivateNetwork: privateAllowed });
+  if (!privateAllowed) await assertPublicResolution(parsed.hostname, lookup);
   const normalizedUrl = parsed.toString();
   const packs = defaultRulePacks(rulePacks);
   const upstream = await runner.scanTarget(normalizedUrl, { viewport });

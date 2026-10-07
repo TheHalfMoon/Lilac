@@ -51,7 +51,7 @@ test("browser scans refuse private targets in every spelling", async () => {
 });
 
 test("browser scans refuse names that resolve privately or not at all", async () => {
-  for (const answers of [[{ address: "127.0.0.1", family: 4 }], [{ address: "93.184.215.14", family: 4 }, { address: "10.0.0.5", family: 4 }], [{ address: "::ffff:0:a9fe:a9fe", family: 6 }], []]) {
+  for (const answers of [[{ address: "127.0.0.1", family: 4 }], [{ address: "::1", family: 6 }], [{ address: "93.184.215.14", family: 4 }, { address: "10.0.0.5", family: 4 }], [{ address: "::ffff:0:a9fe:a9fe", family: 6 }], []]) {
     const fake = runner();
     await assert.rejects(scanBrowserUrl({ url: "http://127.0.0.1.nip.io/", runner: fake, lookup: async () => answers }), /non-public|allowPrivateNetwork/u, JSON.stringify(answers));
     assert.equal(fake.calls.length, 0);
@@ -69,10 +69,22 @@ test("public targets scan, and allowPrivateNetwork still permits private ones wi
   assert.deepEqual(fake.calls.map((call) => call.target), ["https://example.com/a", "http://[2606:4700::1111]/", "http://localhost:3000/"]);
 });
 
-test("a target that starts with a dash stays an operand of the CLI", async () => {
-  const cli = createImpeccableCliRunner({ cliPath: new URL("./support/argv-echo.mjs", import.meta.url).pathname, timeoutMs: 10_000 });
-  const { findings } = await cli.scanTarget("--help", { scopes: ["a"] });
-  const argv = findings[0].argv;
-  assert.deepEqual(argv.slice(-2), ["--", "--help"], "the target follows the end-of-options marker");
-  assert.equal(argv.filter((arg) => arg === "--help").length, 1);
+test("a target that starts with a dash is refused before the CLI runs", async () => {
+  // The pinned engine keeps parsing options after "--", so the real CLI is used here:
+  // with the stand-in, a separator would look effective when it is not.
+  const cli = createImpeccableCliRunner({ timeoutMs: 30_000 });
+  for (const target of ["--help", "--json", "-x", "--scope=type"]) {
+    await assert.rejects(cli.scanTarget(target), /must not start with '-'/u, target);
+  }
+  const echo = createImpeccableCliRunner({ cliPath: new URL("./support/argv-echo.mjs", import.meta.url).pathname, timeoutMs: 10_000 });
+  const { findings } = await echo.scanTarget("/tmp/scan-target.html", { scopes: ["a"] });
+  assert.equal(findings[0].argv.at(-1), "/tmp/scan-target.html", "ordinary targets are passed through unchanged");
+});
+
+test("only an explicit true opts in to private targets", async () => {
+  for (const allowPrivateNetwork of ["false", "true", 1, {}, []]) {
+    const fake = runner();
+    await assert.rejects(scanBrowserUrl({ url: "http://127.0.0.1/", runner: fake, allowPrivateNetwork, lookup: publicLookup }), /allowPrivateNetwork/u, JSON.stringify(allowPrivateNetwork));
+    assert.equal(fake.calls.length, 0);
+  }
 });
