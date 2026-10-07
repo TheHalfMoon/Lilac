@@ -81,6 +81,12 @@ export function createTransaction({
   };
 }
 
+// Define an own data property. Plain assignment would treat a "__proto__" key
+// (an ordinary own key in parsed JSON) as a prototype change and drop the value.
+function setOwn(record, key, value) {
+  Object.defineProperty(record, key, { value, writable: true, enumerable: true, configurable: true });
+}
+
 function detachNode(document, nodeId) {
   const node = getNode(document, nodeId);
   const siblings = node.parentId === null
@@ -112,7 +118,7 @@ function attachNode(document, nodeId, parentId, index) {
 function applyInsertNode(document, operation) {
   assertPlainObject(operation.node, "insert-node.node");
   const node = createNode(operation.node);
-  if (document.nodes[node.id]) {
+  if (Object.hasOwn(document.nodes, node.id)) {
     throw new TransactionError(`Cannot insert duplicate node id ${node.id}`);
   }
   if (node.children.length !== 0) {
@@ -122,7 +128,7 @@ function applyInsertNode(document, operation) {
   if (parentId !== null) getNode(document, parentId);
 
   node.parentId = parentId;
-  document.nodes[node.id] = node;
+  setOwn(document.nodes, node.id, node);
   attachNode(document, node.id, parentId, operation.index);
   return { type: "remove-node", nodeId: node.id };
 }
@@ -156,7 +162,7 @@ function applyRestoreSubtree(document, operation) {
     throw new TransactionError("restore-subtree.nodes does not contain rootId");
   }
   for (const node of snapshot) {
-    if (document.nodes[node.id]) {
+    if (Object.hasOwn(document.nodes, node.id)) {
       throw new TransactionError(`Cannot restore existing node id ${node.id}`);
     }
     for (const childId of node.children) {
@@ -168,7 +174,7 @@ function applyRestoreSubtree(document, operation) {
   const parentId = operation.parentId ?? null;
   if (parentId !== null) getNode(document, parentId);
 
-  for (const node of snapshot) document.nodes[node.id] = node;
+  for (const node of snapshot) setOwn(document.nodes, node.id, node);
   document.nodes[operation.rootId].parentId = parentId;
   attachNode(document, operation.rootId, parentId, operation.index);
   return { type: "remove-node", nodeId: operation.rootId };
@@ -188,14 +194,14 @@ function applySetProps(document, operation) {
 
   for (const key of touched) {
     if (Object.prototype.hasOwnProperty.call(node.props, key)) {
-      inverseSet[key] = cloneData(node.props[key]);
+      setOwn(inverseSet, key, cloneData(node.props[key]));
     } else {
       inverseUnset.push(key);
     }
   }
 
   for (const key of unset) delete node.props[key];
-  for (const [key, value] of Object.entries(set)) node.props[key] = cloneData(value);
+  for (const [key, value] of Object.entries(set)) setOwn(node.props, key, cloneData(value));
 
   return {
     type: "set-props",
