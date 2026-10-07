@@ -50,7 +50,8 @@ function assertUniqueStrings(values, label) {
   for (const value of values) {
     assertNonEmptyString(value, `${label} entry`);
     if (seen.has(value)) {
-      throw new DocumentInvariantError(`${label} contains duplicate id ${value}`);
+      const shownValue = value.length > 80 ? `${value.slice(0, 77)}...` : value;
+      throw new DocumentInvariantError(`${label} contains duplicate id ${shownValue}`);
     }
     seen.add(value);
   }
@@ -219,7 +220,7 @@ export function normalizeDocument(document) {
 }
 
 export function getNode(document, nodeId) {
-  const node = document.nodes[nodeId];
+  const node = typeof nodeId === "string" && Object.hasOwn(document.nodes, nodeId) ? document.nodes[nodeId] : undefined;
   if (!node) {
     throw new DocumentInvariantError(`Unknown node id ${nodeId}`);
   }

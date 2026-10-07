@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import {
   DocumentInvariantError,
   createDocument,
+  getNode,
   normalizeDocument,
   parseDocument,
   serializeDocument,
@@ -243,4 +244,16 @@ test("error messages do not echo oversized ids", () => {
     many.nodes[`o${index}`] = { id: `o${index}`, type: "frame", parentId: `o${(index + 1) % 50}`, children: [`o${(index + 49) % 50}`], props: {}, metadata: {} };
   }
   assert.throws(() => serializeDocument(many), (error) => /Unreachable nodes: .*\(and 40 more\)/u.test(error.message));
+});
+
+test("getNode and duplicate-id errors are own-key and bounded", () => {
+  const document = createDocument({ id: "doc-1", nodes: [{ id: "n", type: "frame" }] });
+  for (const id of ["toString", "__proto__", "constructor"]) {
+    assert.throws(() => getNode(document, id), DocumentInvariantError, id);
+  }
+  const long = "y".repeat(100000);
+  assert.throws(
+    () => createDocument({ id: "doc-1", nodes: [{ id: long, type: "frame" }], rootIds: [long, long] }),
+    (error) => error instanceof DocumentInvariantError && error.message.length < 300,
+  );
 });
