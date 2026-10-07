@@ -142,6 +142,53 @@ test("closing one proxy leaves another proxy's connections alone", async () => {
   });
 });
 
+test("a CONNECT tunnel passes a half-close on, and a client gone during the lookup opens nothing", async () => {
+  // The upstream replies only after it sees the client's FIN.
+  const upstreams = [];
+  const echo = (await import("node:net")).createServer({ allowHalfOpen: true }, (socket) => {
+    upstreams.push(socket);
+    let received = "";
+    socket.on("data", (chunk) => { received += chunk; });
+    socket.on("end", () => socket.end(`REPLY:${received}`));
+  });
+  await new Promise((resolve) => echo.listen(0, "127.0.0.1", resolve));
+  const port = echo.address().port;
+  const tunnel = (proxyUrl, onEstablished) => new Promise((resolve, reject) => {
+    const proxy = new URL(proxyUrl);
+    const socket = connect({ port: Number(proxy.port), host: proxy.hostname, allowHalfOpen: true }, () => {
+      socket.write(`CONNECT echo.test:${port} HTTP/1.1\r\nHost: echo.test:${port}\r\n\r\n`);
+      onEstablished(socket);
+    });
+    let reply = "";
+    socket.on("data", (chunk) => { reply += chunk; });
+    socket.on("close", () => resolve(reply));
+    socket.on("error", reject);
+  });
+  try {
+    const fast = await startBrowserPolicyProxy({ allowPrivateNetwork: true, lookup: lookupTable({ "echo.test": ["127.0.0.1"] }) });
+    try {
+      const reply = await tunnel(fast.url, (socket) => socket.once("data", () => socket.end("hello")));
+      assert.match(reply, /200 Connection Established\r\n\r\nREPLY:hello$/u, "the reply after a half-close arrives");
+    } finally {
+      await fast.close();
+    }
+    const opened = upstreams.length;
+    const slowLookup = async (host) => { await new Promise((resolve) => setTimeout(resolve, 150)); return lookupTable({ "echo.test": ["127.0.0.1"] })(host); };
+    const slow = await startBrowserPolicyProxy({ allowPrivateNetwork: true, lookup: slowLookup });
+    try {
+      const reply = await tunnel(slow.url, (socket) => socket.end());
+      assert.equal(reply, "", "nothing is answered to a client that left");
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      assert.equal(upstreams.length, opened, "no upstream was opened");
+    } finally {
+      await slow.close();
+    }
+  } finally {
+    for (const socket of upstreams) socket.destroy();
+    await new Promise((resolve) => echo.close(resolve));
+  }
+});
+
 test("an unresolvable host is a gateway error, not a policy denial", async () => {
   const proxy = await startBrowserPolicyProxy({ lookup: lookupTable({}) });
   try {

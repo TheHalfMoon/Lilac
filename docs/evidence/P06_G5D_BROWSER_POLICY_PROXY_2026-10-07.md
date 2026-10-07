@@ -37,7 +37,7 @@ A probe in this container pointed `IMPECCABLE_BROWSER` at a wrapper. The wrapper
 
 ## Tests
 
-`tests/browser-proxy.test.mjs` has 13 tests. Tests 10 to 12 were added in review delta 1 and test 13 in review delta 2, both described below. To check them against base `15c6158`, the package changes were removed and the tests that do not import the new export were run. Tests 4 to 9 fail there; tests 1 to 3 exercise the new proxy directly.
+`tests/browser-proxy.test.mjs` has 14 tests. Tests 10 to 14 were added in review deltas 1 to 3, described below. To check them against base `15c6158`, the package changes were removed and the tests that do not import the new export were run. Tests 4 to 9 fail there; tests 1 to 3 exercise the new proxy directly.
 
 1. By default the proxy refuses loopback (by name and by literal), private, IPv6 loopback and metadata destinations, over HTTP and `CONNECT`. Nothing reaches the server.
 2. An unresolvable host gets a 502 and is not recorded as a denial.
@@ -72,6 +72,12 @@ Test 8 now also passes single-dash switches, and it fails on `d5fdc86` too.
 - **Half-closed clients.** A CONNECT client that half-closes during the lookup is now treated as gone.
 
 13. Closing one proxy leaves another proxy's slow in-flight request intact. This test fails on `026db1a`.
+
+**Review delta 3.** The delta-2 re-review found a regression in delta 2. The `end` listener stayed attached for the whole tunnel, so a client that half-closed after sending data lost the upstream's reply. The listener is now attached only during the lookup.
+
+14. A CONNECT tunnel passes a half-close on, so the reply after it arrives, and a client that leaves during the lookup gets nothing and opens no upstream. This test fails on `07d1887` (the truncated reply) and on `026db1a` (the lookup race).
+
+The ps-review cap of three delta cycles was reached with the delta-2 re-review. Delta 3 is a three-line fix to a regression introduced by delta 2. It is verified by test 14 and the mechanical gate, not by a fourth judge.
 
 ## Gate
 

@@ -126,8 +126,10 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
   server.on("connection", (socket) => { track(socket); });
 
   server.on("connect", async (request, client, head) => {
-    // A client that half-closes during the lookup has left too.
-    client.once("end", () => client.destroy());
+    // A client that half-closes during the lookup has left too. Only during the lookup: once
+    // the tunnel is up, a half-close is passed on so the reply can still come back.
+    const leftDuringLookup = () => client.destroy();
+    client.once("end", leftDuringLookup);
     const match = /^(\[[0-9a-fA-F:.]+\]|[^:[\]]+):(\d{1,5})$/u.exec(request.url ?? "");
     const port = match ? parsePort(match[2], null) : null;
     if (!match || port === null) {
@@ -136,6 +138,7 @@ export async function startBrowserPolicyProxy({ allowPrivateNetwork = false, loo
       return;
     }
     const pinned = await pin(match[1]);
+    client.off("end", leftDuringLookup);
     if (closed || client.destroyed) return;
     if (pinned.address === undefined) {
       client.end(pinned.unresolved ? "HTTP/1.1 502 Bad Gateway\r\n\r\n" : "HTTP/1.1 403 Forbidden\r\n\r\n");
