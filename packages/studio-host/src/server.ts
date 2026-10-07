@@ -1,10 +1,12 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isLoopbackAddress } from "@lilac/network-policy";
+import { AgentRegistry } from "./agents.ts";
 import { StudioError } from "./errors.ts";
+import { ConfirmationBroker, handleMcpMessage } from "./mcp.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
 
 export interface StudioHostOptions {
@@ -18,6 +20,8 @@ export interface StudioHostOptions {
   now?: () => string;
   /** Directory holding the browser packages served to the editor (default: this repository's packages/). */
   packagesRoot?: string;
+  /** How long a consequential MCP call waits for the person (default 50 s). */
+  confirmationWaitMs?: number;
 }
 
 export interface StudioHost {
@@ -27,6 +31,8 @@ export interface StudioHost {
   readonly token: string;
   /** Open this once in a browser: the editor trades its single-use ticket for the token. */
   launchUrl(): string;
+  /** The MCP endpoint (Streamable HTTP); agents authenticate with their own credential. */
+  readonly mcpUrl: string;
   readonly session: StudioSession | null;
   close(): Promise<void>;
 }
@@ -78,6 +84,9 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     return expires !== undefined && expires >= Date.now();
   };
   const streams = new Set<ServerResponse>();
+  const agents = new AgentRegistry(projectsRoot, owner);
+  // What the person has selected in the editor, for MCP's get_selection.
+  let selection: string[] = [];
   let session: StudioSession | null = null;
   let unsubscribe: (() => void) | null = null;
   let port = 0;
@@ -94,7 +103,13 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     const frame = `${id === undefined ? "" : `id: ${id}\n`}event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const stream of [...streams]) send(stream, frame);
   };
+  const confirmations = new ConfirmationBroker((pending) => broadcast("confirmations", { pending }));
   const closeSession = () => {
+    if (session !== null) {
+      const documentId = session.documentId;
+      confirmations.drop((item) => item.documentId === documentId);
+    }
+    selection = [];
     unsubscribe?.();
     unsubscribe = null;
     session?.close();
@@ -110,6 +125,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     }
     const next = open();
     closeSession();
+    next.setAgentGrants(agents.grants());
     session = next;
     unsubscribe = next.onChange((event: ChangeEvent) => broadcast("change", event, event.revision));
     broadcast("project", describe());
@@ -173,7 +189,33 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     "POST /api/edit": (body) => requireSession().edit(owner, body),
     "POST /api/undo": () => requireSession().undo(owner),
     "POST /api/redo": () => requireSession().redo(owner),
+    "POST /api/revert": (body) => requireSession().revert(owner, body?.transactionId),
     "POST /api/checkpoint": () => requireSession().checkpoint(),
+    "POST /api/selection": (body) => {
+      const ids = body?.nodeIds;
+      if (!Array.isArray(ids) || ids.length > 500 || ids.some((id: unknown) => typeof id !== "string" || id.length > 200)) throw new StudioError(400, "invalid-selection", "nodeIds must be a list of at most 500 node ids");
+      selection = [...ids];
+      return { selected: selection.length };
+    },
+    "GET /api/agents": () => ({ agents: agents.list(), mcpUrl: `http://${LOOPBACK}:${port}/mcp`, ...(agents.problem ? { problem: agents.problem } : {}) }),
+    "POST /api/agents/create": (body) => {
+      const created = agents.create(body?.name, now());
+      // The open project grants the new agent at once.
+      session?.setAgentGrants(agents.grants());
+      return { ...created, mcpUrl: `http://${LOOPBACK}:${port}/mcp` };
+    },
+    "POST /api/agents/revoke": (body) => {
+      agents.revoke(body?.agentId);
+      session?.setAgentGrants(agents.grants());
+      confirmations.drop((item) => item.agentId === body.agentId);
+      return { agents: agents.list() };
+    },
+    "GET /api/confirmations": () => ({ pending: confirmations.pending() }),
+    "POST /api/confirmations/decide": (body) => {
+      if (typeof body?.approve !== "boolean") throw new StudioError(400, "invalid-decision", "approve must be true or false");
+      confirmations.decide(body.id, body.approve, now());
+      return { pending: confirmations.pending() };
+    },
   };
 
   // Check timeouts every second, so the 10 s header limit is actually enforced.
@@ -188,6 +230,10 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     const origin = request.headers.origin;
     if (origin !== undefined && !allowedHosts.some((host) => origin === `http://${host}`)) throw new StudioError(403, "foreign-origin", "requests from other origins are refused");
     const url = new URL(request.url ?? "/", `http://${LOOPBACK}:${port}`);
+    if (url.pathname === "/mcp") {
+      await serveMcp(request, response);
+      return;
+    }
     // The editor's files are public source and carry no secret, so they are served without
     // the token; the Host and Origin checks above still apply.
     if (!url.pathname.startsWith("/api/")) {
@@ -215,6 +261,31 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     respondJson(response, 200, route(body));
   }
 
+  // MCP over Streamable HTTP, request/response only: no server-initiated stream (GET), no
+  // batches. Only an agent credential is accepted, so every call has an agent identity.
+  async function serveMcp(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (request.method !== "POST") {
+      response.writeHead(405, { ...SECURITY_HEADERS, allow: "POST" });
+      response.end();
+      return;
+    }
+    const header = request.headers.authorization;
+    const actor = typeof header === "string" && header.startsWith("Bearer ") ? agents.authenticate(header.slice(7)) : null;
+    if (actor === null) throw new StudioError(401, "unauthorized", "an agent credential from Lilac is required");
+    const message = await readJson(request);
+    if (Array.isArray(message)) {
+      respondJson(response, 400, { jsonrpc: "2.0", id: null, error: { code: -32600, message: "batches are not supported" } });
+      return;
+    }
+    const answer = await handleMcpMessage({ session: () => session, selection: () => selection, confirmations, now, ...(options.confirmationWaitMs ? { confirmationWaitMs: options.confirmationWaitMs } : {}) }, actor, message);
+    if (answer === null) {
+      response.writeHead(202, SECURITY_HEADERS);
+      response.end();
+      return;
+    }
+    respondJson(response, 200, answer);
+  }
+
   function serveStatic(response: ServerResponse, method: string | undefined, pathname: string): void {
     if (method !== "GET") throw new StudioError(405, "method-not-allowed", "only GET is served here");
     const path = pathname === "/" ? "/packages/studio-web/src/index.html" : pathname;
@@ -237,6 +308,8 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     if (streams.size >= MAX_STREAMS) throw new StudioError(503, "too-many-streams", `at most ${MAX_STREAMS} event streams may be open`);
     response.writeHead(200, { ...SECURITY_HEADERS, "content-type": "text/event-stream; charset=utf-8", connection: "keep-alive" });
     response.write(`event: project\ndata: ${JSON.stringify(describe())}\n\n`);
+    // Requests waiting for the person, so a reconnected editor shows them again.
+    response.write(`event: confirmations\ndata: ${JSON.stringify({ pending: confirmations.pending() })}\n\n`);
     streams.add(response);
     const heartbeat = setInterval(() => send(response, ": keep-alive\n\n"), HEARTBEAT_MS);
     heartbeat.unref();
@@ -261,12 +334,24 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     throw new StudioError(500, "not-loopback", "the studio host must listen on a loopback address");
   }
   port = address.port;
+  // Tell local MCP relays where this host is: a small owner-only file in the projects root,
+  // removed when the host closes. It holds no credential.
+  const discovery = join(projectsRoot, ".lilac-studio.json");
+  const discoveryNonce = randomBytes(8).toString("hex");
+  try {
+    const temporary = `${discovery}.${discoveryNonce}.tmp`;
+    writeFileSync(temporary, `${JSON.stringify({ version: 1, url: `http://${LOOPBACK}:${port}`, mcpUrl: `http://${LOOPBACK}:${port}/mcp`, pid: process.pid, nonce: discoveryNonce })}\n`, { mode: 0o600, flag: "wx" });
+    renameSync(temporary, discovery);
+  } catch {
+    // Relays can still be given the URL directly.
+  }
 
   return {
     url: `http://${LOOPBACK}:${port}`,
     port,
     token,
     launchUrl: () => `http://${LOOPBACK}:${port}/?ticket=${issueTicket()}`,
+    mcpUrl: `http://${LOOPBACK}:${port}/mcp`,
     get session() {
       return session;
     },
@@ -274,6 +359,11 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       for (const stream of streams) stream.end();
       streams.clear();
       closeSession();
+      try {
+        if (JSON.parse(readFileSync(discovery, "utf8")).nonce === discoveryNonce) rmSync(discovery, { force: true });
+      } catch {
+        // already gone, or another host's
+      }
       await new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeAllConnections?.();
     },
