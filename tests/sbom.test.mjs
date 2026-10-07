@@ -155,4 +155,23 @@ test("lockfile shapes beyond today's are handled, and unsafe shapes fail closed"
   assert.match(check(lockWith({ "node_modules/seelic": pkg("SEE LICENSE IN LICENSE") }), [seelic]).join("\n"), /none of the 1 license overrides could be verified/u);
   assert.match(check(lockWith({ "node_modules/seelic": pkg("SEE LICENSE IN LICENSE") }), [{ ...seelic, licenseFile: "../../etc/passwd" }]).join("\n"), /outside the package/u);
   assert.deepEqual(check(nested), []);
+  // A copy that ships makes the component ship, whichever path sorts first.
+  const mixed = buildSbom(lockWith({
+    "node_modules/a": pkg("MIT", { dependencies: { q: "^2" } }),
+    "node_modules/a/node_modules/q": pkg("MIT", { version: "2.0.0", dev: true }),
+    "node_modules/b": pkg("MIT", { dependencies: { q: "^2" } }),
+    "node_modules/b/node_modules/q": pkg("MIT", { version: "2.0.0" }),
+  }), policy);
+  assert.equal(mixed.components.find((component) => component.name === "q").scope, "required");
+  // Workspace devDependencies are edges; bundled dependencies need no integrity of their own.
+  const workspace = JSON.stringify({ name: "fixture", version: "1.0.0", lockfileVersion: 3, packages: {
+    "": { name: "fixture", version: "1.0.0", workspaces: ["packages/w"] },
+    "packages/w": { name: "w", version: "1.0.0", devDependencies: { ok: "^1" } },
+    "node_modules/w": { resolved: "packages/w", link: true },
+    "node_modules/ok": pkg("MIT", { dependencies: { inner: "^1" } }),
+    "node_modules/ok/node_modules/inner": { version: "1.0.0", license: "MIT", inBundle: true },
+  } });
+  const edges = Object.fromEntries(buildSbom(workspace, policy).dependencies.map((entry) => [entry.ref, entry.dependsOn]));
+  assert.deepEqual(edges["workspace:w"], ["pkg:npm/ok@1.0.0"]);
+  assert.deepEqual(checkPolicy(workspace, policy, "`ok@1.0.0` `inner@1.0.0`", { nodeModules: join(ROOT, "no-such-dir") }), []);
 });

@@ -83,3 +83,17 @@ The judge returned no must-fix for the current lockfile. Its run validated the r
 - **Override verification.** If overrides apply but none can be verified against an installed license file (for example, `node_modules` is missing), the check fails. An override `licenseFile` outside its package directory fails too.
 
 Test 7 covers these and fails on `34d64e3`. The judge's remaining items were skip-its and are unchanged: enforcement through the test, overrides unverified on hosts where they are not installed (pinned by version, declaration and lock integrity), and npm aliases (none in the lock).
+
+## Review delta 2
+
+The delta re-review had no must-fix. It checked:
+- a synthetic lockfile with workspaces, nested and scoped paths, links, dev, peer and GPL entries, which validates against CycloneDX 1.5;
+- resolution order;
+- the "no override verified" rule, which cannot false-fail on a supported host and cannot be bypassed.
+
+Its worth-considering items are fixed:
+- **Scope.** A component's scope is the strongest across all paths where it is installed. A copy that ships makes it `required`, whichever path sorts first.
+- **Workspace devDependencies** are now graph edges.
+- **Bundled dependencies.** An `inBundle` entry ships inside its parent's tarball, which the lockfile hashes, so it is not flagged for having no integrity of its own. It is marked `npm:inBundle`.
+
+Test 7 covers each of these.

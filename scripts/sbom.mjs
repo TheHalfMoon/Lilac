@@ -93,7 +93,8 @@ export function buildSbom(lockText, policy) {
     return purlFor(nameOf(path, entry), entry.version);
   };
   const edgesFrom = (path, entry) => {
-    const names = Object.keys({ ...entry.dependencies, ...entry.optionalDependencies, ...entry.peerDependencies, ...(path === "" ? entry.devDependencies : {}) });
+    // devDependencies are only installed for the root and the workspaces.
+    const names = Object.keys({ ...entry.dependencies, ...entry.optionalDependencies, ...entry.peerDependencies, ...(path === "" || workspaceByPath.has(path) ? entry.devDependencies : {}) });
     return names.map((name) => resolveDependency(packages, path, name)).filter((target) => target !== null).map(refAt).filter((ref) => ref !== null);
   };
   const root = packages[""] ?? {};
@@ -108,6 +109,16 @@ export function buildSbom(lockText, policy) {
     components.set(`workspace:${pkg.name}`, { type: "library", "bom-ref": `workspace:${pkg.name}`, name: pkg.name, version: pkg.version ?? "0.0.0", properties: [{ name: "lilac:first-party", value: "true" }, { name: "lilac:license", value: "NOASSERTION" }] });
     addEdges(`workspace:${pkg.name}`, edgesFrom(pkg.path, packages[pkg.path]));
   }
+  // The same name and version can be installed at several paths with different flags; the
+  // component's scope is the strongest of them (it ships if any copy ships).
+  const RANK = { required: 2, optional: 1, excluded: 0 };
+  const scopeOf = (pkg) => (pkg.dev ? "excluded" : pkg.optional || pkg.devOptional || pkg.peer ? "optional" : "required");
+  const strongest = new Map();
+  for (const pkg of externals) {
+    const ref = purlFor(pkg.name, pkg.version);
+    const scope = scopeOf(pkg);
+    if (!strongest.has(ref) || RANK[scope] > RANK[strongest.get(ref)]) strongest.set(ref, scope);
+  }
   for (const pkg of externals) {
     const ref = purlFor(pkg.name, pkg.version);
     addEdges(ref, edgesFrom(pkg.path, pkg));
@@ -118,6 +129,7 @@ export function buildSbom(lockText, policy) {
       ...(pkg.cpu ? [{ name: "npm:cpu", value: pkg.cpu.join(",") }] : []),
       ...(pkg.license !== undefined && pkg.license !== license ? [{ name: "npm:declaredLicense", value: String(pkg.license) }] : []),
       ...(license === null ? [{ name: "lilac:license", value: "NOASSERTION" }] : []),
+      ...(pkg.inBundle ? [{ name: "npm:inBundle", value: "true" }] : []),
     ];
     components.set(ref, {
       type: "library",
@@ -125,7 +137,7 @@ export function buildSbom(lockText, policy) {
       name: pkg.name,
       version: pkg.version,
       purl: ref,
-      scope: pkg.dev ? "excluded" : pkg.optional || pkg.devOptional || pkg.peer ? "optional" : "required",
+      scope: strongest.get(ref),
       hashes: integrityHashes(pkg.integrity),
       // Only allowlisted ids are SPDX ids this tool vouches for; anything else is a name.
       ...(license === null ? {} : { licenses: [allowed.has(license) ? { license: { id: license } } : { license: { name: license } }] }),
@@ -167,7 +179,8 @@ export function checkPolicy(lockText, policy, notices, { nodeModules = join(ROOT
   const seen = new Set();
   for (const pkg of externalPackages(lock)) {
     const id = `${pkg.name}@${pkg.version}`;
-    if (integrityHashes(pkg.integrity).length === 0) problems.push(`${id} at ${pkg.path}: no sha512 integrity in the lockfile`);
+    // A bundled dependency ships inside its parent's tarball, which the lockfile hashes.
+    if (!pkg.inBundle && integrityHashes(pkg.integrity).length === 0) problems.push(`${id} at ${pkg.path}: no sha512 integrity in the lockfile`);
     if (seen.has(id)) continue;
     seen.add(id);
     const stale = policy.overrides.find((entry) => entry.name === pkg.name && entry.version !== pkg.version);
