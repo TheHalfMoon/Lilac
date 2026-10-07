@@ -1,6 +1,12 @@
 import type { DesignSnapshot, ReviewCandidate, RulePack, SnapshotNode } from "./types.ts";
 import { normalizeRulePack, normalizeSnapshot } from "./validation.ts";
 
+// Code-unit string order: unlike localeCompare, independent of the process locale.
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
+
 function onGrid(value: number | undefined): boolean {
   if (value === undefined) return true;
   return Number.isInteger(value) && value % 4 === 0;
@@ -91,6 +97,6 @@ export function evaluateSnapshot(snapshotInput: DesignSnapshot, packInput: RuleP
       }
     }
   }
-  candidates.sort((a, b) => `${a.ruleId}:${a.nodeId ?? ""}`.localeCompare(`${b.ruleId}:${b.nodeId ?? ""}`));
+  candidates.sort((a, b) => compareCodeUnits(`${a.ruleId}:${a.nodeId ?? ""}`, `${b.ruleId}:${b.nodeId ?? ""}`));
   return candidates;
 }

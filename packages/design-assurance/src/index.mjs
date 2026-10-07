@@ -6,6 +6,12 @@ import { basename, dirname, extname, join } from "node:path";
 
 import { validateDocument } from "@lilac/document-model";
 
+// Code-unit string order: unlike localeCompare, independent of the process locale.
+function compareCodeUnits(left, right) {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
+
 export const DESIGN_ASSURANCE_SCHEMA_VERSION = 1;
 export const IMPECCABLE_PIN = Object.freeze({
   repository: "pbakaus/impeccable",
@@ -98,10 +104,10 @@ function stableLocationKey(location) {
 function compareFindings(left, right) {
   const severityDelta = SEVERITY_RANK[right.severity] - SEVERITY_RANK[left.severity];
   if (severityDelta !== 0) return severityDelta;
-  return left.ruleId.localeCompare(right.ruleId)
-    || stableLocationKey(left.location).localeCompare(stableLocationKey(right.location))
-    || left.message.localeCompare(right.message)
-    || JSON.stringify(left.evidence).localeCompare(JSON.stringify(right.evidence));
+  return compareCodeUnits(left.ruleId, right.ruleId)
+    || compareCodeUnits(stableLocationKey(left.location), stableLocationKey(right.location))
+    || compareCodeUnits(left.message, right.message)
+    || compareCodeUnits(JSON.stringify(left.evidence), JSON.stringify(right.evidence));
 }
 
 function dedupeAndSort(findings) {
@@ -237,7 +243,7 @@ export function createLilacRulePack({ namespace, rules }) {
 
   return Object.freeze({
     namespace,
-    rules: Object.freeze([...rules].sort((a, b) => a.id.localeCompare(b.id))),
+    rules: Object.freeze([...rules].sort((a, b) => compareCodeUnits(a.id, b.id))),
   });
 }
 
@@ -276,7 +282,7 @@ function localFinding(rulePack, rule, partial, context) {
 function runRulePacks(context, rulePacks) {
   const findings = [];
   const fullIds = new Set();
-  const orderedPacks = [...rulePacks].sort((a, b) => String(a?.namespace).localeCompare(String(b?.namespace)));
+  const orderedPacks = [...rulePacks].sort((a, b) => compareCodeUnits(String(a?.namespace), String(b?.namespace)));
   for (const pack of orderedPacks) {
     if (!isPlainObject(pack) || !Array.isArray(pack.rules)) {
       throw new DesignAssuranceError("Invalid Lilac rule pack");
@@ -743,7 +749,7 @@ export async function scanBrowserSnapshot({
 function sortedNodes(document, type) {
   return Object.values(document.nodes)
     .filter((node) => node.type === type)
-    .sort((a, b) => a.id.localeCompare(b.id));
+    .sort((a, b) => compareCodeUnits(a.id, b.id));
 }
 
 function sourceRegistry(document) {

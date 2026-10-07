@@ -19,6 +19,12 @@ import {
   type OperationStatus,
 } from "./operation.ts";
 
+// Code-unit string order: unlike localeCompare, independent of the process locale.
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
+
 export const SESSION_LOG_FORMAT_VERSION = 1;
 export const SESSION_ITEM_KINDS = Object.freeze([
   "fork",
@@ -594,7 +600,7 @@ export function resumeSession(session: AgentSession): ResumeState {
       (operation) => !TERMINAL_OPERATION_STATUSES.has(operation.status)
         || state.pendingInConversation.has(operation.id),
     )
-    .sort((left, right) => left.id.localeCompare(right.id))
+    .sort((left, right) => compareCodeUnits(left.id, right.id))
     .map((operation) => cloneJson(operation));
   return {
     session: cloneJson(session),

@@ -268,3 +268,9 @@ export function canonicalImportStringify(value: unknown): string {
 export function sha256Text(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
+
+/** Code-unit string order: unlike localeCompare, independent of the process locale. */
+export function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
