@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { MCPAuthorizationError, MCPContractError, PAPER_MCP_TOOL_NAMES, classifyPaperTool, mcpArgumentsSha256, requireMCPToolCall, validateMCPServerConfig } from "@lilac/mcp-protocol";
+import { exportJsx } from "./code.ts";
 import { StudioError } from "./errors.ts";
 import type { StudioActor, StudioSession } from "./session.ts";
 
@@ -168,6 +169,19 @@ const TOOLS: Tool[] = [
     run: ({ session, selection }) => {
       const document = session.document as any;
       return { nodes: selection().filter((id) => Object.hasOwn(document.nodes, id)).map((id) => summary(document.nodes[id])) };
+    },
+  },
+  {
+    name: "get_jsx",
+    title: "Layer as JSX",
+    description: "A layer and everything inside it as a JSX function component, exactly as the canvas renders it (through code-ir).",
+    inputSchema: object({ nodeId: { type: "string" } }, ["nodeId"]),
+    run: ({ session }, args) => {
+      try {
+        return exportJsx(session.document, args.nodeId);
+      } catch (error) {
+        throw new ToolError(error instanceof Error ? error.message : "the layer cannot be exported");
+      }
     },
   },
   {

@@ -17,7 +17,7 @@ const el = (tag, attributes = {}, ...children) => {
     else if (name.startsWith("on")) node.addEventListener(name.slice(2), value);
     else node.setAttribute(name, value === true ? "" : String(value));
   }
-  for (const child of children.flat()) if (child !== null && child !== undefined && child !== false) node.append(child);
+  for (const child of children.flat(Infinity)) if (child !== null && child !== undefined && child !== false) node.append(child);
   return node;
 };
 
@@ -421,6 +421,75 @@ function showImportReview(review) {
         el("button", { type: "button", class: "primary", disabled: !review.commitReady, onclick: commit }, "Import")),
     ];
   }, { dismissable: false });
+}
+
+// ---------- design and code ----------
+
+async function openCodeDialog() {
+  if (state.document === null) return;
+  const selected = state.selection.length === 1 ? state.selection[0] : null;
+  let exported = null;
+  let exportError = null;
+  if (selected !== null) {
+    try {
+      exported = await state.client.post("/api/code/export", { nodeId: selected });
+    } catch (error) {
+      if (handleSessionEnded(error)) return;
+      exportError = describeError(error);
+    }
+  }
+  showDialog("Design and code", (close) => {
+    const error = el("p", { class: "error", role: "alert" });
+    const output = exported === null ? null : el("textarea", { id: "code-export", rows: 10, readonly: true, spellcheck: "false", "aria-describedby": "code-export-note" });
+    if (output) output.value = exported.code;
+    const source = el("textarea", { id: "code-import", rows: 8, spellcheck: "false", placeholder: "export function Card() {\n  return <section>…</section>;\n}" });
+    const exportPart = exported === null
+      ? el("p", {}, exportError ?? "Select one layer to see it as code.")
+      : [
+        el("p", { id: "code-export-note" }, `The selected layer (${exported.layers} layer${exported.layers === 1 ? "" : "s"}) as the JSX component ${exported.componentName}, exactly as the canvas draws it.`),
+        el("label", { for: "code-export" }, "JSX", output),
+        el("div", { class: "actions" }, el("button", { type: "button", onclick: async () => {
+          try {
+            await navigator.clipboard.writeText(exported.code);
+            setStatus("Code copied.");
+          } catch {
+            output.select();
+            setStatus("Select the code and copy it.");
+          }
+        } }, "Copy code")),
+      ];
+    const importForm = el("form", {
+      novalidate: true,
+      onsubmit: (event) => {
+        event.preventDefault();
+        error.textContent = "";
+        if (source.value.trim() === "") {
+          error.textContent = "Paste a JSX function component.";
+          return;
+        }
+        enqueue(async () => {
+          try {
+            const result = await state.client.post("/api/code/import", { code: source.value });
+            close();
+            applyChange(result);
+            selectLayers([result.frameId]);
+            canvas.fit();
+            renderToolbar();
+            setStatus(`${result.intent}: ${result.layers} layers added.`);
+          } catch (failure) {
+            if (failure instanceof HostError && failure.code === "project-needs-reopen") {
+              close();
+              handleEditError(failure);
+            } else if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
+          }
+        });
+      },
+    },
+    el("h3", {}, "Bring code into the design"),
+    el("label", { for: "code-import" }, "A JSX function component (elements, text, literal props, className and a style string)", source),
+    el("div", { class: "actions" }, el("button", { type: "submit", class: "primary" }, "Add to design")));
+    return [el("h3", {}, "Selected layer as code"), exportPart, importForm, error, el("div", { class: "actions" }, el("button", { type: "button", onclick: close }, "Close"))];
+  });
 }
 
 // ---------- loading and applying changes ----------
@@ -1028,6 +1097,7 @@ function renderToolbar() {
   $("action-delete").disabled = !open || state.selection.length === 0;
   $("action-save").disabled = !open;
   $("action-import").disabled = !open;
+  $("action-code").disabled = !open;
   $("zoom-level").textContent = `${Math.round(canvas.viewport.zoom * 100)}%`;
   $("revision").textContent = open ? `Revision ${state.revision}` : "";
   document.title = state.project ? `${state.project} — Lilac` : "Lilac";
@@ -1092,6 +1162,7 @@ async function main() {
   $("action-fit").addEventListener("click", () => { canvas.fit(); renderToolbar(); });
   $("action-save").addEventListener("click", save);
   $("action-import").addEventListener("click", openImportDialog);
+  $("action-code").addEventListener("click", openCodeDialog);
   $("action-agents").addEventListener("click", openAgentsDialog);
   $("layers").addEventListener("keydown", onLayersKey);
   $("layers").addEventListener("click", onLayersClick);
