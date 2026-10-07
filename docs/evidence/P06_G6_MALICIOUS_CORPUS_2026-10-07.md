@@ -4,7 +4,7 @@ Part of P06 gate 6 (#100).
 
 ## Corpus
 
-`tests/fixtures/malicious/` holds 42 cases, one `.html` file each, across the categories `html`, `url`, `css`, `svg` and `mxss`. `manifest.json` records for each case:
+`tests/fixtures/malicious/` holds 43 cases, one `.html` file each, across the categories `html`, `url`, `css`, `svg` and `mxss`. `manifest.json` records for each case:
 - its description;
 - its expected outcome;
 - for imported cases, the exact expected security summary.
@@ -15,7 +15,7 @@ Adding a case means adding a file and a manifest entry. The test checks that the
 
 ## Invariants
 
-Checked for every case by `tests/malicious-corpus.test.mjs`, which has 47 tests and runs in about 3 s:
+Checked for every case by `tests/malicious-corpus.test.mjs`, which has 48 tests and runs in about 3 s:
 - the outcome and exact security summary match the manifest;
 - `validateImportProposal` passes;
 - no forbidden tag survives;
@@ -44,3 +44,16 @@ The judge ran 81 further vectors and found five breaks. All are fixed and now co
 5. **No base URL.** `safeUrl` returned scheme-less values unchanged, so `java&#9;script:` stayed a link that a URL parser reads as `javascript:`. Without a base URL, a relative value is now kept only when parsing it against a sentinel base keeps the sentinel origin.
 
 The judge also found that SVG `pattern`, `filter`, `textPath`, `cursor`, `mpath` and `tref` references were labelled `link`. They are now `image` subresources. This is a labelling fix.
+
+## Review delta 2
+
+The delta-1 adversarial re-review found that a comment marker inside a CSS string, or after an escaped `/`, hid a live `url(` or `@import`. One example: `content:'/*';background:url(...);/*'*/`. Both the sanitizer's comment stripping and the test's own CSS view treated `/*` as a comment everywhere.
+
+Both now remove comments as a CSS tokenizer does: only outside strings, and never when the `/` is escaped. The case `css-comment-in-string` covers this and fails on the pre-delta-2 head.
+
+The older host-acting names `interesttarget`, `interestaction` and `anchor` are now stripped as well.
+
+## Notes
+
+- **Compatibility.** `validateImportProposal` now rejects proposals that carry the newly forbidden attributes. A proposal stored by an earlier version with, for example, `ping` therefore fails closed on review or commit. This is intended.
+- **Renderer requirement.** Imported markup keeps its own `id` and idref attributes (`for`, `list`, `usemap`, `aria-labelledby`), because they are legitimate within the imported document. A renderer that places imported nodes into a live host DOM must namespace those ids, so they cannot reach or clobber host elements. This is recorded with the browser and renderer residuals in #114.

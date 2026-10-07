@@ -41,18 +41,30 @@ const URL_BEARING = new Set([
   "profile", "manifest", "dynsrc", "lowsrc", "itemid", "icon", "data",
 ]);
 const INERT_URL = /^(?:#[^\s"'<>`\\]*|\.\/objects\/[a-f0-9]{64})$/u;
-const HOST_ACTING = new Set(["is", "commandfor", "command", "popovertarget", "popovertargetaction", "interestfor", "invoketarget", "invokeaction"]);
+const HOST_ACTING = new Set(["is", "commandfor", "command", "popovertarget", "popovertargetaction", "interestfor", "invoketarget", "invokeaction", "interesttarget", "interestaction", "anchor"]);
 
 // Independent of the import-stack sanitizer: CSS Syntax preprocessing (CR LF, CR, FF to
 // LF), comment removal, and escape decoding (hex escape with one optional whitespace,
 // escaped newline removed, other escapes literal), then a search for any function or
 // at-rule that can fetch or execute.
 function cssView(css) {
-  const preprocessed = css.replace(/\r\n|[\r\f]/gu, "\n").replace(/\/\*[\s\S]*?\*\//gu, "");
+  const preprocessed = css.replace(/\r\n|[\r\f]/gu, "\n");
   let out = "";
+  let quote = null;
   for (let index = 0; index < preprocessed.length; index += 1) {
     const char = preprocessed[index];
-    if (char !== "\\") { out += char; continue; }
+    // Comments start only outside strings and when "/" is not escaped.
+    if (char !== "\\" && quote === null && char === "/" && preprocessed[index + 1] === "*") {
+      const end = preprocessed.indexOf("*/", index + 2);
+      index = end < 0 ? preprocessed.length : end + 1;
+      continue;
+    }
+    if (char !== "\\") {
+      if (quote !== null && (char === quote || char === "\n")) quote = null;
+      else if (quote === null && (char === "\"" || char === "'")) quote = char;
+      out += char;
+      continue;
+    }
     const next = preprocessed[index + 1] ?? "";
     if (next === "\n") { index += 1; continue; }
     const hex = /^[0-9a-fA-F]{1,6}/u.exec(preprocessed.slice(index + 1))?.[0];
@@ -154,6 +166,8 @@ test("the independent CSS view sees escapes the way a browser does", () => {
   assert.match(cssView("u\\\nrl(x)"), /url\(/u, "escaped newline is removed");
   assert.match(cssView("u/**/rl(x)"), /url\(/u);
   assert.match(cssView("\\40 import 'x'"), /@import/u);
+  assert.match(cssView("content:'/*';background:url(x);/*'*/"), /url\(/u, "a comment marker inside a string is not a comment");
+  assert.match(cssView("a:\\/* x;background:url(x) */"), /url\(/u, "an escaped slash does not start a comment");
   assert.doesNotMatch(cssView("color: red; width: 10px"), CSS_AUTHORITY);
 });
 

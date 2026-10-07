@@ -582,6 +582,20 @@
         "dangerousUrlsRemoved": 2,
         "unsafeStylesRemoved": 0
       }
+    },
+    {
+      "id": "css-comment-in-string",
+      "category": "css",
+      "file": "css-comment-in-string.html",
+      "description": "comment markers inside CSS strings or escaped, hiding url( and @import; older host-acting attributes",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 3,
+        "unsafeStylesRemoved": 3
+      }
     }
   ]
 }

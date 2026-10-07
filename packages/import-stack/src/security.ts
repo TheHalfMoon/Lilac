@@ -27,13 +27,40 @@ export const REMOTE_AUTHORITY_ATTRIBUTES = new Set([
 // custom elements.
 export const HOST_AUTHORITY_ATTRIBUTES = new Set([
   "is", "commandfor", "command", "popovertarget", "popovertargetaction", "interestfor",
-  "invoketarget", "invokeaction",
+  "invoketarget", "invokeaction", "interesttarget", "interestaction", "anchor",
 ]);
 
 export const PRESENTATION_URL_ATTRIBUTES = new Set([
   "fill", "stroke", "filter", "clip-path", "mask",
   "marker-start", "marker-mid", "marker-end", "cursor",
 ]);
+
+// Remove comments the way a CSS tokenizer does: "/*" starts a comment only outside a
+// string and when not escaped, so `content:'/*';background:url(x)` and `\\/* url(x)`
+// keep their url( visible here exactly as a browser would load it.
+function withoutComments(css: string): string {
+  let out = "";
+  let quote: string | null = null;
+  for (let index = 0; index < css.length; index += 1) {
+    const char = css[index];
+    if (char === "\\") {
+      out += char + (css[index + 1] ?? "");
+      index += 1;
+    } else if (quote !== null) {
+      out += char;
+      if (char === quote || char === "\n") quote = null;
+    } else if (char === "\"" || char === "'") {
+      quote = char;
+      out += char;
+    } else if (char === "/" && css[index + 1] === "*") {
+      const end = css.indexOf("*/", index + 2);
+      index = end < 0 ? css.length : end + 1;
+    } else {
+      out += char;
+    }
+  }
+  return out;
+}
 
 function cssSecurityView(rawCss: string): string {
   // CSS input preprocessing first: CR LF, CR and FF become LF, so an escape followed by
@@ -45,8 +72,7 @@ function cssSecurityView(rawCss: string): string {
   // across a continuation (for example `u\<LF>rl(`) must be visible here.
   const withoutContinuations = (value: string): string =>
     value.replace(/\\(?:\r\n|[\r\n\f])/gu, "");
-  const decoded = withoutContinuations(css)
-    .replace(/\/\*[\s\S]*?\*\//gu, "")
+  const decoded = withoutComments(withoutContinuations(css))
     .replace(/\\([0-9a-fA-F]{1,6})\s?/gu, (_match, hex: string) => {
       const codePoint = Number.parseInt(hex, 16);
       return Number.isFinite(codePoint) && codePoint > 0 && codePoint <= 0x10ffff
