@@ -5,7 +5,7 @@
 // change that does not apply means the copy is out of date, and it is fetched again.
 
 import { mountCanvas, insertNode, removeNodes, setStyle, setText } from "/packages/canvas/src/index.mjs";
-import { applyTransaction } from "/packages/history/src/index.mjs";
+import { applyCommittedTransaction } from "/packages/history/src/index.mjs";
 import { HostError, connect, forgetToken } from "/packages/studio-web/src/client.mjs";
 
 const $ = (id) => document.getElementById(id);
@@ -561,7 +561,21 @@ function clearProject() {
  * that arrive meanwhile are held, and replayed on top of the fetched copy afterwards (those
  * at or below its revision are already in it), so none is lost or applied twice.
  */
+// Timings, as standard User Timing measures (performance.getEntriesByName): the first
+// render of a project, each change applied from the event stream (from the event's
+// arrival), and each edit made here (from the request to the patched canvas). Each kept to
+// the latest 1,000.
+function measure(name, start) {
+  try {
+    performance.measure(name, { start, end: performance.now() });
+    if (performance.getEntriesByName(name, "measure").length > 1000) performance.clearMeasures(name);
+  } catch {
+    // Timing is never allowed to affect editing.
+  }
+}
+
 async function resync() {
+  const started = performance.now();
   const [{ project, revision, document: next }, { entries }, session] = await Promise.all([
     state.client.get("/api/document"),
     state.client.get("/api/history"),
@@ -576,6 +590,7 @@ async function resync() {
   state.canRedo = Boolean(session.canRedo);
   canvas.setDocument(next);
   state.selection = canvas.selection;
+  measure("lilac:render-project", started);
 }
 
 class ProjectChanged extends Error {}
@@ -622,7 +637,9 @@ function applyChange(event) {
   }
   let result;
   try {
-    result = applyTransaction(state.document, { id: event.transactionId, actor: event.actor, operations: event.operations }, { enforceBaseRevision: false });
+    // The host validated and committed the change; the editor's copy follows it in place.
+    // If it does not apply, the copy is out of date and is fetched again.
+    result = applyCommittedTransaction(state.document, { operations: event.operations });
   } catch {
     requestResync();
     return;
@@ -635,13 +652,29 @@ function applyChange(event) {
     state.history.push(summary);
     if (state.history.length > MAX_HISTORY_SHOWN) state.history.shift();
   }
+  const selectionBefore = state.selection.join("\n");
   canvas.update(state.document, result.affectedNodeIds);
   state.selection = canvas.selection;
   if (event.actor === state.user.actorId) {
     // Only this user's own changes move this user's undo and redo stacks.
     refreshUndoState();
   }
-  renderAll();
+  // A change to layer properties only relabels its rows; one that adds, removes or moves
+  // layers redraws the tree. (On a 10,000-layer project, redrawing costs far more.)
+  const structural = event.operations.some((operation) => operation.type !== "set-props") || state.selection.join("\n") !== selectionBefore;
+  renderToolbar();
+  if (structural) renderLayers();
+  else relabelLayers(result.affectedNodeIds);
+  renderInspector();
+  renderHistory();
+}
+
+function relabelLayers(ids) {
+  for (const id of ids) {
+    const node = state.document?.nodes[id];
+    const label = document.getElementById(`layer-${id}`)?.querySelector(":scope > .row .label");
+    if (node && label) label.textContent = layerLabel(node);
+  }
 }
 
 async function refreshUndoState() {
@@ -709,8 +742,10 @@ function commit(operations, intent, computedAt = state.document?.revision) {
       return null;
     }
     try {
+      const started = performance.now();
       const event = await state.client.post("/api/edit", { baseRevision: state.revision, operations, intent });
       applyChange(event);
+      measure("lilac:edit", started);
       setStatus(intent ? `${intent}.` : "Changed.");
       return event;
     } catch (error) {
@@ -776,8 +811,12 @@ function listenForChanges({ refreshOnOpen = false } = {}) {
   state.events = events;
   let dropped = refreshOnOpen;
   events.addEventListener("change", (message) => {
+    const received = performance.now();
     try {
-      applyChange(JSON.parse(message.data));
+      const event = JSON.parse(message.data);
+      const before = state.revision;
+      applyChange(event);
+      if (state.revision === event.revision && before === event.revision - 1) measure("lilac:apply-change", received);
     } catch {
       requestResync();
     }
@@ -1141,6 +1180,8 @@ async function main() {
   canvas = await mountCanvas($("canvas"), {
     onCommit: (operations, intent, meta) => commit(operations, intent, meta?.revision),
     onSelect: (ids) => {
+      // The canvas reports the selection after every update; redraw only when it changed.
+      if (ids.join("\n") === state.selection.join("\n")) return;
       state.selection = ids;
       shareSelection();
       if (ids.length > 0) state.focusedLayer = ids.at(-1);

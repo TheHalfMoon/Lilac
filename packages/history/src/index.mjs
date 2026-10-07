@@ -361,6 +361,27 @@ export function applyTransaction(document, transaction, { enforceBaseRevision = 
   };
 }
 
+/**
+ * Apply a transaction that an authority (the studio host) has already validated and
+ * committed to the caller's own copy of the document, in place. The operations go through
+ * the same code as applyTransaction, but the document is not cloned, re-validated or
+ * re-sorted, so a mirror of a large document can follow commits cheaply. It throws if an
+ * operation does not apply, and the copy may then be partly changed: the caller must
+ * fetch the document again. Never use it for untrusted transactions.
+ */
+export function applyCommittedTransaction(document, transaction) {
+  if (!Array.isArray(transaction?.operations) || transaction.operations.length === 0) {
+    throw new TransactionError("transaction.operations must be a non-empty array");
+  }
+  const affectedNodeIds = new Set();
+  for (const operation of transaction.operations) {
+    collectAffectedNodeIds(document, operation, affectedNodeIds);
+    applyOperation(document, operation);
+  }
+  document.revision += 1;
+  return { document, affectedNodeIds: [...affectedNodeIds].sort() };
+}
+
 export function createHistoryState(document) {
   validateDocument(document);
   return {

@@ -94,6 +94,11 @@ export class StudioSession {
   #log: Array<Omit<ChangeEvent, "operations">> = [];
   #closed = false;
   #failure: string | null = null;
+  // The document as of the last commit, as history state for the next one. The session is
+  // the store's only writer, so it is the store's document; re-deriving it from the store
+  // (a clone and a full validation) on every edit cost more than the edit itself at 10,000
+  // layers. The store still validates and applies every transaction itself.
+  #base: { document: any; past: never[]; future: never[] } | null = null;
 
   private constructor(name: string, store: ProjectStore, owner: StudioActor, now: () => string) {
     this.name = name;
@@ -273,6 +278,7 @@ export class StudioSession {
     const at = this.#now();
     const transactionId = `tx-${randomUUID()}`;
     let attributed: Record<string, unknown>;
+    let nextDocument: any;
     let inverse: unknown[];
     let affectedNodeIds: string[];
     try {
@@ -283,7 +289,7 @@ export class StudioSession {
       const result = room.commitTransaction({
         actor,
         transport,
-        history: createHistoryState(this.#store.document),
+        history: this.#baseHistory(),
         at,
         ...(actor.operationId ? { operationId: actor.operationId } : {}),
         ...(actor.workerTaskId ? { workerTaskId: actor.workerTaskId } : {}),
@@ -299,6 +305,7 @@ export class StudioSession {
         },
       });
       const entry = result.history.past.at(-1);
+      nextDocument = result.history.document;
       attributed = entry.transaction;
       inverse = entry.inverse.operations;
       affectedNodeIds = [...result.summary.affectedNodeIds];
@@ -309,8 +316,11 @@ export class StudioSession {
     try {
       committed = this.#store.commit(attributed);
     } catch (error) {
+      this.#base = null;
       throw this.#storeFailure(error);
     }
+    // The room applied the same transaction to the same document the store holds.
+    this.#base = { document: nextDocument, past: [], future: [] };
     const event: ChangeEvent = {
       type: "transaction",
       project: this.name,
@@ -352,6 +362,13 @@ export class StudioSession {
     }
     this.#failure = "the project's files changed or could not be written; reopen the project";
     return new StudioError(409, "project-needs-reopen", this.#failure);
+  }
+
+  #baseHistory() {
+    if (this.#base === null || this.#base.document.revision !== this.#store.revision) {
+      this.#base = createHistoryState(this.#store.document) as any;
+    }
+    return this.#base;
   }
 
   #assertUsable(): void {
