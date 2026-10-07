@@ -1,0 +1,615 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "script-basic",
+      "category": "html",
+      "file": "script-basic.html",
+      "description": "inline <script>",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 1,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "script-uppercase",
+      "category": "html",
+      "file": "script-uppercase.html",
+      "description": "uppercase <SCRIPT SRC>",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 1,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "script-in-svg",
+      "category": "svg",
+      "file": "script-in-svg.html",
+      "description": "<script> inside <svg>",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 1,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "event-handlers",
+      "category": "html",
+      "file": "event-handlers.html",
+      "description": "onerror, onload, ontoggle and uppercase ONCLICK handlers",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 3,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "svg-onload",
+      "category": "svg",
+      "file": "svg-onload.html",
+      "description": "SVG onload and onmouseover handlers",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 2,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "iframe-srcdoc",
+      "category": "html",
+      "file": "iframe-srcdoc.html",
+      "description": "<iframe srcdoc> and a stray srcdoc attribute",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 1,
+        "eventHandlersRemoved": 1,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "object-embed-applet",
+      "category": "html",
+      "file": "object-embed-applet.html",
+      "description": "<object>, <embed> and <applet>",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 3,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "base-meta-refresh",
+      "category": "html",
+      "file": "base-meta-refresh.html",
+      "description": "<base href> and <meta http-equiv=refresh> to javascript:",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 2,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "form-actions",
+      "category": "html",
+      "file": "form-actions.html",
+      "description": "form action, formaction and form-owner attributes",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 1,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 4,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "javascript-href",
+      "category": "url",
+      "file": "javascript-href.html",
+      "description": "javascript: URLs with case, whitespace, tab and numeric-entity obfuscation",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 5,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "other-schemes",
+      "category": "url",
+      "file": "other-schemes.html",
+      "description": "vbscript:, data:text/html, data:image/svg+xml, file: and blob: URLs",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 5,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "credential-urls",
+      "category": "url",
+      "file": "credential-urls.html",
+      "description": "URLs with userinfo or secret query parameters",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 2,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "srcset-poster",
+      "category": "url",
+      "file": "srcset-poster.html",
+      "description": "javascript: in srcset and video poster",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 2,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "template-content",
+      "category": "html",
+      "file": "template-content.html",
+      "description": "<template> holding script and handlers",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 1,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "custom-elements",
+      "category": "html",
+      "file": "custom-elements.html",
+      "description": "custom elements with handlers",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 2,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "mxss-noscript",
+      "category": "mxss",
+      "file": "mxss-noscript.html",
+      "description": "noscript title-attribute mutation XSS",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 1,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "mxss-math",
+      "category": "mxss",
+      "file": "mxss-math.html",
+      "description": "MathML table/mglyph/style namespace confusion",
+      "outcome": "rejected:ImportValidationError"
+    },
+    {
+      "id": "mxss-svg-style",
+      "category": "mxss",
+      "file": "mxss-svg-style.html",
+      "description": "<style> inside <svg> holding markup",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 1,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "comment-breakout",
+      "category": "mxss",
+      "file": "comment-breakout.html",
+      "description": "<!--> comment breakout",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 1,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "textarea-breakout",
+      "category": "mxss",
+      "file": "textarea-breakout.html",
+      "description": "markup inside RCDATA <textarea> and <title>",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "css-import",
+      "category": "css",
+      "file": "css-import.html",
+      "description": "@import, including an escaped spelling",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 2
+      }
+    },
+    {
+      "id": "css-expression-behavior",
+      "category": "css",
+      "file": "css-expression-behavior.html",
+      "description": "expression(), behavior: and -moz-binding",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 3
+      }
+    },
+    {
+      "id": "css-url-obfuscated",
+      "category": "css",
+      "file": "css-url-obfuscated.html",
+      "description": "url() hidden by escapes, entities and line continuations",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 3
+      }
+    },
+    {
+      "id": "css-image-set",
+      "category": "css",
+      "file": "css-image-set.html",
+      "description": "image-set() and -webkit-image-set()",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 2
+      }
+    },
+    {
+      "id": "css-javascript-url",
+      "category": "css",
+      "file": "css-javascript-url.html",
+      "description": "url(javascript:) in style elements and attributes",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 2
+      }
+    },
+    {
+      "id": "svg-use-external",
+      "category": "svg",
+      "file": "svg-use-external.html",
+      "description": "SVG <use> referencing external and data: documents",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 1,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "svg-xlink-javascript",
+      "category": "svg",
+      "file": "svg-xlink-javascript.html",
+      "description": "SVG <a> with javascript: href and xlink:href",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 2,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "svg-animate-set",
+      "category": "svg",
+      "file": "svg-animate-set.html",
+      "description": "SVG <animate>/<set> rewriting href to javascript:",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 2,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "svg-foreignobject",
+      "category": "svg",
+      "file": "svg-foreignobject.html",
+      "description": "<foreignObject> holding iframe and script",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 1,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "svg-presentation-urls",
+      "category": "svg",
+      "file": "svg-presentation-urls.html",
+      "description": "fill, filter, mask and clip-path with url()",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 4,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "svg-style-element",
+      "category": "svg",
+      "file": "svg-style-element.html",
+      "description": "<style> in SVG with @import and url()",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 1
+      }
+    },
+    {
+      "id": "link-elements",
+      "category": "html",
+      "file": "link-elements.html",
+      "description": "<link> import, javascript: stylesheet and prefetch",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 2,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 1,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "dom-clobbering",
+      "category": "html",
+      "file": "dom-clobbering.html",
+      "description": "ids and names that clobber __proto__, constructor and DOM methods",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 1,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "attribute-breakout-fragment",
+      "category": "url",
+      "file": "attribute-breakout-fragment.html",
+      "description": "fragment hrefs carrying quote and tag breakouts",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 2,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "deep-nesting-bomb",
+      "category": "html",
+      "file": "deep-nesting-bomb.html",
+      "description": "120 levels of nesting",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "css-crlf-escape",
+      "category": "css",
+      "file": "css-crlf-escape.html",
+      "description": "CSS hex escape followed by CR LF hiding url( and @import",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 1,
+        "unsafeStylesRemoved": 2
+      }
+    },
+    {
+      "id": "beacon-attributes",
+      "category": "url",
+      "file": "beacon-attributes.html",
+      "description": "ping, attributionsrc and imagesrcset beacons",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 1,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 3,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "remote-description-attributes",
+      "category": "url",
+      "file": "remote-description-attributes.html",
+      "description": "longdesc, xml:base, itemid and manifest URLs",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 3,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "host-authority-attributes",
+      "category": "html",
+      "file": "host-authority-attributes.html",
+      "description": "commandfor, command, popovertarget and is acting on host elements",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 4,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "svg-animatecolor",
+      "category": "svg",
+      "file": "svg-animatecolor.html",
+      "description": "SVG animateColor rewriting href to javascript:",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 1,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "svg-href-subresources",
+      "category": "svg",
+      "file": "svg-href-subresources.html",
+      "description": "SVG pattern, filter, textPath and cursor href subresources",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "no-base-control-scheme",
+      "category": "url",
+      "file": "no-base-control-scheme.html",
+      "description": "control-character scheme obfuscation with no base URL",
+      "baseUrl": null,
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 2,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "css-comment-in-string",
+      "category": "css",
+      "file": "css-comment-in-string.html",
+      "description": "comment markers inside CSS strings or escaped, hiding url( and @import; older host-acting attributes",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 3,
+        "unsafeStylesRemoved": 3
+      }
+    },
+    {
+      "id": "css-continuation-comment",
+      "category": "css",
+      "file": "css-continuation-comment.html",
+      "description": "backslash-newline outside strings that a naive continuation strip turns into a comment start",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 3
+      }
+    }
+  ]
+}
