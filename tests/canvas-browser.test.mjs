@@ -15,7 +15,7 @@ const HARNESS = `<!doctype html><html><head><meta charset="utf-8"><style>html,bo
   window.commits = [];
   window.selections = [];
   window.canvas = await canvasModule.mountCanvas(document.getElementById("c"), {
-    onCommit: (operations, intent) => window.commits.push({ operations, intent }),
+    onCommit: (operations, intent, meta) => window.commits.push({ operations, intent, meta }),
     onSelect: (ids) => window.selections.push(ids),
   });
   window.worldToScreen = canvasModule.worldToScreen;
@@ -39,17 +39,18 @@ const baseDocument = () => createDocument({
   ],
 });
 
-async function harness() {
+async function harness(initial = baseDocument()) {
   const session = await launchPage({ extraRoutes: { "/harness.html": { status: 200, contentType: "text/html", body: HARNESS } } });
   await session.page.setViewportSize({ width: 900, height: 700 });
   await session.page.goto(`${TEST_ORIGIN}/harness.html`);
   await session.page.waitForFunction(() => window.ready === true);
-  let doc = baseDocument();
+  let doc = initial;
   await session.page.evaluate((d) => window.canvas.setDocument(d), doc);
   // Apply the canvas's latest commit through history, as the editor will through the host.
   const commit = async () => {
     const pending = await session.page.evaluate(() => window.commits.shift());
     assert.ok(pending, "the interaction produced a commit");
+    assert.equal(pending.meta.revision, doc.revision, "the commit names the revision it was computed from");
     const result = applyTransaction(doc, { id: `t${Math.random()}`, actor: "local-user", operations: pending.operations, intent: pending.intent });
     doc = result.document;
     const stats = await session.page.evaluate(({ d, affected }) => {
@@ -157,6 +158,104 @@ test("drag-move, resize, nudge and delete commit operations that re-render incre
     assert.equal(result.doc.nodes.title, undefined);
     assert.equal(await page.evaluate(() => window.canvas.renderer.elementFor("card")), null, "the deleted subtree is gone from the canvas");
     assert.deepEqual(await page.evaluate(() => window.canvas.selection), [], "the selection drops deleted nodes");
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.close();
+  }
+});
+
+const geometryDocument = () => createDocument({
+  id: "doc",
+  nodes: [
+    // The page's padding keeps the heading's margin from collapsing through it: taking a node
+    // out of flow reflows what is around it, which no placement can compensate for.
+    { id: "page", type: "frame", children: ["heading", "padded"], props: { tag: "main", style: { position: "relative", width: "600px", height: "400px", padding: "16px" } } },
+    { id: "heading", type: "text", parentId: "page", props: { tag: "h2", text: "Flow heading", style: { margin: "8px", width: "184px" } } },
+    { id: "padded", type: "element", parentId: "page", props: { tag: "section", style: { position: "absolute", left: "300px", top: "100px", width: "100px", height: "50px", padding: "10px", border: "2px solid #000" } } },
+  ],
+});
+const rectOf = (page, id) => page.evaluate((nodeId) => {
+  const rect = window.canvas.renderer.elementFor(nodeId).getBoundingClientRect();
+  return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+}, id);
+
+test("moves and resizes commit the geometry the user saw, for margins, padding and borders", browserTestOptions(), async () => {
+  const h = await harness(geometryDocument());
+  try {
+    const { page } = h;
+    // A flow heading with a margin, dragged by (10, 0): it moves by exactly that, keeping its size.
+    const before = await rectOf(page, "heading");
+    const start = await page.evaluate(() => window.screenOf("heading"));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 5, start.y, { steps: 2 });
+    await page.mouse.move(start.x + 10, start.y, { steps: 2 });
+    await page.mouse.up();
+    let result = await h.commit();
+    assert.equal(result.intent, "Move layer");
+    const after = await rectOf(page, "heading");
+    assert.deepEqual([after.x - before.x, after.y - before.y, after.width, after.height], [10, 0, before.width, before.height], "the margined flow node lands where it was dragged, at its size");
+    // A padded, bordered box resized by (20, 10) from the handle grows by exactly that.
+    await page.evaluate(() => window.canvas.select(["padded"]));
+    const padded = await rectOf(page, "padded");
+    const handle = await page.evaluate(() => {
+      const rect = document.querySelector("[data-lilac-handle]").getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.move(handle.x, handle.y);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + 20, handle.y + 10, { steps: 4 });
+    await page.mouse.up();
+    result = await h.commit();
+    assert.equal(result.doc.nodes.padded.props.style.width, "120px");
+    assert.equal(result.doc.nodes.padded.props.style.height, "60px");
+    const grown = await rectOf(page, "padded");
+    assert.deepEqual([grown.width - padded.width, grown.height - padded.height], [20, 10]);
+    assert.deepEqual(h.errors, []);
+  } finally {
+    await h.close();
+  }
+});
+
+test("cancelled, abandoned and tiny drags never commit or leave a preview behind", browserTestOptions(), async () => {
+  const h = await harness();
+  try {
+    const { page } = h;
+    const card = await page.evaluate(() => window.screenOf("card"));
+    // A click with a 1px jitter selects and commits nothing.
+    await page.mouse.move(card.x, card.y + 30);
+    await page.mouse.down();
+    await page.mouse.move(card.x + 1, card.y + 30);
+    await page.mouse.up();
+    assert.deepEqual(await page.evaluate(() => window.canvas.selection), ["card"]);
+    assert.equal(await page.evaluate(() => window.commits.length), 0, "a jittered click is not a move");
+    // A cancelled pointer abandons the drag: the preview is cleared and a later hover does nothing.
+    await page.mouse.down();
+    await page.mouse.move(card.x + 60, card.y + 60, { steps: 3 });
+    await page.evaluate(() => window.canvas.stage.dispatchEvent(new PointerEvent("pointercancel", { pointerId: 1, bubbles: true })));
+    await page.mouse.up();
+    await page.mouse.move(card.x + 120, card.y + 90, { steps: 3 });
+    assert.equal(await page.evaluate(() => window.canvas.renderer.elementFor("card").style.translate), "", "no preview after a cancel");
+    assert.equal(await page.evaluate(() => window.commits.length), 0, "a cancelled drag commits nothing");
+    // A resize released outside the stage still ends, and commits, because the stage holds capture.
+    const handle = await page.evaluate(() => {
+      const rect = document.querySelector("[data-lilac-handle]").getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.move(handle.x, handle.y);
+    await page.mouse.down();
+    await page.mouse.move(870, 680, { steps: 5 }); // past the stage's right and bottom edges
+    await page.mouse.up();
+    const result = await h.commit();
+    assert.equal(result.intent, "Resize layer");
+    assert.equal(await page.evaluate(() => window.commits.length), 0);
+    const width = await page.evaluate(() => window.canvas.renderer.elementFor("card").style.width);
+    assert.equal(width, result.doc.nodes.card.props.style.width, "the element shows the committed size, not a stale preview");
+    // A right-click neither selects nor arms a drag.
+    await page.keyboard.press("Escape");
+    const badge = await page.evaluate(() => window.screenOf("badge"));
+    await page.mouse.click(badge.x, badge.y, { button: "right" });
+    assert.deepEqual(await page.evaluate(() => window.canvas.selection), []);
     assert.deepEqual(h.errors, []);
   } finally {
     await h.close();
