@@ -5,6 +5,7 @@ import {
   getNodeIndex,
   getSubtreeNodeIds,
   isDescendant,
+  jsonDataProblem,
   validateDocument,
   withSortedNodes,
 } from "../../document-model/src/index.mjs";
@@ -21,9 +22,16 @@ function cloneData(value) {
 }
 
 function assertPlainObject(value, label) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  const prototype = value === null || typeof value !== "object" ? undefined : Object.getPrototypeOf(value);
+  if (Array.isArray(value) || (prototype !== Object.prototype && prototype !== null)) {
     throw new TransactionError(`${label} must be a plain object`);
   }
+}
+
+function assertJsonData(value, label) {
+  assertPlainObject(value, label);
+  const problem = jsonDataProblem(value);
+  if (problem !== null) throw new TransactionError(`${label} ${problem}`);
 }
 
 function assertNonEmptyString(value, label) {
@@ -67,7 +75,7 @@ export function createTransaction({
   if (timestamp !== null && typeof timestamp !== "string") {
     throw new TransactionError("transaction.timestamp must be null or a string");
   }
-  assertPlainObject(metadata, "transaction.metadata");
+  assertJsonData(metadata, "transaction.metadata");
 
   return {
     id,
@@ -184,7 +192,7 @@ function applySetProps(document, operation) {
   const node = getNode(document, operation.nodeId);
   const set = operation.set ?? {};
   const unset = operation.unset ?? [];
-  assertPlainObject(set, "set-props.set");
+  assertJsonData(set, "set-props.set");
   if (!Array.isArray(unset) || unset.some((key) => typeof key !== "string" || key === "")) {
     throw new TransactionError("set-props.unset must be an array of non-empty strings");
   }
