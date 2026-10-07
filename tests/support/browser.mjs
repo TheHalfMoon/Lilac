@@ -3,6 +3,7 @@
 // Playwright browser cache. Locally a missing browser skips the test; in CI (CI=true) it fails.
 import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { extname, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,11 +13,10 @@ export const TEST_ORIGIN = "http://lilac.test";
 export function findBrowser() {
   // The Chromium build matched to playwright-core comes first; a system Chrome is the fallback.
   const candidates = [process.env.LILAC_TEST_BROWSER];
-  const cache = process.env.PLAYWRIGHT_BROWSERS_PATH ?? "/opt/pw-browsers";
-  if (existsSync(cache)) {
-    for (const name of readdirSync(cache).filter((entry) => /^chromium-\d+$/u.test(entry)).sort().reverse()) {
-      candidates.push(join(cache, name, "chrome-linux", "chrome"));
-    }
+  for (const cache of [process.env.PLAYWRIGHT_BROWSERS_PATH, "/opt/pw-browsers", join(homedir(), ".cache", "ms-playwright")]) {
+    if (typeof cache !== "string" || !existsSync(cache)) continue;
+    const builds = readdirSync(cache).filter((entry) => /^chromium-\d+$/u.test(entry)).sort((a, b) => Number(b.slice(9)) - Number(a.slice(9)));
+    for (const name of builds) candidates.push(join(cache, name, "chrome-linux", "chrome"));
   }
   candidates.push("/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser");
   return candidates.find((path) => typeof path === "string" && path !== "" && existsSync(path)) ?? null;

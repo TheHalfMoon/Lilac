@@ -71,7 +71,14 @@ The security and correctness judge found no script execution and no CSS network 
 - A trailing `!important` is applied as a priority.
 - A value the browser's CSS parser rejects is counted in `stats.dropped`.
 - The browser helper checks route confinement on the decoded, normalized path. `..%2f` no longer escapes `packages/*/src/`.
-- The helper prefers the Chromium build matched to `playwright-core`, falling back to a system Chrome.
+- The helper prefers a Playwright-cached Chromium build, sorted numerically and searched in `PLAYWRIGHT_BROWSERS_PATH`, `/opt/pw-browsers` and `~/.cache/ms-playwright`. It falls back to a system Chrome, which is what GitHub's runners provide.
 - New test 6: a seeded 300-step random sequence of inserts, moves, removes, props changes and tag changes. After every step, the patched DOM equals a fresh render and the identity map size.
 
 **Consumer contract:** `data-*` and `aria-*` values pass through unchecked. They are inert in the frame, and editor code must never read them as URLs or markup.
+
+## Review delta 2
+
+The re-review found no must-fix. It confirmed the fixes by probe: zero requests on link clicks, `viewBox.baseVal` applied, and 1,070 fuzz steps, including namespace flips, with zero mismatches and no leak. Taken:
+- **Test 6 isolation.** It compared each patch with a fresh render of the same renderer, so accumulated drift could not show. A separate reference renderer now renders each state, and the renderer under test only ever patches. The test also requires at least 200 applied steps.
+- **Rendered form controls held renderer-only state.** Typing changed an input's value outside the document. The canvas root is now `inert`, so rendered controls cannot be focused or edited. Editing happens through the editor (PC3, PC4). Test 1 asserts it, and its link check now clicks at the link's screen position, because inert content receives no events.
+- **Counting.** A rebuilt element counts as created.

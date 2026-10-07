@@ -137,7 +137,7 @@ export const FRAME_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-i
 export const FRAME_SANDBOX = "allow-same-origin";
 
 export function frameSrcdoc() {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}"><style>html,body{margin:0;padding:0}body{font-family:system-ui,sans-serif}[data-lilac-root]{position:relative;min-height:100vh}a[data-lilac-href]{color:LinkText;text-decoration:underline}</style></head><body><div data-lilac-root></div></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}"><style>html,body{margin:0;padding:0}body{font-family:system-ui,sans-serif}[data-lilac-root]{position:relative;min-height:100vh}a[data-lilac-href]{color:LinkText;text-decoration:underline}</style></head><body><div data-lilac-root inert></div></body></html>`;
 }
 
 /**
@@ -284,7 +284,6 @@ export function createRenderer(root) {
           if (element.localName !== plan.tag || element.namespaceURI !== namespace) {
             // A changed tag or namespace needs a new element; its children move across.
             target = build(node);
-            stats.created -= 1;
             for (const child of [...element.childNodes]) if (!child.__lilacText) target.appendChild(child);
             element.replaceWith(target);
           } else {

@@ -77,10 +77,11 @@ test("renders web semantics with stable identity inside a script-free sandbox", 
 
     // Clicking or keyboard-activating a rendered link runs no script, makes no request, and
     // leaves the canvas document in place.
-    const link = page.frameLocator("iframe").locator("a");
-    await link.click({ timeout: 2000 });
-    await link.click({ timeout: 2000, button: "middle" });
-    await link.focus().catch(() => {});
+    // The rendered content is inert, so a real pointer at the link's position is the test.
+    const box = await page.frameLocator("iframe").locator("a").boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: "middle" });
+    await page.keyboard.press("Tab");
     await page.keyboard.press("Enter");
     await page.waitForTimeout(200);
     const after = await page.evaluate(() => ({
@@ -89,6 +90,7 @@ test("renders web semantics with stable identity inside a script-free sandbox", 
       href: window.frame.contentDocument?.querySelector("a")?.getAttribute("href") ?? null,
     }));
     assert.deepEqual(after, { hacked: false, alive: true, href: null });
+    assert.equal(await page.evaluate(() => window.frame.contentDocument.querySelector("[data-lilac-root]").inert), true, "rendered controls are not interactive");
     assert.equal(session.requests.filter((url) => url.includes("example.com")).length, 0, "the link target was never requested");
     assert.equal(new URL(page.url()).pathname, "/harness.html");
     assert.deepEqual(session.errors, []);
@@ -267,7 +269,15 @@ test("patching agrees with a fresh render over a seeded random edit sequence", b
     const pick = (items) => items[Math.floor(random() * items.length)];
     const TAGS = ["div", "section", "p", "span", "h2", "ul", "li", "svg"];
     let doc = createDocument({ id: "fuzz", nodes: [{ id: "root", type: "frame", props: { tag: "main" } }] });
-    await page.evaluate((d) => window.r.render(d), doc);
+    // The renderer under test only ever patches; a separate reference renderer renders each
+    // state from scratch, so drift that builds up across patches is caught.
+    await page.evaluate((d) => {
+      const host = window.frame.contentDocument.createElement("div");
+      window.frame.contentDocument.body.appendChild(host);
+      window.reference = { host, renderer: window.lilacRenderer.createRenderer(host) };
+      window.r.render(d);
+    }, doc);
+    let applied = 0;
     let next = 0;
     let mismatches = 0;
     for (let step = 0; step < 300; step += 1) {
@@ -291,17 +301,17 @@ test("patching agrees with a fresh render over a seeded random edit sequence", b
         continue; // an operation history refuses changes nothing
       }
       doc = result.document;
+      applied += 1;
       const same = await page.evaluate(({ d, affected }) => {
         window.r.patch(d, affected);
+        window.reference.renderer.render(d);
         const root = window.frame.contentDocument.querySelector("[data-lilac-root]");
-        const patched = root.innerHTML;
-        const mapped = window.r.size;
-        window.r.render(d);
-        return patched === root.innerHTML && mapped === window.r.size;
+        return root.innerHTML === window.reference.host.innerHTML && window.r.size === window.reference.renderer.size && window.r.size === Object.keys(d.nodes).length;
       }, { d: doc, affected: result.affectedNodeIds });
       if (!same) mismatches += 1;
     }
-    assert.equal(mismatches, 0, "every patch matched a fresh render and the identity map size");
+    assert.ok(applied >= 200, `${applied} random steps applied`);
+    assert.equal(mismatches, 0, "every accumulated patch matched a fresh render and the identity map size");
   } finally {
     await session.close();
   }
