@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,8 +20,14 @@ const byId = new Map(register.entries.map((entry) => [entry.id, entry]));
 // CC0 (public-domain dedication) and OFL (fonts). Anything else must stay reference-only.
 const policy = JSON.parse(read("scripts/license-policy.json"));
 const PERMISSIVE = new Set([...policy.allowed, "CC0-1.0", "OFL-1.1"]);
-// Kinds that are never distributed with Lilac, so their own licenses impose nothing on it.
+// Optional runtime components are never distributed with Lilac. They may be compatible under
+// a permissive license or when explicitly marked NOT-DISTRIBUTED, and under nothing else.
 const NOT_DISTRIBUTED = new Set(["optional-runtime"]);
+const distributedOrPermissive = (entry) => PERMISSIVE.has(entry.license) || (NOT_DISTRIBUTED.has(entry.kind) && entry.license.startsWith("NOT-DISTRIBUTED"));
+// GitHub projects tracked files may link to that are registered under another id, or are
+// not incorporated at all (the upstream of an upstream; an optional local dev tool).
+const URL_ALIASES = { "inikulin/parse5": "parse5", "fb55/entities": "entities" };
+const URL_NOT_INCORPORATED = new Set(["ehmo/platform-design-skills", "trailhq/Graft", "owner/repo"]); // owner/repo: the placeholder in docs
 // owner/name literals that are not upstream projects: rule ids, MIME types, and Lilac paths.
 const NOT_DONORS = /^(a11y|lilac-mobile-method|application|text|packages|internal|LilacImportStack)\//u;
 const PATH_LIKE = /\.(ts|mts|mjs|js|cjs|json|md|ya?ml|tsx|jsx|css|html?|txt|svg|png|go|py|rs|toml|lock|sh)$/iu;
@@ -74,12 +81,27 @@ test("every upstream project named anywhere in package sources or the donor ledg
   for (const name of named) assert.ok(byId.has(name), `${name} is registered`);
 });
 
+test("every GitHub project linked from any tracked file is registered", () => {
+  const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" }).split("\0").filter(Boolean);
+  const linked = new Set();
+  for (const path of tracked) {
+    const full = join(ROOT, path);
+    if (!existsSync(full)) continue;
+    for (const [, name] of readFileSync(full, "utf8").matchAll(/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/gu)) linked.add(name.replace(/\.git$/u, "").replace(/[.,)]+$/u, ""));
+  }
+  assert.ok(linked.size >= 8, `found ${linked.size} linked projects`);
+  for (const name of linked) {
+    if (URL_NOT_INCORPORATED.has(name)) continue;
+    assert.ok(byId.has(URL_ALIASES[name] ?? name), `${name} is linked from the repository and must be registered`);
+  }
+});
+
 test("only permissively licensed material is ever treated as compatible code", () => {
   for (const entry of register.entries) {
-    if (entry.compatible !== "yes" || NOT_DISTRIBUTED.has(entry.kind)) continue;
-    assert.ok(PERMISSIVE.has(entry.license), `${entry.id} is compatible only under a permissive license (has ${entry.license})`);
+    if (entry.compatible !== "yes") continue;
+    assert.ok(distributedOrPermissive(entry), `${entry.id} is compatible only under a permissive license (has ${entry.license})`);
   }
-  for (const entry of register.entries.filter((item) => !PERMISSIVE.has(item.license) && !NOT_DISTRIBUTED.has(item.kind))) {
+  for (const entry of register.entries.filter((item) => !distributedOrPermissive(item))) {
     assert.ok(["reference-only", "proprietary-authorized"].includes(entry.kind), `${entry.id} (${entry.license}) is reference-only or proprietary`);
     assert.notEqual(entry.compatible, "yes", `${entry.id} is not declared compatible`);
   }

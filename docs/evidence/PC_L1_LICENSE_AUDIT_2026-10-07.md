@@ -55,11 +55,13 @@ For each item, the use was taken from the repository's own provenance records an
 
 **Paper.design** is proprietary. `docs/provenance/PAPER_AUTHORIZATION.md` records that the owner has full permission to use, copy and modify the Paper source for Lilac. It does not address distribution or sublicensing, which an Apache-2.0 grant passes on to every recipient.
 
-The repository has never committed Paper source: no commit in the full history touches an `imports/` path. This was checked on 2026-10-07 after `git fetch --unshallow`, across 393 commits. The committed Paper-derived material is metadata only:
+The repository has never committed Paper source: no commit in the full history touches an `imports/` path. This was checked on 2026-10-07 after `git fetch --unshallow`, across 393 commits on all refs. The committed Paper-derived material is metadata only:
 - the `docs/evidence/PAPER_*` recovery evidence and census JSON;
 - `scripts/census-paper-asar.py`;
 - `scripts/import-authorized-paper.mjs`, never used for a commit;
-- the three `paper-public-*-census` workflows, which download public Paper builds in CI and upload metadata-only artifacts. But Lilac does carry Paper-derived interface facts and behaviour, written in Lilac's own code:
+- the three `paper-public-*-census` workflows, which download public Paper builds in CI and upload metadata-only artifacts.
+
+But Lilac does carry Paper-derived interface facts and behaviour, written in Lilac's own code:
 - the 36 public MCP tool names and their classification (`packages/mcp-protocol/src/paper-tools.mjs`);
 - behaviour compatibility in `collaboration` and `import-stack`, written after studying recovered runtime evidence.
 
@@ -85,7 +87,7 @@ The judge re-fetched every upstream file and confirmed every recorded hash. The 
 
 - **Notices.** Every register entry must now be named in `THIRD_PARTY_NOTICES.md`; the previous opt-in field is gone. New sections cover Paper.design (authorization, compatibility-only, names and marks not licensed), `vcashwin/paper-snapshot` and the `paper-design/*` references. Impeccable's upstream NOTICE and Unreal Agent's MIT text are now reproduced verbatim.
 - **Completeness.** The scan now covers every file under `packages/` recursively, plus both donor ledgers. It matches any quoted or backticked `owner/name` literal under any key, and excludes an explicit list of non-donor prefixes. The judge's escapes (an unusual key, a nested file, a `.js` file, a ledger bullet) now fail. `paper-design/paper` is registered.
-- **Compatibility rule.** `compatible: yes` now requires a license on the allowlist, which is `scripts/license-policy.json` plus CC0-1.0 and OFL-1.1. The test no longer uses a copyleft denylist, so PolyForm, BUSL or NC licenses can no longer pass.
+- **Compatibility rule.** `compatible: yes` now requires a license on the allowlist, which is `scripts/license-policy.json` plus CC0-1.0 and OFL-1.1. The test no longer uses a copyleft denylist, so PolyForm, BUSL or NC licenses can no longer pass. Delta 2 closes the remaining exemption: an optional runtime component may be compatible only under a permissive license or when explicitly marked `NOT-DISTRIBUTED`. It also adds a scan of every tracked file for `github.com/owner/repo` links, which catches donor names that look like file names (`three.js`), links in comments, and links in `scripts/`.
 - **Accuracy.**
   - `liquid-logo` is PolyForm Shield 1.0.0.
   - Website-downloader is a concept-adaptation code donor, citing the Grain 6 evidence.
