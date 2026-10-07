@@ -57,11 +57,19 @@ function describeError(error) {
 }
 
 /** Show a modal dialog; `build(close)` returns its content. Focus returns where it was. */
-function showDialog(title, build, { dismissable = true } = {}) {
+// The one modal dialog is shared by every flow. Each showing gets a generation, so a flow
+// closes only its own dialog, and is told (onReplaced) when another flow takes it over.
+let dialogGeneration = 0;
+let onDialogReplaced = null;
+function showDialog(title, build, { dismissable = true, onReplaced = null } = {}) {
   const dialog = $("dialog");
   const returnFocus = document.activeElement;
+  const generation = ++dialogGeneration;
+  const replaced = onDialogReplaced;
+  onDialogReplaced = onReplaced;
+  if (dialog.open) replaced?.();
   const close = () => {
-    if (dialog.open) dialog.close();
+    if (dialogGeneration === generation && dialog.open) dialog.close();
   };
   dialog.replaceChildren(el("h2", { id: "dialog-title" }, title), el("div", { id: "dialog-body" }, build(close)));
   dialog.oncancel = (event) => {
@@ -208,6 +216,7 @@ async function openAgentsDialog() {
   showDialog("Agents", (close) => {
     const error = el("p", { class: "error", role: "alert" });
     const name = el("input", { id: "agent-name", name: "agentName", autocomplete: "off", maxlength: 60 });
+    const problem = listing.problem ? el("p", { class: "error" }, `The list of connected agents could not be read (${listing.problem}), so none is connected. Connect them again.`) : null;
     const list = listing.agents.length === 0
       ? el("p", {}, loadError ?? "No agents are connected. A connected agent can read and edit the open project through MCP; every change it makes is attributed to it and can be undone, and it must ask you before deleting anything.")
       : el("ul", { class: "project-list", "aria-label": "Connected agents" }, listing.agents.map((agent) => el("li", { class: "agent-row" },
@@ -242,7 +251,7 @@ async function openAgentsDialog() {
     },
     el("label", { for: "agent-name" }, "Agent name (for example, the MCP client's name)", name),
     el("div", { class: "actions" }, el("button", { type: "submit", class: "primary" }, "Connect agent")));
-    return [list, form, error, el("div", { class: "actions" }, el("button", { type: "button", onclick: close }, "Close"))];
+    return [problem, list, form, error, el("div", { class: "actions" }, el("button", { type: "button", onclick: close }, "Close"))];
   });
 }
 
@@ -263,12 +272,14 @@ function showAgentCredential({ agent, token, mcpUrl }) {
 }
 
 let confirming = null;
+let closeConfirmation = null;
 function showConfirmations(pending) {
   state.confirmations = pending;
   if (confirming !== null && !pending.some((item) => item.id === confirming)) {
     // The request was withdrawn (it expired, or its agent or project went away).
     confirming = null;
-    closeDialog();
+    closeConfirmation?.();
+    closeConfirmation = null;
   }
   const next = pending[0];
   if (next === undefined || confirming === next.id) return;
@@ -278,7 +289,7 @@ function showConfirmations(pending) {
     return;
   }
   confirming = next.id;
-  showDialog(`${next.agentName} asks for your approval`, (close) => {
+  closeConfirmation = showDialog(`${next.agentName} asks for your approval`, (close) => {
     const error = el("p", { class: "error", role: "alert" });
     // Close only this request's dialog: by the time the decision is answered, the dialog may
     // already show the next request.
@@ -307,7 +318,15 @@ function showConfirmations(pending) {
         el("button", { type: "button", onclick: () => decide(false) }, "Decline"),
         el("button", { type: "button", class: "danger", onclick: () => decide(true) }, "Approve")),
     ];
-  }, { dismissable: false });
+  }, {
+    dismissable: false,
+    // Another flow took the dialog over: show this request again once that one closes.
+    onReplaced: () => {
+      confirming = null;
+      closeConfirmation = null;
+      $("dialog").addEventListener("close", () => showConfirmations(state.confirmations), { once: true });
+    },
+  });
 }
 
 let selectionTimer = null;

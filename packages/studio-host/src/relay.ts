@@ -29,11 +29,25 @@ export function discoverMcpUrl(projectsRoot: string): string {
   try {
     const entry = lstatSync(path);
     if (!entry.isFile() || entry.size > 4096) throw new Error("not a small regular file");
+    // Only a file this user wrote: another local user could otherwise point the relay, and
+    // the agent credential it sends, at their own server.
+    if (typeof process.getuid === "function" && entry.uid !== process.getuid()) throw new Error("not this user's");
     info = JSON.parse(readFileSync(path, "utf8"));
   } catch {
     throw new Error("Lilac is not running for this projects folder (start Lilac first)");
   }
+  // A file left by a Lilac that crashed names a port someone else may now hold.
+  if (!Number.isSafeInteger(info?.pid) || info.pid <= 0 || !processAlive(info.pid)) throw new Error("Lilac is not running for this projects folder (start Lilac first)");
   return assertLoopbackUrl(info?.mcpUrl);
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException)?.code === "EPERM";
+  }
 }
 
 export function assertLoopbackUrl(value: unknown): string {

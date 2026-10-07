@@ -18,6 +18,7 @@ export const MCP_PROTOCOL_VERSIONS = Object.freeze(["2025-06-18", "2025-03-26", 
 const SERVER_INFO = Object.freeze({ name: "lilac", title: "Lilac", version: "0.0.0" });
 const MAX_RESULT_NODES = 500;
 const MAX_TREE_DEPTH = 12;
+const MAX_DUPLICATED_NODES = 5_000;
 // How long a consequential call waits for the person before answering "still pending".
 export const CONFIRMATION_WAIT_MS = 50_000;
 // How long a request, or an approval not yet used by a retry, stays valid.
@@ -87,14 +88,35 @@ const TOOLS: Tool[] = [
       const document = session.document as any;
       const depth = Math.min(MAX_TREE_DEPTH, Math.max(1, Number.isInteger(args.depth) ? args.depth : 3));
       let budget = MAX_RESULT_NODES;
+      let truncated = false;
+      // Depth-first, taking one node of the budget per node shown and stopping when it runs out.
       const walk = (id: string, level: number): Json => {
         budget -= 1;
         const node = document.nodes[id];
-        const children = level < depth && budget > 0 ? node.children.filter(() => budget > 0).map((child: string) => walk(child, level + 1)) : undefined;
-        return { ...summary(node), ...(children ? { children } : {}) };
+        const out: Record<string, Json> = summary(node);
+        if (level < depth && node.children.length > 0) {
+          const children: Json[] = [];
+          for (const child of node.children) {
+            if (budget <= 0) {
+              truncated = true;
+              break;
+            }
+            children.push(walk(child, level + 1));
+          }
+          out.children = children;
+        }
+        return out;
       };
       const roots = args.nodeId === undefined ? document.rootIds : [nodeOf(session, args.nodeId).id];
-      return { revision: session.revision, tree: roots.filter(() => budget > 0).map((id: string) => walk(id, 1)), truncated: budget <= 0 };
+      const tree: Json[] = [];
+      for (const id of roots) {
+        if (budget <= 0) {
+          truncated = true;
+          break;
+        }
+        tree.push(walk(id, 1));
+      }
+      return { revision: session.revision, tree, truncated };
     },
   },
   {
@@ -261,8 +283,14 @@ const TOOLS: Tool[] = [
       const document = session.document as any;
       const operations: unknown[] = [];
       const copies: Record<string, string> = {};
-      for (const id of strings(args.nodeIds, "nodeIds")) {
-        const root = nodeOf(session, id);
+      const ids = [...new Set(strings(args.nodeIds, "nodeIds"))].map((id) => nodeOf(session, id).id);
+      const siblingsOf = (node: any) => (node.parentId === null ? document.rootIds : document.nodes[node.parentId].children);
+      // Later siblings first, so each copy's index (just after its original) is not shifted
+      // by the copies inserted before it.
+      ids.sort((a, b) => siblingsOf(document.nodes[b]).indexOf(b) - siblingsOf(document.nodes[a]).indexOf(a));
+      let copied = 0;
+      for (const id of ids) {
+        const root = document.nodes[id];
         const fresh = new Map<string, string>();
         const order: string[] = [];
         const collect = (nodeId: string) => {
@@ -271,6 +299,8 @@ const TOOLS: Tool[] = [
           for (const child of document.nodes[nodeId].children) collect(child);
         };
         collect(root.id);
+        copied += order.length;
+        if (copied > MAX_DUPLICATED_NODES) throw new ToolError(`at most ${MAX_DUPLICATED_NODES} layers may be copied in one call`);
         const siblings = root.parentId === null ? document.rootIds : document.nodes[root.parentId].children;
         operations.push({
           type: "restore-subtree",
@@ -332,11 +362,13 @@ export interface PendingConfirmation {
   requestedAt: string;
 }
 
+type Decision = { outcome: "approved"; confirmedAt: string } | { outcome: "denied" | "timeout" | "busy" };
+
 interface ConfirmationState extends PendingConfirmation {
   expires: number;
   decision: "pending" | "approved" | "denied";
   confirmedAt?: string;
-  waiters: Array<(decision: "approved" | "denied") => void>;
+  waiters: Array<(decision: Decision) => void>;
 }
 
 /**
@@ -369,24 +401,31 @@ export class ConfirmationBroker {
     return null;
   }
 
-  /** Ask the person, reusing an identical open request; resolves with their decision or "timeout". */
-  request(input: Omit<PendingConfirmation, "id" | "requestedAt">, at: string, waitMs: number): Promise<"approved" | "denied" | "timeout"> {
+  /**
+   * Ask the person, reusing an identical open request. Resolves with their decision (an
+   * approval carries its time), "timeout", or "busy" when too many requests are waiting:
+   * at most 20 in all, 5 per agent, and 4 calls waiting on one request.
+   */
+  request(input: Omit<PendingConfirmation, "id" | "requestedAt">, at: string, waitMs: number): Promise<Decision> {
     this.#prune();
     let item = [...this.#items.values()].find((candidate) => candidate.decision === "pending" && candidate.agentId === input.agentId && candidate.toolName === input.toolName && candidate.documentId === input.documentId && candidate.argumentsSha256 === input.argumentsSha256);
     if (item === undefined) {
-      if (this.pending().length >= 20) return Promise.resolve("denied");
+      const pending = this.pending();
+      if (pending.length >= 20 || pending.filter((other) => other.agentId === input.agentId).length >= 5) return Promise.resolve({ outcome: "busy" });
       item = { ...input, id: `confirm-${randomUUID()}`, requestedAt: at, expires: Date.now() + CONFIRMATION_TTL_MS, decision: "pending", waiters: [] };
       this.#items.set(item.id, item);
       this.#notify(this.pending());
+    } else if (item.waiters.length >= 4) {
+      return Promise.resolve({ outcome: "busy" });
     }
     const target = item;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         target.waiters = target.waiters.filter((waiter) => waiter !== done);
-        resolve("timeout");
+        resolve({ outcome: "timeout" });
       }, waitMs);
       timer.unref?.();
-      const done = (decision: "approved" | "denied") => {
+      const done = (decision: Decision) => {
         clearTimeout(timer);
         resolve(decision);
       };
@@ -394,19 +433,23 @@ export class ConfirmationBroker {
     });
   }
 
-  /** The person's decision, made in the editor. */
+  /**
+   * The person's decision, made in the editor. An approval serves the calls waiting on the
+   * request; if none is waiting (they timed out), it is kept for one identical retry.
+   */
   decide(id: unknown, approve: boolean, at: string): void {
     this.#prune();
     const item = typeof id === "string" ? this.#items.get(id) : undefined;
     if (item === undefined || item.decision !== "pending") throw new StudioError(404, "confirmation-not-found", "that request is no longer waiting for a decision");
-    if (approve) {
+    const waiters = item.waiters.splice(0);
+    if (approve && waiters.length === 0) {
       item.decision = "approved";
       item.confirmedAt = at;
       item.expires = Date.now() + CONFIRMATION_TTL_MS;
     } else {
       this.#items.delete(item.id);
     }
-    for (const waiter of item.waiters.splice(0)) waiter(approve ? "approved" : "denied");
+    for (const waiter of waiters) waiter(approve ? { outcome: "approved", confirmedAt: at } : { outcome: "denied" });
     this.#notify(this.pending());
   }
 
@@ -416,7 +459,7 @@ export class ConfirmationBroker {
     for (const [id, item] of this.#items) {
       if (match(item)) {
         this.#items.delete(id);
-        for (const waiter of item.waiters.splice(0)) waiter("denied");
+        for (const waiter of item.waiters.splice(0)) waiter({ outcome: "denied" });
         changed = true;
       }
     }
@@ -427,7 +470,7 @@ export class ConfirmationBroker {
     for (const [id, item] of this.#items) {
       if (item.expires < Date.now()) {
         this.#items.delete(id);
-        for (const waiter of item.waiters.splice(0)) waiter("denied");
+        for (const waiter of item.waiters.splice(0)) waiter({ outcome: "denied" });
       }
     }
   }
@@ -529,17 +572,27 @@ async function confirm(context: McpContext, session: StudioSession, actor: Studi
   const key = { agentId: actor.actorId, toolName, documentId: session.documentId, argumentsSha256 };
   const approvedAt = context.confirmations.takeApproval(key);
   if (approvedAt !== null) return { documentId: session.documentId, toolName, argumentsSha256, actorId: actor.ownerActorId!, confirmedAt: approvedAt };
-  const ids = Array.isArray((args as any)?.nodeIds) ? (args as any).nodeIds.filter((id: unknown) => typeof id === "string") : [];
+  const ids = Array.isArray((args as any)?.nodeIds) ? [...new Set((args as any).nodeIds.filter((id: unknown) => typeof id === "string"))] as string[] : [];
   const document = session.document as any;
-  const names = ids.slice(0, 5).map((id: string) => {
+  // What the person is shown: each layer's name or text and its kind, and how many layers
+  // inside it go with it, from the document (an agent controls names, not structure).
+  const describeNode = (id: string) => {
     const node = Object.hasOwn(document.nodes, id) ? document.nodes[id] : null;
-    return node ? (typeof node.props?.name === "string" ? node.props.name : typeof node.props?.text === "string" ? `“${node.props.text.slice(0, 30)}”` : node.props?.tag ?? node.type) : "(missing layer)";
-  });
-  const summary = `${toolName === "delete_nodes" ? "Delete" : toolName} ${ids.length} layer${ids.length === 1 ? "" : "s"}: ${names.join(", ")}${ids.length > 5 ? ", …" : ""}`;
-  const outcome = await context.confirmations.request({ ...key, agentName: actor.displayName, summary }, at, context.confirmationWaitMs ?? CONFIRMATION_WAIT_MS);
-  if (outcome === "denied") return "The person declined this change.";
-  if (outcome === "timeout") return "Waiting for the person to approve this in Lilac. Call again with the same arguments once they have.";
-  const confirmedAt = context.confirmations.takeApproval(key);
-  if (confirmedAt === null) return "The approval is no longer available. Call again.";
-  return { documentId: session.documentId, toolName, argumentsSha256, actorId: actor.ownerActorId!, confirmedAt };
+    if (node === null) return "(missing layer)";
+    const label = typeof node.props?.name === "string" ? node.props.name : typeof node.props?.text === "string" ? `“${node.props.text.slice(0, 30)}”` : null;
+    const kind = typeof node.props?.tag === "string" ? node.props.tag : node.type;
+    let inside = -1;
+    const stack = [id];
+    while (stack.length > 0) {
+      inside += 1;
+      stack.push(...document.nodes[stack.pop()!].children);
+    }
+    return `${label === null ? kind : `${label} (${kind})`}${inside > 0 ? ` with ${inside} layer${inside === 1 ? "" : "s"} inside` : ""}`;
+  };
+  const summary = `${toolName === "delete_nodes" ? "Delete" : toolName} ${ids.length} layer${ids.length === 1 ? "" : "s"}: ${ids.slice(0, 5).map(describeNode).join(", ")}${ids.length > 5 ? ", …" : ""}`;
+  const decision = await context.confirmations.request({ ...key, agentName: actor.displayName, summary }, at, context.confirmationWaitMs ?? CONFIRMATION_WAIT_MS);
+  if (decision.outcome === "denied") return "The person declined this change.";
+  if (decision.outcome === "busy") return "Too many changes are already waiting for the person's approval. Wait for them to decide, then call again.";
+  if (decision.outcome === "timeout") return "Waiting for the person to approve this in Lilac. Call again with the same arguments once they have.";
+  return { documentId: session.documentId, toolName, argumentsSha256, actorId: actor.ownerActorId!, confirmedAt: decision.confirmedAt };
 }

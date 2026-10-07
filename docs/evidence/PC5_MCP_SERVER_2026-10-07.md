@@ -55,7 +55,7 @@ PC5 adds Lilac's local MCP server inside the studio host, with a stdio relay. It
 
 ## Tests
 
-**`tests/mcp-server.test.mjs`** (Node, 6 tests):
+**`tests/mcp-server.test.mjs`** (Node, 9 tests; tests 7 to 9 were added in review delta 1):
 1. **Agents.**
    - Invalid names are refused, and the credential is shown once and is absent from the listing and the registry (mode 0600).
    - `/mcp` refuses no credential, the editor's token, a wrong credential, GET, and a foreign Origin.
@@ -99,3 +99,38 @@ This test also found and fixed two real defects:
 
 - **`mcp-surface`** keeps its owner, `@lilac/mcp-protocol`, and now depends on `studio-host`. It stays `stub`, because 15 of 36 tools are implemented: screenshots, JSX export, tokens, comments and HTML import are later grains (PC6 brings code and import).
 - **`studio-host`** now names the editor and the MCP endpoint.
+
+## Review delta 1
+
+The security and correctness judge found the #82 obligations met:
+- every `tools/call` is authorized before dispatch, and again after confirmation;
+- the actor comes only from the credential, and the confirmation only from the host's broker;
+- the workspace tools stay denied.
+
+It also confirmed that agent tokens are refused on `/api/*`, that revert is person-only, that style values stay inside the renderer's filters, and that the 50 s wait survives the 30 s request timeout. It found one must-fix, now fixed.
+
+**Fixed:** `get_tree_summary` ignored its 500-node cap, because the cap was checked before any of it was spent. The walk now stops when the budget runs out. Test 7 sends a frame with 700 children and gets exactly 500 nodes, with `truncated` set.
+
+**Also taken:**
+- **Honest approvals.** The summary the person sees is built from the document, not from names alone. It gives each layer's kind and how many layers inside it go with it, for example "Delete 1 layer: Landing (main) with 3 layers inside". An agent can rename a layer, but cannot hide what deleting it removes.
+- **Bounded waiting.**
+  - At most 20 requests may wait, 5 per agent, and 4 calls on one request.
+  - Beyond that, the agent is told "too many changes are already waiting", not that the person declined.
+  - One approval serves every identical call waiting at the time, so the person is not asked twice. It is kept for one retry only when nobody was waiting.
+- **Reconnects.** A newly opened event stream starts with the pending requests, so an editor that reconnects shows them again.
+- **Dialog ownership in the editor.** Each showing of the shared dialog has a generation, and a flow closes only its own. A confirmation that another dialog takes over is shown again once that dialog closes.
+- **Duplicates.** Copies land right after their originals, in sibling order. Repeated ids are copied once, and one call may copy at most 5,000 layers; the bound is checked before any work.
+- **The registry.**
+  - A damaged registry no longer stops Lilac from starting. It is set aside, no agent is connected, and the Agents dialog says so.
+  - Saves are fsynced before the rename.
+  - The registry is trusted only if this user owns it and no one else can write it.
+- **The relay** follows a discovery file only if this user owns it and its process is still running. A file left by a crashed Lilac could otherwise send the credential to whatever now holds that port.
+
+**New tests:**
+- **Test 7:** the tree cap; the order of duplicates and the deduplication of repeated ids; the copy bound, which commits nothing.
+- **Test 8:**
+  - two identical delete calls share one request, and one approval serves both;
+  - a newly opened stream reports the pending requests;
+  - a sixth request from the same agent is "busy";
+  - disconnecting the agent declines its waiting calls and clears the queue.
+- **Test 9:** a damaged registry is set aside, and Lilac starts with no agents and reports why. The discovery file is removed on close, and a stale one is refused.

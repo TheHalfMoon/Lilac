@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { StudioError } from "./errors.ts";
 import type { StudioActor } from "./session.ts";
@@ -35,10 +35,28 @@ export class AgentRegistry {
   readonly #owner: StudioActor;
   #agents: AgentRecord[];
 
+  /** Set when the registry could not be read; Lilac starts with no agents connected. */
+  readonly problem: string | null;
+
   constructor(projectsRoot: string, owner: StudioActor) {
     this.#path = join(projectsRoot, REGISTRY_FILE);
     this.#owner = owner;
-    this.#agents = readRegistry(this.#path);
+    let agents: AgentRecord[] = [];
+    let problem: string | null = null;
+    try {
+      agents = readRegistry(this.#path);
+    } catch (error) {
+      // A damaged registry must not stop Lilac: it is set aside (kept for inspection) and
+      // every agent has to be connected again. Failing closed means no agent gets access.
+      problem = error instanceof StudioError ? error.message : "the agent registry could not be read";
+      try {
+        renameSync(this.#path, `${this.#path}.unreadable-${Date.now()}`);
+      } catch {
+        // left in place; it is ignored until replaced by the next save
+      }
+    }
+    this.#agents = agents;
+    this.problem = problem;
   }
 
   list(): AgentSummary[] {
@@ -84,7 +102,13 @@ export class AgentRegistry {
   #save(next: AgentRecord[]): void {
     const temporary = `${this.#path}.${randomUUID()}.tmp`;
     try {
-      writeFileSync(temporary, `${JSON.stringify({ version: 1, agents: next }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+      const fd = openSync(temporary, "wx", 0o600);
+      try {
+        writeSync(fd, `${JSON.stringify({ version: 1, agents: next }, null, 2)}\n`);
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
       chmodSync(temporary, 0o600);
       renameSync(temporary, this.#path);
     } catch {
@@ -104,6 +128,10 @@ function readRegistry(path: string): AgentRecord[] {
   }
   // A link or anything but a small regular file is not trusted as the registry.
   if (!entry.isFile() || entry.size > 256 * 1024) throw new StudioError(500, "agents-unreadable", "the agent registry is not a regular file");
+  // Only a registry this user owns, and that no one else can write, is trusted.
+  if (typeof process.getuid === "function" && (entry.uid !== process.getuid() || (entry.mode & 0o022) !== 0)) {
+    throw new StudioError(500, "agents-unreadable", "the agent registry is not owned by this user or is writable by others");
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(path, "utf8"));

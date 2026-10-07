@@ -513,7 +513,7 @@ test("an agent's MCP changes appear live, ask the person before deleting, and ca
     // Deleting asks the person in the editor; declining leaves the layer.
     const declined = tool("delete_nodes", { nodeIds: [frameId] });
     await page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Claude Code asks for your approval");
-    assert.match(await page.locator("#dialog[open] .request").textContent(), /^Delete 1 layer: Landing$/u);
+    assert.match(await page.locator("#dialog[open] .request").textContent(), /^Delete 1 layer: Landing \(main\)$/u);
     await page.locator("#dialog[open] button", { hasText: "Decline" }).click();
     assert.match((await declined).content[0].text, /declined/u);
     assert.equal(await layerCount(page), 1);

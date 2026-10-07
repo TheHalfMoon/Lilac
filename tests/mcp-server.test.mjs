@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { PAPER_MCP_TOOL_NAMES, classifyPaperTool, validateMCPServerConfig, validateMCPToolDefinition } from "../packages/mcp-protocol/src/index.mjs";
-import { assertLoopbackUrl, mcpToolDefinitions, startStudioHost } from "../packages/studio-host/src/index.ts";
+import { assertLoopbackUrl, discoverMcpUrl, mcpToolDefinitions, startStudioHost } from "../packages/studio-host/src/index.ts";
 
 // PC5 (#146, #82): Lilac's MCP server in the studio host. Agents connected by the person,
 // the MCP protocol over loopback HTTP and the stdio relay, authorization of every call
@@ -242,7 +242,7 @@ test("consequential calls wait for the person's decision, bound to the exact cal
       for (let tries = 0; tries < 100; tries += 1) {
         const { pending } = (await owner("GET", "/api/confirmations")).json;
         if (pending.length > 0) {
-          assert.match(pending[0].summary, /^Delete 1 layer: [AB]$/u);
+          assert.match(pending[0].summary, /^Delete 1 layer: [AB] \(main\)$/u);
           assert.equal(pending[0].agentName, "Agent");
           return owner("POST", "/api/confirmations/decide", { id: pending[0].id, approve });
         }
@@ -309,4 +309,98 @@ test("the stdio relay forwards a stdio MCP client to the running host, and only 
     assert.equal(await new Promise((resolve) => bare.on("close", resolve)), 2);
     assert.match(err, /LILAC_MCP_TOKEN/u);
   });
+});
+
+test("results and work stay bounded: tree summaries, duplicates, and waiting approvals", async () => {
+  await withStudio(async ({ owner, tool, host }) => {
+    const { token } = (await owner("POST", "/api/agents/create", { name: "Agent" })).json;
+    await owner("POST", "/api/projects/create", { name: "big" });
+    const frame = (await tool(token, "create_artboard", { name: "Wide", width: 10, height: 10 })).structuredContent.nodeId;
+    const children = Array.from({ length: 700 }, (_, index) => ({ type: "insert-node", node: { id: `c${index}`, type: "element", props: { tag: "div" } }, parentId: frame, index }));
+    await owner("POST", "/api/edit", { baseRevision: 1, intent: "Many", operations: children });
+    const summary = (await tool(token, "get_tree_summary", { depth: 2 })).structuredContent;
+    const count = (nodes) => nodes.reduce((total, node) => total + 1 + count(node.children ?? []), 0);
+    assert.equal(count(summary.tree), 500, "at most 500 nodes");
+    assert.equal(summary.truncated, true);
+
+    // Duplicates land right after their originals, in order; repeated ids are copied once.
+    const before = host.session.document.nodes[frame].children.slice(0, 2);
+    const copies = (await tool(token, "duplicate_nodes", { nodeIds: ["c0", "c1", "c0", "c1"] })).structuredContent.copies;
+    assert.deepEqual(host.session.document.nodes[frame].children.slice(0, 4), [before[0], copies.c0, before[1], copies.c1]);
+    // Copies of the 703-layer frame are allowed; one call copying more than 5000 layers is refused before any work.
+    for (let index = 0; index < 7; index += 1) assert.equal((await tool(token, "duplicate_nodes", { nodeIds: [frame] })).isError, undefined);
+    const roots = host.session.document.rootIds;
+    assert.equal(roots.length, 8);
+    const revision = host.session.revision;
+    assert.match((await tool(token, "duplicate_nodes", { nodeIds: roots })).content[0].text, /at most 5000 layers/u);
+    assert.equal(host.session.revision, revision, "nothing was committed");
+  });
+});
+
+test("approvals: one serves every identical waiting call; caps, revocation and reconnects", async () => {
+  await withStudio(async ({ owner, tool, host }) => {
+    const { token, agent } = (await owner("POST", "/api/agents/create", { name: "Agent" })).json;
+    await owner("POST", "/api/projects/create", { name: "p" });
+    const ids = [];
+    for (let index = 0; index < 7; index += 1) ids.push((await tool(token, "create_artboard", { name: `F${index}`, width: 10, height: 10 })).structuredContent.nodeId);
+    const pendingNow = async () => (await owner("GET", "/api/confirmations")).json.pending;
+    const until = async (predicate) => {
+      for (let tries = 0; tries < 200; tries += 1) {
+        const pending = await pendingNow();
+        if (predicate(pending)) return pending;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error("timed out");
+    };
+    // Two identical calls wait on one request; one approval serves both (one deletes, the
+    // other finds the layer gone: nothing is asked twice).
+    const both = Promise.all([tool(token, "delete_nodes", { nodeIds: [ids[0]] }), tool(token, "delete_nodes", { nodeIds: [ids[0]] })]);
+    const [request] = await until((pending) => pending.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal((await pendingNow()).length, 1, "identical calls share one request");
+    await owner("POST", "/api/confirmations/decide", { id: request.id, approve: true });
+    const answers = await both;
+    assert.equal(answers.filter((answer) => answer.isError === undefined).length, 1);
+    assert.match(answers.find((answer) => answer.isError).content[0].text, /no node/u);
+    assert.equal(host.session.document.nodes[ids[0]], undefined);
+
+    // A reconnecting editor is told what is waiting as soon as its stream opens.
+    const waiting = ids.slice(1, 6).map((id) => tool(token, "delete_nodes", { nodeIds: [id] }));
+    await until((pending) => pending.length === 5);
+    const stream = await fetch(`${host.url}/api/events?token=${host.token}`);
+    const reader = stream.body.getReader();
+    let text = "";
+    while (!text.includes("event: confirmations")) text += Buffer.from((await reader.read()).value).toString("utf8");
+    await reader.cancel();
+    assert.match(text, /event: confirmations\ndata: \{"pending":\[\{/u);
+    // Five per agent: a sixth distinct request is refused as busy, not as declined.
+    assert.match((await tool(token, "delete_nodes", { nodeIds: [ids[6]] })).content[0].text, /Too many changes are already waiting/u);
+    // Disconnecting the agent withdraws its requests; the waiting calls are declined.
+    await owner("POST", "/api/agents/revoke", { agentId: agent.agentId });
+    for (const answer of await Promise.all(waiting)) assert.match(answer.content[0].text, /declined/u);
+    assert.deepEqual(await pendingNow(), []);
+  }, { confirmationWaitMs: 5_000 });
+});
+
+test("a damaged registry or a stale discovery file fails closed", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-mcp-files-")));
+  try {
+    writeFileSync(join(root, ".lilac-agents.json"), "{ not json", { mode: 0o600 });
+    const host = await startStudioHost({ projectsRoot: root, now });
+    try {
+      const listing = await fetch(`${host.url}/api/agents`, { headers: { authorization: `Bearer ${host.token}` } }).then((response) => response.json());
+      assert.deepEqual(listing.agents, []);
+      assert.match(listing.problem, /not valid JSON/u);
+      assert.ok(readdirSync(root).some((name) => name.startsWith(".lilac-agents.json.unreadable-")), "the damaged file is set aside");
+      assert.equal(discoverMcpUrl(root), host.mcpUrl);
+    } finally {
+      await host.close();
+    }
+    assert.equal(existsSync(join(root, ".lilac-studio.json")), false, "the discovery file is removed on close");
+    // A discovery file left by a Lilac that is no longer running is not followed.
+    writeFileSync(join(root, ".lilac-studio.json"), JSON.stringify({ version: 1, url: "http://127.0.0.1:9", mcpUrl: "http://127.0.0.1:9/mcp", pid: 2 ** 22 + 4321, nonce: "x" }), { mode: 0o600 });
+    assert.throws(() => discoverMcpUrl(root), /not running/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

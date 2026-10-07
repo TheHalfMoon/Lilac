@@ -197,7 +197,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       selection = [...ids];
       return { selected: selection.length };
     },
-    "GET /api/agents": () => ({ agents: agents.list(), mcpUrl: `http://${LOOPBACK}:${port}/mcp` }),
+    "GET /api/agents": () => ({ agents: agents.list(), mcpUrl: `http://${LOOPBACK}:${port}/mcp`, ...(agents.problem ? { problem: agents.problem } : {}) }),
     "POST /api/agents/create": (body) => {
       const created = agents.create(body?.name, now());
       // The open project grants the new agent at once.
@@ -308,6 +308,8 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     if (streams.size >= MAX_STREAMS) throw new StudioError(503, "too-many-streams", `at most ${MAX_STREAMS} event streams may be open`);
     response.writeHead(200, { ...SECURITY_HEADERS, "content-type": "text/event-stream; charset=utf-8", connection: "keep-alive" });
     response.write(`event: project\ndata: ${JSON.stringify(describe())}\n\n`);
+    // Requests waiting for the person, so a reconnected editor shows them again.
+    response.write(`event: confirmations\ndata: ${JSON.stringify({ pending: confirmations.pending() })}\n\n`);
     streams.add(response);
     const heartbeat = setInterval(() => send(response, ": keep-alive\n\n"), HEARTBEAT_MS);
     heartbeat.unref();
