@@ -77,7 +77,10 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   // the new one cannot be opened, unless it is the same project, which must be closed first
   // so its own lock does not block the reopen.
   const switchTo = (name: string, open: () => StudioSession) => {
-    if (session !== null && session.name === name) closeSession();
+    if (session !== null && session.name === name) {
+      closeSession();
+      broadcast("project", describe());
+    }
     const next = open();
     closeSession();
     session = next;
@@ -115,6 +118,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     }),
     "POST /api/projects/create": (body) => {
       const name = assertProjectName(body?.name);
+      if (existsSync(join(projectsRoot, name))) throw new StudioError(409, "project-exists", `${name} already exists`);
       switchTo(name, () => StudioSession.open({ projectsRoot, name, owner, now, create: { title: body?.title } }));
       return describe();
     },
@@ -142,7 +146,8 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     "POST /api/checkpoint": () => requireSession().checkpoint(),
   };
 
-  const server: Server = createServer((request, response) => {
+  // Check timeouts every second, so the 10 s header limit is actually enforced.
+  const server: Server = createServer({ connectionsCheckingInterval: 1_000 }, (request, response) => {
     handle(request, response).catch((error) => respondError(response, error));
   });
 
@@ -179,10 +184,11 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     });
   }
 
-  // Loopback only, but a stuck client still must not hold sockets open indefinitely.
+  // Loopback only, but a stuck client still must not hold sockets open indefinitely. No
+  // connection cap: a cap would let any local process lock the editor out with idle sockets.
   server.headersTimeout = 10_000;
   server.requestTimeout = 30_000;
-  server.maxConnections = 128;
+  server.keepAliveTimeout = 5_000;
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port ?? 0, LOOPBACK, () => resolve());

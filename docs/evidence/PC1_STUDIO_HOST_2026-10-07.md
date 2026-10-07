@@ -62,7 +62,7 @@ So they are durable, attributed history like any other edit. The undo stack itse
 
 Two judges reviewed the first head: a combined correctness judge and a security judge. Their probes are in the session scratchpad. Must-fix findings:
 
-- **Unbounded collaboration log.** The session kept one collaboration room, whose fact log grew with every edit. Each commit re-normalized the whole log (the judge measured 1.2 s and then 8.2 s per 200 edits), and the log would eventually fill at 16,384 facts. Attribution already lives in the persisted transaction, so the room is now built per commit from the session's grants. New test 8 runs 1,800 edits and requires the sixth batch to stay near the first.
+- **Unbounded collaboration log.** The session kept one collaboration room, whose fact log grew with every edit. Each commit re-normalized the whole log (the judge measured 1.2 s and then 8.2 s per 200 edits), and the log would eventually fill at 16,384 facts. Attribution already lives in the persisted transaction, so the room is now built per commit from the session's grants. New test 8 checks this directly: every commit uses a fresh room with an empty fact log (203 commits, 203 rooms).
 - **A failed open or create closed the current project.** The new project is now opened before the current one is closed. The current one is closed first only when it is the same project, whose own lock would otherwise block the reopen.
   - A missing project is now `404 project-not-found`.
   - A corrupt or unreadable project is `422 project-unreadable`.
@@ -78,7 +78,7 @@ Also taken:
   - A stream whose client stops reading is dropped once 1 MiB is buffered; the client resynchronizes from `GET /api/document`.
   - Change events carry an SSE `id` (the revision) and the committed `operations`, so a client can apply a change without refetching.
 - **Token.** The query token is accepted only on `GET /api/events`.
-- **Limits.** An edit may hold at most 5,000 operations (413). Header and request timeouts are 10 s and 30 s, with at most 128 connections.
+- **Limits.** An edit may hold at most 5,000 operations (413). Header and request timeouts are 10 s and 30 s.
 - **Undo.**
   - Undo and redo stacks are per actor, so an agent's edits (PC5) never enter the user's undo.
   - An undo or redo that history can no longer apply is a `409` conflict and is kept on the stack.
@@ -86,5 +86,19 @@ Also taken:
 - **Create.** A failed create removes the directory it made.
 
 Recorded, not changed:
-- The undo stack holds operations and inverses for up to 200 edits per actor, which is bounded by the 5,000-operation cap per edit.
+- The undo stack holds operations and inverses for up to 200 edits per actor. It is bounded by entry count, not bytes: the inverse of removing a large subtree holds that subtree.
+- Per-actor undo detects only structural conflicts, where history refuses the inverse. Overwriting another actor's later change to the same node is not refused. This matters once agents edit (PC5), which will refuse an undo whose affected nodes were touched since.
+- Per-edit cost still grows with journal length, because `ProjectStore` re-hashes the whole journal before each append to verify its content pin (the #88 design). This is tracked as a persistence follow-up; it is not part of this grain.
+- If a dead holder's pid has been reused by a live process, its lock cannot be overridden through the host. The project's `.lilac/lock` must then be removed by hand.
 - The pattern for the editor's token is set in PC4: a one-time bootstrap rather than a token in the page URL.
+
+## Review delta 2
+
+The correctness re-review confirmed every delta-1 fix by probe. It found one must-fix: test 8 timed whole edits, and per-edit cost still grows. The room fix did work (room time stayed flat at roughly 220–360 ms per 1,000 edits), but `ProjectStore` re-hashes the whole journal before every append, which is #88's content pin. Tracked as #154.
+- **Test 8 now checks the property this delta changed:** every commit uses a fresh collaboration room whose fact log starts empty (203 commits, 203 rooms).
+- **Creating a project with the open project's name** no longer closes it. Existence is checked first. Closing a session always broadcasts a `project` event.
+
+The security re-review confirmed every delta-1 fix by live probe, with no must-fix.
+- **Connection cap removed.** The 128-connection cap let any local process hold the editor's connections with idle sockets and deny the editor. The cap is gone. Timeouts are checked every second (`connectionsCheckingInterval`), so the 10 s header limit actually applies, and keep-alive is 5 s.
+- **Lock read.** The liveness check reads the lock only if it is a small regular file, opened with `O_NOFOLLOW | O_NONBLOCK`. A FIFO or symlink can no longer block or exhaust the host.
+- **"Modified outside" or "replaced" journal errors** now put the session in `project-needs-reopen` on the first failed edit.

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, constants, lstatSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { LocalCollaborationRoom, createCollaborationState } from "@lilac/collaboration";
 import { createDocument } from "@lilac/document-model";
 import { createHistoryState } from "@lilac/history";
@@ -283,7 +283,7 @@ export class StudioSession {
   #storeFailure(error: unknown): StudioError {
     const name = error instanceof Error ? error.name : "";
     const message = error instanceof Error ? error.message : "";
-    const storeBroken = /reopen|changed outside|changed since|no longer holds|changed while|lock/iu.test(message);
+    const storeBroken = /reopen|changed outside|modified outside|replaced|changed since|no longer holds|changed while|lock/iu.test(message);
     if ((name === "PersistenceValidationError" || name === "PersistenceCorruptionError") && !storeBroken) {
       return new StudioError(400, "invalid-edit", message.slice(0, 300));
     }
@@ -300,10 +300,18 @@ export class StudioSession {
 /** Refuse to break a lock whose holder is a process still running on this machine. */
 function assertLockHolderGone(root: string): void {
   const lockPath = `${root}/.lilac/lock`;
-  if (!existsSync(lockPath)) return;
   let pid: unknown;
   try {
-    pid = JSON.parse(readFileSync(lockPath, "utf8").slice(0, 4096)).pid;
+    // Only a small regular file is read; links, FIFOs and anything odd are left to
+    // persistence's own lock handling.
+    const entry = lstatSync(lockPath);
+    if (!entry.isFile() || entry.size > 4096) return;
+    const fd = openSync(lockPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      pid = JSON.parse(readFileSync(fd, "utf8").slice(0, 4096)).pid;
+    } finally {
+      closeSync(fd);
+    }
   } catch {
     return; // an unreadable lock is exactly what an override is for
   }

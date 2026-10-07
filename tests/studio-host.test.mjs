@@ -5,6 +5,7 @@ import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { LocalCollaborationRoom } from "../packages/collaboration/src/index.ts";
 import { MAX_OPERATIONS_PER_EDIT, StudioSession, startStudioHost } from "../packages/studio-host/src/index.ts";
 
 // PC1 (#146): the studio host composes persistence, history and collaboration behind a
@@ -244,6 +245,7 @@ test("a failed open or create keeps the current project, and failures have speci
   assert.equal(missing.status, 404);
   assert.equal(missing.json.error.code, "project-not-found");
   assert.equal((await api(host, "POST", "/api/projects/create", { name: "keep" })).json.error.code, "project-exists");
+  assert.equal((await api(host, "GET", "/api/session")).json.project, "keep", "creating the open project's name does not close it");
   for (const name of ["CON", "nul.txt", "com1", "trailing."]) assert.equal((await api(host, "POST", "/api/projects/create", { name })).json.error.code, "invalid-project-name", name);
   mkdirSync(join(root, "plain"));
   assert.equal((await api(host, "POST", "/api/projects/open", { name: "plain" })).json.error.code, "project-not-found", "a plain directory is not a project");
@@ -327,24 +329,29 @@ test("undo and redo restore every operation type exactly, across reopen", async 
   }
 });
 
-test("many edits in one session keep a flat per-edit cost", async () => {
+test("every commit uses a fresh collaboration room, so no fact log accumulates in a session", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-many-")));
   const owner = { actorId: "local-user", kind: "user", accessClass: "member", displayName: "You" };
   const session = StudioSession.open({ projectsRoot: root, name: "p", owner, now, create: {} });
+  const original = LocalCollaborationRoom.prototype.commitTransaction;
+  const rooms = new Set();
+  let calls = 0;
+  LocalCollaborationRoom.prototype.commitTransaction = function wrapped(input) {
+    calls += 1;
+    rooms.add(this);
+    // A fresh room has only the facts its state was created with: none.
+    assert.equal(this.readSnapshot({ actor: input.actor, transport: input.transport, at: input.at }).activity.length, 0, "the room starts empty");
+    return original.call(this, input);
+  };
   try {
     session.edit(owner, { baseRevision: 0, operations: [insertFrame("r")] });
-    const batch = () => {
-      const start = performance.now();
-      for (let i = 0; i < 300; i += 1) session.edit(owner, { baseRevision: session.revision, operations: [{ type: "set-props", nodeId: "r", set: { i } }] });
-      return performance.now() - start;
-    };
-    const first = batch();
-    for (let i = 0; i < 4; i += 1) batch();
-    const last = batch();
-    assert.equal(session.revision, 1 + 300 * 6);
-    // The collaboration log is not accumulated, so the sixth batch is not much slower than the first.
-    assert.ok(last < first * 3 + 200, `first batch ${first.toFixed(0)} ms, sixth ${last.toFixed(0)} ms`);
+    for (let i = 0; i < 200; i += 1) session.edit(owner, { baseRevision: session.revision, operations: [{ type: "set-props", nodeId: "r", set: { i } }] });
+    session.undo(owner);
+    session.redo(owner);
+    assert.equal(calls, 203);
+    assert.equal(rooms.size, 203, "no room is reused across commits");
   } finally {
+    LocalCollaborationRoom.prototype.commitTransaction = original;
     session.close();
     rmSync(root, { recursive: true, force: true });
   }
