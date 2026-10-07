@@ -8,7 +8,7 @@
 // folder (default: "Lilac Projects" in your home folder, or LILAC_PROJECTS). Each link
 // works once, for two minutes; press Enter for a new one. Ctrl+C stops Lilac.
 import { spawn } from "node:child_process";
-import { chmodSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -37,9 +37,20 @@ const portText = option("--port") ?? "0";
 const port = Number(portText);
 if (!Number.isInteger(port) || port < 0 || port > 65535) fail("--port must be a number from 0 to 65535");
 try {
+  // A folder Lilac creates is this user's alone. An existing one is left as it is (it may
+  // be shared on purpose), with a warning; Lilac's own files in it are owner-only anyway.
+  const existed = (() => {
+    try {
+      statSync(projectsRoot);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
   mkdirSync(projectsRoot, { recursive: true, mode: 0o700 });
-  // Projects and agent registrations are this user's alone, even in an existing folder.
-  if (process.platform !== "win32" && (statSync(projectsRoot).mode & 0o077) !== 0) chmodSync(projectsRoot, 0o700);
+  if (existed && process.platform !== "win32" && (statSync(projectsRoot).mode & 0o077) !== 0) {
+    process.stderr.write(`lilac: note: ${projectsRoot} can be read by other users of this computer; its projects can too\n`);
+  }
 } catch (error) {
   fail(`cannot use the projects folder: ${error instanceof Error ? error.message : String(error)}`);
 }

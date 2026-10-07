@@ -1,6 +1,7 @@
-// Preload (node --import) for product-surface tests: every Node way out of this computer
-// that ordinary JavaScript can reach is trapped (sockets, TLS, HTTP/1-2, fetch, DNS, UDP,
-// helper processes, worker threads, and the raw bindings and native addons behind them). A connection to a loopback address is allowed (the editor and the MCP relay talk
+// Preload (node --import) for product-surface tests. These Node ways out of this computer
+// are trapped: TCP sockets (and so net, tls, http, https, http2 and fetch, which all
+// connect through net.Socket), DNS, UDP, helper processes, worker threads, and the raw
+// bindings and native addons behind them. A connection to a loopback address is allowed (the editor and the MCP relay talk
 // to Lilac on 127.0.0.1); any other connection, any DNS lookup of a name other than
 // localhost, any UDP socket and any helper process is refused and reported on stderr as
 // "LILAC-NETWORK-ATTEMPT <what>", so a test can assert there were none.
@@ -28,11 +29,14 @@ const targetOf = (args) => {
 const connect = net.Socket.prototype.connect;
 net.Socket.prototype.connect = function guardedConnect(...args) {
   const { host, path } = targetOf(args);
-  if (path === undefined && !loopback(host)) throw report(`connect ${host}`);
+  // Node's own rule: only a non-empty string path is a local (IPC) socket. http.Agent
+  // passes path: null for TCP.
+  const ipc = typeof path === "string" && path !== "";
+  if (!ipc && !loopback(host)) throw report(`connect ${host}`);
   // A caller's own lookup could turn "localhost" into any address: refuse it.
   const first = Array.isArray(args[0]) ? args[0][0] : args[0]; // net.connect passes [options, callback]
   const options = first !== null && typeof first === "object" && !Array.isArray(first) ? first : null;
-  if (path === undefined && options && typeof options.lookup === "function") throw report(`connect ${host} with a custom lookup`);
+  if (!ipc && options && typeof options.lookup === "function") throw report(`connect ${host} with a custom lookup`);
   return connect.apply(this, args);
 };
 const dns = require("node:dns");
@@ -43,7 +47,16 @@ for (const holder of [dns, dns.promises, dns.Resolver.prototype, dns.promises.Re
     const original = holder[key];
     holder[key] = function guardedDns(name, ...rest) {
       if (key === "lookup" && loopback(name)) return original.call(this, name, ...rest);
-      throw report(`dns.${key} ${String(name)}`);
+      const error = report(`dns.${key} ${String(name)}`);
+      // A callback-style call fails that request, as a real resolution failure would,
+      // rather than throwing inside net's internals and crashing the process.
+      const callback = rest.at(-1);
+      if (typeof callback === "function") {
+        process.nextTick(() => callback(Object.assign(error, { code: "ENOTFOUND" })));
+        return undefined;
+      }
+      if (holder === dns.promises || holder === dns.promises.Resolver.prototype) return Promise.reject(error);
+      throw error;
     };
   }
 }

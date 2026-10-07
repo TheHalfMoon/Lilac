@@ -11,7 +11,7 @@ PC7 closes two PC gates:
 - **On start**, it prints the projects folder and a single-use launch link on `127.0.0.1`. The studio host listens on loopback only (PC1).
 - **New links.** Press Enter for a fresh link: a link works once, for two minutes.
 - **`--open`** hands the system's browser opener a private (0600) file that forwards to a fresh link. The link, which carries a ticket, therefore never appears in the process list. The file is removed after the ticket expires. That opener is the only helper process the command ever starts, and only when asked.
-- **The projects folder** is this user's alone (0700), including an existing folder.
+- **The projects folder** is created owner-only (0700). An existing folder is left as it is, since it may be shared on purpose, with a warning if others can read it. Lilac's own files in it are owner-only.
 - **Option checking.** Options missing their value, and unknown options, are refused.
 - **Stopping.** Ctrl+C or SIGTERM closes the host: the project's lock is released and the discovery file removed, and the process exits 0. A second Ctrl+C stops at once.
 
@@ -65,8 +65,19 @@ The security and correctness judge approved, with no must-fix. It confirmed the 
 
 **Also taken:**
 - `--open` no longer puts the link in the process list;
-- the projects folder is made 0700;
+- a new projects folder is owner-only, and an existing one is warned about;
 - options are checked, with a new test 5;
 - a second Ctrl+C forces a stop;
 - the browser records WebSockets and blocks service workers, every tab's record is kept to the end, and the evidence now states the capture's limits;
 - the interface probe asserts that there is something to probe.
+
+## Review delta 2
+
+The cycle-1 re-review confirmed that every new trap holds and that trapping `process.binding` and `dlopen` breaks nothing Lilac or the relay uses. It found one must-fix, which had been present from the first version:
+
+**Fixed: http and https got past the trap unreported.** `http.Agent` connects with `path: null`, and the trap treated any defined path as a local socket. The trap now follows Node's own rule: only a non-empty string path is a local socket. This covers `http.get` and `https.get` to an IP literal, and import-stack's pinned-lookup request pattern. Test 1 now asserts that each of these is refused, along with a plain hostname request.
+
+**Also taken:**
+- a refused DNS lookup fails that one request, as a real resolution failure would, instead of crashing the process;
+- an existing projects folder is no longer chmodded;
+- the trap's header and this document now name the APIs the trap covers, instead of claiming every way out.

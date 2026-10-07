@@ -120,13 +120,18 @@ test("the network trap refuses connections off this computer and allows loopback
         dlopen: await refused(() => process.dlopen({}, "/nonexistent.node")),
         customLookup: await refused(() => net.connect({ host: "localhost", port: 9, lookup: (name, options, done) => done(null, "10.255.255.1", 4) })),
         udp: await refused(async () => new (await import("node:dgram")).Socket("udp4").send("x", 9, "127.0.0.1")),
+        // http and https connect with path: null; and import-stack's pinned-lookup pattern.
+        httpIp: await refused(async () => (await import("node:http")).get("http://93.184.215.14/")),
+        httpsIp: await refused(async () => (await import("node:https")).get("https://1.1.1.1/")),
+        httpsPinned: await refused(async () => (await import("node:https")).request({ hostname: "example.com", lookup: (name, options, done) => done(null, "93.184.215.14", 4) }).end()),
+        httpName: await refused(async () => (await import("node:http")).get("http://example.com/")),
       };
       console.log(JSON.stringify({ local, remote, resolved, spawned, ...others }));
       server.close();
     });
   `]);
   assert.equal(await probe.exited, 0);
-  assert.deepEqual(JSON.parse(probe.output.stdout), { local: "ok", remote: "refused", resolved: "refused", spawned: "refused", worker: "refused", childProcessClass: "refused", binding: "refused", dlopen: "refused", customLookup: "refused", udp: "refused" });
+  assert.deepEqual(JSON.parse(probe.output.stdout), { local: "ok", remote: "refused", resolved: "refused", spawned: "refused", worker: "refused", childProcessClass: "refused", binding: "refused", dlopen: "refused", customLookup: "refused", udp: "refused", httpIp: "refused", httpsIp: "refused", httpsPinned: "refused", httpName: "refused" });
   assert.ok(attemptsIn(probe.output.stderr).length >= 3, "every refused attempt is reported");
 });
 
