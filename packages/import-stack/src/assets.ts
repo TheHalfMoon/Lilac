@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ImportConflictError, ImportValidationError } from "./errors.ts";
 import type { AssetRecord, ImportPolicy } from "./types.ts";
-import { assertBoundedString, assertSafeProvenanceUrl } from "./validation.ts";
+import { assertBoundedString, assertSafeProvenanceUrl, compareCodeUnits } from "./validation.ts";
 
 export function createAssetRecord(
   bytes: Uint8Array,
@@ -45,5 +45,5 @@ export function deduplicateAssets(records: readonly AssetRecord[], policy: Impor
     }
     byHash.set(record.sha256, structuredClone(record));
   }
-  return [...byHash.values()].sort((a, b) => a.sha256.localeCompare(b.sha256));
+  return [...byHash.values()].sort((a, b) => compareCodeUnits(a.sha256, b.sha256));
 }

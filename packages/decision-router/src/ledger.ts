@@ -1,6 +1,6 @@
 import { DecisionConflictError, DecisionValidationError } from "./errors.ts";
 import { DECISION_HARD_LIMITS, DECISION_SCHEMA_VERSION, type DecisionRequest, type DecisionRequestLedger } from "./types.ts";
-import { canonicalDecisionStringify, normalizeDecisionRequest, sha256Text } from "./validation.ts";
+import { canonicalDecisionStringify, compareCodeUnits, normalizeDecisionRequest, sha256Text } from "./validation.ts";
 
 export function createDecisionRequestLedger(): DecisionRequestLedger {
   return { schemaVersion: DECISION_SCHEMA_VERSION, entries: {} };
@@ -47,6 +47,6 @@ export function recordDecisionRequest(
     return { ledger: normalized, reused: true };
   }
   normalized.entries[request.requestId] = next;
-  normalized.entries = Object.fromEntries(Object.entries(normalized.entries).sort(([a], [b]) => a.localeCompare(b)));
+  normalized.entries = Object.fromEntries(Object.entries(normalized.entries).sort(([a], [b]) => compareCodeUnits(a, b)));
   return { ledger: normalized, reused: false };
 }

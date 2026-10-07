@@ -14,6 +14,7 @@ import {
   assertBoundedString,
   assertPlainObject,
   assertSafeProvenanceUrl,
+  compareCodeUnits,
   normalizeImportPolicy,
   normalizeSourceBinding,
   normalizeSourceIdentity,
@@ -194,7 +195,7 @@ export function validateImportProposal(proposal: ImportProposal): ImportProposal
   let totalTextBytes = 0;
   let totalCssBytes = 0;
   let totalSemanticBytes = 0;
-  for (const [id, value] of entries.sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [id, value] of entries.sort(([a], [b]) => compareCodeUnits(a, b))) {
     const normalized = normalizeNode(value, id, policy);
     if (normalized.text) {
       const length = bytes(normalized.text);

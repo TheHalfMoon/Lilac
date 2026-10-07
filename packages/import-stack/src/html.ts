@@ -15,6 +15,7 @@ import {
 import {
   assertSafeProvenanceUrl,
   canonicalImportStringify,
+  compareCodeUnits,
   normalizeImportRequest,
   sha256Text,
 } from "./validation.ts";
@@ -338,7 +339,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
       parentId,
       children: [],
       tag,
-      attributes: Object.fromEntries(Object.entries(attributes).sort(([a], [b]) => a.localeCompare(b))),
+      attributes: Object.fromEntries(Object.entries(attributes).sort(([a], [b]) => compareCodeUnits(a, b))),
       style,
       sourceBinding: binding(request, domPath, node.sourceCodeLocation),
     };
@@ -385,7 +386,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
 
   const uniqueResources = [...new Map(
     resources
-      .sort((a, b) => `${a.kind}:${a.uri}:${a.nodeId ?? ""}:${a.attribute ?? ""}`.localeCompare(`${b.kind}:${b.uri}:${b.nodeId ?? ""}:${b.attribute ?? ""}`))
+      .sort((a, b) => compareCodeUnits(`${a.kind}:${a.uri}:${a.nodeId ?? ""}:${a.attribute ?? ""}`, `${b.kind}:${b.uri}:${b.nodeId ?? ""}:${b.attribute ?? ""}`))
       .map((entry) => [`${entry.kind}:${entry.uri}:${entry.nodeId ?? ""}:${entry.attribute ?? ""}`, entry]),
   ).values()];
 
@@ -400,8 +401,8 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     source: request.source,
     policy: request.policy,
     rootIds,
-    nodes: Object.fromEntries(Object.entries(nodes).sort(([a], [b]) => a.localeCompare(b))),
-    stylesheets: stylesheets.sort((a, b) => a.id.localeCompare(b.id)),
+    nodes: Object.fromEntries(Object.entries(nodes).sort(([a], [b]) => compareCodeUnits(a, b))),
+    stylesheets: stylesheets.sort((a, b) => compareCodeUnits(a.id, b.id)),
     assets: [],
     resources: uniqueResources,
     diagnostics,

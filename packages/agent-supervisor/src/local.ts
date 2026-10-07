@@ -11,6 +11,12 @@ import { canonicalStringify, cloneJson } from "@lilac/agent-runtime";
 import type { RecoveryJournalStore, RuntimeAdapter, SupervisorLockAdapter, TaskStore } from "./supervisor.ts";
 import type { LeaseLivenessEvidence, RecoveryJournal, RuntimeEndpointIdentity, RuntimeEvidence, SupervisedTaskRecord, SupervisorLease, SupervisorQueueState, WorktreeEvidence } from "./types.ts";
 
+// Code-unit string order: unlike localeCompare, independent of the process locale.
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
+
 const execFileAsync = promisify(execFile);
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -138,7 +144,7 @@ export class FileTaskStore implements TaskStore {
       throw error;
     }
     const tasks: SupervisedTaskRecord[] = [];
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const entry of entries.sort((a, b) => compareCodeUnits(a.name, b.name))) {
       if (!entry.name.endsWith(".task.json")) continue;
       const path = join(this.directory, entry.name);
       const stat = await lstat(path);
@@ -149,7 +155,7 @@ export class FileTaskStore implements TaskStore {
       }
       tasks.push(task);
     }
-    return tasks.sort((a, b) => a.taskId.localeCompare(b.taskId));
+    return tasks.sort((a, b) => compareCodeUnits(a.taskId, b.taskId));
   }
 
   async read(taskId: string): Promise<SupervisedTaskRecord> {

@@ -1,6 +1,6 @@
 import { ImportConflictError, ImportValidationError } from "./errors.ts";
 import { IMPORT_SCHEMA_VERSION, type ImportRequest, type ImportRequestLedger } from "./types.ts";
-import { canonicalImportStringify, normalizeImportRequest, sha256Text } from "./validation.ts";
+import { canonicalImportStringify, compareCodeUnits, normalizeImportRequest, sha256Text } from "./validation.ts";
 
 export function createImportRequestLedger(): ImportRequestLedger {
   return { schemaVersion: IMPORT_SCHEMA_VERSION, entries: {} };
@@ -44,6 +44,6 @@ export function recordImportRequest(
     return { ledger: normalized, reused: true };
   }
   normalized.entries[request.requestId] = next;
-  normalized.entries = Object.fromEntries(Object.entries(normalized.entries).sort(([a], [b]) => a.localeCompare(b)));
+  normalized.entries = Object.fromEntries(Object.entries(normalized.entries).sort(([a], [b]) => compareCodeUnits(a, b)));
   return { ledger: normalized, reused: false };
 }

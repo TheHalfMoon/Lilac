@@ -18,7 +18,7 @@ import type {
   StaticMirrorResource,
   StaticMirrorResult,
 } from "./types.ts";
-import { assertAllowedKeys, assertBoundedString, assertPlainObject, canonicalImportStringify, normalizeImportRequest, sha256Text } from "./validation.ts";
+import { assertAllowedKeys, assertBoundedString, assertPlainObject, canonicalImportStringify, compareCodeUnits, normalizeImportRequest, sha256Text } from "./validation.ts";
 
 export interface MirrorFetchResult { status: number; headers: Record<string, string>; body: Uint8Array; }
 export interface MirrorFetchOptions { addresses: string[]; timeoutMs: number; maxBytes: number; signal?: AbortSignal; }
@@ -283,7 +283,7 @@ export async function mirrorStaticSite(
     }
 
     if (!entryLogicalPath) throw new ImportConflictError("mirror did not persist the entry document");
-    const sortedResources = resources.sort((a, b) => a.sourceUri.localeCompare(b.sourceUri) || a.finalUri.localeCompare(b.finalUri));
+    const sortedResources = resources.sort((a, b) => compareCodeUnits(a.sourceUri, b.sourceUri) || compareCodeUnits(a.finalUri, b.finalUri));
     const manifest: StaticMirrorManifest = {
       schemaVersion: 1,
       requestId: request.requestId,
@@ -291,7 +291,7 @@ export async function mirrorStaticSite(
       entryLogicalPath,
       totalBytes: sortedResources.reduce((total, resource) => total + resource.byteLength, 0),
       resources: sortedResources,
-      rewrites: Object.fromEntries(Object.entries(rewrites).sort(([a], [b]) => a.localeCompare(b))),
+      rewrites: Object.fromEntries(Object.entries(rewrites).sort(([a], [b]) => compareCodeUnits(a, b))),
     };
     await writeFile(join(jobDirectory, "manifest.json"), canonicalImportStringify(manifest), { flag: "wx" });
     completed = true;
@@ -406,7 +406,7 @@ async function verifyStaticMirrorResult(
   const rewriteEntries = Object.entries(manifest.rewrites);
   if (rewriteEntries.length > request.policy.maxAssets * 2) throw new ImportValidationError("static mirror rewrite count exceeds policy");
   const rewrites: Record<string, string> = Object.create(null);
-  for (const [from, to] of rewriteEntries.sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [from, to] of rewriteEntries.sort(([a], [b]) => compareCodeUnits(a, b))) {
     assertBoundedString(from, "static mirror rewrite source", 4096);
     validateNavigationUrl(from, request.policy, request.networkPolicy);
     assertMirrorObjectPath(to, "static mirror rewrite target");
@@ -481,7 +481,7 @@ export async function proposalFromStaticMirror(requestInput: ImportRequest, resu
       });
     }
   }
-  proposal.stylesheets.sort((a, b) => a.id.localeCompare(b.id));
+  proposal.stylesheets.sort((a, b) => compareCodeUnits(a.id, b.id));
   return proposal;
 }
 

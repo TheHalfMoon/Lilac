@@ -243,3 +243,9 @@ export function packDecisionCells(request: DecisionRequest): DecisionCell[][] {
 export function dimensionsSha256(dimensions: DecisionDimension[]): string {
   return sha256Text(canonicalDecisionStringify(dimensions));
 }
+
+/** Code-unit string order: unlike localeCompare, independent of the process locale. */
+export function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}

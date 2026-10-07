@@ -14,6 +14,7 @@ import {
 } from "./types.ts";
 import {
   canonicalDecisionStringify,
+  compareCodeUnits,
   dimensionsSha256,
   normalizeDecisionPrecheck,
   normalizeDecisionRequest,
@@ -267,8 +268,8 @@ export async function routeDecision(
   if (reviewQueue.length > request.policy.maxReviewItems) {
     throw new DecisionValidationError("decision review queue exceeds policy maxReviewItems");
   }
-  decisions.sort((a, b) => a.cellId.localeCompare(b.cellId));
-  reviewQueue.sort((a, b) => a.cellId.localeCompare(b.cellId));
+  decisions.sort((a, b) => compareCodeUnits(a.cellId, b.cellId));
+  reviewQueue.sort((a, b) => compareCodeUnits(a.cellId, b.cellId));
 
   const record: DecisionRecord = {
     schemaVersion: DECISION_SCHEMA_VERSION,
