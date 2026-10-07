@@ -22,4 +22,14 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Run checks
-        run: npm run check
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check 2>&1 | tee check.log
+      - name: Annotate test totals
+        if: always()
+        shell: bash
+        run: |
+          # Check-run annotation readable through the REST API.
+          totals=$(grep -E '^# (tests|pass|fail|cancelled|skipped|todo) [0-9]+$' check.log 2>/dev/null | sed 's/^# //' | paste -sd ' ' - || true)
+          echo "::notice title=Test totals::head=${{ github.event.pull_request.head.sha || github.sha }} tested=${{ github.sha }} ${totals:-no test summary found}"
