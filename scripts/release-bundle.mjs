@@ -28,6 +28,7 @@ export const BUNDLED_DOCUMENTS = Object.freeze([
   "docs/RELEASE.md",
   "docs/DONORS.md",
   "scripts/license-policy.json",
+  "packages/agent-supervisor/NOTICE.md",
 ]);
 // Every git-tracked file in these directories is bundled too, so a new provenance record is
 // never left out and an untracked draft never slips in.
