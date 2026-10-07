@@ -121,7 +121,7 @@ test("neutralized forms keep inert attributes and the class message states the n
   const div = Object.values(proposal.nodes).find((node) => node.tag === "div");
   assert.equal(div.attributes.class, "signup");
   assert.equal(div.attributes.id, "f");
-  assert.equal(byCode(proposal, "form-element-neutralized")[0].message, "Neutralized 1 <form> element into <div>; children kept, submission removed");
+  assert.equal(byCode(proposal, "form-element-neutralized")[0].message, "Neutralized 1 <form> element; children kept, submission removed");
 });
 
 test("form-owner and submission override attributes are stripped from every element and rejected at validation", () => {
