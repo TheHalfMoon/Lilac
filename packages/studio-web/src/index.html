@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lilac</title>
+<link rel="stylesheet" href="/packages/studio-web/src/styles.css">
+<script type="module" src="/packages/studio-web/src/app.mjs"></script>
+</head>
+<body>
+<a class="skip-link" href="#canvas">Skip to canvas</a>
+<header class="toolbar">
+  <h1 class="brand">Lilac</h1>
+  <button type="button" id="action-projects">Projects</button>
+  <span id="project-name" class="project-name">No project open</span>
+  <div class="tool-group" aria-label="History" role="group">
+    <button type="button" id="action-undo" aria-keyshortcuts="Control+Z Meta+Z" disabled>Undo</button>
+    <button type="button" id="action-redo" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y" disabled>Redo</button>
+  </div>
+  <div class="tool-group" aria-label="Layers" role="group">
+    <button type="button" id="action-insert-box" disabled>Insert box</button>
+    <button type="button" id="action-insert-text" disabled>Insert text</button>
+    <button type="button" id="action-delete" aria-keyshortcuts="Delete" disabled>Delete</button>
+  </div>
+  <div class="tool-group" aria-label="Zoom" role="group">
+    <button type="button" id="action-zoom-out" aria-label="Zoom out" aria-keyshortcuts="Control+-">&minus;</button>
+    <output id="zoom-level" aria-live="polite" aria-label="Zoom level">100%</output>
+    <button type="button" id="action-zoom-in" aria-label="Zoom in" aria-keyshortcuts="Control+=">+</button>
+    <button type="button" id="action-fit">Fit</button>
+  </div>
+  <button type="button" id="action-save" aria-keyshortcuts="Control+S Meta+S" disabled>Save</button>
+</header>
+<div class="workspace">
+  <nav class="panel layers-panel" aria-labelledby="layers-heading">
+    <h2 id="layers-heading">Layers</h2>
+    <ul id="layers" role="tree" aria-labelledby="layers-heading" aria-multiselectable="true"></ul>
+    <p id="layers-empty" class="empty">This project has no layers yet. Use Insert box or Insert text.</p>
+  </nav>
+  <main id="canvas" class="canvas-area" tabindex="-1" aria-label="Canvas"></main>
+  <aside class="panel side-panel">
+    <section aria-labelledby="inspector-heading">
+      <h2 id="inspector-heading">Inspector</h2>
+      <form id="inspector" class="inspector" novalidate></form>
+    </section>
+    <section aria-labelledby="history-heading">
+      <h2 id="history-heading">History</h2>
+      <ol id="history" class="history" aria-labelledby="history-heading"></ol>
+    </section>
+  </aside>
+</div>
+<footer class="statusbar">
+  <span id="status" role="status" aria-live="polite"></span>
+  <span id="revision" class="revision"></span>
+</footer>
+<dialog id="dialog" aria-labelledby="dialog-title" aria-describedby="dialog-body"></dialog>
+</body>
+</html>
