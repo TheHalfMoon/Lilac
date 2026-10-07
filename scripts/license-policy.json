@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "allowed": ["0BSD", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MIT"],
+  "overrides": [
+    { "name": "@impeccable/cli-darwin-arm64", "version": "0.1.5", "declared": "SEE LICENSE IN LICENSE", "license": "Apache-2.0", "licenseFile": "LICENSE", "licenseSha256": "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812", "evidence": "Byte-identical to the Apache License 2.0 text shipped in impeccable@4.1.0 (same sha256), verified on the installed linux-x64 sibling; same publisher and release." },
+    { "name": "@impeccable/cli-darwin-x64", "version": "0.1.5", "declared": "SEE LICENSE IN LICENSE", "license": "Apache-2.0", "licenseFile": "LICENSE", "licenseSha256": "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812", "evidence": "Byte-identical to the Apache License 2.0 text shipped in impeccable@4.1.0 (same sha256), verified on the installed linux-x64 sibling; same publisher and release." },
+    { "name": "@impeccable/cli-linux-arm64", "version": "0.1.5", "declared": "SEE LICENSE IN LICENSE", "license": "Apache-2.0", "licenseFile": "LICENSE", "licenseSha256": "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812", "evidence": "Byte-identical to the Apache License 2.0 text shipped in impeccable@4.1.0 (same sha256), verified on the installed linux-x64 sibling; same publisher and release." },
+    { "name": "@impeccable/cli-linux-x64", "version": "0.1.5", "declared": "SEE LICENSE IN LICENSE", "license": "Apache-2.0", "licenseFile": "LICENSE", "licenseSha256": "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812", "evidence": "Installed on linux-x64 CI; LICENSE is the Apache License 2.0 text, byte-identical to impeccable@4.1.0's." },
+    { "name": "@impeccable/cli-windows-x64", "version": "0.1.5", "declared": "SEE LICENSE IN LICENSE", "license": "Apache-2.0", "licenseFile": "LICENSE", "licenseSha256": "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812", "evidence": "Byte-identical to the Apache License 2.0 text shipped in impeccable@4.1.0 (same sha256), verified on the installed linux-x64 sibling; same publisher and release." }
+  ]
+}

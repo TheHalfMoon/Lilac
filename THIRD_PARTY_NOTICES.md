@@ -17,6 +17,7 @@ Lilac's `@lilac/import-stack` package uses the published local Parse5 HTML parse
 - Project: `pbakaus/impeccable`
 - Source revision studied and pinned by Lilac: `e103efe779e2dd01274dabae83531fef00bf2563`
 - npm runtime: `impeccable@4.1.0`
+- Platform engine binaries (optional dependencies; npm installs the one for the host): `@impeccable/cli-darwin-arm64@0.1.5`, `@impeccable/cli-darwin-x64@0.1.5`, `@impeccable/cli-linux-arm64@0.1.5`, `@impeccable/cli-linux-x64@0.1.5`, `@impeccable/cli-windows-x64@0.1.5`. Each declares `SEE LICENSE IN LICENSE`; the shipped LICENSE is the Apache License 2.0 text, byte-identical to `impeccable@4.1.0`'s (recorded in `scripts/license-policy.json`).
 - source snapshot engine version: `0.1.11`
 - published runtime detector engine version: `0.1.5`
 - Copyright: 2025 Paul Bakaus
