@@ -251,6 +251,14 @@ const SUBSYSTEMS = [
     dependsOn: ["persistence", "history", "collaboration", "network-policy"],
   },
   {
+    id: "editor-shell",
+    title: "Editor application shell",
+    owner: "@lilac/studio-web",
+    status: "stub",
+    boundary: "The browser editor the studio host serves. PC4 part 1: the application shell page, its styles, and the host client (launch-ticket exchange, token held per tab, Bearer API calls, change stream). The application itself (layers tree, inspector, live history, dialogs, keyboard operation over the canvas) lands with PC4.",
+    dependsOn: ["studio-host", "canvas-viewport", "selection-transform", "history"],
+  },
+  {
     id: "desktop-bridge",
     title: "Desktop bridge",
     owner: "@lilac/desktop",
