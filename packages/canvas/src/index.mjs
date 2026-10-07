@@ -15,11 +15,12 @@ export const MAX_ZOOM = 8;
 
 /** A viewport maps world (document) coordinates to screen: screen = world * zoom + offset. */
 export function createViewport({ x = 0, y = 0, zoom = 1 } = {}) {
-  return Object.freeze({ x, y, zoom: clampZoom(zoom) });
+  return Object.freeze({ x: Number.isFinite(x) ? x : 0, y: Number.isFinite(y) ? y : 0, zoom: clampZoom(zoom) });
 }
 
 export function clampZoom(zoom) {
-  return Number.isFinite(zoom) ? Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom)) : 1;
+  if (Number.isNaN(zoom) || typeof zoom !== "number") return 1;
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 }
 
 export function worldToScreen(viewport, point) {
@@ -36,6 +37,7 @@ export function panBy(viewport, dx, dy) {
 
 /** Zoom by `factor` keeping the world point under `screenPoint` fixed on screen. */
 export function zoomAt(viewport, screenPoint, factor) {
+  if (!Number.isFinite(screenPoint.x) || !Number.isFinite(screenPoint.y) || Number.isNaN(factor)) return viewport;
   const zoom = clampZoom(viewport.zoom * factor);
   const world = screenToWorld(viewport, screenPoint);
   return createViewport({ x: screenPoint.x - world.x * zoom, y: screenPoint.y - world.y * zoom, zoom });
@@ -85,20 +87,29 @@ const styleOf = (document, id) => {
 
 /**
  * Move nodes by (dx, dy) world pixels. A node already positioned absolutely moves by its
- * `left`/`top`; any other node becomes absolutely positioned at its measured offset plus
- * the delta (`measured[id]` = { left, top } relative to its offset parent).
+ * `left`/`top`; any other node becomes absolutely positioned where it was, plus the delta.
+ * `measured[id]` = { left, top, width } gives that place: the `left`/`top` that keep the
+ * node where it is once it is absolutely positioned, and the `width` it needs to keep its
+ * size out of flow (an absolute box shrinks to fit). Its height stays content-driven.
  */
 export function moveBy(document, ids, dx, dy, measured = {}) {
   return normalizeSelection(document, ids).map((id) => {
     const style = styleOf(document, id);
     const positioned = style.position === "absolute" && numeric(style.left) !== null && numeric(style.top) !== null;
-    const left = positioned ? numeric(style.left) : measured[id]?.left ?? 0;
-    const top = positioned ? numeric(style.top) : measured[id]?.top ?? 0;
-    return { type: "set-props", nodeId: id, set: { style: { ...style, position: "absolute", left: px(left + dx), top: px(top + dy) } } };
+    if (positioned) return { type: "set-props", nodeId: id, set: { style: { ...style, left: px(numeric(style.left) + dx), top: px(numeric(style.top) + dy) } } };
+    const box = measured[id] ?? {};
+    const next = { ...style, position: "absolute", left: px((box.left ?? 0) + dx), top: px((box.top ?? 0) + dy) };
+    // right/bottom would now fight left/top; the measured size replaces what they implied.
+    delete next.right;
+    delete next.bottom;
+    if (next.width === undefined && Number.isFinite(box.width)) next.width = px(box.width);
+    return { type: "set-props", nodeId: id, set: { style: next } };
   });
 }
 
+/** Set `id`'s CSS `width`/`height` (the box its `box-sizing` names), at least 1px. */
 export function resizeTo(document, id, width, height) {
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return [];
   const style = styleOf(document, id);
   return [{ type: "set-props", nodeId: id, set: { style: { ...style, width: px(Math.max(1, width)), height: px(Math.max(1, height)) } } }];
 }
@@ -118,7 +129,8 @@ export function setText(id, text) {
 
 /** Move `id` by `delta` places among its siblings (clamped); [] when it cannot move. */
 export function reorder(document, id, delta) {
-  const node = document.nodes[id];
+  const node = Object.hasOwn(document.nodes, id) ? document.nodes[id] : null;
+  if (node === null) return [];
   const siblings = node.parentId === null ? document.rootIds : document.nodes[node.parentId].children;
   const from = siblings.indexOf(id);
   const to = Math.min(siblings.length - 1, Math.max(0, from + delta));
@@ -144,13 +156,17 @@ export function insertNode(parentId, index, { id, type = "element", tag, text, s
 
 // ---------- the mounted canvas (DOM) ----------
 
+// A press that moves less than this many screen pixels is a click, not a drag.
+const DRAG_THRESHOLD = 3;
 const OVERLAY_STYLE = "position:absolute;inset:0;pointer-events:none;";
-const STAGE_STYLE = "position:relative;overflow:hidden;width:100%;height:100%;outline:none;background:#e9e9ef;touch-action:none;";
+const STAGE_STYLE = "position:relative;overflow:hidden;width:100%;height:100%;outline:none;background:#e9e9ef;touch-action:none;user-select:none;-webkit-user-select:none;";
 
 /**
- * Mount a canvas in `container`. `onCommit(operations, intent)` receives every edit; the
- * caller commits it and later calls `update(document, affectedNodeIds)`. `onSelect(ids)`
- * reports selection changes.
+ * Mount a canvas in `container`. `onCommit(operations, intent, { revision })` receives every
+ * edit, computed from the document at `revision` (the one last given to `setDocument` or
+ * `update`); the caller commits it with that base revision, so an edit computed from a
+ * document that has since changed is refused rather than misapplied, and later calls
+ * `update(document, affectedNodeIds)`. `onSelect(ids)` reports selection changes.
  */
 export async function mountCanvas(container, { onCommit = () => {}, onSelect = () => {}, nudge = 1 } = {}) {
   const owner = container.ownerDocument;
@@ -231,34 +247,126 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
       overlay.appendChild(box);
     }
   }
-  const measuredOffsets = (ids) => Object.fromEntries(ids.map((id) => {
+  // The size CSS width/height must hold for `element` to keep its current box, following its
+  // box-sizing. Computed values are used when they are lengths; an inline box reports
+  // "auto", so its rendered box less padding and border is used instead.
+  const cssSize = (element) => {
+    const computed = frameDocument.defaultView.getComputedStyle(element);
+    let width = parseFloat(computed.width);
+    let height = parseFloat(computed.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || computed.display === "inline") {
+      const rect = element.getBoundingClientRect();
+      const edges = computed.boxSizing === "border-box" ? [] : ["padding", "border"];
+      const inset = (sides) => edges.reduce((sum, edge) => sum + sides.reduce((total, side) => total + (parseFloat(computed[edge === "border" ? `border${side}Width` : `${edge}${side}`]) || 0), 0), 0);
+      width = rect.width - inset(["Left", "Right"]);
+      height = rect.height - inset(["Top", "Bottom"]);
+    }
+    return { width: Math.max(1, width), height: Math.max(1, height) };
+  };
+  // Where each flow node must be placed to stay put once absolutely positioned, measured
+  // after the change: the node is set to absolute at (0, 0) for one synchronous layout, and
+  // the distance back to where it was is its left/top. That accounts for its margins, for
+  // margins that collapsed through its parent, and for any change in its containing block;
+  // the reflow of the nodes around it cannot be undone. Positioned nodes need no measuring.
+  const measuredBoxes = (ids) => Object.fromEntries(ids.map((id) => {
     const element = renderer.elementFor(id);
-    return [id, element ? { left: element.offsetLeft, top: element.offsetTop } : { left: 0, top: 0 }];
+    if (!element) return [id, { left: 0, top: 0 }];
+    const before = element.getBoundingClientRect();
+    const { width } = cssSize(element);
+    const saved = ["position", "left", "top", "right", "bottom", "width"].map((name) => [name, element.style.getPropertyValue(name), element.style.getPropertyPriority(name)]);
+    element.style.setProperty("position", "absolute");
+    element.style.setProperty("left", "0px");
+    element.style.setProperty("top", "0px");
+    element.style.removeProperty("right");
+    element.style.removeProperty("bottom");
+    element.style.setProperty("width", `${width}px`);
+    const zero = element.getBoundingClientRect();
+    for (const [name, value, priority] of saved) {
+      if (value === "") element.style.removeProperty(name);
+      else element.style.setProperty(name, value, priority);
+    }
+    return [id, { left: before.left - zero.left, top: before.top - zero.top, width }];
   }));
+  const commit = (operations, intent) => {
+    if (operations.length > 0) onCommit(operations, intent, { revision: document.revision });
+  };
 
   capture.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || document === null) return;
+    // No text selection or native drag may start from a canvas press: either would make the
+    // browser cancel the pointer mid-drag.
+    event.preventDefault();
     stage.focus();
     const id = hitTest({ x: event.clientX, y: event.clientY });
     const extend = event.shiftKey || event.metaKey || event.ctrlKey;
     if (id === null || !selection.includes(id) || extend) setSelection(selectNode(selection, id, { extend }));
     if (id !== null && selection.includes(id)) {
-      drag = { kind: "move", startX: event.clientX, startY: event.clientY, ids: [...selection], moved: false };
-      capture.setPointerCapture?.(event.pointerId);
+      const ids = [...selection];
+      drag = { kind: "move", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, ids, moved: false };
+      // Capture on the stage, which outlives every move: the overlay is redrawn as it goes.
+      stage.setPointerCapture?.(event.pointerId);
     }
   });
   overlay.addEventListener("pointerdown", (event) => {
-    if (event.target?.dataset?.lilacHandle !== "resize" || selection.length !== 1) return;
+    if (event.button !== 0 || event.target?.dataset?.lilacHandle !== "resize" || selection.length !== 1) return;
+    event.preventDefault();
     event.stopPropagation();
-    const element = renderer.elementFor(selection[0]);
-    const rect = worldRect(element);
-    drag = { kind: "resize", startX: event.clientX, startY: event.clientY, id: selection[0], width: rect.width, height: rect.height, moved: false };
-    event.target.setPointerCapture?.(event.pointerId);
+    stage.focus();
+    const id = selection[0];
+    const element = renderer.elementFor(id);
+    const size = cssSize(element);
+    drag = {
+      kind: "resize", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, id, moved: false,
+      width: size.width, height: size.height,
+      // The inline values the preview overwrites, restored when the drag ends.
+      inline: { width: element.style.getPropertyValue("width"), height: element.style.getPropertyValue("height") },
+    };
+    stage.setPointerCapture?.(event.pointerId);
   });
-  const onMove = (event) => {
-    if (drag === null) return;
-    const dx = (event.clientX - drag.startX) / viewport.zoom;
-    const dy = (event.clientY - drag.startY) / viewport.zoom;
-    if (Math.abs(dx) + Math.abs(dy) > 0) drag.moved = true;
+  const deltas = (event, current) => ({ dx: (event.clientX - current.startX) / viewport.zoom, dy: (event.clientY - current.startY) / viewport.zoom });
+  // Undo a drag's preview, leaving the elements as the document rendered them.
+  const clearPreview = (current) => {
+    if (current.kind === "move") {
+      for (const id of current.ids) renderer.elementFor(id)?.style.removeProperty("translate");
+    } else {
+      const element = renderer.elementFor(current.id);
+      for (const name of ["width", "height"]) {
+        if (current.inline[name] === "") element?.style.removeProperty(name);
+        else element?.style.setProperty(name, current.inline[name]);
+      }
+    }
+  };
+  // A committed drag keeps its preview until the caller's next update or setDocument (or
+  // clearPreview, when the edit was not applied), so the node does not snap back for the
+  // host's round trip. An abandoned drag clears it at once.
+  let held = null;
+  const releaseHeld = () => {
+    if (held !== null) clearPreview(held);
+    held = null;
+  };
+  const endDrag = ({ keep = false } = {}) => {
+    const current = drag;
+    drag = null;
+    if (current !== null) {
+      if (keep) {
+        releaseHeld();
+        held = current;
+      } else clearPreview(current);
+      if (stage.hasPointerCapture?.(current.pointerId)) stage.releasePointerCapture(current.pointerId);
+    }
+    drawSelection();
+    return current;
+  };
+  stage.addEventListener("pointermove", (event) => {
+    if (drag === null || event.pointerId !== drag.pointerId) return;
+    // No button held means the release was missed (it happened outside the page): cancel.
+    if (event.buttons === 0) {
+      endDrag();
+      return;
+    }
+    if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= DRAG_THRESHOLD) drag.moved = true;
+    if (!drag.moved) return;
+    const { dx, dy } = deltas(event, drag);
     if (drag.kind === "move") {
       for (const id of drag.ids) renderer.elementFor(id)?.style.setProperty("translate", `${dx}px ${dy}px`);
     } else {
@@ -267,31 +375,45 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
       element?.style.setProperty("height", `${Math.max(1, drag.height + dy)}px`);
     }
     drawSelection();
-  };
-  const onUp = (event) => {
-    if (drag === null) return;
-    const current = drag;
-    drag = null;
-    const dx = (event.clientX - current.startX) / viewport.zoom;
-    const dy = (event.clientY - current.startY) / viewport.zoom;
-    if (current.kind === "move") {
-      for (const id of current.ids) renderer.elementFor(id)?.style.removeProperty("translate");
-      if (current.moved) onCommit(moveBy(document, current.ids, dx, dy, measuredOffsets(current.ids)), current.ids.length === 1 ? "Move layer" : "Move layers");
-    } else if (current.moved) {
-      onCommit(resizeTo(document, current.id, current.width + dx, current.height + dy), "Resize layer");
+  });
+  stage.addEventListener("pointerup", (event) => {
+    if (drag === null || event.pointerId !== drag.pointerId) return;
+    const { dx, dy } = deltas(event, drag);
+    // Measure before the preview is cleared, while the elements are still in place.
+    const boxes = drag.kind === "move" ? measuredBoxes(drag.ids) : null;
+    let operations = [];
+    let intent = null;
+    if (drag.moved && (dx !== 0 || dy !== 0)) {
+      if (drag.kind === "move") {
+        const ids = drag.ids.filter((id) => Object.hasOwn(document.nodes, id));
+        operations = ids.length > 0 ? moveBy(document, ids, dx, dy, boxes) : [];
+        intent = ids.length === 1 ? "Move layer" : "Move layers";
+      } else if (Object.hasOwn(document.nodes, drag.id)) {
+        operations = resizeTo(document, drag.id, drag.width + dx, drag.height + dy);
+        intent = "Resize layer";
+      }
     }
-    drawSelection();
-  };
-  capture.addEventListener("pointermove", onMove);
-  overlay.addEventListener("pointermove", onMove);
-  capture.addEventListener("pointerup", onUp);
-  overlay.addEventListener("pointerup", onUp);
+    endDrag({ keep: operations.length > 0 });
+    commit(operations, intent);
+  });
+  stage.addEventListener("dragstart", (event) => event.preventDefault());
+  // A cancelled pointer (touch scrolling, an interruption) or lost capture abandons the drag.
+  stage.addEventListener("pointercancel", (event) => {
+    if (drag !== null && event.pointerId === drag.pointerId) endDrag();
+  });
+  stage.addEventListener("lostpointercapture", (event) => {
+    if (drag !== null && event.pointerId === drag.pointerId) endDrag();
+  });
 
   stage.addEventListener("wheel", (event) => {
     event.preventDefault();
     const stageRect = stage.getBoundingClientRect();
-    if (event.ctrlKey || event.metaKey) viewport = zoomAt(viewport, { x: event.clientX - stageRect.left, y: event.clientY - stageRect.top }, Math.exp(-event.deltaY / 300));
-    else viewport = panBy(viewport, -event.deltaX, -event.deltaY);
+    // Lines and pages (deltaMode 1 and 2) become pixels.
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? stage.clientHeight : 1;
+    const deltaX = event.deltaX * unit;
+    const deltaY = event.deltaY * unit;
+    if (event.ctrlKey || event.metaKey) viewport = zoomAt(viewport, { x: event.clientX - stageRect.left, y: event.clientY - stageRect.top }, Math.exp(-Math.max(-600, Math.min(600, deltaY)) / 300));
+    else viewport = panBy(viewport, -deltaX, -deltaY);
     applyViewport();
   }, { passive: false });
 
@@ -299,13 +421,14 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     if (document === null) return;
     const step = event.shiftKey ? nudge * 10 : nudge;
     const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
-    if (Object.hasOwn(moves, event.key) && selection.length > 0) {
+    const modified = event.ctrlKey || event.metaKey || event.altKey;
+    if (Object.hasOwn(moves, event.key) && selection.length > 0 && !modified) {
       event.preventDefault();
       const [dx, dy] = moves[event.key];
-      onCommit(moveBy(document, selection, dx, dy, measuredOffsets(selection)), "Nudge layer");
-    } else if ((event.key === "Delete" || event.key === "Backspace") && selection.length > 0) {
+      commit(moveBy(document, selection, dx, dy, measuredBoxes(selection)), "Nudge layer");
+    } else if ((event.key === "Delete" || event.key === "Backspace") && selection.length > 0 && !modified) {
       event.preventDefault();
-      onCommit(removeNodes(document, selection), selection.length === 1 ? "Delete layer" : "Delete layers");
+      commit(removeNodes(document, selection), selection.length === 1 ? "Delete layer" : "Delete layers");
     } else if (event.key === "Escape") {
       setSelection([]);
     } else if ((event.key === "=" || event.key === "+") && (event.ctrlKey || event.metaKey)) {
@@ -326,6 +449,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     renderer,
     /** Show `next` from scratch (opening a project). */
     setDocument(next) {
+      releaseHeld();
       document = next;
       renderer.render(next);
       sizeFrame();
@@ -333,6 +457,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     },
     /** Apply a committed change: patch only `affectedNodeIds`. */
     update(next, affectedNodeIds) {
+      releaseHeld();
       document = next;
       renderer.patch(next, affectedNodeIds);
       sizeFrame();
@@ -359,6 +484,11 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
       const root = frameDocument.querySelector("[data-lilac-root]");
       viewport = fitBounds({ x: 0, y: 0, width: Math.max(1, root.scrollWidth), height: Math.max(1, frameDocument.documentElement.scrollHeight) }, stage.clientWidth, stage.clientHeight);
       applyViewport();
+    },
+    /** Drop a held drag preview: the caller's commit of it was not applied. */
+    clearPreview() {
+      releaseHeld();
+      drawSelection();
     },
     hitTest,
     destroy() {
