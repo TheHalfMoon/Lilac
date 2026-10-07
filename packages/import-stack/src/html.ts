@@ -26,9 +26,11 @@ const DROP_SUBTREE = new Set([
   "animatetransform", "set", "discard",
 ]);
 const URL_ATTRIBUTES = new Set(["href", "src", "poster", "cite", "background", "xlink:href"]);
+// SVG <use> and <feImage> fetch the referenced document as a subresource; they are
+// images, not navigation links (a "link" resource would give the node a link role).
 const RESOURCE_TAGS = new Map<string, "image" | "media" | "link">([
-  ["img", "image"], ["image", "image"], ["video", "media"], ["audio", "media"],
-  ["source", "media"], ["a", "link"],
+  ["img", "image"], ["image", "image"], ["use", "image"], ["feimage", "image"],
+  ["video", "media"], ["audio", "media"], ["source", "media"], ["a", "link"],
 ]);
 
 function byteLength(value: string): number { return Buffer.byteLength(value, "utf8"); }
