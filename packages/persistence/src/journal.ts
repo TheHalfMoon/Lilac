@@ -1,3 +1,4 @@
+import { NODE_FIELDS } from "@lilac/document-model";
 import { canonicalJson, sha256Hex } from "./canonical.ts";
 import { PersistenceCorruptionError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
 import { PERSISTENCE_LIMITS, type JournalEntry } from "./types.ts";
@@ -14,7 +15,7 @@ const OPERATION_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = Object.f
   "set-props": new Set(["type", "nodeId", "set", "unset"]),
   "move-node": new Set(["type", "nodeId", "parentId", "index"]),
 });
-const NODE_FIELDS = new Set(["id", "type", "parentId", "children", "props", "metadata"]);
+const NODE_FIELD_SET: ReadonlySet<string> = new Set(NODE_FIELDS);
 
 /** The first way `transaction` departs from journal format 1, or null. */
 function journalFormatProblem(transaction: Record<string, unknown>): string | null {
@@ -30,7 +31,7 @@ function journalFormatProblem(transaction: Record<string, unknown>): string | nu
     if (opField !== undefined) return `field ${JSON.stringify(opField).slice(0, 80)} on operation ${index}`;
     const nodes = [operation.node, ...(Array.isArray(operation.nodes) ? operation.nodes : [])].filter(isRecord);
     for (const node of nodes) {
-      const nodeField = extra(node, NODE_FIELDS);
+      const nodeField = extra(node, NODE_FIELD_SET);
       if (nodeField !== undefined) return `node field ${JSON.stringify(nodeField).slice(0, 80)} on operation ${index}`;
     }
   }

@@ -1,7 +1,7 @@
 import { createHash, randomUUID, type Hash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { DOCUMENT_SCHEMA_VERSION, cloneDocument, normalizeDocument, validateDocument } from "@lilac/document-model";
+import { DOCUMENT_FIELDS, DOCUMENT_SCHEMA_VERSION, NODE_FIELDS, cloneDocument, normalizeDocument, validateDocument } from "@lilac/document-model";
 import { applyTransaction } from "@lilac/history";
 import { canonicalJson } from "./canonical.ts";
 import { PersistenceCorruptionError, PersistenceLockError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
@@ -116,15 +116,40 @@ function readSnapshot(record: Record<string, unknown>): SnapshotRef {
   return { revision: revision as number, documentObject, journalSeq: journalSeq as number, chainDigest };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+const DOCUMENT_FIELD_SET: ReadonlySet<string> = new Set(DOCUMENT_FIELDS);
+const NODE_FIELD_SET: ReadonlySet<string> = new Set(NODE_FIELDS);
+
+function documentVersionProblem(record: unknown): string | null {
+  if (!isRecord(record)) return null; // validation reports the shape
+  const version = record.schemaVersion;
+  if (!Number.isSafeInteger(version) || (version as number) < 0) return "has a schemaVersion that is not a non-negative integer";
+  if (version !== DOCUMENT_SCHEMA_VERSION) {
+    return (version as number) > DOCUMENT_SCHEMA_VERSION
+      ? `is document schema ${version}, newer than supported schema ${DOCUMENT_SCHEMA_VERSION}`
+      : `is document schema ${version}; no migration from document schema ${version}`;
+  }
+  const extra = (value: Record<string, unknown>, allowed: ReadonlySet<string>) => Object.keys(value).find((key) => !allowed.has(key));
+  const field = extra(record, DOCUMENT_FIELD_SET);
+  if (field !== undefined) return `has field ${JSON.stringify(field).slice(0, 80)}, which document schema 1 does not have`;
+  if (!isRecord(record.nodes)) return null;
+  for (const node of Object.values(record.nodes)) {
+    const nodeField = isRecord(node) ? extra(node, NODE_FIELD_SET) : undefined;
+    if (nodeField !== undefined) return `has node field ${JSON.stringify(nodeField).slice(0, 80)}, which document schema 1 does not have`;
+  }
+  return null;
+}
+
 function loadDocument(projectDir: string, digest: string): LilacDocument {
   const record = parseJsonFile(getObject(projectDir, digest), `document object ${digest}`);
-  // A document schema this release does not read is a version mismatch, not corruption.
-  const version = (record as { schemaVersion?: unknown } | null)?.schemaVersion;
-  if (Number.isSafeInteger(version) && version !== DOCUMENT_SCHEMA_VERSION) {
-    throw new PersistenceVersionError((version as number) > DOCUMENT_SCHEMA_VERSION
-      ? `document schema ${version} is newer than supported schema ${DOCUMENT_SCHEMA_VERSION}`
-      : `no migration from document schema ${version}`);
-  }
+  // The object's bytes already match its content hash, so a document this release does not
+  // read (another schema version, or fields schema 1 lacks) is a version mismatch, as for the
+  // manifest, not corruption.
+  const problem = documentVersionProblem(record);
+  if (problem !== null) throw new PersistenceVersionError(`document object ${digest} ${problem}`);
   try {
     validateDocument(record);
     return normalizeDocument(record) as LilacDocument;
@@ -335,10 +360,6 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
     const rawManifest = readJsonFile(files.manifest, "manifest");
     const { manifest: migrated, migratedFrom } = migrateManifest(rawManifest, options.migrations ?? PROJECT_MIGRATIONS);
     const manifest = readManifest(migrated);
-    if (migratedFrom !== null) {
-      unchanged();
-      atomicWrite(files.manifest, canonicalJson(manifest), "manifest");
-    }
 
     const snapshot = readSnapshot(readJsonFile(files.snapshot, "snapshot reference"));
     let document = loadDocument(projectDir, snapshot.documentObject);
@@ -350,10 +371,8 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
     if (journalBytes === null) throw new PersistenceCorruptionError("journal is missing");
     const genesis = genesisDigest(manifest.projectId);
     const parsed = parseJournal(journalBytes, genesis);
-    if (parsed.tornTailBytes > 0) {
-      unchanged();
-      atomicWrite(files.journal, journalBytes.subarray(0, parsed.validBytes), "journal");
-    }
+    // Every entry must be journal format 1, including those the snapshot already covers.
+    for (const { entry } of parsed.entries) assertJournalFormat(entry.transaction, `journal entry ${entry.seq}`, true);
     if (snapshot.journalSeq > parsed.entries.length) {
       throw new PersistenceCorruptionError("snapshot reference points past the end of the journal");
     }
@@ -361,8 +380,6 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
     if (anchor !== snapshot.chainDigest) throw new PersistenceCorruptionError("snapshot reference does not match the journal chain");
 
     let replayed = 0;
-    // Every entry must be journal format 1, including those the snapshot already covers.
-    for (const { entry } of parsed.entries) assertJournalFormat(entry.transaction, `journal entry ${entry.seq}`, true);
     for (const { entry } of parsed.entries.slice(snapshot.journalSeq)) {
       let next: LilacDocument;
       try {
@@ -373,6 +390,16 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       if (next.revision !== entry.revision) throw new PersistenceCorruptionError(`journal entry ${entry.seq} revision mismatch`);
       document = next;
       replayed += 1;
+    }
+    // Repairs are written only once every check has passed, so an open refused as newer or
+    // corrupt leaves the project's files as it found them.
+    if (migratedFrom !== null) {
+      unchanged();
+      atomicWrite(files.manifest, canonicalJson(manifest), "manifest");
+    }
+    if (parsed.tornTailBytes > 0) {
+      unchanged();
+      atomicWrite(files.journal, journalBytes.subarray(0, parsed.validBytes), "journal");
     }
     const last = parsed.entries.at(-1);
     unchanged();

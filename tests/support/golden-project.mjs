@@ -25,6 +25,25 @@ export function writeGoldenProject(root) {
     store.checkpoint();
     store.commit({ id: "tx-3", actor: "agent-1", baseRevision: 2, tool: "edit", operations: [{ type: "move-node", nodeId: "text-2", parentId: "frame-1", index: 0 }] });
     store.commit({ id: "tx-4", actor: "user-1", baseRevision: 3, operations: [{ type: "set-props", nodeId: "text-1", set: { text: "Hi" }, unset: [] }, { type: "remove-node", nodeId: "text-2" }] });
+    store.commit({
+      id: "tx-5",
+      actor: "importer-1",
+      baseRevision: 4,
+      intent: "import card",
+      tool: "@lilac/import-stack",
+      timestamp: GOLDEN_AT,
+      metadata: { import: { requestId: "req-1" } },
+      operations: [{
+        type: "restore-subtree",
+        rootId: "card",
+        parentId: "frame-1",
+        index: 1,
+        nodes: [
+          { id: "card", type: "element", parentId: "frame-1", children: ["card-title"], props: { tag: "section" }, metadata: { sourceBinding: { file: "card.html" } } },
+          { id: "card-title", type: "text", parentId: "card", children: [], props: { text: "Card" }, metadata: {} },
+        ],
+      }],
+    });
   } finally {
     store.close();
   }

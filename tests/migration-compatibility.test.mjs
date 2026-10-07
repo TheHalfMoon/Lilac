@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 
@@ -11,10 +11,13 @@ import {
   PersistenceCorruptionError,
   PersistenceValidationError,
   PersistenceVersionError,
+  createProject,
   encodeJournalLine,
   genesisDigest,
   openProject,
 } from "../packages/persistence/src/index.ts";
+import { DocumentInvariantError, createDocument, validateDocument } from "../packages/document-model/src/index.mjs";
+import { TransactionError, applyTransaction } from "../packages/history/src/index.mjs";
 import { GOLDEN_AT, writeGoldenProject } from "./support/golden-project.mjs";
 
 // P06 gate 11: version compatibility. A project written by this release (schema 1, journal
@@ -88,10 +91,12 @@ function refused(root, ErrorType, pattern) {
 test("the golden schema-1 project reopens to its recorded state and close leaves it byte-identical", () => withGolden((root) => {
   const before = tree(root);
   const store = open(root);
-  assert.equal(store.revision, 4);
-  assert.deepEqual(store.recovery, { tornTailBytes: 0, staleTemporaryFiles: 0, replayedEntries: 2, migratedFrom: null, lockOverride: null });
+  assert.equal(store.revision, 5);
+  assert.deepEqual(store.recovery, { tornTailBytes: 0, staleTemporaryFiles: 0, replayedEntries: 3, migratedFrom: null, lockOverride: null });
   assert.equal(store.document.id, "doc-golden");
-  assert.deepEqual(store.document.nodes["frame-1"].children, ["text-1"]);
+  assert.deepEqual(store.document.nodes["frame-1"].children, ["text-1", "card"]);
+  assert.deepEqual(store.document.nodes.card.metadata, { sourceBinding: { file: "card.html" } });
+  assert.equal(store.document.nodes["card-title"].props.text, "Card");
   assert.equal(store.document.nodes["frame-1"].props.title, "Plans");
   assert.equal(store.document.nodes["text-1"].props.text, "Hi");
   assert.equal(store.document.nodes["text-2"], undefined);
@@ -99,10 +104,10 @@ test("the golden schema-1 project reopens to its recorded state and close leaves
   assert.deepEqual(tree(root), before, "opening and closing a current project rewrites nothing");
 
   const writer = open(root);
-  writer.commit({ id: "tx-5", actor: "user-1", baseRevision: 4, operations: [{ type: "set-props", nodeId: "frame-1", set: { title: "Later" } }] });
+  writer.commit({ id: "tx-6", actor: "user-1", baseRevision: 5, operations: [{ type: "set-props", nodeId: "frame-1", set: { title: "Later" } }] });
   writer.close();
   const reopened = open(root);
-  assert.equal(reopened.revision, 5);
+  assert.equal(reopened.revision, 6);
   assert.equal(reopened.document.nodes["frame-1"].props.title, "Later");
   reopened.close();
 }));
@@ -145,26 +150,43 @@ test("project manifest versions: only schema 1 opens unless a registered step mi
     writeFileSync(file(root, PROJECT_FILES.manifest), JSON.stringify({ ...legacy, schemaVersion: 0, legacyRoot: documentId }));
     const store = open(root, { migrations: { 0: ({ legacyRoot, ...rest }) => ({ ...rest, documentId: legacyRoot }) } });
     assert.equal(store.recovery.migratedFrom, 0);
-    assert.equal(store.revision, 4);
+    assert.equal(store.revision, 5);
     store.close();
     assert.equal(readFileSync(file(root, PROJECT_FILES.manifest), "utf8"), readFileSync(join(GOLDEN, PROJECT_FILES.directory, PROJECT_FILES.manifest), "utf8"));
   });
 });
 
+/** Point the snapshot at a content-addressed document object built from the current one. */
+function replaceSnapshotDocument(root, edit) {
+  const snapshot = readJson(root, PROJECT_FILES.snapshot);
+  const objects = join(root, PROJECT_FILES.directory, PROJECT_FILES.objects);
+  const current = JSON.parse(readFileSync(join(objects, snapshot.documentObject.slice(0, 2), snapshot.documentObject.slice(2)), "utf8"));
+  const bytes = Buffer.from(JSON.stringify(edit(current)), "utf8");
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  mkdirSync(join(objects, digest.slice(0, 2)), { recursive: true });
+  writeFileSync(join(objects, digest.slice(0, 2), digest.slice(2)), bytes);
+  writeFileSync(file(root, PROJECT_FILES.snapshot), JSON.stringify({ ...snapshot, documentObject: digest }));
+}
+
 test("a document object from another document schema is a version error, not corruption", () => {
-  for (const [schemaVersion, pattern] of [[2, /document schema 2 is newer than supported schema 1/], [0, /no migration from document schema 0/]]) {
-    withGolden((root) => {
-      const snapshot = readJson(root, PROJECT_FILES.snapshot);
-      const objects = join(root, PROJECT_FILES.directory, PROJECT_FILES.objects);
-      const current = JSON.parse(readFileSync(join(objects, snapshot.documentObject.slice(0, 2), snapshot.documentObject.slice(2)), "utf8"));
-      const bytes = Buffer.from(JSON.stringify({ ...current, schemaVersion }), "utf8");
-      const digest = createHash("sha256").update(bytes).digest("hex");
-      mkdirSync(join(objects, digest.slice(0, 2)), { recursive: true });
-      writeFileSync(join(objects, digest.slice(0, 2), digest.slice(2)), bytes);
-      writeFileSync(file(root, PROJECT_FILES.snapshot), JSON.stringify({ ...snapshot, documentObject: digest }));
-      refused(root, PersistenceVersionError, pattern);
-    });
-  }
+  const cases = [
+    [(doc) => ({ ...doc, schemaVersion: 2 }), /is document schema 2, newer than supported schema 1/],
+    [(doc) => ({ ...doc, schemaVersion: 0 }), /no migration from document schema 0/],
+    [(doc) => ({ ...doc, schemaVersion: "1" }), /schemaVersion that is not a non-negative integer/],
+    [(doc) => ({ ...doc, schemaVersion: 1.5 }), /schemaVersion that is not a non-negative integer/],
+    [(doc) => ({ ...doc, schemaVersion: null }), /schemaVersion that is not a non-negative integer/],
+    [({ schemaVersion, ...doc }) => doc, /schemaVersion that is not a non-negative integer/],
+    [(doc) => ({ ...doc, layers: [] }), /has field "layers", which document schema 1 does not have/],
+    [(doc) => ({ ...doc, nodes: { ...doc.nodes, "frame-1": { ...doc.nodes["frame-1"], locked: true } } }), /has node field "locked"/],
+  ];
+  for (const [edit, pattern] of cases) withGolden((root) => {
+    replaceSnapshotDocument(root, edit);
+    refused(root, PersistenceVersionError, pattern);
+  });
+  withGolden((root) => {
+    replaceSnapshotDocument(root, (doc) => ({ ...doc, rootIds: [] }));
+    refused(root, PersistenceCorruptionError, /is not a valid document/);
+  });
 });
 
 test("journal entries using fields or operations journal format 1 lacks are refused as newer", () => {
@@ -174,6 +196,8 @@ test("journal entries using fields or operations journal format 1 lacks are refu
     ["an unknown operation field", 3, (tx) => { tx.operations[0].anchor = "start"; }, /journal entry 3 uses field "anchor" on operation 0/],
     ["an unknown node field", 2, (tx) => { tx.operations[0].node.locked = true; }, /journal entry 2 uses node field "locked" on operation 0/],
     ["a newer field in an entry the snapshot already covers", 1, (tx) => { tx.priority = 1; }, /journal entry 1 uses transaction field "priority"/],
+    ["an unknown restore-subtree field", 5, (tx) => { tx.operations[0].mode = "merge"; }, /journal entry 5 uses field "mode" on operation 0/],
+    ["an unknown field in restore-subtree nodes", 5, (tx) => { tx.operations[0].nodes[1].hidden = true; }, /journal entry 5 uses node field "hidden" on operation 0/],
   ];
   for (const [label, seq, edit, pattern] of cases) {
     withGolden((root) => {
@@ -185,7 +209,7 @@ test("journal entries using fields or operations journal format 1 lacks are refu
   withGolden((root) => {
     editEntry(root, 3, () => {});
     const store = open(root);
-    assert.equal(store.revision, 4, "re-chaining an unedited journal is a no-op, so the cases above isolate the edit");
+    assert.equal(store.revision, 5, "re-chaining an unedited journal is a no-op, so the cases above isolate the edit");
     store.close();
   });
 });
@@ -217,19 +241,76 @@ test("commit never writes an entry a journal-format-1 reader would refuse", () =
     ];
     for (const [index, operation] of attempts.entries()) {
       assert.throws(
-        () => store.commit({ id: `bad-${index}`, actor: "user-1", baseRevision: 4, operations: [operation] }),
+        () => store.commit({ id: `bad-${index}`, actor: "user-1", baseRevision: 5, operations: [operation] }),
         (error) => error instanceof PersistenceValidationError && /journal format 1 cannot record/.test(error.message),
       );
     }
-    assert.equal(store.revision, 4);
-    store.commit({ id: "tx-5", actor: "user-1", baseRevision: 4, operations: [{ type: "set-props", nodeId: "frame-1", set: { title: "Fine" } }] });
+    assert.equal(store.revision, 5);
+    store.commit({ id: "tx-6", actor: "user-1", baseRevision: 5, operations: [{ type: "set-props", nodeId: "frame-1", set: { title: "Fine" } }] });
   } finally {
     store.close();
   }
   const journalAfter = readFileSync(file(root, PROJECT_FILES.journal));
   assert.deepEqual(journalAfter.subarray(0, journalBefore.length), journalBefore, "refused commits leave the journal untouched");
-  assert.equal(journalEntries(root).length, 5);
+  assert.equal(journalEntries(root).length, 6);
   const reopened = open(root);
-  assert.equal(reopened.revision, 5);
+  assert.equal(reopened.revision, 6);
   reopened.close();
 }));
+
+test("a refused open leaves every file as it found it, even when repairs were due", () => withGolden((root) => {
+  // A torn tail and a migratable manifest are both repaired on a successful open; here a
+  // journal entry from a newer format refuses the open, so neither repair may be written.
+  editEntry(root, 4, (tx) => { tx.signature = "abc"; });
+  appendFileSync(file(root, PROJECT_FILES.journal), '{"digest":"torn');
+  const { documentId, ...legacy } = readJson(root, PROJECT_FILES.manifest);
+  writeFileSync(file(root, PROJECT_FILES.manifest), JSON.stringify({ ...legacy, schemaVersion: 0, legacyRoot: documentId }));
+  const before = tree(root);
+  assert.throws(
+    () => open(root, { migrations: { 0: ({ legacyRoot, ...rest }) => ({ ...rest, documentId: legacyRoot }) } }),
+    (error) => error instanceof PersistenceVersionError && /journal entry 4 uses transaction field "signature"/.test(error.message),
+  );
+  assert.deepEqual(tree(root), before);
+}));
+
+test("document schema 1 is strict: unknown fields and non-JSON values are refused where they enter", () => {
+  const doc = () => createDocument({ id: "d", nodes: [{ id: "a", type: "frame", props: { title: "A" } }] });
+  const invalid = [
+    ["an unknown document field", (d) => { d.layers = []; }, /document has field "layers"/],
+    ["an unknown node field", (d) => { d.nodes.a.locked = true; }, /node a has field "locked"/],
+    ["a Map in props", (d) => { d.nodes.a.props.m = new Map(); }, /non-plain object/],
+    ["a Date in metadata", (d) => { d.nodes.a.metadata.at = new Date(0); }, /non-plain object/],
+    ["typed-array props", (d) => { d.nodes.a.props = new Uint8Array(2); }, /non-plain object|must be a plain object/],
+    ["undefined in props", (d) => { d.nodes.a.props.u = undefined; }, /undefined value/],
+    ["NaN in document metadata", (d) => { d.metadata.n = Number.NaN; }, /non-finite number/],
+    ["a function in props", (d) => { d.nodes.a.props.f = () => 1; }, /function value/],
+    ["a sparse array in props", (d) => { d.nodes.a.props.s = [1, , 3]; }, /sparse array/],
+  ];
+  for (const [label, edit, pattern] of invalid) {
+    const d = doc();
+    edit(d);
+    assert.throws(() => validateDocument(d), (error) => error instanceof DocumentInvariantError && pattern.test(error.message), label);
+  }
+  const nullPrototype = doc();
+  nullPrototype.nodes = Object.assign(Object.create(null), nullPrototype.nodes);
+  validateDocument(nullPrototype); // JSON-representable, so accepted
+
+  const base = doc();
+  for (const [label, set] of [["a typed array", new Uint8Array(2)], ["a Map value", { m: new Map() }], ["a Date value", { at: new Date(0) }]]) {
+    assert.throws(
+      () => applyTransaction(base, { id: "t", actor: "u", operations: [{ type: "set-props", nodeId: "a", set }] }),
+      (error) => error instanceof TransactionError,
+      label,
+    );
+  }
+  assert.throws(() => applyTransaction(base, { id: "t", actor: "u", metadata: { at: new Date(0) }, operations: [{ type: "set-props", nodeId: "a", set: { x: 1 } }] }), TransactionError);
+
+  const root = tempRoot();
+  try {
+    const extra = doc();
+    extra.nodes.a.locked = true;
+    assert.throws(() => createProject(root, { projectId: "p", document: extra, createdAt: GOLDEN_AT }), PersistenceValidationError);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

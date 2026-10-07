@@ -44,10 +44,70 @@ function assertNonEmptyString(value, label) {
   }
 }
 
+function isPlainRecord(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function assertPlainObject(value, label) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (!isPlainRecord(value)) {
     throw new DocumentInvariantError(`${label} must be a plain object`);
   }
+}
+
+// Document schema 1 has exactly these fields on a document and on a node record.
+export const DOCUMENT_FIELDS = Object.freeze(["schemaVersion", "id", "name", "revision", "rootIds", "nodes", "metadata"]);
+export const NODE_FIELDS = Object.freeze(["id", "type", "parentId", "children", "props", "metadata"]);
+const DOCUMENT_FIELD_SET = new Set(DOCUMENT_FIELDS);
+const NODE_FIELD_SET = new Set(NODE_FIELDS);
+
+function unknownField(record, allowed) {
+  for (const key of Object.keys(record)) if (!allowed.has(key)) return key;
+  return undefined;
+}
+
+function assertKnownFields(record, allowed, label) {
+  const field = unknownField(record, allowed);
+  if (field !== undefined) {
+    throw new DocumentInvariantError(`${label} has field ${JSON.stringify(field).slice(0, 80)}, which document schema 1 does not have`);
+  }
+}
+
+/**
+ * The first reason `value` is not JSON data, or null. JSON data is null, booleans, strings,
+ * finite numbers, dense arrays, and objects with a plain or null prototype, nested at most
+ * MAX_SERIALIZE_DEPTH levels. A Map, Date, typed array, function, or undefined would pass a
+ * typeof check and then fail or change meaning in serialization, so it is refused where it
+ * enters. Values are read the way the serializer reads them (own enumerable string keys);
+ * this is a data check for in-process callers, not a defense against hostile getters.
+ */
+export function jsonDataProblem(value, depth = 0) {
+  if (depth > MAX_SERIALIZE_DEPTH) return `is nested deeper than ${MAX_SERIALIZE_DEPTH} levels`;
+  if (value === null || typeof value === "boolean" || typeof value === "string") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? null : "holds a non-finite number";
+  if (typeof value !== "object") return `holds a ${typeof value} value`;
+  if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype) return "holds a non-plain array";
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.hasOwn(value, index)) return "holds a sparse array";
+      const problem = jsonDataProblem(value[index], depth + 1);
+      if (problem !== null) return problem;
+    }
+    return null;
+  }
+  if (!isPlainRecord(value)) return "holds a non-plain object";
+  for (const key of Object.keys(value)) {
+    const problem = jsonDataProblem(value[key], depth + 1);
+    if (problem !== null) return problem;
+  }
+  return null;
+}
+
+function assertJsonData(value, label) {
+  assertPlainObject(value, label);
+  const problem = jsonDataProblem(value);
+  if (problem !== null) throw new DocumentInvariantError(`${label} ${problem}`);
 }
 
 function assertUniqueStrings(values, label) {
@@ -215,8 +275,8 @@ export function createNode({
     assertNonEmptyString(parentId, "node.parentId");
   }
   assertUniqueStrings(children, "node.children");
-  assertPlainObject(props, "node.props");
-  assertPlainObject(metadata, "node.metadata");
+  assertJsonData(props, "node.props");
+  assertJsonData(metadata, "node.metadata");
 
   return {
     id,
@@ -238,7 +298,7 @@ export function createDocument({
 } = {}) {
   assertNonEmptyString(id, "document.id");
   assertNonEmptyString(name, "document.name");
-  assertPlainObject(metadata, "document.metadata");
+  assertJsonData(metadata, "document.metadata");
   if (!Number.isSafeInteger(revision) || revision < 0) {
     throw new DocumentInvariantError("document.revision must be a non-negative safe integer");
   }
@@ -344,6 +404,11 @@ export function isDescendant(document, ancestorId, candidateId) {
 
 export function validateDocument(document) {
   assertPlainObject(document, "document");
+  assertKnownFields(document, DOCUMENT_FIELD_SET, "document");
+  // One walk proves the whole record is JSON data (no accessors, symbol keys, Maps, typed
+  // arrays...), so the field checks below read plain values only.
+  const dataProblem = jsonDataProblem(document);
+  if (dataProblem !== null) throw new DocumentInvariantError(`document ${dataProblem}`);
   if (document.schemaVersion !== DOCUMENT_SCHEMA_VERSION) {
     throw new DocumentInvariantError(
       `Unsupported document schema version ${String(document.schemaVersion)}`,
@@ -378,6 +443,7 @@ export function validateDocument(document) {
   for (const [id, node] of Object.entries(nodes)) {
     assertNonEmptyString(id, "document node key");
     assertPlainObject(node, `node ${shown(id)}`);
+    assertKnownFields(node, NODE_FIELD_SET, `node ${shown(id)}`);
     if (node.id !== id) {
       throw new DocumentInvariantError(`Node record key ${shown(id)} does not match node.id ${shown(node.id)}`);
     }
