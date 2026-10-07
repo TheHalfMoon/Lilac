@@ -56,10 +56,81 @@ function assertUniqueStrings(values, label) {
   }
 }
 
+// Code-unit order: unlike localeCompare, it does not depend on the process locale.
+function compareCodeUnits(left, right) {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
+
 function sortNodeRecord(nodes) {
   return Object.fromEntries(
-    Object.entries(nodes).sort(([left], [right]) => left.localeCompare(right)),
+    Object.entries(nodes).sort(([left], [right]) => compareCodeUnits(left, right)),
   );
+}
+
+const MAX_SERIALIZE_DEPTH = 256;
+
+function canonicalValue(value, depth) {
+  if (depth > MAX_SERIALIZE_DEPTH) {
+    throw new DocumentInvariantError(`cannot serialize values nested deeper than ${MAX_SERIALIZE_DEPTH}`);
+  }
+  if (value === null || typeof value === "boolean" || typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new DocumentInvariantError("cannot serialize a non-finite number");
+    return JSON.stringify(Object.is(value, -0) ? 0 : value);
+  }
+  if (Array.isArray(value)) {
+    const parts = [];
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.hasOwn(value, index)) throw new DocumentInvariantError("cannot serialize a sparse array");
+      parts.push(canonicalValue(value[index], depth + 1));
+    }
+    return `[${parts.join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new DocumentInvariantError("cannot serialize a non-plain object");
+    }
+    const body = Object.keys(value)
+      .sort(compareCodeUnits)
+      .map((key) => {
+        if (value[key] === undefined) {
+          throw new DocumentInvariantError(`cannot serialize undefined at key ${JSON.stringify(key).slice(0, 80)}`);
+        }
+        return `${JSON.stringify(key)}:${canonicalValue(value[key], depth + 1)}`;
+      })
+      .join(",");
+    return `{${body}}`;
+  }
+  throw new DocumentInvariantError(`cannot serialize a ${typeof value} value`);
+}
+
+/**
+ * Canonical JSON for a valid document: keys in code-unit order at every depth,
+ * no whitespace, -0 written as 0. Values JSON cannot represent faithfully are refused.
+ */
+export function serializeDocument(document) {
+  validateDocument(document);
+  return canonicalValue(document, 0);
+}
+
+/**
+ * Parse canonical document text. Only the exact canonical form is accepted, so one
+ * document has exactly one byte representation.
+ */
+export function parseDocument(text) {
+  if (typeof text !== "string") throw new DocumentInvariantError("document text must be a string");
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new DocumentInvariantError("document text is not valid JSON");
+  }
+  if (serializeDocument(value) !== text) {
+    throw new DocumentInvariantError("document text is not in canonical form");
+  }
+  return normalizeDocument(value);
 }
 
 export function createNode({
