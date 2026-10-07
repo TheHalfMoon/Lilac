@@ -167,9 +167,9 @@ test("the nesting pre-scan never refuses the serializer's own deepest output", (
     for (let level = 1; level < levels; level += 1) value = [value];
     return value;
   };
-  const document = createDocument({ id: "doc-1", nodes: [{ id: "n", type: "frame", props: { p: nested(252) } }] });
+  const document = createDocument({ id: "doc-1", nodes: [{ id: "n", type: "frame", props: { p: nested(253) } }] });
   const text = serializeDocument(document);
   assert.equal(serializeDocument(parseDocument(text)), text, "the deepest serializable document round-trips");
-  document.nodes.n.props.p = nested(253);
+  document.nodes.n.props.p = nested(254);
   assert.throws(() => serializeDocument(document), /nested deeper than 256/u, "one level deeper is refused by serialize");
 });
