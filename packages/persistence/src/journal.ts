@@ -6,7 +6,9 @@ import { PERSISTENCE_LIMITS, type JournalEntry } from "./types.ts";
 // Journal format 1, the format project schema 1 writes: exactly these fields on a
 // transaction, an operation of each type, and a node record. History drops fields it does
 // not know, so a field from a newer format would otherwise replay with its meaning lost;
-// it is refused instead (at replay as a version error, at commit before it is written).
+// it is refused instead: at replay as a version error, and at commit before it is written
+// (an unknown operation or node field raises a validation error; history has already dropped
+// unknown transaction fields and refused unknown operation types by then).
 const TRANSACTION_FIELDS = new Set(["id", "actor", "baseRevision", "intent", "tool", "timestamp", "metadata", "operations"]);
 const OPERATION_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
   "insert-node": new Set(["type", "node", "parentId", "index"]),
