@@ -71,6 +71,16 @@ Three tests were added; each fails on `bc311a7`:
 
 `tests/code-ir-differential.test.mjs` now has 11 tests.
 
+## Jev breaking judgment
+
+At `05c21d0`, Jev judged this change `breaking=true`. That is accurate, and the break is intended. Each of these changes fixes a divergence or a fail-open:
+- Attribute strings no longer apply JS backslash escapes; JSX attribute strings have none.
+- A file whose only element fails to parse is now refused instead of yielding a nested element as its root.
+- Unknown named entities, lone surrogates, octal-style escapes and numbers, and `__proto__` props are refused.
+- `designToCode` writes some text and attribute values as string-literal expressions, with one child per line.
+
+No persisted Lilac data depends on the old forms: no fingerprints are stored, and code-ir output is regenerated from source.
+
 ## Gate
 
 `npm run check` was run as root here. Everything passes except "a failed journal write poisons the store until reopen", which depends on `chmod` being enforced, so it fails under root and passes as non-root and in CI. The real-browser test was skipped, because `LILAC_TEST_BROWSER` was not set.
