@@ -63,12 +63,13 @@ test("commands produce history operations that apply cleanly", () => {
   d = apply(d, moveBy(d, ["free"], 5, -3));
   assert.deepEqual(d.nodes.free.props.style, { position: "absolute", left: "15px", top: "17px" }, "a positioned node moves by its offsets");
   d = apply(d, moveBy(d, ["card", "title"], 4, 6, { card: { left: 100, top: 50, width: 180, height: 60 } }));
-  assert.deepEqual(d.nodes.card.props.style, { padding: "8px", position: "absolute", left: "104px", top: "56px", width: "180px", height: "60px" }, "a flow node is positioned at its measured place plus the delta, keeping its measured size; the nested title is not moved separately");
+  assert.deepEqual(d.nodes.card.props.style, { padding: "8px", position: "absolute", left: "104px", top: "56px", width: "180px" }, "a flow node is positioned at its measured place plus the delta, keeping its measured width (its height stays content-driven); the nested title is not moved separately");
   assert.equal(d.nodes.title.props.style, undefined);
   // A partly positioned node (right/bottom, no left/top) is placed by left/top alone.
   const anchored = createDocument({ id: "a", nodes: [{ id: "n", type: "element", props: { style: { position: "absolute", right: "10px", bottom: "5px", width: "40px" } } }] });
-  assert.deepEqual(apply(anchored, moveBy(anchored, ["n"], 1, 2, { n: { left: 50, top: 60, width: 40, height: 20 } })).nodes.n.props.style, { position: "absolute", left: "51px", top: "62px", width: "40px", height: "20px" });
+  assert.deepEqual(apply(anchored, moveBy(anchored, ["n"], 1, 2, { n: { left: 50, top: 60, width: 40, height: 20 } })).nodes.n.props.style, { position: "absolute", left: "51px", top: "62px", width: "40px" });
   assert.deepEqual(reorder(d, "missing", 1), [], "an unknown id cannot be reordered");
+  assert.deepEqual(resizeTo(d, "card", Number.NaN, 10), [], "a non-finite size is never written");
   d = apply(d, resizeTo(d, "card", 240.256, 0));
   assert.equal(d.nodes.card.props.style.width, "240.26px");
   assert.equal(d.nodes.card.props.style.height, "1px", "sizes stay positive");

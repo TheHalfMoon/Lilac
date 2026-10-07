@@ -169,9 +169,13 @@ const geometryDocument = () => createDocument({
   nodes: [
     // The page's padding keeps the heading's margin from collapsing through it: taking a node
     // out of flow reflows what is around it, which no placement can compensate for.
-    { id: "page", type: "frame", children: ["heading", "padded"], props: { tag: "main", style: { position: "relative", width: "600px", height: "400px", padding: "16px" } } },
+    { id: "page", type: "frame", children: ["heading", "padded", "plain"], props: { tag: "main", style: { position: "relative", width: "600px", height: "400px", padding: "16px" } } },
     { id: "heading", type: "text", parentId: "page", props: { tag: "h2", text: "Flow heading", style: { margin: "8px", width: "184px" } } },
     { id: "padded", type: "element", parentId: "page", props: { tag: "section", style: { position: "absolute", left: "300px", top: "100px", width: "100px", height: "50px", padding: "10px", border: "2px solid #000" } } },
+    // A heading whose top margin collapses through a plain parent, and an inline span.
+    { id: "plain", type: "element", parentId: "page", children: ["collapsing", "inline"], props: { tag: "div", style: { position: "relative", width: "300px" } } },
+    { id: "collapsing", type: "text", parentId: "plain", props: { tag: "h3", text: "Collapsing", style: { margin: "20px 0px" } } },
+    { id: "inline", type: "text", parentId: "plain", props: { tag: "span", text: "Inline words", style: { padding: "3px" } } },
   ],
 });
 const rectOf = (page, id) => page.evaluate((nodeId) => {
@@ -211,6 +215,39 @@ test("moves and resizes commit the geometry the user saw, for margins, padding a
     assert.equal(result.doc.nodes.padded.props.style.height, "60px");
     const grown = await rectOf(page, "padded");
     assert.deepEqual([grown.width - padded.width, grown.height - padded.height], [20, 10]);
+
+    // A heading whose margin collapsed through its parent also lands exactly where dragged.
+    await page.keyboard.press("Escape");
+    const collapsing = await rectOf(page, "collapsing");
+    const grip = await page.evaluate(() => window.screenOf("collapsing"));
+    await page.mouse.move(grip.x, grip.y);
+    await page.mouse.down();
+    await page.mouse.move(grip.x + 10, grip.y, { steps: 3 });
+    await page.mouse.up();
+    // The preview holds the node in place until the host's update arrives: no snap-back.
+    const held = await rectOf(page, "collapsing");
+    assert.deepEqual([held.x - collapsing.x, held.y - collapsing.y], [10, 0], "the preview is held until the update");
+    result = await h.commit();
+    const placed = await rectOf(page, "collapsing");
+    assert.deepEqual([placed.x - collapsing.x, placed.y - collapsing.y], [10, 0], "the collapsed-margin heading lands where it was dragged");
+    assert.equal(await page.evaluate(() => window.canvas.renderer.elementFor("collapsing").style.translate), "", "the update replaced the held preview");
+
+    // An inline span resized from the handle gets real lengths, never NaN.
+    await page.evaluate(() => window.canvas.select(["inline"]));
+    const inline = await rectOf(page, "inline");
+    const inlineHandle = await page.evaluate(() => {
+      const rect = document.querySelector("[data-lilac-handle]").getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.move(inlineHandle.x, inlineHandle.y);
+    await page.mouse.down();
+    await page.mouse.move(inlineHandle.x + 30, inlineHandle.y + 12, { steps: 3 });
+    await page.mouse.up();
+    result = await h.commit();
+    const { width, height } = result.doc.nodes.inline.props.style;
+    assert.match(width, /^\d+(\.\d+)?px$/u);
+    assert.match(height, /^\d+(\.\d+)?px$/u);
+    assert.equal(Number.parseFloat(width), Math.round((inline.width - 6 + 30) * 100) / 100, "content width plus the drag");
     assert.deepEqual(h.errors, []);
   } finally {
     await h.close();
