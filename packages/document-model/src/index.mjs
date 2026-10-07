@@ -123,7 +123,40 @@ function canonicalValue(value, depth) {
  */
 export function serializeDocument(document) {
   validateDocument(document);
-  return canonicalValue(document, 0);
+  const text = canonicalValue(document, 0);
+  if (exceedsByteLimit(text)) {
+    throw new DocumentInvariantError(`serialized document exceeds ${DOCUMENT_LIMITS.maxDocumentBytes} bytes`);
+  }
+  return text;
+}
+
+function exceedsByteLimit(text) {
+  // UTF-16 length bounds UTF-8 bytes from below (x1) and above (x3); count exactly only near the limit.
+  if (text.length > DOCUMENT_LIMITS.maxDocumentBytes) return true;
+  return text.length * 3 > DOCUMENT_LIMITS.maxDocumentBytes && utf8Length(text) > DOCUMENT_LIMITS.maxDocumentBytes;
+}
+
+// Bracket nesting of JSON text outside strings. Canonical output nests at most
+// MAX_SERIALIZE_DEPTH + 1 levels (the document object is level 1), so deeper text
+// is refused before JSON.parse spends time on it.
+function exceedsNesting(text) {
+  let depth = 0;
+  let inString = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const unit = text.charCodeAt(index);
+    if (inString) {
+      if (unit === 0x5c) index += 1;
+      else if (unit === 0x22) inString = false;
+    } else if (unit === 0x22) {
+      inString = true;
+    } else if (unit === 0x5b || unit === 0x7b) {
+      depth += 1;
+      if (depth > MAX_SERIALIZE_DEPTH + 1) return true;
+    } else if (unit === 0x5d || unit === 0x7d) {
+      depth -= 1;
+    }
+  }
+  return false;
 }
 
 // UTF-8 byte length without Buffer, so the model stays environment-neutral.
@@ -148,10 +181,11 @@ function utf8Length(text) {
  */
 export function parseDocument(text) {
   if (typeof text !== "string") throw new DocumentInvariantError("document text must be a string");
-  // UTF-16 length bounds UTF-8 bytes from below (x1) and above (x3); count exactly only near the limit.
-  if (text.length > DOCUMENT_LIMITS.maxDocumentBytes
-    || (text.length * 3 > DOCUMENT_LIMITS.maxDocumentBytes && utf8Length(text) > DOCUMENT_LIMITS.maxDocumentBytes)) {
+  if (exceedsByteLimit(text)) {
     throw new DocumentInvariantError(`document text exceeds ${DOCUMENT_LIMITS.maxDocumentBytes} bytes`);
+  }
+  if (exceedsNesting(text)) {
+    throw new DocumentInvariantError(`document text nests deeper than ${MAX_SERIALIZE_DEPTH + 1} levels`);
   }
   let value;
   try {

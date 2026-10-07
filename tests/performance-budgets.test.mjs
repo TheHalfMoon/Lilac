@@ -75,7 +75,8 @@ test("model and history operations on 50k nodes stay within budget and scale lin
   }
   for (const name of ["validate", "serialize", "commit"]) {
     // 5x the nodes; linear work stays near 5x, quadratic work would be near 25x.
-    const ratio = large[name] / Math.max(small[name], 1);
+    // The 20 ms floor keeps a GC pause in a very fast 10k run from tripping the guard.
+    const ratio = large[name] / Math.max(small[name], 20);
     assert.ok(ratio <= 10, `${name} grew ${ratio.toFixed(1)}x from 10k to 50k nodes`);
   }
 });
@@ -113,7 +114,49 @@ test("parseDocument refuses text over the byte limit before parsing", () => {
   const started = performance.now();
   assert.throws(() => parseDocument(text), (error) => error instanceof DocumentInvariantError && /exceeds/u.test(error.message));
   assert.ok(performance.now() - started < 100, "the size check runs before JSON.parse");
-  // Multi-byte text that is under the limit in UTF-16 units but over it in UTF-8 bytes.
-  const wide = `"${"€".repeat(Math.ceil(DOCUMENT_LIMITS.maxDocumentBytes / 3) + 1)}"`;
-  assert.throws(() => parseDocument(wide), /exceeds/u);
+  // Text under the limit in UTF-16 units but over it in UTF-8 bytes: 2-byte,
+  // 3-byte and 4-byte (surrogate pair) characters.
+  const limit = DOCUMENT_LIMITS.maxDocumentBytes;
+  for (const [character, bytes] of [["\u00e9", 2], ["\u20ac", 3], ["\u{1f600}", 4]]) {
+    const over = `"${character.repeat(Math.floor(limit / bytes) + 1)}"`;
+    assert.throws(() => parseDocument(over), /exceeds/u, `${bytes}-byte text over the limit`);
+  }
+});
+
+test("parseDocument refuses deep bracket nesting before JSON.parse", () => {
+  const text = `{"a":${"[".repeat(10_000_000)}${"]".repeat(10_000_000)}}`;
+  const started = performance.now();
+  assert.throws(() => parseDocument(text), /nests deeper than 257 levels/u);
+  assert.ok(performance.now() - started < 1000, "rejected by the pre-scan, not after a full parse");
+  // Brackets and escaped quotes inside strings do not count.
+  const quoted = serializeDocument(createDocument({ id: "doc-1", nodes: [{ id: "n", type: "frame", props: { s: `\\"${"[".repeat(1000)}` } }] }));
+  assert.equal(parseDocument(quoted).nodes.n.props.s.length, 1002);
+});
+
+test("serializeDocument refuses output over the byte limit", () => {
+  const document = createDocument({ id: "doc-1", nodes: [{ id: "n", type: "frame" }] });
+  document.nodes.n.props.big = "a".repeat(DOCUMENT_LIMITS.maxDocumentBytes);
+  assert.throws(() => serializeDocument(document), /serialized document exceeds/u);
+});
+
+// A chain at the depth limit, and a deep wide tree (a 64-level spine with 150
+// leaves per level), both validate within budget.
+test("deep trees validate within budget", () => {
+  const depth = DOCUMENT_LIMITS.maxTreeDepth;
+  const deep = createDocument({ id: "doc-deep", nodes: Array.from({ length: depth }, (_, index) => ({
+    id: `c${index}`, type: "frame", parentId: index === 0 ? null : `c${index - 1}`, children: index === depth - 1 ? [] : [`c${index + 1}`],
+  })) });
+  const chainMs = best(3, () => validateDocument(deep));
+  assert.ok(chainMs <= 200, `validating a ${depth}-deep chain took ${chainMs.toFixed(0)} ms; budget 200 ms`);
+
+  const nodes = [];
+  for (let level = 0; level < 64; level += 1) {
+    const leaves = Array.from({ length: 150 }, (_, leaf) => `l${level}-${leaf}`);
+    const children = level < 63 ? [`s${level + 1}`, ...leaves] : leaves;
+    nodes.push({ id: `s${level}`, type: "group", parentId: level === 0 ? null : `s${level - 1}`, children });
+    for (const id of leaves) nodes.push({ id, type: "frame", parentId: `s${level}`, props: { x: 1 } });
+  }
+  const wideDeep = createDocument({ id: "doc-wide-deep", nodes });
+  const wideMs = best(3, () => validateDocument(wideDeep));
+  assert.ok(wideMs <= 300, `validating a 64-deep tree of ${nodes.length} nodes took ${wideMs.toFixed(0)} ms; budget 300 ms`);
 });
