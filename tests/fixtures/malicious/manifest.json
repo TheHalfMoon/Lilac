@@ -483,6 +483,105 @@
         "dangerousUrlsRemoved": 0,
         "unsafeStylesRemoved": 0
       }
+    },
+    {
+      "id": "css-crlf-escape",
+      "category": "css",
+      "file": "css-crlf-escape.html",
+      "description": "CSS hex escape followed by CR LF hiding url( and @import",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 1,
+        "unsafeStylesRemoved": 2
+      }
+    },
+    {
+      "id": "beacon-attributes",
+      "category": "url",
+      "file": "beacon-attributes.html",
+      "description": "ping, attributionsrc and imagesrcset beacons",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 1,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 3,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "remote-description-attributes",
+      "category": "url",
+      "file": "remote-description-attributes.html",
+      "description": "longdesc, xml:base, itemid and manifest URLs",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 3,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "host-authority-attributes",
+      "category": "html",
+      "file": "host-authority-attributes.html",
+      "description": "commandfor, command, popovertarget and is acting on host elements",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 4,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "svg-animatecolor",
+      "category": "svg",
+      "file": "svg-animatecolor.html",
+      "description": "SVG animateColor rewriting href to javascript:",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 1,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "svg-href-subresources",
+      "category": "svg",
+      "file": "svg-href-subresources.html",
+      "description": "SVG pattern, filter, textPath and cursor href subresources",
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 0,
+        "unsafeStylesRemoved": 0
+      }
+    },
+    {
+      "id": "no-base-control-scheme",
+      "category": "url",
+      "file": "no-base-control-scheme.html",
+      "description": "control-character scheme obfuscation with no base URL",
+      "baseUrl": null,
+      "outcome": "imported",
+      "security": {
+        "scriptsRemoved": 0,
+        "dangerousElementsRemoved": 0,
+        "eventHandlersRemoved": 0,
+        "dangerousUrlsRemoved": 2,
+        "unsafeStylesRemoved": 0
+      }
     }
   ]
 }

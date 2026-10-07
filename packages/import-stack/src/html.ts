@@ -1,6 +1,6 @@
 import { parseFragment } from "parse5";
 import { ImportSecurityError, ImportValidationError } from "./errors.ts";
-import { FORM_AUTHORITY_ATTRIBUTES, isForbiddenImportTag, isSafeStoredUrlReference, PRESENTATION_URL_ATTRIBUTES, sanitizeImportedCssText } from "./security.ts";
+import { FORM_AUTHORITY_ATTRIBUTES, HOST_AUTHORITY_ATTRIBUTES, isForbiddenImportTag, isSafeStoredUrlReference, PRESENTATION_URL_ATTRIBUTES, REMOTE_AUTHORITY_ATTRIBUTES, sanitizeImportedCssText } from "./security.ts";
 import {
   IMPORT_SCHEMA_VERSION,
   type ImportDiagnostic,
@@ -23,13 +23,15 @@ import {
 const DROP_SUBTREE = new Set([
   "script", "iframe", "object", "embed", "applet", "frame", "frameset",
   "base", "template", "foreignobject", "animate", "animatemotion",
-  "animatetransform", "set", "discard",
+  "animatetransform", "animatecolor", "set", "discard",
 ]);
 const URL_ATTRIBUTES = new Set(["href", "src", "poster", "cite", "background", "xlink:href"]);
 // SVG <use> and <feImage> fetch the referenced document as a subresource; they are
 // images, not navigation links (a "link" resource would give the node a link role).
 const RESOURCE_TAGS = new Map<string, "image" | "media" | "link">([
   ["img", "image"], ["image", "image"], ["use", "image"], ["feimage", "image"],
+  ["cursor", "image"], ["pattern", "image"], ["filter", "image"], ["textpath", "image"],
+  ["mpath", "image"], ["tref", "image"],
   ["video", "media"], ["audio", "media"], ["source", "media"], ["a", "link"],
 ]);
 
@@ -84,6 +86,14 @@ function safeUrl(raw: string, tag: string, attribute: string, baseUrl: string | 
   } else if (baseUrl) {
     try { resolved = new URL(value, baseUrl).href; } catch { return null; }
   } else {
+    // Without a base URL a relative value stays relative, but only when a URL parser would
+    // not read a scheme into it: parsers drop tab and newline, so "java<TAB>script:" is
+    // a javascript: URL.
+    try {
+      if (new URL(value, "https://relative.invalid/").origin !== "https://relative.invalid") return null;
+    } catch {
+      return null;
+    }
     return value;
   }
   try {
@@ -255,7 +265,7 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
       attributeBytes += byteLength(name) + byteLength(rawValue);
       if (attributeBytes > request.policy.maxAttributeBytes) throw new ImportSecurityError(`<${rawTag}> attributes exceed maxAttributeBytes`);
 
-      if (FORM_AUTHORITY_ATTRIBUTES.has(name)) {
+      if (FORM_AUTHORITY_ATTRIBUTES.has(name) || REMOTE_AUTHORITY_ATTRIBUTES.has(name) || HOST_AUTHORITY_ATTRIBUTES.has(name)) {
         security.dangerousUrlsRemoved += 1;
         continue;
       }

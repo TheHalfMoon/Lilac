@@ -1,5 +1,5 @@
 import { ImportConflictError, ImportValidationError } from "./errors.ts";
-import { FORM_AUTHORITY_ATTRIBUTES, isForbiddenImportTag, isSafeStoredUrlReference, PRESENTATION_URL_ATTRIBUTES, sanitizeImportedCssText, STORED_URL_ATTRIBUTES } from "./security.ts";
+import { FORM_AUTHORITY_ATTRIBUTES, HOST_AUTHORITY_ATTRIBUTES, isForbiddenImportTag, isSafeStoredUrlReference, PRESENTATION_URL_ATTRIBUTES, REMOTE_AUTHORITY_ATTRIBUTES, sanitizeImportedCssText, STORED_URL_ATTRIBUTES } from "./security.ts";
 import {
   IMPORT_SCHEMA_VERSION,
   type AssetRecord,
@@ -57,7 +57,8 @@ function normalizeNode(value: unknown, expectedId: string, policy: ImportProposa
     const entry = value.attributes[key];
     if (typeof entry !== "string") throw new ImportValidationError(`import.nodes.${expectedId}.attributes.${key} must be a string`);
     const normalizedKey = key.toLowerCase();
-    if (normalizedKey.startsWith("on") || normalizedKey === "srcdoc" || normalizedKey === "srcset" || FORM_AUTHORITY_ATTRIBUTES.has(normalizedKey)) {
+    if (normalizedKey.startsWith("on") || normalizedKey === "srcdoc" || normalizedKey === "srcset" || FORM_AUTHORITY_ATTRIBUTES.has(normalizedKey)
+      || REMOTE_AUTHORITY_ATTRIBUTES.has(normalizedKey) || HOST_AUTHORITY_ATTRIBUTES.has(normalizedKey)) {
       throw new ImportValidationError(`import.nodes.${expectedId}.attributes.${key} carries executable or navigation authority`);
     }
     if (STORED_URL_ATTRIBUTES.has(normalizedKey) && !isSafeStoredUrlReference(entry)) {

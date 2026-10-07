@@ -3,7 +3,7 @@ import { ImportSecurityError } from "./errors.ts";
 export const FORBIDDEN_IMPORT_TAGS = new Set([
   "script", "iframe", "object", "embed", "applet", "frame", "frameset",
   "base", "template", "meta", "link", "style", "form", "math",
-  "foreignobject", "animate", "animatemotion", "animatetransform", "set", "discard",
+  "foreignobject", "animate", "animatemotion", "animatetransform", "animatecolor", "set", "discard",
 ]);
 
 export const STORED_URL_ATTRIBUTES = new Set([
@@ -16,12 +16,30 @@ export const FORM_AUTHORITY_ATTRIBUTES = new Set([
   "action", "formaction", "form", "formmethod", "formtarget", "formenctype", "formnovalidate",
 ]);
 
+// Attributes that make the browser contact a URL outside the resource model (beacons,
+// attribution reporting, preload candidates, plugin and description URLs, base URLs).
+export const REMOTE_AUTHORITY_ATTRIBUTES = new Set([
+  "ping", "attributionsrc", "imagesrcset", "codebase", "archive", "classid", "longdesc",
+  "xml:base", "profile", "manifest", "dynsrc", "lowsrc", "itemid", "icon",
+]);
+
+// Attributes that let imported markup act on host-page elements or upgrade into host
+// custom elements.
+export const HOST_AUTHORITY_ATTRIBUTES = new Set([
+  "is", "commandfor", "command", "popovertarget", "popovertargetaction", "interestfor",
+  "invoketarget", "invokeaction",
+]);
+
 export const PRESENTATION_URL_ATTRIBUTES = new Set([
   "fill", "stroke", "filter", "clip-path", "mask",
   "marker-start", "marker-mid", "marker-end", "cursor",
 ]);
 
-function cssSecurityView(css: string): string {
+function cssSecurityView(rawCss: string): string {
+  // CSS input preprocessing first: CR LF, CR and FF become LF, so an escape followed by
+  // CR LF consumes the whole line break as a browser does (for example `\75<CR><LF>rl(`
+  // is `url(`), and NUL becomes U+FFFD.
+  const css = rawCss.replace(/\r\n|[\r\f]/gu, "\n").replace(/\0/gu, "\ufffd");
   // Strip CSS line continuations (backslash + newline) before and after
   // escape decoding: a real CSS engine ignores them, so keywords split
   // across a continuation (for example `u\<LF>rl(`) must be visible here.
