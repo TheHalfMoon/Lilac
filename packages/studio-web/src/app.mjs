@@ -335,7 +335,8 @@ function shareSelection() {
 
 // ---------- importing ----------
 
-const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
+// The import stack's offline limit for one HTML page.
+const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 
 function openImportDialog() {
   if (state.document === null) return;
@@ -353,7 +354,7 @@ function openImportDialog() {
         const chosen = file.files?.[0];
         if (chosen) {
           if (chosen.size > MAX_IMPORT_BYTES) {
-            error.textContent = "That file is larger than 4 MiB.";
+            error.textContent = "That file is larger than 2 MiB, the most Lilac imports at once.";
             return;
           }
           html = await chosen.text();
@@ -399,7 +400,12 @@ function showImportReview(review) {
         renderToolbar();
         setStatus(`${event.intent}: ${review.counts.nodes} layers added.`);
       } catch (failure) {
-        if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
+        // The review is kept when a commit fails, so Import can be pressed again; a project
+        // that must be reopened is handled as for any edit.
+        if (failure instanceof HostError && failure.code === "project-needs-reopen") {
+          close();
+          handleEditError(failure);
+        } else if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
       }
     });
     return [

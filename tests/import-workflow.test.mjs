@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { startStudioHost, styleProperties } from "../packages/studio-host/src/index.ts";
+import { MAX_IMPORT_HTML_BYTES, MAX_IMPORT_NODES, startStudioHost, styleProperties } from "../packages/studio-host/src/index.ts";
 import { browserTestOptions } from "./support/browser.mjs";
 import { layerCount, openEditor, rendered, waitRevision } from "./support/editor.mjs";
 
@@ -45,7 +45,7 @@ test("inline styles become style properties", () => {
 });
 
 test("the host reviews an import, then commits it as one attributed, undoable transaction", async () => {
-  await withHost(async ({ host, call }) => {
+  await withHost(async ({ root, host, call }) => {
     assert.equal((await call("POST", "/api/import", { html: PAGE })).json.error.code, "no-project");
     await call("POST", "/api/projects/create", { name: "site" });
     assert.equal((await call("POST", "/api/import", { html: "  " })).status, 400);
@@ -65,6 +65,7 @@ test("the host reviews an import, then commits it as one attributed, undoable tr
     assert.equal(event.intent, "Import Pricing page");
     assert.equal(event.tool, "lilac:import");
     assert.equal(event.actor, "local-user");
+    assert.equal(event.operations.length, 1, "one restore-subtree: the page frame and everything in it");
     const document = host.session.document;
     const frame = document.nodes[event.frameId];
     assert.equal(frame.parentId, null);
@@ -87,8 +88,39 @@ test("the host reviews an import, then commits it as one attributed, undoable tr
     const discarded = (await call("POST", "/api/import", { html: "<p>x</p>" })).json;
     assert.equal((await call("POST", "/api/import/discard", { proposalId: discarded.proposalId })).status, 200);
     assert.equal((await call("POST", "/api/import/commit", { proposalId: discarded.proposalId })).status, 404);
-    // Limits.
-    assert.equal((await call("POST", "/api/import", { html: "x".repeat(4 * 1024 * 1024 + 1) })).status, 413);
+    // The journal records what the import came from.
+    const journal = readFileSync(join(root, "site", ".lilac", "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
+    assert.equal(journal[0].metadata.lilac.provenance.import.proposalId, review.proposalId);
+    assert.equal(journal[0].metadata.lilac.provenance.import.sourceKind, "html-snapshot");
+    // Limits: the import stack's offline policy.
+    assert.equal(MAX_IMPORT_HTML_BYTES, 2 * 1024 * 1024);
+    assert.equal(MAX_IMPORT_NODES, 10_000);
+    assert.equal((await call("POST", "/api/import", { html: "x".repeat(MAX_IMPORT_HTML_BYTES + 1) })).status, 413);
+  });
+});
+
+test("a review that says ready commits; one too large for a single change says so first", async () => {
+  await withHost(async ({ root, host, call }) => {
+    await call("POST", "/api/projects/create", { name: "big" });
+    // Thousands of top-level elements are still one operation.
+    const many = (await call("POST", "/api/import", { html: "<br>".repeat(5000), name: "Breaks" })).json;
+    assert.equal(many.commitReady, true);
+    const added = (await call("POST", "/api/import/commit", { proposalId: many.proposalId })).json;
+    assert.equal(added.revision, 1);
+    assert.equal(host.session.document.nodes[added.frameId].children.length, 5000);
+    // A page whose layers would exceed one journal entry is not offered as ready.
+    const title = "t".repeat(400);
+    const heavy = `<main>${Array.from({ length: 3300 }, (_, index) => `<section title="${title}"><span>${index}</span></section>`).join("")}</main>`;
+    const review = (await call("POST", "/api/import", { html: heavy, name: "Heavy" })).json;
+    assert.equal(review.commitReady, false);
+    assert.match(review.blockingReasons.join(" "), /too large to add as one change/u);
+    assert.equal((await call("POST", "/api/import/commit", { proposalId: review.proposalId })).json.error.code, "import-not-ready");
+    assert.equal(host.session.revision, 1);
+    // A commit that fails keeps the review: the same review answers again, not "not found".
+    const kept = (await call("POST", "/api/import", { html: "<p>kept</p>" })).json;
+    appendFileSync(join(root, "big", ".lilac", "journal.log"), "tampered\n");
+    assert.equal((await call("POST", "/api/import/commit", { proposalId: kept.proposalId })).json.error.code, "project-needs-reopen");
+    assert.equal((await call("POST", "/api/import/commit", { proposalId: kept.proposalId })).json.error.code, "project-needs-reopen");
   });
 });
 

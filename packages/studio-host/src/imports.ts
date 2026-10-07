@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createHistoryState } from "@lilac/history";
-import { IMPORT_SCHEMA_VERSION, commitImportProposal, defaultImportPolicy, importHtmlSnapshot, type ImportProposal } from "@lilac/import-stack";
+import { IMPORT_SCHEMA_VERSION, defaultImportPolicy, importHtmlSnapshot, validateImportProposal, type ImportProposal } from "@lilac/import-stack";
 import { inferSemantics, reviewImport } from "@lilac/intake";
 import { StudioError } from "./errors.ts";
 
@@ -8,11 +7,19 @@ import { StudioError } from "./errors.ts";
 // sanitizes the markup offline (no network: the policy is "offline", so nothing referenced
 // is fetched); intake reviews the proposal; the person sees the review in the editor and
 // decides. Committing turns the proposal into one history transaction, made by the
-// session like any other edit (attributed, undoable, persisted): the imported layers go
-// inside a new page frame, with ids that never collide with the document's, inline styles
-// as style properties, and intake's observed semantics in their props.
+// session like any other edit (attributed, undoable, persisted): one restore-subtree of a
+// new page frame holding the imported layers, with inline styles as style properties,
+// intake's observed semantics in their props, and the import's provenance in the
+// transaction. The change is built and measured when the import is reviewed, so a review
+// that says "ready" commits.
 
-export const MAX_IMPORT_HTML_BYTES = 4 * 1024 * 1024;
+const OFFLINE_POLICY = defaultImportPolicy("offline");
+/** The import stack's own limits for an offline HTML import. */
+export const MAX_IMPORT_HTML_BYTES = OFFLINE_POLICY.maxHtmlBytes;
+export const MAX_IMPORT_NODES = OFFLINE_POLICY.maxDomNodes;
+// Persistence keeps each change as one journal entry of at most 4 MiB; leave room for the
+// transaction's own fields.
+const MAX_IMPORT_CHANGE_BYTES = 3.5 * 1024 * 1024;
 const MAX_PENDING_IMPORTS = 4;
 const PENDING_TTL_MS = 10 * 60 * 1000;
 
@@ -29,9 +36,12 @@ export interface ImportReviewSummary {
 }
 
 interface Pending {
-  proposal: ImportProposal;
   name: string;
   review: ReturnType<typeof reviewImport>;
+  blocking: string[];
+  /** The page frame holding the import; the frame's index is set when committed. */
+  operation: { type: "restore-subtree"; rootId: string; parentId: null; index?: number; nodes: Array<{ id: string }> };
+  provenance: Record<string, unknown>;
   expires: number;
 }
 
@@ -43,7 +53,7 @@ export class ImportDesk {
   /** Parse and review `html`; the proposal waits for the person's decision. */
   prepare(input: { html: unknown; name: unknown }, actorId: string, at: string): ImportReviewSummary {
     if (typeof input?.html !== "string" || input.html.trim() === "") throw new StudioError(400, "invalid-import", "html must be a non-empty string");
-    if (Buffer.byteLength(input.html) > MAX_IMPORT_HTML_BYTES) throw new StudioError(413, "import-too-large", "an HTML import is limited to 4 MiB");
+    if (Buffer.byteLength(input.html) > MAX_IMPORT_HTML_BYTES) throw new StudioError(413, "import-too-large", `an HTML import is limited to ${MAX_IMPORT_HTML_BYTES / 1024 / 1024} MiB`);
     const name = typeof input.name === "string" && NAME.test(input.name.trim()) ? input.name.trim() : "Imported page";
     this.#prune();
     if (this.#pending.size >= MAX_PENDING_IMPORTS) throw new StudioError(409, "too-many-imports", "finish or discard the imports already waiting for review");
@@ -56,7 +66,7 @@ export class ImportDesk {
         intent: `Import ${name}`,
         at,
         source: { kind: "html-snapshot" },
-        policy: defaultImportPolicy("offline"),
+        policy: OFFLINE_POLICY,
       }, input.html);
     } catch (error) {
       // The import stack's refusals (limits, unparseable input) are fixed descriptions.
@@ -64,18 +74,31 @@ export class ImportDesk {
       throw new StudioError(422, "import-refused", message);
     }
     const review = reviewImport(proposal);
-    this.#pending.set(proposal.proposalId, { proposal, name, review, expires: Date.now() + PENDING_TTL_MS });
-    return summarize(proposal.proposalId, name, proposal, review);
+    const { operation, provenance } = importOperation(proposal, name);
+    const blocking = [...review.blockingReasons];
+    const bytes = Buffer.byteLength(JSON.stringify(operation));
+    if (bytes > MAX_IMPORT_CHANGE_BYTES) blocking.push(`the imported page is too large to add as one change (${(bytes / 1024 / 1024).toFixed(1)} MiB of layers; at most ${MAX_IMPORT_CHANGE_BYTES / 1024 / 1024} MiB)`);
+    this.#pending.set(proposal.proposalId, { name, review, blocking, operation, provenance, expires: Date.now() + PENDING_TTL_MS });
+    return summarize(proposal.proposalId, name, proposal, review, blocking);
   }
 
-  /** The operations that put the reviewed proposal into `document`, consuming it. */
-  take(proposalId: unknown, document: any, at: string): { operations: unknown[]; intent: string; frameId: string } {
+  /**
+   * The change that adds the reviewed import to `document`. The review stays until
+   * `consume`, so a commit that fails (the project needs reopening) can be retried.
+   */
+  change(proposalId: unknown, document: any): { operations: unknown[]; intent: string; frameId: string; provenance: Record<string, unknown> } {
     this.#prune();
     const pending = typeof proposalId === "string" ? this.#pending.get(proposalId) : undefined;
     if (pending === undefined) throw new StudioError(404, "import-not-found", "that import is no longer waiting; import the file again");
-    if (!pending.review.commitReady) throw new StudioError(409, "import-not-ready", `this import cannot be committed: ${pending.review.blockingReasons.join("; ").slice(0, 300)}`);
-    this.#pending.delete(proposalId as string);
-    return { ...importOperations(document, pending.proposal, at), intent: `Import ${pending.name}`.slice(0, 500) };
+    if (pending.blocking.length > 0) throw new StudioError(409, "import-not-ready", `this import cannot be committed: ${pending.blocking.join("; ").slice(0, 300)}`);
+    // Import ids are derived from a fresh request id, so they are new; check anyway.
+    if (pending.operation.nodes.some((node) => Object.hasOwn(document.nodes, node.id))) throw new StudioError(409, "import-conflict", "this import is already in the project");
+    return { operations: [{ ...pending.operation, index: document.rootIds.length }], intent: `Import ${pending.name}`.slice(0, 500), frameId: pending.operation.rootId, provenance: pending.provenance };
+  }
+
+  /** The review was committed. */
+  consume(proposalId: string): void {
+    this.#pending.delete(proposalId);
   }
 
   discard(proposalId: unknown): void {
@@ -91,15 +114,15 @@ export class ImportDesk {
   }
 }
 
-function summarize(proposalId: string, name: string, proposal: ImportProposal, review: ReturnType<typeof reviewImport>): ImportReviewSummary {
+function summarize(proposalId: string, name: string, proposal: ImportProposal, review: ReturnType<typeof reviewImport>, blocking: string[]): ImportReviewSummary {
   const notes: string[] = [];
   if (proposal.stylesheets.length > 0) notes.push(`${proposal.stylesheets.length} stylesheet${proposal.stylesheets.length === 1 ? " is" : "s are"} not carried into the design; inline styles are.`);
   if (proposal.resources.length > 0) notes.push(`${proposal.resources.length} linked resource${proposal.resources.length === 1 ? " is" : "s are"} not fetched: imports work offline.`);
   return {
     proposalId,
     name,
-    commitReady: review.commitReady,
-    blockingReasons: [...review.blockingReasons],
+    commitReady: blocking.length === 0,
+    blockingReasons: blocking,
     counts: { roots: review.counts.roots, nodes: review.counts.nodes, byKind: { ...review.counts.byKind }, stylesheets: review.counts.stylesheets, resources: review.counts.resources },
     security: { ...(proposal.security as unknown as Record<string, number>) },
     diagnostics: proposal.diagnostics.slice(0, 20).map((diagnostic: any) => ({ severity: String(diagnostic.severity), code: String(diagnostic.code), message: String(diagnostic.message).slice(0, 300) })),
@@ -129,45 +152,58 @@ export function styleProperties(style: unknown): Record<string, string> {
   return out;
 }
 
-function importOperations(document: any, proposal: ImportProposal, at: string): { operations: unknown[]; frameId: string } {
-  // import-stack's own transaction (one restore-subtree per root), computed on this document.
-  const imported = commitImportProposal(createHistoryState(document), proposal, { transactionId: `tx-import-${randomUUID()}`, baseRevision: document.revision, at });
-  const entry = (imported.history as any).past.at(-1);
-  const semantics = new Map(inferSemantics(proposal).records.map(({ nodeId, ...props }: any) => [nodeId, props]));
-  // Ids already in the document (an earlier import of the same page) get a fresh suffix.
-  const taken = new Set(Object.keys(document.nodes));
-  const suffix = randomUUID().slice(0, 8);
-  const rename = new Map<string, string>();
-  const idOf = (id: string) => {
-    if (!taken.has(id)) return id;
-    if (!rename.has(id)) rename.set(id, `${id}-${suffix}`);
-    return rename.get(id)!;
+// The document node import-stack's commitImportProposal makes for an imported node.
+function documentNode(node: any) {
+  return {
+    id: node.id,
+    type: node.kind, // element, text, image, vector or media: the same names in the document model
+    parentId: node.parentId,
+    children: [...node.children],
+    props: {
+      ...(node.tag === undefined ? {} : { tag: node.tag }),
+      ...(node.text === undefined ? {} : { text: node.text }),
+      attributes: structuredClone(node.attributes),
+      style: structuredClone(node.style),
+    },
+    metadata: node.sourceBinding === undefined ? {} : { sourceBinding: structuredClone(node.sourceBinding) },
   };
+}
+
+function importOperation(proposalInput: ImportProposal, name: string) {
+  // The same nodes import-stack's own commit makes (one restore-subtree per root), built
+  // here as one subtree under a new page frame: one operation whatever the page's shape,
+  // which history validates once when it is committed.
+  const proposal = validateImportProposal(proposalInput);
+  const semantics = new Map(inferSemantics(proposal).records.map(({ nodeId, ...props }: any) => [nodeId, props]));
   const frameId = `page-import-${randomUUID().slice(0, 12)}`;
-  const operations: unknown[] = [{
-    type: "insert-node",
-    node: { id: frameId, type: "frame", props: { tag: "main", name: proposal.intent.replace(/^Import /u, "").slice(0, 200), style: { position: "relative", width: "1024px", "min-height": "640px", background: "#ffffff" } } },
+  const frame = {
+    id: frameId,
+    type: "frame",
     parentId: null,
-    index: document.rootIds.length,
-  }];
-  entry.transaction.operations.forEach((operation: any, index: number) => {
-    operations.push({
-      type: "restore-subtree",
-      rootId: idOf(operation.rootId),
-      parentId: frameId,
-      index,
-      nodes: operation.nodes.map((node: any) => ({
-        ...node,
-        id: idOf(node.id),
-        parentId: node.parentId === null ? frameId : idOf(node.parentId),
-        children: node.children.map(idOf),
-        props: {
-          ...node.props,
-          style: styleProperties(node.props.style),
-          ...(semantics.has(node.id) ? { semantics: semantics.get(node.id) } : {}),
-        },
-      })),
-    });
-  });
-  return { operations, frameId };
+    children: [...proposal.rootIds],
+    props: { tag: "div", name: name.slice(0, 200), style: { position: "relative", width: "1024px", "min-height": "640px", background: "#ffffff" } },
+    metadata: {},
+  };
+  // Depth-first from each root, as collectProposalSubtree does, but validating once rather
+  // than once per root (a page can have thousands of top-level elements).
+  const ordered: any[] = [];
+  const walk = (id: string) => {
+    const node = (proposal.nodes as any)[id];
+    ordered.push(node);
+    for (const child of node.children) walk(child);
+  };
+  for (const rootId of proposal.rootIds) walk(rootId);
+  const nodes = [frame, ...ordered.map((imported) => {
+    const node = documentNode(imported);
+    return {
+      ...node,
+      parentId: node.parentId === null ? frameId : node.parentId,
+      props: { ...node.props, style: styleProperties(node.props.style), ...(semantics.has(node.id) ? { semantics: semantics.get(node.id) } : {}) },
+    };
+  })];
+  return {
+    operation: { type: "restore-subtree" as const, rootId: frameId, parentId: null, nodes },
+    // What import-stack's commit records about the import.
+    provenance: { requestId: proposal.requestId, proposalId: proposal.proposalId, inputSha256: proposal.inputSha256, sourceKind: proposal.source.kind, requestedAt: proposal.requestedAt },
+  };
 }

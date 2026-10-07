@@ -201,8 +201,11 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     },
     "POST /api/import/commit": (body) => {
       const current = requireSession();
-      const { operations, intent, frameId } = imports.take(body?.proposalId, current.document, now());
-      return { ...current.edit(owner, { baseRevision: current.revision, operations, intent, tool: "lilac:import" }), frameId };
+      const { operations, intent, frameId, provenance } = imports.change(body?.proposalId, current.document);
+      const event = current.edit(owner, { baseRevision: current.revision, operations, intent, tool: "lilac:import" }, "http", { import: provenance });
+      // Only a committed review is used up; a failed commit can be retried.
+      imports.consume(body.proposalId);
+      return { ...event, frameId };
     },
     "POST /api/import/discard": (body) => {
       imports.discard(body?.proposalId);
@@ -275,7 +278,8 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     const route = routes[`${request.method} ${url.pathname}`];
     if (route === undefined) throw new StudioError(404, "not-found", "not found");
     // An HTML import may be larger than other requests (the import stack's own limit).
-    const body = request.method === "POST" ? await readJson(request, url.pathname === "/api/import" ? MAX_IMPORT_HTML_BYTES + 64 * 1024 : MAX_BODY_BYTES) : undefined;
+    // JSON escaping can make HTML up to six times larger (control characters as \uXXXX).
+    const body = request.method === "POST" ? await readJson(request, url.pathname === "/api/import" ? MAX_IMPORT_HTML_BYTES * 6 + 64 * 1024 : MAX_BODY_BYTES) : undefined;
     respondJson(response, 200, route(body));
   }
 
