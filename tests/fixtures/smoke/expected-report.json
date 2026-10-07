@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "steps": [
+    "create-edit",
+    "undo-redo",
+    "agent-edit",
+    "import",
+    "reopen",
+    "code-round-trip"
+  ],
+  "networkAttempts": 0,
+  "documentSha256": "5a8a64868a84411d5d3620416d205963fa8f47e66749159cfebba6e805bd0785",
+  "emittedJsxSha256": "be063c7d78b0a482dfa9583f71daf0c5bdbb35db7612f0694deee34f5598a4de",
+  "projectFiles": {
+    "journal.log": "7bc605550923e16c2e85af51294a89082a252bb871bc62a26af7f144427e0f1a",
+    "objects/3e/943fd6879d6cec1fd803fc401b9d7ca0e1a23a76a3519b5702b47c58bb3c8e": "3e943fd6879d6cec1fd803fc401b9d7ca0e1a23a76a3519b5702b47c58bb3c8e",
+    "objects/68/c755b79e2af8e31abbde87e017870fd1dcfaae8e2f5cf2ed5e47534b1d3f39": "68c755b79e2af8e31abbde87e017870fd1dcfaae8e2f5cf2ed5e47534b1d3f39",
+    "project.json": "f47ab176b078ed74e9ba89781b3c77af1ba5ae01967972fddc972c6f6963ae12",
+    "snapshot.json": "7693c85b1ad59a8427d1980fefad4be47d98e4b2e89680aaaf2e359a1f8d6d18"
+  }
+}
