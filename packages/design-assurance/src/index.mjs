@@ -1,10 +1,13 @@
 import { spawn } from "node:child_process";
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { createRequire } from "node:module";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 
 import { validateDocument } from "@lilac/document-model";
+import { classifyAddress } from "@lilac/network-policy";
 
 import { DesignAssuranceError } from "./errors.mjs";
 import { compareCodeUnits } from "./order.mjs";
@@ -510,7 +513,8 @@ export function createImpeccableCliRunner({
         args.push("--viewport", `${viewport.width}x${viewport.height}`);
       }
       if (scopes.length > 0) args.push("--scope", scopes.join(","));
-      args.push(target);
+      // "--" ends option parsing, so a target that starts with "-" stays an operand.
+      args.push("--", target);
       const result = await runProcess(nodePath, args, { cwd, timeoutMs });
       if (result.code !== 0 && result.code !== 2) {
         const detail = result.stderr.trim() || `exit ${String(result.code)} signal ${String(result.signal)}`;
@@ -608,28 +612,12 @@ export async function scanStaticHtml({
   });
 }
 
-function isPrivateIpv4(hostname) {
-  const parts = hostname.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
-    return false;
-  }
-  return parts[0] === 0
-    || parts[0] === 10
-    || parts[0] === 127
-    || (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127)
-    || (parts[0] === 169 && parts[1] === 254)
-    || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
-    || (parts[0] === 192 && parts[1] === 168);
-}
-
-function isPrivateIpv6(hostname) {
-  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (!host.includes(":")) return false;
-  if (host === "::" || host === "::1") return true;
-  if (/^f[cd][0-9a-f]{2}:/i.test(host)) return true;
-  if (/^fe[89ab][0-9a-f]:/i.test(host)) return true;
-  const mapped = host.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i);
-  return mapped ? isPrivateIpv4(mapped[1]) : false;
+// Address classification is owned by @lilac/network-policy; only "public" passes.
+function isPrivateBrowserHost(hostname) {
+  const host = hostname.toLowerCase().replace(/\.$/u, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true;
+  const literal = host.replace(/^\[|\]$/gu, "");
+  return isIP(literal) !== 0 && classifyAddress(literal) !== "public";
 }
 
 function validateBrowserUrl(value, { allowPrivateNetwork = false } = {}) {
@@ -646,17 +634,28 @@ function validateBrowserUrl(value, { allowPrivateNetwork = false } = {}) {
   if (parsed.username || parsed.password) {
     throw new DesignAssuranceError("browser scan URLs must not contain credentials");
   }
-  const host = parsed.hostname.toLowerCase();
-  const privateHost = host === "localhost"
-    || host === "::1"
-    || host.endsWith(".localhost")
-    || host.endsWith(".local")
-    || isPrivateIpv4(host)
-    || isPrivateIpv6(host);
-  if (privateHost && !allowPrivateNetwork) {
+  if (isPrivateBrowserHost(parsed.hostname) && !allowPrivateNetwork) {
     throw new DesignAssuranceError("private-network browser scans require allowPrivateNetwork: true");
   }
-  return parsed.toString();
+  return parsed;
+}
+
+// A DNS name is resolved before the scan and refused unless every answer is public.
+// The browser resolves again when it fetches, so this blocks names that are private
+// at scan time; it cannot prevent DNS rebinding between this check and the fetch.
+async function assertPublicResolution(hostname, lookup) {
+  const host = hostname.replace(/^\[|\]$/gu, "");
+  if (isIP(host) !== 0) return;
+  let answers;
+  try {
+    answers = await lookup(host.replace(/\.$/u, ""), { all: true, verbatim: true });
+  } catch (error) {
+    throw new DesignAssuranceError("browser scan host could not be resolved", { cause: error });
+  }
+  const addresses = (Array.isArray(answers) ? answers : [answers]).map((answer) => (typeof answer === "string" ? answer : answer?.address));
+  if (addresses.length === 0 || addresses.some((address) => typeof address !== "string" || classifyAddress(address) !== "public")) {
+    throw new DesignAssuranceError("browser scan host resolves to a non-public address; private-network scans require allowPrivateNetwork: true");
+  }
 }
 
 export async function scanBrowserUrl({
@@ -664,10 +663,13 @@ export async function scanBrowserUrl({
   viewport = null,
   allowPrivateNetwork = false,
   runner = createImpeccableCliRunner(),
+  lookup = dnsLookup,
   rulePacks,
   policy,
 } = {}) {
-  const normalizedUrl = validateBrowserUrl(url, { allowPrivateNetwork });
+  const parsed = validateBrowserUrl(url, { allowPrivateNetwork });
+  if (!allowPrivateNetwork) await assertPublicResolution(parsed.hostname, lookup);
+  const normalizedUrl = parsed.toString();
   const packs = defaultRulePacks(rulePacks);
   const upstream = await runner.scanTarget(normalizedUrl, { viewport });
   const context = { surface: "browser", url: normalizedUrl, viewport };

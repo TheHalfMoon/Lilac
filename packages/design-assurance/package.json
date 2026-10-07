@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@lilac/document-model": "0.0.0",
+    "@lilac/network-policy": "0.0.0",
     "impeccable": "4.1.0"
   }
 }
