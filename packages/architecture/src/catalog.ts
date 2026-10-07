@@ -251,6 +251,14 @@ const SUBSYSTEMS = [
     dependsOn: ["persistence", "history", "collaboration", "network-policy"],
   },
   {
+    id: "editor-shell",
+    title: "Editor application shell",
+    owner: "@lilac/studio-web",
+    status: "stub",
+    boundary: "The browser editor the studio host serves: project open and create, layers tree, inspector, live history with attribution, undo/redo, lock takeover and recovery dialogs, and keyboard operation, over the canvas (PC4). Every edit is a history transaction committed by the host; the editor's document copy advances only by the host's change events.",
+    dependsOn: ["studio-host", "canvas-viewport", "selection-transform", "history"],
+  },
+  {
     id: "desktop-bridge",
     title: "Desktop bridge",
     owner: "@lilac/desktop",

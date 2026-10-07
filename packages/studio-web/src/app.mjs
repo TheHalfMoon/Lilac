@@ -94,6 +94,7 @@ async function openProjectsDialog() {
     const error = el("p", { class: "error", role: "alert" });
     const name = el("input", { id: "new-project-name", name: "name", required: true, autocomplete: "off", pattern: "[A-Za-z0-9][A-Za-z0-9._\\-]{0,63}", "aria-describedby": "new-project-hint" });
     const create = el("form", {
+      novalidate: true,
       onsubmit: async (event) => {
         event.preventDefault();
         error.textContent = "";
@@ -140,6 +141,7 @@ function showLockDialog(name) {
     return [
       el("p", {}, `“${name}” is locked by another Lilac session. If that session has crashed or its computer is gone, you can take over the project. The takeover and your reason are recorded with the project.`),
       el("form", {
+        novalidate: true,
         onsubmit: async (event) => {
           event.preventDefault();
           if (reason.value.trim() === "") {
@@ -325,6 +327,7 @@ function commit(operations, intent, computedAt = state.document?.revision) {
   if (operations.length === 0) return Promise.resolve(null);
   return enqueue(async () => {
     if (state.document === null || computedAt !== state.document.revision) {
+      canvas.clearPreview();
       setStatus("The project changed while you were editing, so that edit was not applied. Try it again.");
       return null;
     }
@@ -334,6 +337,7 @@ function commit(operations, intent, computedAt = state.document?.revision) {
       setStatus(intent ? `${intent}.` : "Changed.");
       return event;
     } catch (error) {
+      canvas.clearPreview();
       handleEditError(error);
       return null;
     }
@@ -598,7 +602,7 @@ function renderInspector() {
   form.dataset.nodeId = node.id;
   const style = node.props?.style && typeof node.props.style === "object" ? node.props.style : {};
   const field = (name, label, value, multiline = false) => {
-    const id = `inspect-${name}`;
+    const id = `inspect-${name.replace(":", "-")}`;
     const input = multiline
       ? el("textarea", { id, name, rows: 3 })
       : el("input", { id, name, type: "text", autocomplete: "off", spellcheck: "false" });
