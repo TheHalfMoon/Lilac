@@ -78,6 +78,6 @@ The cycle-1 re-review confirmed that every new trap holds and that trapping `pro
 **Fixed: http and https got past the trap unreported.** `http.Agent` connects with `path: null`, and the trap treated any defined path as a local socket. The trap now follows Node's own rule: only a non-empty string path is a local socket. This covers `http.get` and `https.get` to an IP literal, and import-stack's pinned-lookup request pattern. Test 1 now asserts that each of these is refused, along with a plain hostname request.
 
 **Also taken:**
-- a refused DNS lookup fails that one request, as a real resolution failure would, instead of crashing the process;
+- a refused direct DNS call fails that one call, as a real resolution failure would, instead of crashing the process. A refused `net`, `http` or `https` connection is refused before any lookup, and throws from the call, still reported;
 - an existing projects folder is no longer chmodded;
 - the trap's header and this document now name the APIs the trap covers, instead of claiming every way out.
