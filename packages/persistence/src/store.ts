@@ -2,7 +2,7 @@ import { createHash, randomUUID, type Hash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DOCUMENT_FIELDS, DOCUMENT_SCHEMA_VERSION, NODE_FIELDS, cloneDocument, normalizeDocument, validateDocument } from "@lilac/document-model";
-import { applyTransaction } from "@lilac/history";
+import { applyTransaction, createTransaction } from "@lilac/history";
 import { canonicalJson } from "./canonical.ts";
 import { PersistenceCorruptionError, PersistenceLockError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
 import {
@@ -161,6 +161,19 @@ function loadDocument(projectDir: string, digest: string): LilacDocument {
 /** Round-trip a value through canonical JSON, so in-memory state equals what replay will produce. */
 function persisted<T>(value: T): T {
   return JSON.parse(canonicalJson(value)) as T;
+}
+
+/** Exact equality of two plain JSON-shaped values: same keys, and Object.is on every leaf. */
+function sameValue(left: unknown, right: unknown): boolean {
+  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) return Object.is(left, right);
+  if (Array.isArray(left) !== Array.isArray(right)) return false;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+  for (const key of leftKeys) {
+    if (!Object.hasOwn(right, key) || !sameValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key])) return false;
+  }
+  return true;
 }
 
 export interface CreateProjectOptions {
@@ -518,7 +531,12 @@ export class ProjectStore {
     }
     const stored = persisted(validated.transaction) as Record<string, unknown>;
     assertJournalFormat(stored, "transaction", false);
-    const next = applyTransaction(this.#document, stored).document as LilacDocument;
+    // The document is built from the journal form, so it equals what replay produces. When
+    // the journal form, read back, is exactly the validated transaction (the usual case;
+    // not when JSON changed a value, such as -0 to 0), applying it again would give the
+    // same document, so the first result is used; otherwise it is applied again.
+    const sameForm = sameValue(createTransaction(stored), validated.transaction);
+    const next = (sameForm ? validated.document : applyTransaction(this.#document, stored).document) as LilacDocument;
     const entry = { seq: this.#seq + 1, revision: next.revision, transaction: stored };
     const { line, digest } = encodeJournalLine(entry, this.#digest);
     const bytes = Buffer.byteLength(line, "utf8");

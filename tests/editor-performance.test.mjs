@@ -19,6 +19,9 @@ let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 7, 12, 0, 0) + clock++ * 1000).toISOString();
 const NODES = 10_000;
 const p95 = (values) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1];
+// An edit's measure is recorded when its own response arrives, which can be just after the
+// same change, sent on the event stream, has updated the revision shown.
+const waitMeasures = (tab, name, count) => tab.waitForFunction(([measureName, expected]) => performance.getEntriesByName(measureName, "measure").length >= expected, [name, count]);
 
 test("a 10,000-node project renders, applies changes and edits within the gate-13 budgets", browserTestOptions(), async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-perf-")));
@@ -46,8 +49,11 @@ test("a 10,000-node project renders, applies changes and edits within the gate-1
   try {
     const { page: tab } = editor;
     // First render: opening the project, from the request to the drawn canvas.
+    const opening = Date.now();
     await tab.locator("#dialog[open] [data-project=large]").click();
     await waitRevision(tab, created.revision);
+    // For the record: the whole open, including the host reading the project from disk.
+    const openWall = Date.now() - opening;
     const rendered = await tab.evaluate(() => document.querySelector("iframe").contentDocument.querySelectorAll("[data-lilac-id]").length);
     assert.equal(rendered, NODES);
     const firstRender = await tab.evaluate(() => performance.getEntriesByName("lilac:render-project", "measure").at(-1).duration);
@@ -67,6 +73,29 @@ test("a 10,000-node project renders, applies changes and edits within the gate-1
     const applyP95 = p95(applied);
     assert.ok(applyP95 <= 100, `applying a change: p95 ${applyP95.toFixed(1)} ms (budget 100)`);
 
+    // Structural changes from elsewhere: a card added, and a card removed.
+    const structural = async (label, operationFor) => {
+      await tab.evaluate(() => performance.clearMeasures("lilac:apply-change"));
+      for (let index = 0; index < 30; index += 1) {
+        const event = await call("/api/edit", { baseRevision: revision, intent: label, operations: [operationFor(index)] });
+        assert.ok(Number.isInteger(event.revision), JSON.stringify(event).slice(0, 200));
+        revision = event.revision;
+        await waitRevision(tab, revision);
+      }
+      const durations = await tab.evaluate(() => performance.getEntriesByName("lilac:apply-change", "measure").map((entry) => entry.duration));
+      assert.ok(durations.length >= 25, `${durations.length} ${label} changes measured`);
+      const value = p95(durations);
+      assert.ok(value <= 100, `applying ${label}: p95 ${value.toFixed(1)} ms (budget 100)`);
+      return { value, count: durations.length };
+    };
+    const inserts = await structural("insert", (index) => ({ type: "insert-node", node: { id: `added${index}`, type: "element", props: { tag: "div", text: `Added ${index}`, style: { position: "absolute", left: "0px", top: "0px", width: "36px", height: "50px" } }, metadata: {} }, parentId: "page", index: 500 + index }));
+    const treeRows = () => tab.locator("#layers [role=treeitem]").count();
+    assert.equal(await treeRows(), NODES + 30, "each added card has its row in the tree");
+    assert.equal(await tab.locator("#layers [role=treeitem][data-node-id=page] [role=treeitem]").nth(500).getAttribute("data-node-id"), "added0", "in its place");
+    const removes = await structural("remove", (index) => ({ type: "remove-node", nodeId: `added${index}` }));
+    assert.equal(await tab.evaluate(() => document.querySelector("iframe").contentDocument.querySelectorAll("[data-lilac-id]").length), NODES);
+    assert.equal(await treeRows(), NODES, "and each removed card's row is gone");
+
     // Edits made in the editor: Shift+Arrow on the canvas moves the selected card 10 px.
     await tab.evaluate(() => window.scrollTo(0, 0));
     await tab.locator("#layers [role=treeitem][data-node-id=page] > .row").click();
@@ -77,14 +106,32 @@ test("a 10,000-node project renders, applies changes and edits within the gate-1
       await tab.keyboard.press("Shift+ArrowRight");
       revision += 1;
       await waitRevision(tab, revision);
+      await waitMeasures(tab, "lilac:edit", index + 1);
     }
     const edits = await tab.evaluate(() => performance.getEntriesByName("lilac:edit", "measure").map((entry) => entry.duration));
     assert.equal(edits.length, 30);
     const editP95 = p95(edits);
     assert.ok(editP95 <= 750, `end-to-end edit: p95 ${editP95.toFixed(0)} ms (budget 750)`);
     assert.equal(host.session.document.nodes.n1.props.style.left, "300px", "the first recolour set left to 0px; 30 nudges of 10 px");
+
+    // Layers deleted in the editor: select a card in the tree, press Delete.
+    await tab.evaluate(() => performance.clearMeasures("lilac:edit"));
+    for (let index = 0; index < 20; index += 1) {
+      await tab.locator(`#layers [role=treeitem][data-node-id=n${200 + index}] > .row`).click();
+      await tab.keyboard.press("Delete");
+      revision += 1;
+      await waitRevision(tab, revision);
+      await waitMeasures(tab, "lilac:edit", index + 1);
+    }
+    const deletes = await tab.evaluate(() => performance.getEntriesByName("lilac:edit", "measure").map((entry) => entry.duration));
+    assert.equal(deletes.length, 20);
+    const deleteP95 = p95(deletes);
+    assert.ok(deleteP95 <= 750, `deleting a layer in the editor: p95 ${deleteP95.toFixed(0)} ms (budget 750)`);
+    assert.equal(Object.hasOwn(host.session.document.nodes, "n200"), false);
+    assert.equal(await tab.locator("#layers [role=treeitem][data-node-id=n219]").count(), 0, "the deleted rows are gone from the tree");
+    assert.equal(await tab.locator("#layers [role=treeitem][data-node-id=n220]").count(), 1, "and the rest stay");
     // The measurements, for the record.
-    process.stdout.write(`# PC8 gate 13: first render ${firstRender.toFixed(0)} ms; apply p95 ${applyP95.toFixed(1)} ms over ${applied.length}; edit p95 ${editP95.toFixed(0)} ms over ${edits.length}\n`);
+    process.stdout.write(`# PC8 gate 13: open ${openWall} ms end to end, first render ${firstRender.toFixed(0)} ms; apply p95 ${applyP95.toFixed(1)} ms over ${applied.length} (insert ${inserts.value.toFixed(1)} over ${inserts.count}, remove ${removes.value.toFixed(1)} over ${removes.count}); edit p95 ${editP95.toFixed(0)} ms over ${edits.length}; delete p95 ${deleteP95.toFixed(0)} ms over ${deletes.length}\n`);
     assert.deepEqual(editor.foreign, []);
     assert.deepEqual(editor.errors, []);
   } finally {

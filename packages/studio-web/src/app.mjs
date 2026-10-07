@@ -562,9 +562,11 @@ function clearProject() {
  * at or below its revision are already in it), so none is lost or applied twice.
  */
 // Timings, as standard User Timing measures (performance.getEntriesByName): the first
-// render of a project, each change applied from the event stream (from the event's
-// arrival), and each edit made here (from the request to the patched canvas). Each kept to
-// the latest 1,000.
+// render of an open project (from requesting its document from the host, which already has
+// it open, through fetch and parse to the drawn canvas), each change applied from the
+// event stream (from the event's arrival), and each edit made here (from the request).
+// Each ends when the editor's DOM is updated, before the browser paints. Each kept to at
+// most 1,000 at a time (the oldest batch is cleared).
 function measure(name, start) {
   try {
     performance.measure(name, { start, end: performance.now() });
@@ -596,6 +598,7 @@ async function resync() {
 class ProjectChanged extends Error {}
 
 let resyncing = null;
+let applying = false;
 let held = [];
 function requestResync() {
   resyncing ??= (async () => {
@@ -636,9 +639,13 @@ function applyChange(event) {
     return;
   }
   let result;
+  let rootTouched = false;
   try {
     // The host validated and committed the change; the editor's copy follows it in place.
     // If it does not apply, the copy is out of date and is fetched again.
+    // Whether top-level layers change, read before applying (the tree still shows the old).
+    rootTouched = event.operations.some((operation) => ((operation.type === "insert-node" || operation.type === "restore-subtree" || operation.type === "move-node") && (operation.parentId ?? null) === null)
+      || (typeof operation.nodeId === "string" && document.getElementById(`layer-${operation.nodeId}`)?.parentElement === $("layers")));
     result = applyCommittedTransaction(state.document, { operations: event.operations });
   } catch {
     requestResync();
@@ -652,29 +659,26 @@ function applyChange(event) {
     state.history.push(summary);
     if (state.history.length > MAX_HISTORY_SHOWN) state.history.shift();
   }
-  const selectionBefore = state.selection.join("\n");
-  canvas.update(state.document, result.affectedNodeIds);
+  const selectionBefore = [...state.selection];
+  applying = true;
+  try {
+    canvas.update(state.document, result.affectedNodeIds);
+  } finally {
+    applying = false;
+  }
   state.selection = canvas.selection;
   if (event.actor === state.user.actorId) {
     // Only this user's own changes move this user's undo and redo stacks.
     refreshUndoState();
   }
-  // A change to layer properties only relabels its rows; one that adds, removes or moves
-  // layers redraws the tree. (On a 10,000-layer project, redrawing costs far more.)
-  const structural = event.operations.some((operation) => operation.type !== "set-props") || state.selection.join("\n") !== selectionBefore;
   renderToolbar();
-  if (structural) renderLayers();
-  else relabelLayers(result.affectedNodeIds);
+  try {
+    patchLayers(result.affectedNodeIds, rootTouched, selectionBefore);
+  } catch {
+    renderLayers();
+  }
   renderInspector();
   renderHistory();
-}
-
-function relabelLayers(ids) {
-  for (const id of ids) {
-    const node = state.document?.nodes[id];
-    const label = document.getElementById(`layer-${id}`)?.querySelector(":scope > .row .label");
-    if (node && label) label.textContent = layerLabel(node);
-  }
 }
 
 async function refreshUndoState() {
@@ -745,7 +749,8 @@ function commit(operations, intent, computedAt = state.document?.revision) {
       const started = performance.now();
       const event = await state.client.post("/api/edit", { baseRevision: state.revision, operations, intent });
       applyChange(event);
-      measure("lilac:edit", started);
+      // Only when this edit's change was applied here (not held for a refresh).
+      if (state.revision === event.revision) measure("lilac:edit", started);
       setStatus(intent ? `${intent}.` : "Changed.");
       return event;
     } catch (error) {
@@ -939,6 +944,26 @@ function visibleLayers() {
   return out;
 }
 
+// One layer's tree item (and, when expanded, its children's).
+function buildLayerItem(id, level, selected = new Set(state.selection)) {
+  const doc = state.document;
+  const node = doc.nodes[id];
+  const expanded = node.children.length > 0 ? !state.collapsed.has(id) : null;
+  const item = el("li", {
+    role: "treeitem",
+    id: `layer-${id}`,
+    "data-node-id": id,
+    "aria-level": level,
+    "aria-selected": selected.has(id) ? "true" : "false",
+    "aria-expanded": expanded === null ? null : String(expanded),
+    tabindex: id === state.focusedLayer ? "0" : "-1",
+  }, el("span", { class: "row", style: `padding-left:${6 + (level - 1) * 14}px` },
+    el("span", { class: "twisty", "aria-hidden": "true" }, expanded === null ? "" : expanded ? "▾" : "▸"),
+    el("span", { class: "label" }, layerLabel(node))));
+  if (expanded) item.append(el("ul", { role: "group", class: "children" }, node.children.filter((child) => doc.nodes[child]).map((child) => buildLayerItem(child, level + 1, selected))));
+  return item;
+}
+
 function renderLayers() {
   const tree = $("layers");
   const hadFocus = tree.contains(document.activeElement);
@@ -951,25 +976,79 @@ function renderLayers() {
   }
   if (!visible.some((layer) => layer.id === state.focusedLayer)) state.focusedLayer = state.selection.find((id) => visible.some((layer) => layer.id === id)) ?? visible[0]?.id ?? null;
   const selected = new Set(state.selection);
-  const build = (ids, level) => ids.filter((id) => doc.nodes[id]).map((id) => {
-    const node = doc.nodes[id];
-    const expanded = node.children.length > 0 ? !state.collapsed.has(id) : null;
-    const item = el("li", {
-      role: "treeitem",
-      id: `layer-${id}`,
-      "data-node-id": id,
-      "aria-level": level,
-      "aria-selected": selected.has(id) ? "true" : "false",
-      "aria-expanded": expanded === null ? null : String(expanded),
-      tabindex: id === state.focusedLayer ? "0" : "-1",
-    }, el("span", { class: "row", style: `padding-left:${6 + (level - 1) * 14}px` },
-      el("span", { class: "twisty", "aria-hidden": "true" }, expanded === null ? "" : expanded ? "▾" : "▸"),
-      el("span", { class: "label" }, layerLabel(node))));
-    if (expanded) item.append(el("ul", { role: "group", class: "children" }, build(node.children, level + 1)));
-    return item;
-  });
-  tree.replaceChildren(...build(doc.rootIds, 1));
+  tree.replaceChildren(...doc.rootIds.filter((id) => doc.nodes[id]).map((id) => buildLayerItem(id, 1, selected)));
   if (hadFocus && state.focusedLayer !== null) $(`layer-${state.focusedLayer}`)?.focus();
+}
+
+/** Make `container`'s items match `childIds`, reusing items already there. */
+function reconcileLayerList(container, childIds, level) {
+  const wanted = new Set(childIds);
+  let cursor = container.firstElementChild;
+  for (const id of childIds) {
+    while (cursor && !wanted.has(cursor.dataset.nodeId)) {
+      const stale = cursor;
+      cursor = cursor.nextElementSibling;
+      stale.remove();
+    }
+    let item = document.getElementById(`layer-${id}`);
+    // An item moved to another depth is rebuilt, for its level and indentation.
+    if (!item || item.getAttribute("aria-level") !== String(level)) {
+      item?.remove();
+      item = buildLayerItem(id, level);
+    }
+    if (item === cursor) cursor = cursor.nextElementSibling;
+    else container.insertBefore(item, cursor);
+  }
+  while (cursor) {
+    const stale = cursor;
+    cursor = cursor.nextElementSibling;
+    stale.remove();
+  }
+}
+
+/**
+ * Update the layers tree for one applied change, touching only the rows and lists the
+ * change affects: on a 10,000-layer project, redrawing the whole tree costs far more than
+ * the change. `rootTouched` says whether top-level layers changed.
+ */
+function patchLayers(affectedNodeIds, rootTouched, previousSelection) {
+  const doc = state.document;
+  const tree = $("layers");
+  const hadFocus = tree.contains(document.activeElement);
+  for (const id of affectedNodeIds) {
+    const node = doc.nodes[id];
+    const item = document.getElementById(`layer-${id}`);
+    if (!node) {
+      item?.remove();
+      continue;
+    }
+    if (!item) continue; // inside a collapsed layer, or new: placed by its parent's list
+    const expanded = node.children.length > 0 ? !state.collapsed.has(id) : null;
+    if (expanded === null) item.removeAttribute("aria-expanded");
+    else item.setAttribute("aria-expanded", String(expanded));
+    item.querySelector(":scope > .row .twisty").textContent = expanded === null ? "" : expanded ? "▾" : "▸";
+    item.querySelector(":scope > .row .label").textContent = layerLabel(node);
+    let group = item.querySelector(":scope > ul");
+    if (!expanded) {
+      group?.remove();
+      continue;
+    }
+    if (!group) {
+      group = el("ul", { role: "group", class: "children" });
+      item.append(group);
+    }
+    reconcileLayerList(group, node.children.filter((child) => doc.nodes[child]), Number(item.getAttribute("aria-level")) + 1);
+  }
+  if (rootTouched) reconcileLayerList(tree, doc.rootIds.filter((id) => doc.nodes[id]), 1);
+  $("layers-empty").hidden = doc.rootIds.length > 0;
+  for (const id of new Set([...previousSelection, ...state.selection])) {
+    document.getElementById(`layer-${id}`)?.setAttribute("aria-selected", state.selection.includes(id) ? "true" : "false");
+  }
+  if (state.focusedLayer === null || !document.getElementById(`layer-${state.focusedLayer}`)) {
+    state.focusedLayer = state.selection.find((id) => document.getElementById(`layer-${id}`)) ?? tree.querySelector("[role=treeitem]")?.dataset.nodeId ?? null;
+    if (state.focusedLayer !== null) document.getElementById(`layer-${state.focusedLayer}`).tabIndex = 0;
+  }
+  if (hadFocus && !tree.contains(document.activeElement) && state.focusedLayer !== null) document.getElementById(`layer-${state.focusedLayer}`)?.focus();
 }
 
 function focusLayer(id) {
@@ -1180,8 +1259,9 @@ async function main() {
   canvas = await mountCanvas($("canvas"), {
     onCommit: (operations, intent, meta) => commit(operations, intent, meta?.revision),
     onSelect: (ids) => {
-      // The canvas reports the selection after every update; redraw only when it changed.
-      if (ids.join("\n") === state.selection.join("\n")) return;
+      // The canvas reports the selection after every update; redraw only when it changed,
+      // and not while a change is being applied (applyChange updates the panels itself).
+      if (applying || ids.join("\n") === state.selection.join("\n")) return;
       state.selection = ids;
       shareSelection();
       if (ids.length > 0) state.focusedLayer = ids.at(-1);
