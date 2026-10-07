@@ -1,3 +1,4 @@
+import { accessibilityTreeFromImportProposal, auditAccessibility } from "@lilac/design-assurance";
 import { validateImportProposal, type ImportProposal } from "@lilac/import-stack";
 import { inferSemantics } from "./semantics.ts";
 import type { ImportReview, SemanticRole } from "./types.ts";
@@ -29,6 +30,7 @@ export function reviewImport(proposalInput: ImportProposal): ImportReview {
   const semantics = inferSemantics(proposal);
   const byRole: Partial<Record<SemanticRole, number>> = {};
   for (const record of semantics.records) byRole[record.role] = (byRole[record.role] ?? 0) + 1;
+  const accessibility = auditAccessibility(accessibilityTreeFromImportProposal(proposal));
   const errors = severityCount("error");
   const blockingReasons = errors > 0 ? [`${errors} error diagnostic${errors === 1 ? "" : "s"}`] : [];
   if (proposal.rootIds.length === 0) blockingReasons.push("the proposal has no root nodes");
@@ -55,6 +57,14 @@ export function reviewImport(proposalInput: ImportProposal): ImportReview {
     },
     sourceBindings: { bound: elements.filter((node) => node.sourceBinding !== undefined).length, elements: elements.length },
     semantics: { byRole, unknownRoles: semantics.unknownRoles.length, overrides: semantics.overrides.length },
+    accessibility: {
+      findings: accessibility.findings.length,
+      byRule: accessibility.summary.byRule,
+      items: accessibility.findings.slice(0, MAX_REVIEW_ITEMS).map((finding) => ({
+        ruleId: finding.ruleId, wcag: finding.wcag, severity: finding.severity, message: finding.message, nodeId: finding.nodeId ?? null,
+      })),
+      truncated: Math.max(0, accessibility.findings.length - MAX_REVIEW_ITEMS),
+    },
     commitReady: blockingReasons.length === 0,
     blockingReasons,
   };

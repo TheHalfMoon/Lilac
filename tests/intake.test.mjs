@@ -51,7 +51,7 @@ function withProject(callback) {
 test("provenance and dependencies are composition-only", () => {
   assert.match(INTAKE_PROVENANCE.posture, /creates no second document authority/i);
   const manifest = JSON.parse(readFileSync(new URL("../packages/intake/package.json", import.meta.url), "utf8"));
-  assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["@lilac/history", "@lilac/import-stack", "@lilac/network-policy", "@lilac/persistence"]);
+  assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["@lilac/design-assurance", "@lilac/history", "@lilac/import-stack", "@lilac/network-policy", "@lilac/persistence"]);
 });
 
 test("web semantics come only from markup and carry OBSERVED evidence", () => {

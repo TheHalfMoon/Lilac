@@ -6,11 +6,8 @@ import { basename, dirname, extname, join } from "node:path";
 
 import { validateDocument } from "@lilac/document-model";
 
-// Code-unit string order: unlike localeCompare, independent of the process locale.
-function compareCodeUnits(left, right) {
-  if (left < right) return -1;
-  return left > right ? 1 : 0;
-}
+import { DesignAssuranceError } from "./errors.mjs";
+import { compareCodeUnits } from "./order.mjs";
 
 export const DESIGN_ASSURANCE_SCHEMA_VERSION = 1;
 export const IMPECCABLE_PIN = Object.freeze({
@@ -47,12 +44,8 @@ const SCANNABLE_SOURCE_EXTENSIONS = Object.freeze([
   ".astro",
 ]);
 
-export class DesignAssuranceError extends Error {
-  constructor(message, options = undefined) {
-    super(message, options);
-    this.name = "DesignAssuranceError";
-  }
-}
+export { DesignAssuranceError };
+export * from "./accessibility.mjs";
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
