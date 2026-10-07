@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { request as httpRequest } from "node:http";
 import { join } from "node:path";
 
 import { startStudioHost } from "../packages/studio-host/src/index.ts";
@@ -27,6 +28,18 @@ test("the host serves only the editor's files, and the launch ticket works once"
       assert.equal((await fetch(`${host.url}${path}`)).status, 404, path);
     }
     assert.equal((await fetch(`${host.url}/packages/canvas/src/index.mjs`, { method: "POST" })).status, 405);
+    // fetch normalises dot segments before sending; send the raw paths too.
+    const raw = (path) => new Promise((resolve, reject) => {
+      const req = httpRequest({ host: "127.0.0.1", port: host.port, path, method: "GET" }, (response) => {
+        response.resume();
+        resolve(response.statusCode);
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    for (const path of ["/packages/canvas/src/../../../package.json", "/packages/canvas/src/%2e%2e/%2e%2e/package.json", "/packages/canvas/src/..%2f..%2fpackage.json", "/packages/studio-host/src/../src/server.ts"]) {
+      assert.equal(await raw(path), 404, `raw ${path}`);
+    }
     // The ticket is redeemed once, only with an Origin, and the token is never in a cookie.
     const ticket = new URL(host.launchUrl()).searchParams.get("ticket");
     const redeem = (headers) => fetch(`${host.url}/api/launch`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ ticket }) });
