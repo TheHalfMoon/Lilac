@@ -295,6 +295,15 @@ export function removeStaleTemporaries(directory: string, isTarget: (name: strin
   });
 }
 
+/**
+ * An error the operating system reported (ENOENT, EACCES, ...): it carries a numeric errno.
+ * Node's own argument errors (ERR_*) have a string code but no errno, so they are bugs, not
+ * filesystem conditions, and are never absorbed.
+ */
+export function isFilesystemError(error: unknown): boolean {
+  return typeof (error as NodeJS.ErrnoException)?.errno === "number" && typeof (error as NodeJS.ErrnoException)?.code === "string";
+}
+
 /** Remove the regular files in `directory` whose name `matches` accepts; best effort. */
 export function removeStaleFiles(directory: string, matches: (name: string) => boolean): number {
   let removed = 0;
@@ -302,7 +311,7 @@ export function removeStaleFiles(directory: string, matches: (name: string) => b
   try {
     names = readdirSync(directory);
   } catch (error) {
-    if (typeof (error as NodeJS.ErrnoException)?.code === "string") return 0;
+    if (isFilesystemError(error)) return 0;
     throw error;
   }
   for (const name of names) {
@@ -314,7 +323,7 @@ export function removeStaleFiles(directory: string, matches: (name: string) => b
       removed += 1;
     } catch (error) {
       // Gone already, or not ours to remove: leave it. Anything else is a bug.
-      if (typeof (error as NodeJS.ErrnoException)?.code !== "string") throw error;
+      if (!isFilesystemError(error)) throw error;
     }
   }
   return removed;

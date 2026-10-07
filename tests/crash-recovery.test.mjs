@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 import { createDocument } from "../packages/document-model/src/index.mjs";
 import { PROJECT_FILES, PersistenceCorruptionError, createProject, openProject } from "../packages/persistence/src/index.ts";
+import { isFilesystemError, removeStaleFiles } from "../packages/persistence/src/fsio.ts";
 
 // P06 gate 10 (#133): systematic crash-point injection. Every injected crash state either
 // recovers to the last durable revision, or fails closed with a specific error; none
@@ -323,4 +324,14 @@ test("a lock override interrupted after renaming the stale lock aside leaves not
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("cleanup absorbs only operating-system errors, never a bug", () => {
+  assert.equal(isFilesystemError(Object.assign(new Error("gone"), { code: "ENOENT", errno: -2 })), true);
+  let argumentError;
+  try { readdirSync(undefined); } catch (error) { argumentError = error; }
+  assert.equal(argumentError.code, "ERR_INVALID_ARG_TYPE");
+  assert.equal(isFilesystemError(argumentError), false, "Node's argument errors are bugs");
+  assert.throws(() => removeStaleFiles(undefined, () => true), TypeError);
+  assert.equal(removeStaleFiles(join(tmpdir(), `lilac-missing-${randomUUID()}`), () => true), 0, "a missing directory is nothing to clean");
 });

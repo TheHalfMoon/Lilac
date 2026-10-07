@@ -19,6 +19,7 @@ import {
   projectDirectory,
   readBounded,
   removeFile,
+  isFilesystemError,
   removeStaleFiles,
   removeStaleTemporaries,
 } from "./fsio.ts";
@@ -296,11 +297,6 @@ function objectFanOutDirectories(projectDir: string): string[] {
 }
 
 const LEFTOVER_LOCK = new RegExp(`^${PROJECT_FILES.lock.replace(".", "\\.")}\\.broken-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, "u");
-
-// An errno-style error from the filesystem (ENOENT, EACCES, ...), as opposed to a bug.
-function isFilesystemError(error: unknown): boolean {
-  return typeof (error as NodeJS.ErrnoException)?.code === "string";
-}
 
 /** Open a project for writing: lock, verify, recover a torn journal tail, and replay. */
 export function openProject(root: string, options: OpenProjectOptions): ProjectStore {

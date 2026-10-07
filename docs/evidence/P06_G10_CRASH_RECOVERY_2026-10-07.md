@@ -62,4 +62,11 @@ The judge returned no must-fix. Probes confirmed that cleanup cannot reach outsi
 - **Interrupted `createProject`.** It leaves a `.lilac.tmp-<pid>-<uuid>` staging directory beside the project, in the user's directory. It is never cleaned, because nothing in Lilac owns that location. A retry is unaffected: staging names are unique, and creation refuses an existing `.lilac`.
 - **Loss above the last checkpoint.** Whole-entry loss there stays undetectable, as described under Disposition.
 
-`tests/crash-recovery.test.mjs` now has 10 tests.
+`tests/crash-recovery.test.mjs` now has 11 tests, after delta 2.
+
+## Review delta 2
+
+The delta re-review had no must-fix. It traced the lock-override races and found they can cost only audit detail, never mutual exclusion; the writer fence (lock identity and nonce) holds. Its worth-considering item:
+- **Errors absorbed too broadly.** The "filesystem error" test accepted any error with a string `code`, and Node's argument errors (`ERR_INVALID_ARG_TYPE`) have one. A programming error such as an undefined directory could therefore still have been absorbed.
+- **Fix.** One shared `isFilesystemError` in `fsio.ts` now requires a numeric `errno`. Only operating-system errors (ENOENT, EACCES, ...) are absorbed; argument errors are rethrown.
+- **Test 11** checks this.
