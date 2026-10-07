@@ -269,6 +269,11 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     const attrs = Array.isArray(node.attrs) ? node.attrs : [];
     if (attrs.length > request.policy.maxAttributesPerNode) throw new ImportSecurityError(`<${rawTag}> exceeds maxAttributesPerNode`);
 
+    // Only an HTML <link> can load a stylesheet; a foreign "link" element is dropped.
+    if (rawTag === "link" && node.namespaceURI !== HTML_NAMESPACE) {
+      recordRemoval("link", domPath, node.sourceCodeLocation);
+      return null;
+    }
     if (rawTag === "link") {
       const attrMap: Record<string, string> = Object.create(null);
       for (const attr of attrs) attrMap[String(attr.name).toLowerCase()] = String(attr.value ?? "");
@@ -290,6 +295,12 @@ export function importHtmlSnapshot(requestInput: ImportRequest, html: string): I
     // children kept.
     if (rawTag === "form" && (node.namespaceURI !== HTML_NAMESPACE || TABLE_SECTIONS.has(String(node.parentNode?.tagName ?? "").toLowerCase()) || insideOpenParagraph(node))) {
       recordRemoval("form", domPath, node.sourceCodeLocation);
+      // The form's own attributes go with it; count what they carried, as the <div> path does.
+      for (const attr of Array.isArray(node.attrs) ? node.attrs : []) {
+        const name = String(attr.name ?? "").toLowerCase();
+        if (name.startsWith("on") || name === "srcdoc") security.eventHandlersRemoved += 1;
+        else if (FORM_AUTHORITY_ATTRIBUTES.has(name) || REMOTE_AUTHORITY_ATTRIBUTES.has(name) || HOST_AUTHORITY_ATTRIBUTES.has(name)) security.dangerousUrlsRemoved += 1;
+      }
       return walkChildren(node, parentId, domPath, depth);
     }
     const tag = rawTag === "form" ? "div" : rawTag;

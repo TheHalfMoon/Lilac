@@ -6,6 +6,9 @@ const VOID = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input"
 // Raw-text elements (parse5 parses with scripting on, so noscript is one): their text is
 // not entity-decoded, so it is written as is, as every HTML serializer does.
 const RAW_TEXT = new Set(["noscript", "xmp", "iframe", "noembed", "noframes", "plaintext"]);
+// The parser drops one line feed right after these start tags, so a text that starts with
+// one needs another in front.
+const LEADING_LF_DROPPED = new Set(["pre", "textarea", "listing"]);
 
 const escapeText = (value) => value.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;").replace(/\u00a0/gu, "&nbsp;");
 const escapeAttribute = (value) => value.replace(/&/gu, "&amp;").replace(/"/gu, "&quot;").replace(/\u00a0/gu, "&nbsp;");
@@ -29,9 +32,15 @@ function serializeNode(proposal, id, rawText = false, foreign = false) {
   if (node.kind === "text") return rawText ? node.text : escapeText(node.text);
   const attributes = attributesOf(proposal, node).map(([name, value]) => ` ${name}="${escapeAttribute(value)}"`).join("");
   if (!foreign && VOID.has(node.tag)) return `<${node.tag}${attributes}>`;
-  const raw = RAW_TEXT.has(node.tag);
+  // Raw text only in HTML: inside SVG a <noscript> is an ordinary element.
+  const raw = !foreign && RAW_TEXT.has(node.tag);
   const childForeign = FOREIGN_ROOTS.has(node.tag) || (foreign && !HTML_INTEGRATION.has(node.tag));
-  return `<${node.tag}${attributes}>${node.children.map((child) => serializeNode(proposal, child, raw, childForeign)).join("")}</${node.tag}>`;
+  const first = node.children.length > 0 ? proposal.nodes[node.children[0]] : undefined;
+  const lead = !foreign && LEADING_LF_DROPPED.has(node.tag) && first?.kind === "text" && first.text.startsWith("\n") ? "\n" : "";
+  const inner = node.children.map((child) => serializeNode(proposal, child, raw, childForeign)).join("");
+  // <plaintext> has no end tag: everything after it is its text.
+  if (!foreign && node.tag === "plaintext") return `<plaintext${attributes}>${inner}`;
+  return `<${node.tag}${attributes}>${lead}${inner}</${node.tag}>`;
 }
 
 export function proposalToHtml(proposal) {
