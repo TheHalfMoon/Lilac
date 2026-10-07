@@ -54,7 +54,7 @@ test("the SBOM has the CycloneDX 1.5 shape, correct purls, hashes, scopes and gr
     const component = sbom.components.find((item) => item.name === name);
     assert.ok(component, name);
     assert.equal(component.purl, purlFor(name, entry.version));
-    assert.equal(component.scope, entry.optional ? "optional" : "required");
+    assert.equal(component.scope, entry.dev ? "excluded" : entry.optional ? "optional" : "required");
     assert.equal(component.hashes[0].content, Buffer.from(entry.integrity.slice("sha512-".length), "base64").toString("hex"));
     assert.ok(component.licenses?.[0]?.license?.id, `${name} has a resolved SPDX license`);
   }

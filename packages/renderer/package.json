@@ -1,0 +1,10 @@
+{
+  "name": "@lilac/renderer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

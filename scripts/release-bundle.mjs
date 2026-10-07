@@ -41,7 +41,7 @@ export function childEnv(env = process.env) {
   return Object.fromEntries(CHILD_ENV_KEYS.filter((key) => typeof env[key] === "string").map((key) => [key, env[key]]));
 }
 
-const LICENSE_FILE = /^(licen[cs]e|copying|notice)([.-][A-Za-z0-9-]+)?$/iu;
+const LICENSE_FILE = /^(licen[cs]e|copying|notice|third-?party-?notices)([.-][A-Za-z0-9-]+)?$/iu;
 const sha256 = (data) => createHash("sha256").update(data).digest("hex");
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
