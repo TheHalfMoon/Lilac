@@ -17,38 +17,48 @@ A Lilac release is a tagged commit together with a signed evidence bundle. This 
 | `smoke-report.json` | The offline smoke-test report for this commit (`npm run smoke`). |
 | `MANIFEST.json` | The product, the source commit, the lockfile sha256, the project license, and the sha256 of every other file. |
 
-**Determinism.** Two builds of the same commit and lockfile are byte-identical, which `tests/release-bundle.test.mjs` checks. Nothing in the bundle depends on host paths, time, or which platform binary npm installed.
+**Determinism.** Two builds of the same commit and lockfile are byte-identical. Nothing in the bundle depends on host paths, time, or which platform binary npm installed. `tests/release-bundle.test.mjs` checks both, the second by building with another platform's binary in place. The bundled text files are checked out with LF line endings on every platform (`.gitattributes`), so a Windows checkout produces the same bytes.
 
 **Project license.** No project license has been declared yet, so `MANIFEST.json` records `projectLicense: "NOASSERTION"` (see #139).
 
 ## How a release is signed
 
-The `Release Evidence` workflow (`.github/workflows/release.yml`) runs when a `v*` tag is pushed, or when it is started manually. In order, it:
-1. installs the dependencies with `npm ci --ignore-scripts` and runs the full `npm run check`;
-2. builds the bundle for that commit and verifies it against its manifest;
-3. signs every file with `actions/attest-build-provenance`.
+The `Release Evidence` workflow (`.github/workflows/release.yml`) has two jobs.
+- **`build`** runs on every trigger:
+  1. installs the dependencies with `npm ci --ignore-scripts` and runs the full `npm run check`;
+  2. builds the bundle for that commit and verifies it against its manifest;
+  3. uploads it as the artifact `lilac-release-evidence-<sha>`, kept for 90 days.
 
-The signatures are keyless Sigstore attestations issued through GitHub OIDC, so no signing key is stored anywhere. The bundle is uploaded as a workflow artifact.
+  This job cannot request an OIDC token.
+- **`attest`** runs only for a pushed tag matching `v[0-9]*`. It downloads the finished bundle and signs every file with `actions/attest-build-provenance`. These are keyless Sigstore attestations through GitHub OIDC, so no signing key is stored anywhere. It runs no repository or dependency code.
 
-The workflow never creates tags. Pushing a tag is the release decision.
+A manual dispatch builds the bundle but never signs it, so attestations exist only for tagged commits. The workflow never creates tags; pushing one is the release decision.
+
+The attestations are stored with the repository and outlive the artifact. After 90 days, the bundle can be rebuilt from the tag, as in step 4 below, and checked against them.
 
 ## How to verify a release
 
+The trust anchor is the attestation on `MANIFEST.json`. `--verify` only checks that the files match the manifest. Someone who edits a file can edit the manifest to match, so `--verify` on its own proves nothing about origin.
+
 1. Download the `lilac-release-evidence-<sha>` artifact from the workflow run for the tag.
-2. Check the files against the manifest:
+2. Check that the manifest was signed by this repository's release workflow, for that tag:
+
+   ```sh
+   gh attestation verify <bundle dir>/MANIFEST.json --repo TheHalfMoon/Lilac \
+     --source-ref refs/tags/<tag> \
+     --signer-workflow TheHalfMoon/Lilac/.github/workflows/release.yml
+   ```
+3. Check that `sourceCommit` in `MANIFEST.json` equals `git rev-list -n1 <tag>`. Then check every file against the manifest:
 
    ```sh
    node scripts/release-bundle.mjs --verify <bundle dir>
    ```
-3. Check each file's signature and provenance with the GitHub CLI:
-
-   ```sh
-   gh attestation verify <bundle dir>/MANIFEST.json --repo TheHalfMoon/Lilac
-   ```
-4. Rebuild from the tagged commit and compare. The two bundles must be identical:
+4. Rebuild from the tagged commit with Node 22 into a directory that does not exist yet, and compare. The two must be identical:
 
    ```sh
    git checkout <tag> && npm ci --ignore-scripts
-   node scripts/release-bundle.mjs /tmp/rebuilt --source-commit "$(git rev-parse HEAD)"
-   diff -r /tmp/rebuilt <bundle dir>
+   node scripts/release-bundle.mjs /tmp/lilac-rebuilt --source-commit "$(git rev-parse HEAD)"
+   diff -r /tmp/lilac-rebuilt <bundle dir>
    ```
+
+Every other file is also attested individually, and can be checked the same way as in step 2.

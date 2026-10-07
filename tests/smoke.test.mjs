@@ -14,7 +14,9 @@ const SCRIPT = fileURLToPath(new URL("../scripts/smoke.mjs", import.meta.url));
 const FIXTURE = fileURLToPath(new URL("./fixtures/smoke/expected-report.json", import.meta.url));
 const EXPECTED = readFileSync(new URL("./fixtures/smoke/expected-report.json", import.meta.url), "utf8");
 
-const run = (env = {}, cwd = undefined) => execFileSync(process.execPath, [SCRIPT], { encoding: "utf8", cwd, env: { PATH: process.env.PATH ?? "", ...env } });
+// Only what Node needs to find binaries and a temp directory on each platform.
+const BASE_ENV = Object.fromEntries(["PATH", "Path", "SystemRoot", "TEMP", "TMP", "TMPDIR"].filter((key) => typeof process.env[key] === "string").map((key) => [key, process.env[key]]));
+const run = (env = {}, cwd = undefined) => execFileSync(process.execPath, [SCRIPT], { encoding: "utf8", cwd, env: { ...BASE_ENV, ...env } });
 
 test("the smoke workflow completes offline and reproduces the expected report exactly", () => {
   const first = run();
@@ -37,11 +39,11 @@ test("the smoke workflow completes offline and reproduces the expected report ex
 test("npm run smoke runs the smoke script", () => {
   const npm = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(npm.scripts.smoke, "node scripts/smoke.mjs --expect tests/fixtures/smoke/expected-report.json");
-  execFileSync(process.execPath, [SCRIPT, "--expect", FIXTURE], { encoding: "utf8", env: { PATH: process.env.PATH ?? "" } });
+  execFileSync(process.execPath, [SCRIPT, "--expect", FIXTURE], { encoding: "utf8", env: BASE_ENV });
 });
 
 test("--expect fails on a mismatch and works from any directory", () => {
-  const options = { encoding: "utf8", cwd: "/", env: { PATH: process.env.PATH ?? "" }, stdio: "pipe" };
+  const options = { encoding: "utf8", cwd: "/", env: BASE_ENV, stdio: "pipe" };
   execFileSync(process.execPath, [SCRIPT, "--expect", "tests/fixtures/smoke/expected-report.json"], options);
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "lilac-smoke-expect-")));
   try {

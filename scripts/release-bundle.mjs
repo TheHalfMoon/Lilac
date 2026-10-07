@@ -10,7 +10,7 @@
 // produce the same bytes on any host, so the bundle can be attested and re-verified.
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,14 +25,21 @@ export const BUNDLED_DOCUMENTS = Object.freeze([
   "SECURITY.md",
   "docs/MCP.md",
   "docs/MIGRATION.md",
-  "docs/DONORS.md",
-  "docs/provenance/PAPER_AUTHORIZATION.md",
-  "docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03.md",
-  "scripts/license-policy.json",
   "docs/RELEASE.md",
+  "docs/DONORS.md",
+  "scripts/license-policy.json",
 ]);
+// Every file in these directories is bundled too, so a new provenance record is never left out.
+export const BUNDLED_DIRECTORIES = Object.freeze(["docs/provenance"]);
 
-const LICENSE_FILE = /^(licen[cs]e|copying|notice)(\.(md|txt))?$/iu;
+// The smoke subprocess gets only what Node needs to find binaries and a temp directory on
+// each platform; NODE_OPTIONS and other ambient settings are dropped.
+const CHILD_ENV_KEYS = ["PATH", "Path", "SystemRoot", "TEMP", "TMP", "TMPDIR"];
+export function childEnv(env = process.env) {
+  return Object.fromEntries(CHILD_ENV_KEYS.filter((key) => typeof env[key] === "string").map((key) => [key, env[key]]));
+}
+
+const LICENSE_FILE = /^(licen[cs]e|copying|notice)([.-].*)?$/iu;
 const sha256 = (data) => createHash("sha256").update(data).digest("hex");
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -61,14 +68,16 @@ function collectLicenses(lock, policy, nodeModules) {
     const manifest = join(directory, "package.json");
     const installed = existsSync(manifest) && JSON.parse(readFileSync(manifest, "utf8")).version === pkg.version;
     const files = [];
-    if (installed) {
+    // An override package is recorded only through its override, so a platform binary's own
+    // files never make the bundle depend on which platform built it.
+    if (installed && override === null) {
       for (const name of readdirSync(directory).filter((entry) => LICENSE_FILE.test(entry)).sort(compare)) {
         const bytes = readFileSync(join(directory, name));
         const digest = sha256(bytes);
         texts.set(digest, bytes);
         files.push({ name, sha256: digest });
       }
-      if (files.length === 0 && override === null) fail(`${purl} is installed but ships no license file`);
+      if (files.length === 0) fail(`${purl} is installed but ships no license file`);
     } else if (override === null) {
       fail(`${purl} is not installed and has no license override`);
     }
@@ -105,7 +114,8 @@ function listFiles(root) {
 
 export function buildReleaseBundle(out, { sourceCommit, root = ROOT, nodeModules = join(root, "node_modules") }) {
   if (!/^[0-9a-f]{40}$/u.test(sourceCommit ?? "")) fail("--source-commit must be a 40-character lowercase hex commit SHA");
-  if (existsSync(out) && readdirSync(out).length > 0) fail(`output directory ${out} is not empty`);
+  if (typeof out !== "string" || out === "" || out.startsWith("-")) fail("the first argument must be the output directory");
+  if (existsSync(out) && (!statSync(out).isDirectory() || readdirSync(out).length > 0)) fail(`output ${out} exists and is not an empty directory`);
   mkdirSync(out, { recursive: true });
 
   const lockText = readFileSync(join(root, "package-lock.json"), "utf8");
@@ -121,12 +131,13 @@ export function buildReleaseBundle(out, { sourceCommit, root = ROOT, nodeModules
   for (const [digest, bytes] of [...texts].sort(([a], [b]) => compare(a, b))) writeFile(out, `licenses/${digest}.txt`, bytes);
   writeFile(out, "licenses/index.json", `${JSON.stringify(index, null, 2)}\n`);
 
-  for (const path of BUNDLED_DOCUMENTS) {
+  const directoryFiles = BUNDLED_DIRECTORIES.flatMap((directory) => listFiles(join(root, directory)).map((path) => `${directory}/${path}`));
+  for (const path of [...BUNDLED_DOCUMENTS, ...directoryFiles]) {
     if (!existsSync(join(root, path))) fail(`${path} is missing`);
     writeFile(out, path, readFileSync(join(root, path)));
   }
 
-  const smoke = execFileSync(process.execPath, [join(root, "scripts", "smoke.mjs")], { encoding: "utf8", env: { PATH: process.env.PATH ?? "" } });
+  const smoke = execFileSync(process.execPath, [join(root, "scripts", "smoke.mjs")], { encoding: "utf8", env: childEnv() });
   writeFile(out, "smoke-report.json", smoke);
 
   const projectPackage = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));

@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 
-import { BUNDLED_DOCUMENTS, buildReleaseBundle, verifyReleaseBundle } from "../scripts/release-bundle.mjs";
+import { BUNDLED_DIRECTORIES, BUNDLED_DOCUMENTS, buildReleaseBundle, childEnv, verifyReleaseBundle } from "../scripts/release-bundle.mjs";
 import { externalPackages, purlFor } from "../scripts/sbom.mjs";
 
 // P07 SBOM and attribution bundle (#139): deterministic, complete, and self-verifying.
@@ -62,8 +62,40 @@ test("every external package has its license texts in the bundle", () => withBun
 test("tampering, bad inputs, and a non-empty output are refused", () => withBundles(1, ([out]) => {
   assert.throws(() => buildReleaseBundle(out, { sourceCommit: "HEAD" }), /40-character/);
   buildReleaseBundle(out, { sourceCommit: COMMIT });
-  assert.throws(() => buildReleaseBundle(out, { sourceCommit: COMMIT }), /not empty/);
+  assert.throws(() => buildReleaseBundle(out, { sourceCommit: COMMIT }), /not an empty directory/);
+  assert.throws(() => buildReleaseBundle("--source-commit", { sourceCommit: COMMIT }), /output directory/);
   writeFileSync(join(out, "SECURITY.md"), "changed");
   writeFileSync(join(out, "extra.txt"), "x");
   assert.deepEqual(verifyReleaseBundle(out).sort(), ["SECURITY.md does not match its sha256", "extra.txt is not in the manifest"]);
+}));
+
+test("the bundle does not depend on which platform binary npm installed", () => withBundles(2, ([native, swapped]) => {
+  buildReleaseBundle(native, { sourceCommit: COMMIT });
+  // A full copy of node_modules (links dereferenced) with the installed impeccable binary
+  // renamed to another platform's, as npm would install it there.
+  const scratch = realpathSync(mkdtempSync(join(tmpdir(), "lilac-bundle-modules-")));
+  try {
+    const modules = join(scratch, "node_modules");
+    cpSync(new URL("../node_modules", import.meta.url), modules, { recursive: true, dereference: true });
+    const binaries = join(modules, "@impeccable");
+    const [installed] = readdirSync(binaries).filter((name) => name.startsWith("cli-"));
+    const other = installed === "cli-darwin-arm64" ? "cli-linux-x64" : "cli-darwin-arm64";
+    renameSync(join(binaries, installed), join(binaries, other));
+    const manifest = JSON.parse(readFileSync(join(binaries, other, "package.json"), "utf8"));
+    writeFileSync(join(binaries, other, "package.json"), JSON.stringify({ ...manifest, name: `@impeccable/${other}` }));
+    // A platform binary that shipped an extra notice must not change the bundle either.
+    writeFileSync(join(binaries, other, "NOTICE"), "platform-specific notice\n");
+    buildReleaseBundle(swapped, { sourceCommit: COMMIT, nodeModules: modules });
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+  assert.deepEqual(tree(swapped), tree(native));
+}));
+
+test("every provenance record is bundled, and the smoke subprocess gets a minimal environment", () => withBundles(1, ([out]) => {
+  const manifest = buildReleaseBundle(out, { sourceCommit: COMMIT });
+  for (const directory of BUNDLED_DIRECTORIES) {
+    for (const name of readdirSync(new URL(`../${directory}`, import.meta.url))) assert.ok(Object.hasOwn(manifest.files, `${directory}/${name}`), `${directory}/${name}`);
+  }
+  assert.deepEqual(childEnv({ PATH: "/bin", NODE_OPTIONS: "--require evil", TMPDIR: "/t", HOME: "/h" }), { PATH: "/bin", TMPDIR: "/t" });
 }));
