@@ -167,3 +167,48 @@ test("recovering a torn journal tail never writes through a hard link", () => wi
   assert.equal(readFileSync(peer, "utf8"), before, "nothing was written through the hard link");
   assert.equal(statSync(journal).nlink, 1);
 }));
+
+test("a root swapped while the project is being opened is refused", () => withRoot((root, parent) => {
+  // The swap happens inside openProject, at its first look at the journal, through an
+  // lstat hook in a child process (the hook would leak into other tests in-process).
+  const script = `import fs, { cpSync, renameSync, symlinkSync, readFileSync } from "node:fs";
+    import { syncBuiltinESMExports } from "node:module";
+    const root = ${JSON.stringify(root)}; const parent = ${JSON.stringify(parent)};
+    const original = fs.lstatSync; let swapped = false;
+    fs.lstatSync = function (path, ...rest) {
+      if (!swapped && String(path).endsWith("journal.log")) {
+        swapped = true;
+        renameSync(root, parent + "/moved"); cpSync(parent + "/moved", parent + "/out", { recursive: true }); symlinkSync(parent + "/out", root);
+      }
+      return original.call(this, path, ...rest);
+    };
+    syncBuiltinESMExports();
+    const { openProject } = await import(${JSON.stringify(PERSISTENCE_URL)});
+    try { openProject(root, { owner: "w", at: ${JSON.stringify(AT)} }); console.log("opened"); }
+    catch (error) { console.log(error.name + ": " + error.message); }
+    console.log("outside lock kept:", fs.existsSync(parent + "/out/.lilac/lock"));`;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", timeout: 15_000 });
+  assert.match(result.stdout, /PersistenceValidationError: project directory changed while the project was being opened/u);
+  assert.match(result.stdout, /outside lock kept: true/u, "a lock outside the pinned directory is not removed");
+}));
+
+test("a legitimately symlinked root opens, commits and checkpoints", () => withRoot((root, parent) => {
+  const alias = join(parent, "alias");
+  symlinkSync(root, alias);
+  const store = open(alias);
+  store.commit(setTitle("t1", 0, "x"));
+  store.checkpoint();
+  store.close();
+  assert.equal(existsSync(file(root, PROJECT_FILES.lock)), false, "close releases the lock");
+}));
+
+test("closing after the root moved leaves the lock instead of touching another directory", () => withRoot((root, parent) => {
+  const store = open(root);
+  const outside = mkdtempSync(join(parent, "outside-"));
+  cpSync(join(root, PROJECT_FILES.directory), join(outside, PROJECT_FILES.directory), { recursive: true });
+  renameSync(root, join(parent, "moved"));
+  symlinkSync(outside, root);
+  store.close();
+  assert.equal(existsSync(join(outside, PROJECT_FILES.directory, PROJECT_FILES.lock)), true, "the outside copy is untouched");
+  assert.equal(existsSync(join(parent, "moved", PROJECT_FILES.directory, PROJECT_FILES.lock)), true, "the moved project keeps its lock for breakStaleLock");
+}));

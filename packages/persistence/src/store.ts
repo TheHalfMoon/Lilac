@@ -15,6 +15,7 @@ import {
   fileIdentity,
   type FileIdentity,
   fsyncDirectory,
+  isSameDirectory,
   projectDirectory,
   readBounded,
   removeFile,
@@ -271,14 +272,26 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   assertId(options?.owner, "owner");
   assertTimestamp(options.at, "at");
   if (!assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("no Lilac project exists at this root");
+  // Pin the project directory before anything is read or written, and re-check it before
+  // every write during open and once more before the store is handed out, so a root swapped
+  // at any point during open is refused.
+  const directory = directoryIdentity(projectDir, "project directory");
+  if (directory.path !== projectDir) throw new PersistenceValidationError("project directory must not be reached through a symbolic link");
+  const unchanged = (): void => {
+    if (!isSameDirectory(projectDir, directory)) throw new PersistenceValidationError("project directory changed while the project was being opened");
+  };
   const files = paths(projectDir);
   const lockRecord: LockRecord = { owner: options.owner, pid: process.pid, at: options.at, nonce: randomUUID() };
   const lockOverride = acquireLock(files.lock, lockRecord, options.breakStaleLock);
   try {
+    unchanged();
     const rawManifest = readJsonFile(files.manifest, "manifest");
     const { manifest: migrated, migratedFrom } = migrateManifest(rawManifest, options.migrations ?? PROJECT_MIGRATIONS);
     const manifest = readManifest(migrated);
-    if (migratedFrom !== null) atomicWrite(files.manifest, canonicalJson(manifest), "manifest");
+    if (migratedFrom !== null) {
+      unchanged();
+      atomicWrite(files.manifest, canonicalJson(manifest), "manifest");
+    }
 
     const snapshot = readSnapshot(readJsonFile(files.snapshot, "snapshot reference"));
     let document = loadDocument(projectDir, snapshot.documentObject);
@@ -290,7 +303,10 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
     if (journalBytes === null) throw new PersistenceCorruptionError("journal is missing");
     const genesis = genesisDigest(manifest.projectId);
     const parsed = parseJournal(journalBytes, genesis);
-    if (parsed.tornTailBytes > 0) atomicWrite(files.journal, journalBytes.subarray(0, parsed.validBytes), "journal");
+    if (parsed.tornTailBytes > 0) {
+      unchanged();
+      atomicWrite(files.journal, journalBytes.subarray(0, parsed.validBytes), "journal");
+    }
     if (snapshot.journalSeq > parsed.entries.length) {
       throw new PersistenceCorruptionError("snapshot reference points past the end of the journal");
     }
@@ -310,6 +326,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       replayed += 1;
     }
     const last = parsed.entries.at(-1);
+    unchanged();
     return new ProjectStore(STORE_TOKEN, projectDir, manifest, document, {
       seq: last?.entry.seq ?? 0,
       digest: last?.digest ?? genesis,
@@ -320,10 +337,12 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       journalContent: createHash("sha256").update(journalBytes.subarray(0, parsed.validBytes)),
       journalIdentity: fileIdentity(files.journal, "journal"),
       lock: lockRecord,
+      directory,
       recovery: { tornTailBytes: parsed.tornTailBytes, replayedEntries: replayed, migratedFrom, lockOverride },
     });
   } catch (error) {
-    releaseLock(files.lock, lockRecord);
+    // After a swap, the lock path points elsewhere; only release a lock in the pinned directory.
+    if (isSameDirectory(projectDir, directory)) releaseLock(files.lock, lockRecord);
     throw error;
   }
 }
@@ -335,6 +354,7 @@ interface StoreState {
   journalContent: Hash;
   journalIdentity: FileIdentity;
   lock: LockRecord;
+  directory: DirectoryIdentity;
   recovery: RecoveryReport;
 }
 
@@ -366,7 +386,7 @@ export class ProjectStore {
     this.#journalContent = state.journalContent;
     this.#journalIdentity = state.journalIdentity;
     this.#lock = state.lock;
-    this.#directory = directoryIdentity(projectDir, "project directory");
+    this.#directory = state.directory;
   }
 
   #assertOpen(): void {
@@ -377,12 +397,10 @@ export class ProjectStore {
   #assertWritable(): void {
     this.#assertOpen();
     if (this.#poisoned) throw new PersistenceValidationError("project store must be reopened after a failed journal write");
-    assertNotSymlink(this.projectDir, "project directory");
     // The project directory must still be the one opened: a renamed root with a symlink
     // in its place, or a swapped .lilac, would otherwise receive this store's writes.
     // A swap between this check and the write remains possible (Node has no openat).
-    const current = directoryIdentity(this.projectDir, "project directory");
-    if (current.path !== this.#directory.path || current.dev !== this.#directory.dev || current.ino !== this.#directory.ino) {
+    if (!isSameDirectory(this.projectDir, this.#directory)) {
       throw new PersistenceValidationError("project directory changed since the store was opened");
     }
     if (!sameHolder(readLock(join(this.projectDir, PROJECT_FILES.lock)), this.#lock)) {
@@ -472,6 +490,8 @@ export class ProjectStore {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
-    releaseLock(join(this.projectDir, PROJECT_FILES.lock), this.#lock);
+    // After the project directory moved or was swapped, the lock path points elsewhere;
+    // the lock is then left for breakStaleLock rather than removing a file outside.
+    if (isSameDirectory(this.projectDir, this.#directory)) releaseLock(join(this.projectDir, PROJECT_FILES.lock), this.#lock);
   }
 }

@@ -51,6 +51,17 @@ export interface DirectoryIdentity {
   ino: bigint;
 }
 
+/** True when `path` still resolves, without symlinks, to the pinned directory. */
+export function isSameDirectory(path: string, pinned: DirectoryIdentity): boolean {
+  let current: DirectoryIdentity;
+  try {
+    current = directoryIdentity(path, "project directory");
+  } catch {
+    return false;
+  }
+  return current.path === pinned.path && current.dev === pinned.dev && current.ino === pinned.ino;
+}
+
 export function directoryIdentity(path: string, label: string): DirectoryIdentity {
   let real: string;
   try {
@@ -93,7 +104,9 @@ export function ensureDirectory(path: string, label: string): void {
 export function fsyncDirectory(path: string): void {
   let fd: number | null = null;
   try {
-    fd = openSync(path, "r");
+    // O_DIRECTORY refuses anything but a directory, and O_NONBLOCK keeps a FIFO swapped
+    // in at this path from blocking the open.
+    fd = openSync(path, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | NONBLOCK);
     fsyncSync(fd);
   } catch {
     // Directory fsync is unsupported on some platforms (Windows); rename atomicity still holds.
@@ -108,8 +121,18 @@ export function fsyncDirectory(path: string): void {
  * `singleLink` additionally refuses a hard-linked file.
  */
 export function readBounded(path: string, maxBytes: number, label: string, { singleLink = false }: { singleLink?: boolean } = {}): Buffer | null {
-  if (!assertNotSymlink(path, label)) return null;
-  if (!lstatSync(path).isFile()) throw new PersistenceValidationError(`${label} must be a regular file`);
+  let entry;
+  try {
+    entry = lstatSync(path);
+  } catch (error) {
+    if (isMissing(error)) return null;
+    if ((error as NodeJS.ErrnoException)?.code === "ENOTDIR") {
+      throw new PersistenceValidationError(`${label} is under a path component that is not a directory`);
+    }
+    throw error;
+  }
+  if (entry.isSymbolicLink()) throw new PersistenceValidationError(`${label} must not be a symbolic link`);
+  if (!entry.isFile()) throw new PersistenceValidationError(`${label} must be a regular file`);
   let fd: number;
   try {
     fd = openSync(path, constants.O_RDONLY | NOFOLLOW | NONBLOCK);

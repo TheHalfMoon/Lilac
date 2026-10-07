@@ -4,7 +4,7 @@ Part of P06 gate 5 (#100). The findings come from the gate-5 probe of base `f4aa
 
 ## Tests
 
-`tests/sandbox-persistence.test.mjs` has 10 tests.
+`tests/sandbox-persistence.test.mjs` has 13 tests.
 
 **Escapes.** These six fail on base:
 1. A FIFO in place of the snapshot, manifest or journal is refused instead of hanging. The test runs in a child process with a 15 s timeout, so a regression fails the test rather than hanging the suite.
@@ -19,5 +19,11 @@ Part of P06 gate 5 (#100). The findings come from the gate-5 probe of base `f4aa
 8. A hard-linked snapshot is replaced by atomic rename, never rewritten in place.
 9. Malformed object ids, and NUL, relative, `~` and `file:` roots, are refused.
 10. Recovering a torn journal tail replaces the journal atomically. Nothing is written through a hard link, and later appends go to the new, singly linked journal.
+
+**Review delta 1.** Tests 11 and 13 fail on the pre-delta head `5f5afd9`; test 12 is a guard against false positives.
+
+11. A root swapped during `openProject`, at its first look at the journal, through an `lstat` hook in a child process, is refused, and the outside lock is left alone.
+12. A legitimately symlinked root opens, commits and checkpoints.
+13. `close()` after the root moved leaves the lock instead of touching the other directory.
 
 FIFO tests are skipped where `mkfifo` is unavailable; CI runs on Linux.

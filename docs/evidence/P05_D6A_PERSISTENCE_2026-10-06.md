@@ -85,10 +85,15 @@ The P06 gate-5 probe found two escapes in this package, plus two weaker behaviou
 - Opens of existing files add `O_NONBLOCK`, so a FIFO swapped in after the check cannot block.
 
 **Post-open root swap.** After a rename of the root and a symlink at its old path, `checkpoint` and `putObject` wrote into an outside `.lilac` holding a copied lock. Now:
-- The store pins the real path and device/inode of its project directory at open.
-- Every write re-checks both.
+- `openProject` pins the real path and device/inode of its project directory before it reads anything.
+- It re-checks them before any migration or torn-tail write and once more before returning the store. Review delta 1 moved the pin here: a first version pinned only after open, so a swap during open (about 51 ms with 2,000 journal entries) was accepted.
+- Every later write re-checks both.
+- `close()`, and failed opens, only release a lock in the pinned directory. After a move or swap the lock stays where it is, for `breakStaleLock`, instead of a file being removed elsewhere.
 - Residual: a swap between that check and the write remains possible, because Node has no `openat`-style directory-descriptor API.
 
 **Weaker behaviours.**
+- `fsyncDirectory` opens with `O_DIRECTORY | O_NONBLOCK`, so a FIFO swapped in for a directory cannot hang it.
 - `ENOTDIR` while inspecting a project path is now a typed `PersistenceValidationError`.
 - Lock reads require a singly linked file, so a hard-linked lock no longer copies an outside file's fields into the override record.
+- A legitimately hard-linked lock now records `previous: null` in the override, so its audit information is lost; that is accepted.
+- A hard-linked lock also needs write access inside the `0700` `.lilac` directory, which already allows deleting the lock, so it adds no new denial of service.
