@@ -20,6 +20,7 @@ How each tool class is decided:
   - `toolName` matches the tool being called.
   - `argumentsSha256` matches the canonical sha256 of the arguments. Key order does not matter, but content does.
   - `actorId` is the responsible person: the calling user, or an agent's owning user. An agent never confirms its own call.
+  - `documentId` is the authorizing policy's document (added in review delta 1).
   - `confirmedAt` is at most 5 minutes before the call, and never after it.
 
   If any check fails, the outcome is `confirmation-required`, never `allowed`. Without the capability, the outcome is `denied`, confirmation or not.
@@ -44,3 +45,18 @@ The access oracle runs with transport `mcp`. A deleted document gives `not-found
 6. **Agents** are judged by their own grant, not their owner's. A consequential agent call is confirmed only by its owning person.
 
 `tests/mcp-protocol.test.mjs` and `tests/architecture.test.mjs` pass unchanged.
+
+## Review delta 1
+
+The combined and security judge returned one must-fix.
+
+**Must-fix: confirmations could be replayed across documents.** A confirmation carried no document, so a `delete_nodes` confirmation for `{nodeIds:["n1"]}` was accepted on any document whose node ids collide. Confirmations now carry `documentId`, and it must equal the authorizing policy's document. Decisions also report `documentId`, so the dispatcher can check which policy authorized the call.
+
+**Worth-considering, also fixed:**
+- **Trust boundary.** A confirmation is only as trustworthy as whoever builds it. The code now states the obligation on #82: `actor` must be the server-authenticated session identity, and `confirmation` must come from the server's own confirmation flow, never from the MCP client's payload. An agent that names itself as its own owner is refused.
+- **The confirming person** must hold `document-write` on the same document.
+- **Workspace-scoped tools** (`open_file`, `create_file`, `list_resources`, `rename_resource`) act on files or the workspace, not the open document. They would have been judged against whichever document policy was passed in. No workspace policy exists, so they are denied until #82 provides one.
+- **Arguments** must be JSON data for every known tool, not only consequential ones; a violation is an `MCPContractError`. `null` no longer hashes like `{}`.
+- **Timestamps** must be real UTC instants: `2026-02-30`, `T24:00` and second 60 are refused.
+
+**Tests.** Test 3 gains the cross-document cases, test 4 is new (arguments and timestamps), and test 7 gains owner-permission and self-owned-agent cases. Test 1 now expects the workspace-scoped denials. Each of these fails on `0c3f8f8`. `tests/mcp-authorization.test.mjs` now has 7 tests.

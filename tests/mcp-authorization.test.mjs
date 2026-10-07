@@ -23,7 +23,8 @@ const CAPABILITIES = ["read", "presence", "document-write", "comments", "admin",
 
 const policyFor = (capabilities, actor = user) => createAccessPolicy("doc-1", capabilities.length === 0 ? [] : [{ principalKind: "actor", principalId: actor.actorId, capabilities }]);
 const call = (toolName, extra = {}) => ({ actor: user, toolName, arguments: { nodeIds: ["n1"] }, at: AT, ...extra });
-const confirmation = (toolName, args = { nodeIds: ["n1"] }, overrides = {}) => ({ toolName, argumentsSha256: mcpArgumentsSha256(args), actorId: user.actorId, confirmedAt: "2026-10-07T11:59:00.000Z", ...overrides });
+const confirmation = (toolName, args = { nodeIds: ["n1"] }, overrides = {}) => ({ documentId: "doc-1", toolName, argumentsSha256: mcpArgumentsSha256(args), actorId: user.actorId, confirmedAt: "2026-10-07T11:59:00.000Z", ...overrides });
+const WORKSPACE_TOOLS = new Set(["open_file", "create_file", "list_resources", "rename_resource"]);
 
 const subsets = (items) => items.reduce((all, item) => all.concat(all.map((set) => [...set, item])), [[]]);
 const required = (tool) => (classifyPaperTool(tool) === "read" ? "read" : tool === "set_comment_thread_status" ? "comments" : "document-write");
@@ -36,7 +37,13 @@ test("every Paper tool over every capability set: allowed exactly when its capab
       const withConfirmation = toolClass === "consequential" ? { confirmation: confirmation(tool) } : {};
       const decision = authorizeMCPToolCall(policy, call(tool, withConfirmation));
       assert.equal(decision.toolClass, toolClass);
+      if (WORKSPACE_TOOLS.has(tool)) {
+        assert.equal(decision.outcome, "denied", `${tool} is workspace-scoped`);
+        assert.match(decision.reason, /workspace/u);
+        continue;
+      }
       assert.equal(decision.capability, required(tool));
+      assert.equal(decision.documentId, "doc-1");
       assert.equal(decision.outcome, capabilities.includes(required(tool)) ? "allowed" : "denied", `${tool} with [${capabilities}]`);
     }
   }
@@ -79,6 +86,25 @@ test("consequential tools require a confirmation bound to this exact call", () =
   // Without the capability, a confirmation does not help: denied, not confirmation-required.
   assert.equal(authorizeMCPToolCall(policyFor(["read"]), call(tool, { confirmation: confirmation(tool) })).outcome, "denied");
   assert.throws(() => authorizeMCPToolCall(policy, call(tool, { confirmation: { ...confirmation(tool), extra: 1 } })), MCPContractError);
+  // A confirmation for one document does not carry over to another with the same node ids.
+  const other = createAccessPolicy("doc-2", [{ principalKind: "actor", principalId: user.actorId, capabilities: ["read", "document-write"] }]);
+  assert.equal(authorizeMCPToolCall(other, call(tool, { confirmation: confirmation(tool) })).outcome, "confirmation-required");
+  assert.match(authorizeMCPToolCall(other, call(tool, { confirmation: confirmation(tool) })).reason, /different document/u);
+  assert.equal(authorizeMCPToolCall(other, call(tool, { confirmation: confirmation(tool, undefined, { documentId: "doc-2" }) })).outcome, "allowed");
+  assert.match(refused({ confirmation: { ...confirmation(tool), documentId: undefined } }, "no document"), /different document/u);
+});
+
+test("arguments and timestamps are validated for every known tool", () => {
+  const policy = policyFor(["read", "document-write"]);
+  for (const tool of ["get_jsx", "update_styles", "delete_nodes"]) {
+    assert.throws(() => authorizeMCPToolCall(policy, call(tool, { arguments: { f: () => 1 } })), MCPContractError, tool);
+  }
+  for (const at of ["2026-02-30T00:00:00Z", "2026-10-07T24:00:00Z", "2026-10-07T12:00:60Z", "2026-10-07T12:00:00+00:00", "2026-10-07 12:00:00Z"]) {
+    assert.throws(() => authorizeMCPToolCall(policy, call("get_jsx", { at })), MCPContractError, at);
+  }
+  assert.equal(authorizeMCPToolCall(policy, call("get_jsx", { at: "2026-10-07T12:00:00Z" })).outcome, "allowed");
+  assert.equal(mcpArgumentsSha256(undefined), mcpArgumentsSha256({}));
+  assert.notEqual(mcpArgumentsSha256(null), mcpArgumentsSha256({}));
 });
 
 test("unknown tools are denied without consulting the policy", () => {
@@ -130,8 +156,22 @@ test("agents are judged by their own grant, not their owner's", () => {
   // An agent's consequential call is confirmed by its owning person, never by the agent
   // itself or by another person.
   const agentWrite = createAccessPolicy("doc-1", [{ principalKind: "actor", principalId: agent.actorId, capabilities: ["read", "document-write"] }]);
-  const agentCall = (actorId) => call("delete_nodes", { actor: agent, confirmation: confirmation("delete_nodes", undefined, { actorId }) });
+  const agentCall = (actorId, actor = agent) => call("delete_nodes", { actor, confirmation: confirmation("delete_nodes", undefined, { actorId }) });
   assert.equal(authorizeMCPToolCall(agentWrite, agentCall(agent.actorId)).outcome, "confirmation-required", "self-confirmation");
   assert.equal(authorizeMCPToolCall(agentWrite, agentCall("user-2")).outcome, "confirmation-required", "another person");
-  assert.equal(authorizeMCPToolCall(agentWrite, agentCall(user.actorId)).outcome, "allowed", "the owner confirms");
+  // The owner must themselves be allowed to change the document.
+  assert.match(authorizeMCPToolCall(agentWrite, agentCall(user.actorId)).reason, /may not change this document/u);
+  const both = createAccessPolicy("doc-1", [
+    { principalKind: "actor", principalId: agent.actorId, capabilities: ["read", "document-write"] },
+    { principalKind: "actor", principalId: user.actorId, capabilities: ["read", "document-write"] },
+  ]);
+  assert.equal(authorizeMCPToolCall(both, agentCall(user.actorId)).outcome, "allowed", "a permitted owner confirms");
+  const ownerReadOnly = createAccessPolicy("doc-1", [
+    { principalKind: "actor", principalId: agent.actorId, capabilities: ["read", "document-write"] },
+    { principalKind: "actor", principalId: user.actorId, capabilities: ["read"] },
+  ]);
+  assert.equal(authorizeMCPToolCall(ownerReadOnly, agentCall(user.actorId)).outcome, "confirmation-required");
+  // An agent that names itself as its own owner cannot confirm itself.
+  const selfOwned = { ...agent, ownerActorId: agent.actorId };
+  assert.equal(authorizeMCPToolCall(both, agentCall(agent.actorId, selfOwned)).outcome, "confirmation-required");
 });
