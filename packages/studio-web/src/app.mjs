@@ -268,7 +268,7 @@ async function resync() {
     state.client.get("/api/history"),
     state.client.get("/api/session"),
   ]);
-  if (session.project !== state.project || project !== state.project) throw new Error("the open project changed during the refresh");
+  if (session.project !== state.project || project !== state.project) throw new ProjectChanged();
   state.revision = revision;
   state.document = next;
   state.history = entries.filter((entry) => entry.revision <= revision).slice(-MAX_HISTORY_SHOWN);
@@ -278,6 +278,8 @@ async function resync() {
   canvas.setDocument(next);
   state.selection = canvas.selection;
 }
+
+class ProjectChanged extends Error {}
 
 let resyncing = null;
 let held = [];
@@ -289,7 +291,7 @@ function requestResync() {
     } catch (error) {
       failed = true;
       canvas.clearPreview();
-      if (!handleSessionEnded(error)) setStatus(error instanceof HostError ? describeError(error) : "The project changed; refreshing again.");
+      if (!handleSessionEnded(error)) setStatus(error instanceof ProjectChanged ? "The project changed; refreshing again." : describeError(error));
     } finally {
       resyncing = null;
     }
