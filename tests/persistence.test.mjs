@@ -75,7 +75,7 @@ test("provenance is local-only and the package has no external dependencies", ()
 test("create, open, commit, close, and reopen round-trip the document", () => withProject((root) => {
   const store = open(root);
   assert.equal(store.revision, 0);
-  assert.deepEqual(store.recovery, { tornTailBytes: 0, replayedEntries: 0, migratedFrom: null, lockOverride: null });
+  assert.deepEqual(store.recovery, { tornTailBytes: 0, staleTemporaryFiles: 0, replayedEntries: 0, migratedFrom: null, lockOverride: null });
   assert.deepEqual(store.commit(setTitle("tx-1", 0, "After")), { revision: 1, seq: 1, transactionId: "tx-1" });
   store.commit(setTitle("tx-2", 1, "Final"));
   const expected = store.document;

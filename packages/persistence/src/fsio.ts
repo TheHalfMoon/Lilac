@@ -8,6 +8,7 @@ import {
   mkdirSync,
   openSync,
   readSync,
+  readdirSync,
   realpathSync,
   renameSync,
   unlinkSync,
@@ -274,6 +275,58 @@ export function appendDurable(path: string, data: string, label: string, expecte
   } finally {
     closeSync(fd);
   }
+}
+
+// The name atomicWrite gives its temporary file: <target>.tmp-<pid>-<uuid>.
+const TEMPORARY_NAME = /^(.+)\.tmp-\d{1,10}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+
+/**
+ * Remove temporary files that an interrupted atomicWrite left in `directory`: regular
+ * files (never symlinks or directories) whose name is exactly a temporary name for a
+ * target `isTarget` accepts. A temporary is never referenced, so removing it loses
+ * nothing, and failing to remove one is no reason to refuse the project: this is best
+ * effort, and anything it cannot list, inspect or remove is left in place. Returns how
+ * many were removed.
+ */
+export function removeStaleTemporaries(directory: string, isTarget: (name: string) => boolean): number {
+  return removeStaleFiles(directory, (name) => {
+    const match = TEMPORARY_NAME.exec(name);
+    return match !== null && isTarget(match[1]);
+  });
+}
+
+/**
+ * An error the operating system reported (ENOENT, EACCES, ...): it carries a numeric errno.
+ * Node's own argument errors (ERR_*) have a string code but no errno, so they are bugs, not
+ * filesystem conditions, and are never absorbed.
+ */
+export function isFilesystemError(error: unknown): boolean {
+  return typeof (error as NodeJS.ErrnoException)?.errno === "number" && typeof (error as NodeJS.ErrnoException)?.code === "string";
+}
+
+/** Remove the regular files in `directory` whose name `matches` accepts; best effort. */
+export function removeStaleFiles(directory: string, matches: (name: string) => boolean): number {
+  let removed = 0;
+  let names: string[];
+  try {
+    names = readdirSync(directory);
+  } catch (error) {
+    if (isFilesystemError(error)) return 0;
+    throw error;
+  }
+  for (const name of names) {
+    if (!matches(name)) continue;
+    const path = join(directory, name);
+    try {
+      if (!lstatSync(path).isFile()) continue;
+      unlinkSync(path);
+      removed += 1;
+    } catch (error) {
+      // Gone already, or not ours to remove: leave it. Anything else is a bug.
+      if (!isFilesystemError(error)) throw error;
+    }
+  }
+  return removed;
 }
 
 export function removeFile(path: string): void {

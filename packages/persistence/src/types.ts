@@ -57,6 +57,8 @@ export interface LockRecord {
 
 export interface RecoveryReport {
   tornTailBytes: number;
+  /** Temporary files left by interrupted atomic writes, removed on open. */
+  staleTemporaryFiles: number;
   replayedEntries: number;
   migratedFrom: number | null;
   lockOverride: LockOverride | null;
