@@ -98,3 +98,17 @@ Caveats of using `<section>`:
 - **Diagnostic.** The form diagnostic no longer says "into <div>", because a form may become a `<div>` or a `<section>`, or be unwrapped. The one test that pinned the old wording is updated.
 
 The review inputs in test 14 now include the SVG `a>a` and `li>form>li` shapes. They fail on base `d45c2bb` (minimal input `<table><form>`) and on delta-1 head `4170796` (minimal input `<li><form><li>`).
+
+## Review delta 3
+
+The delta-2 re-review found one must-fix, in the test. Its fuzzing covered 15,000 documents, 89 to 97% of them in scope, with no in-scope divergence. It confirmed that no Lilac divergence is reachable only from an unrepresentable source.
+
+**Must-fix: wrongly out of scope.** parse5's own serializer does not restore the line feed the parser drops after `<pre>`, `<textarea>` and `<listing>`, and it writes `</plaintext>`. So inputs containing those elements counted as unrepresentable and were skipped. Four edge-case assertions were therefore vacuous. Now:
+- **Normalisation.** Representability applies the same normalisation the test serializer does.
+- **Plaintext.** The test serializer stops all output after `<plaintext>`, because its ancestors' end tags would otherwise become its text.
+- **No vacuous passes.** The edge-case test asserts that each input is in scope.
+- **Security for every input.** Out-of-scope inputs are now still checked for the security half of the fixpoint: re-import must not throw and must remove nothing more.
+
+**Not changed.** A labelled `<form>` above a list item becomes a labelled `<section>`, which is a region. That matches the source, since a named form is a landmark too. It is recorded with the other `<section>` caveats in delta 2.
+
+The ps-review cap of three delta cycles is reached with this delta's re-review.

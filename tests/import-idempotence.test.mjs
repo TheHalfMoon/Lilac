@@ -29,19 +29,39 @@ const zeroSecurity = (proposal) => Object.values(proposal.security).every((count
 // is a property of the input, not of the import, so the fixpoint is required for every
 // input whose own parsed tree is representable: parse5's serialize-then-parse is a
 // fixpoint for the source itself. Unrepresentable inputs are skipped and counted.
+// parse5's serializer omits two things the parser needs, and the test serializer adds
+// them back, so the same normalization applies here: the line feed dropped after <pre>,
+// <textarea> and <listing>, and <plaintext>, which has no end tag (everything after it
+// is its text).
+const LEADING_LF = new Set(["pre", "textarea", "listing"]);
+function normalized(html) {
+  const tree = parseFragment(html);
+  const pending = [tree];
+  while (pending.length > 0) {
+    const node = pending.pop();
+    const first = node.childNodes?.[0];
+    if (LEADING_LF.has(node.tagName) && node.namespaceURI === "http://www.w3.org/1999/xhtml" && first?.nodeName === "#text" && first.value.startsWith("\n")) first.value = `\n${first.value}`;
+    pending.push(...(node.content?.childNodes ?? []), ...(node.childNodes ?? []));
+  }
+  const out = serialize(tree);
+  const plaintext = out.lastIndexOf("</plaintext>");
+  return /<plaintext[\s>]/u.test(out) && plaintext >= 0 ? out.slice(0, plaintext) : out;
+}
 function representable(html) {
-  const once = serialize(parseFragment(html));
-  return serialize(parseFragment(once)) === once;
+  const once = normalized(html);
+  return normalized(once) === once;
 }
 
 // Why re-importing `html` is not a fixpoint, or null.
+// For every input, re-import must not throw or remove anything more; for representable
+// inputs the structure must also be the same.
 function divergence(html, withBase = true) {
-  if (!representable(html)) return null;
   let first;
   try { first = importHtmlSnapshot(request(withBase), html); } catch { return null; }
   let second;
   try { second = importHtmlSnapshot(request(withBase), proposalToHtml(first)); } catch (error) { return `re-import threw ${error.message}`; }
   if (!zeroSecurity(second)) return `re-import removed more: ${JSON.stringify(second.security)}`;
+  if (!representable(html)) return null;
   return view(first) === view(second) ? null : "re-import changed the structure";
 }
 
@@ -170,7 +190,8 @@ test("an expressible nesting does not hide a divergence beside it", () => {
 });
 
 test("serializer edge cases re-import exactly", () => {
-  for (const html of ["<pre>\n\nx</pre>", "<textarea>\n\nx</textarea>", "<listing>\n\nx</listing>", "<svg><noscript>&lt;b&gt;</noscript></svg>", "<p>before</p><plaintext><b>raw</b>", "<svg><input></input>&amp;</svg>"]) {
+  for (const html of ["<pre>\n\nx</pre>", "<textarea>\n\nx</textarea>", "<listing>\n\nx</listing>", "<svg><noscript>&lt;b&gt;</noscript></svg>", "<p>before</p><plaintext><b>raw</b>", "<div><plaintext>a</plaintext>b", "<svg><input></input>&amp;</svg>"]) {
+    assert.equal(representable(html), true, `${JSON.stringify(html)} is in scope, so the check is not vacuous`);
     assertFixpoint(html, JSON.stringify(html));
   }
 });

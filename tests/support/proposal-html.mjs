@@ -9,6 +9,7 @@ const RAW_TEXT = new Set(["noscript", "xmp", "iframe", "noembed", "noframes", "p
 // The parser drops one line feed right after these start tags, so a text that starts with
 // one needs another in front.
 const LEADING_LF_DROPPED = new Set(["pre", "textarea", "listing"]);
+const PLAINTEXT_END = "\ue000plaintext-end\ue000";
 
 const escapeText = (value) => value.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;").replace(/\u00a0/gu, "&nbsp;");
 const escapeAttribute = (value) => value.replace(/&/gu, "&amp;").replace(/"/gu, "&quot;").replace(/\u00a0/gu, "&nbsp;");
@@ -39,8 +40,9 @@ function serializeNode(proposal, id, rawText = false, foreign = false) {
   const first = node.children.length > 0 ? proposal.nodes[node.children[0]] : undefined;
   const lead = !foreign && LEADING_LF_DROPPED.has(node.tag) && first?.kind === "text" && first.text.startsWith("\n") ? "\n" : "";
   const inner = node.children.map((child) => serializeNode(proposal, child, raw, childForeign)).join("");
-  // <plaintext> has no end tag: everything after it is its text.
-  if (!foreign && node.tag === "plaintext") return `<plaintext${attributes}>${inner}`;
+  // <plaintext> has no end tag: everything after it is its text, so output stops there
+  // (proposalToHtml cuts at the marker, dropping the ancestors' end tags).
+  if (!foreign && node.tag === "plaintext") return `<plaintext${attributes}>${inner}${PLAINTEXT_END}`;
   return `<${node.tag}${attributes}>${lead}${inner}</${node.tag}>`;
 }
 
@@ -48,7 +50,9 @@ export function proposalToHtml(proposal) {
   const links = proposal.resources.filter((resource) => resource.kind === "stylesheet" && resource.nodeId === undefined)
     .map((resource) => `<link rel="stylesheet" href="${escapeAttribute(resource.uri)}">`);
   const styles = proposal.stylesheets.map((sheet) => `<style>${sheet.cssText}</style>`);
-  return [...links, ...styles, ...proposal.rootIds.map((id) => serializeNode(proposal, id))].join("");
+  const html = [...links, ...styles, ...proposal.rootIds.map((id) => serializeNode(proposal, id))].join("");
+  const end = html.indexOf(PLAINTEXT_END);
+  return end < 0 ? html : html.slice(0, end);
 }
 
 // What an import means, without ids or source bindings: the tree, the stylesheets in
