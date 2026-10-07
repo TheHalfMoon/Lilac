@@ -189,6 +189,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     "POST /api/edit": (body) => requireSession().edit(owner, body),
     "POST /api/undo": () => requireSession().undo(owner),
     "POST /api/redo": () => requireSession().redo(owner),
+    "POST /api/revert": (body) => requireSession().revert(owner, body?.transactionId),
     "POST /api/checkpoint": () => requireSession().checkpoint(),
     "POST /api/selection": (body) => {
       const ids = body?.nodeIds;
@@ -224,6 +225,10 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     const origin = request.headers.origin;
     if (origin !== undefined && !allowedHosts.some((host) => origin === `http://${host}`)) throw new StudioError(403, "foreign-origin", "requests from other origins are refused");
     const url = new URL(request.url ?? "/", `http://${LOOPBACK}:${port}`);
+    if (url.pathname === "/mcp") {
+      await serveMcp(request, response);
+      return;
+    }
     // The editor's files are public source and carry no secret, so they are served without
     // the token; the Host and Origin checks above still apply.
     if (!url.pathname.startsWith("/api/")) {
@@ -237,10 +242,6 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       const { ticket } = ((await readJson(request)) ?? {}) as { ticket?: unknown };
       if (!redeemTicket(typeof ticket === "string" ? ticket : null)) throw new StudioError(401, "invalid-ticket", "this launch link has been used or has expired; open Lilac again");
       respondJson(response, 200, { token });
-      return;
-    }
-    if (url.pathname === "/mcp") {
-      await serveMcp(request, response);
       return;
     }
     if (!authorized(request, url)) throw new StudioError(401, "unauthorized", "a valid studio token is required");

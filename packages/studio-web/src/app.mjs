@@ -42,6 +42,7 @@ const state = {
   focusedLayer: null,
   queue: Promise.resolve(),
   events: null,
+  confirmations: [],
 };
 let canvas = null;
 
@@ -191,6 +192,125 @@ function showReopen(message) {
         el("button", { type: "button", class: "primary", onclick: () => openProject(state.project, error, close) }, "Reopen")),
     ];
   }, { dismissable: false });
+}
+
+// ---------- agents and their confirmations ----------
+
+async function openAgentsDialog() {
+  let listing = { agents: [], mcpUrl: "" };
+  let loadError = null;
+  try {
+    listing = await state.client.get("/api/agents");
+  } catch (error) {
+    if (handleSessionEnded(error)) return;
+    loadError = describeError(error);
+  }
+  showDialog("Agents", (close) => {
+    const error = el("p", { class: "error", role: "alert" });
+    const name = el("input", { id: "agent-name", name: "agentName", autocomplete: "off", maxlength: 60 });
+    const list = listing.agents.length === 0
+      ? el("p", {}, loadError ?? "No agents are connected. A connected agent can read and edit the open project through MCP; every change it makes is attributed to it and can be undone, and it must ask you before deleting anything.")
+      : el("ul", { class: "project-list", "aria-label": "Connected agents" }, listing.agents.map((agent) => el("li", { class: "agent-row" },
+        el("span", {}, agent.displayName),
+        el("button", {
+          type: "button",
+          class: "danger",
+          "aria-label": `Disconnect ${agent.displayName}`,
+          onclick: async () => {
+            try {
+              await state.client.post("/api/agents/revoke", { agentId: agent.agentId });
+              close();
+              openAgentsDialog();
+            } catch (failure) {
+              error.textContent = describeError(failure);
+            }
+          },
+        }, "Disconnect"))));
+    const form = el("form", {
+      novalidate: true,
+      onsubmit: async (event) => {
+        event.preventDefault();
+        error.textContent = "";
+        try {
+          const created = await state.client.post("/api/agents/create", { name: name.value });
+          close();
+          showAgentCredential(created);
+        } catch (failure) {
+          error.textContent = describeError(failure);
+        }
+      },
+    },
+    el("label", { for: "agent-name" }, "Agent name (for example, the MCP client's name)", name),
+    el("div", { class: "actions" }, el("button", { type: "submit", class: "primary" }, "Connect agent")));
+    return [list, form, error, el("div", { class: "actions" }, el("button", { type: "button", onclick: close }, "Close"))];
+  });
+}
+
+function showAgentCredential({ agent, token, mcpUrl }) {
+  showDialog(`Connect ${agent.displayName}`, (close) => {
+    const credential = el("input", { id: "agent-credential", readonly: true, value: token, "aria-describedby": "agent-credential-note", spellcheck: "false" });
+    return [
+      el("p", { id: "agent-credential-note" }, "This credential is shown once. Give it to the agent's MCP client; anyone who has it can act as this agent until you disconnect it."),
+      el("label", { for: "agent-credential" }, "Agent credential", credential),
+      el("p", {}, "For an MCP client that runs a command (stdio), use:"),
+      el("pre", { class: "setup" }, "node scripts/lilac-mcp.mjs --projects <your Lilac projects folder>\nwith LILAC_MCP_TOKEN set to the credential"),
+      el("p", {}, "For an MCP client that connects over HTTP, use this address, with the credential as a Bearer token (it changes each time Lilac starts):"),
+      el("pre", { class: "setup" }, mcpUrl),
+      el("div", { class: "actions" }, el("button", { type: "button", class: "primary", onclick: close }, "Done")),
+    ];
+  });
+  $("agent-credential").select();
+}
+
+let confirming = null;
+function showConfirmations(pending) {
+  state.confirmations = pending;
+  if (confirming !== null && !pending.some((item) => item.id === confirming)) {
+    // The request was withdrawn (it expired, or its agent or project went away).
+    confirming = null;
+    closeDialog();
+  }
+  const next = pending[0];
+  if (next === undefined || confirming === next.id) return;
+  if ($("dialog").open && confirming === null) {
+    // Another dialog is open; ask once it closes.
+    $("dialog").addEventListener("close", () => showConfirmations(state.confirmations), { once: true });
+    return;
+  }
+  confirming = next.id;
+  showDialog(`${next.agentName} asks for your approval`, (close) => {
+    const error = el("p", { class: "error", role: "alert" });
+    const decide = async (approve) => {
+      try {
+        await state.client.post("/api/confirmations/decide", { id: next.id, approve });
+        confirming = null;
+        close();
+        setStatus(approve ? `Approved: ${next.summary}.` : `Declined: ${next.summary}.`);
+      } catch (failure) {
+        confirming = null;
+        close();
+        if (!handleSessionEnded(failure)) setStatus(describeError(failure));
+      }
+    };
+    return [
+      el("p", {}, `The agent ${next.agentName} wants to make a change that needs your approval:`),
+      el("p", { class: "request" }, next.summary),
+      el("p", {}, "You can revert it afterwards from the history."),
+      error,
+      el("div", { class: "actions" },
+        el("button", { type: "button", onclick: () => decide(false) }, "Decline"),
+        el("button", { type: "button", class: "danger", onclick: () => decide(true) }, "Approve")),
+    ];
+  }, { dismissable: false });
+}
+
+let selectionTimer = null;
+function shareSelection() {
+  // MCP's get_selection reads what is selected here; send it after the selection settles.
+  clearTimeout(selectionTimer);
+  selectionTimer = setTimeout(() => {
+    if (state.client !== null && state.document !== null) state.client.post("/api/selection", { nodeIds: state.selection }).catch(() => {});
+  }, 100);
 }
 
 // ---------- loading and applying changes ----------
@@ -413,6 +533,21 @@ function undoRedo(kind) {
   });
 }
 
+function revert(entry) {
+  return enqueue(async () => {
+    if (state.document === null) return;
+    try {
+      const event = await state.client.post("/api/revert", { transactionId: entry.transactionId });
+      applyChange(event);
+      setStatus(`${event.intent}.`);
+    } catch (error) {
+      if (error instanceof HostError && error.code === "not-revertible") setStatus("Only an agent's latest change can be reverted. Revert its later changes first.");
+      else if (error instanceof HostError && error.code === "revert-conflict") setStatus("A later change touches the same layers, so this cannot be reverted now.");
+      else handleEditError(error);
+    }
+  });
+}
+
 function save() {
   return enqueue(async () => {
     if (state.document === null) return;
@@ -435,6 +570,13 @@ function listenForChanges() {
       applyChange(JSON.parse(message.data));
     } catch {
       requestResync();
+    }
+  });
+  events.addEventListener("confirmations", (message) => {
+    try {
+      showConfirmations(JSON.parse(message.data).pending ?? []);
+    } catch {
+      // ignore a malformed event
     }
   });
   events.addEventListener("project", (message) => {
@@ -707,7 +849,7 @@ function onInspectorChange(event) {
 
 function actorLabel(entry) {
   if (entry.actor === state.user.actorId) return state.user.displayName ?? "You";
-  return entry.actor;
+  return typeof entry.actorName === "string" && entry.actorName !== "" ? entry.actorName : entry.actor;
 }
 
 function renderHistory() {
@@ -722,7 +864,8 @@ function renderHistory() {
       actorLabel(entry),
       entry.actorKind === "agent" ? el("span", { class: "kind" }, " · agent") : null,
       entry.tool && !entry.tool.startsWith("lilac:") ? ` · ${entry.tool}` : null,
-      ` · revision ${entry.revision}`))));
+      ` · revision ${entry.revision}`),
+    entry.actorKind === "agent" ? el("button", { type: "button", class: "revert", "aria-label": `Revert ${entry.intent ?? "change"} by ${actorLabel(entry)}`, onclick: () => revert(entry) }, "Revert") : null)));
   if (state.history.length === 0) list.replaceChildren(el("li", {}, el("span", { class: "who" }, "No changes since this project was opened.")));
 }
 
@@ -779,6 +922,7 @@ async function main() {
     onCommit: (operations, intent, meta) => commit(operations, intent, meta?.revision),
     onSelect: (ids) => {
       state.selection = ids;
+      shareSelection();
       if (ids.length > 0) state.focusedLayer = ids.at(-1);
       renderLayers();
       renderInspector();
@@ -797,6 +941,7 @@ async function main() {
   $("action-zoom-out").addEventListener("click", () => { canvas.zoomBy(0.8); renderToolbar(); });
   $("action-fit").addEventListener("click", () => { canvas.fit(); renderToolbar(); });
   $("action-save").addEventListener("click", save);
+  $("action-agents").addEventListener("click", openAgentsDialog);
   $("layers").addEventListener("keydown", onLayersKey);
   $("layers").addEventListener("click", onLayersClick);
   $("inspector").addEventListener("change", onInspectorChange);
@@ -822,6 +967,7 @@ async function main() {
     return;
   }
   listenForChanges();
+  state.client.get("/api/confirmations").then(({ pending }) => showConfirmations(pending), () => {});
   if (session.project === null) openProjectsDialog();
   else setStatus(`Opened ${session.project}.`);
   document.documentElement.dataset.ready = "true";

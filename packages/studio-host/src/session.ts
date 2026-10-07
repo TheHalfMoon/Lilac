@@ -37,6 +37,7 @@ export interface ChangeEvent {
   operations: unknown[];
   undoOf?: string;
   redoOf?: string;
+  revertOf?: string;
 }
 
 export interface EditInput {
@@ -219,6 +220,28 @@ export class StudioSession {
     return event;
   }
 
+  /**
+   * `actor` (a person) reverts an agent's latest change in this session: its inverse is
+   * committed as `actor`'s own change, linked to the reverted one. Only the agent's latest
+   * change can be reverted, so its earlier changes stay consistent; a later conflicting
+   * change is reported as a conflict (409).
+   */
+  revert(actor: StudioActor, transactionId: unknown): ChangeEvent {
+    this.#assertUsable();
+    if (actor.kind !== "user") throw new StudioError(403, "forbidden", "only a person can revert an agent's change");
+    for (const [actorId, stack] of this.#undo) {
+      const entry = stack.at(-1);
+      if (entry === undefined || entry.transactionId !== transactionId) continue;
+      if (actorId === actor.actorId) return this.undo(actor);
+      const { event, inverse } = this.#commit(actor, "http", { operations: entry.inverse, intent: `Revert: ${entry.intent ?? "agent change"}`.slice(0, 500), tool: "lilac:revert", link: { revertOf: entry.transactionId } }, "revert-conflict");
+      stack.pop();
+      this.#push(this.#undo, actor, { transactionId: event.transactionId, intent: event.intent, operations: entry.inverse, inverse });
+      this.#redo.delete(actor.actorId);
+      return event;
+    }
+    throw new StudioError(409, "not-revertible", "only an agent's latest change in this session can be reverted");
+  }
+
   checkpoint(): { revision: number } {
     this.#assertUsable();
     try {
@@ -242,7 +265,7 @@ export class StudioSession {
     stacks.set(actor.actorId, stack);
   }
 
-  #commit(actor: StudioActor, transport: "http" | "mcp" | "agent", input: { operations: unknown[]; intent: string | null; tool: string | null; link?: { undoOf?: string; redoOf?: string } }, conflictCode?: string): { event: ChangeEvent; inverse: unknown[] } {
+  #commit(actor: StudioActor, transport: "http" | "mcp" | "agent", input: { operations: unknown[]; intent: string | null; tool: string | null; link?: { undoOf?: string; redoOf?: string; revertOf?: string } }, conflictCode?: string): { event: ChangeEvent; inverse: unknown[] } {
     const at = this.#now();
     const transactionId = `tx-${randomUUID()}`;
     let attributed: Record<string, unknown>;
@@ -266,7 +289,8 @@ export class StudioSession {
           intent: input.intent,
           tool: input.tool,
           timestamp: at,
-          metadata: input.link ? { lilac: input.link } : {},
+          // How the change arrived (editor, MCP), with its undo/redo/revert link, kept durably.
+          metadata: { lilac: { transport, ...(input.link ?? {}) } },
           operations: input.operations,
         },
       });
@@ -297,6 +321,7 @@ export class StudioSession {
       operations: attributed.operations as unknown[],
       ...(input.link?.undoOf ? { undoOf: input.link.undoOf } : {}),
       ...(input.link?.redoOf ? { redoOf: input.link.redoOf } : {}),
+      ...(input.link?.revertOf ? { revertOf: input.link.revertOf } : {}),
     };
     const { operations: _operations, ...summary } = event;
     this.#log.push(summary);
