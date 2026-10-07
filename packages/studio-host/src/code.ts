@@ -40,6 +40,61 @@ function bareText(node: any): string | null {
 export function exportJsx(document: any, nodeId: unknown): { componentName: string; code: string; layers: number } {
   if (typeof nodeId !== "string" || !Object.hasOwn(document.nodes, nodeId)) throw new StudioError(404, "node-not-found", "no such layer");
   let layers = 0;
+  // Labels and the controls they name (for → id). The canvas never renders ids, but the
+  // code needs them: each control a label in this export points to keeps an id, unique in
+  // the export (a second copy of a form gets email-2), and its label points to that id. A
+  // label names the next control with its id in document order, or else the last before.
+  const order: string[] = [];
+  const walkOrder = (id: string, depth: number) => {
+    if (depth > MAX_EXPORT_DEPTH || !document.nodes[id]) return;
+    // The same limit convert enforces, before any work is done on a larger export.
+    if (order.length >= MAX_EXPORT_NODES) throw new StudioError(422, "export-too-large", `at most ${MAX_EXPORT_NODES} layers can be exported at once`);
+    order.push(id);
+    for (const child of document.nodes[id].children) walkOrder(child, depth + 1);
+  };
+  walkOrder(nodeId, 1);
+  const SIMPLE_ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u;
+  const attr = (id: string, name: string) => {
+    const value = document.nodes[id]?.props?.attributes?.[name];
+    return typeof value === "string" && SIMPLE_ID.test(value) ? value : null;
+  };
+  const exportedId = new Map<string, string>(); // control node → id in the code
+  const labelTarget = new Map<string, string>(); // label node → id in the code
+  const taken = new Set<string>();
+  // Each id's positions in document order (ascending), so a label finds its control by
+  // binary search: linear in the export, not labels × controls.
+  const positionsOf = new Map<string, number[]>();
+  order.forEach((id, position) => {
+    const value = attr(id, "id");
+    if (value === null) return;
+    if (!positionsOf.has(value)) positionsOf.set(value, []);
+    positionsOf.get(value)!.push(position);
+  });
+  order.forEach((labelId, position) => {
+    const wanted = attr(labelId, "for");
+    if (wanted === null) return;
+    const positions = positionsOf.get(wanted);
+    if (positions === undefined) return;
+    let low = 0;
+    let high = positions.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (positions[middle] <= position) low = middle + 1;
+      else high = middle;
+    }
+    // The next control after the label, or else the last one before it (never the label itself).
+    let at = low < positions.length ? low : low - 1;
+    if (at >= 0 && positions[at] === position) at -= 1;
+    if (at < 0) return;
+    const control = order[positions[at]];
+    if (!exportedId.has(control)) {
+      let candidate = wanted;
+      for (let copy = 2; taken.has(candidate); copy += 1) candidate = `${wanted}-${copy}`;
+      taken.add(candidate);
+      exportedId.set(control, candidate);
+    }
+    labelTarget.set(labelId, exportedId.get(control)!);
+  });
   const convert = (id: string, depth: number): DesignDocNode => {
     if (depth > MAX_EXPORT_DEPTH) throw new StudioError(422, "export-too-deep", `layers nested more than ${MAX_EXPORT_DEPTH} deep cannot be exported`);
     layers += 1;
@@ -50,8 +105,12 @@ export function exportJsx(document: any, nodeId: unknown): { componentName: stri
     for (const [name, value] of Object.entries(plan.attributes as Record<string, string>)) {
       if (name === "data-lilac-href") props.href = value;
       else if (name === "class") props.className = value;
+      else if (name === "for") props.htmlFor = value;
       else if (/^[A-Za-z_][A-Za-z0-9_:.-]*$/u.test(name) && !/[\r\n]/u.test(value)) props[name] = value;
     }
+    if (exportedId.has(id)) props.id = exportedId.get(id)!;
+    if (labelTarget.has(id)) props.htmlFor = labelTarget.get(id)!;
+    else if (props.htmlFor !== undefined) delete props.htmlFor; // names nothing in this export
     if (Object.keys(plan.style).length > 0) props.style = cssText(plan.style);
     const out: DesignDocNode = { tag: plan.tag, props };
     const childIds: string[] = node.children;
@@ -122,6 +181,7 @@ export function importJsx(source: unknown): { operations: unknown[]; frameId: st
       if (value === false) continue; // absent, as in JSX
       const text = value === true ? "" : String(value);
       if (prop.name === "className") attributes.class = text;
+      else if (prop.name === "htmlFor") attributes.for = text;
       else if (prop.name === "style" && typeof value === "string") style = styleProperties({ cssText: value });
       else attributes[prop.name] = text;
     }

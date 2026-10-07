@@ -191,6 +191,10 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
   container.appendChild(stage);
   const { frame, renderer } = await mountSandboxedRenderer(world);
   frame.setAttribute("style", "border:0;display:block;background:#fff;");
+  // The frame is not a stop of its own: the canvas takes the keys, and the layers tree is
+  // the design's accessible form.
+  frame.setAttribute("tabindex", "-1");
+  frame.setAttribute("aria-hidden", "true");
   const frameDocument = frame.contentDocument;
 
   let document = null;
@@ -426,11 +430,28 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     applyViewport();
   }, { passive: false });
 
+  // A visible focus ring when the canvas is reached from the keyboard (WCAG 2.4.7).
+  stage.addEventListener("focus", () => {
+    // Drawn on the overlay, the top layer, so the design never covers it.
+    if (stage.matches(":focus-visible")) overlay.style.boxShadow = "inset 0 0 0 3px #1a5fd0";
+  });
+  stage.addEventListener("blur", () => {
+    overlay.style.boxShadow = "";
+  });
   stage.addEventListener("keydown", (event) => {
     if (document === null) return;
     const step = event.shiftKey ? nudge * 10 : nudge;
     const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
     const modified = event.ctrlKey || event.metaKey || event.altKey;
+    // With nothing selected, the arrows pan the view (40 px, 200 with Shift), so every part
+    // of a zoomed-in design can be reached from the keyboard.
+    if (Object.hasOwn(moves, event.key) && selection.length === 0 && !modified) {
+      event.preventDefault();
+      const [dx, dy] = moves[event.key].map((value) => -Math.sign(value) * (event.shiftKey ? 200 : 40));
+      viewport = panBy(viewport, dx, dy);
+      applyViewport();
+      return;
+    }
     if (Object.hasOwn(moves, event.key) && selection.length > 0 && !modified) {
       event.preventDefault();
       const [dx, dy] = moves[event.key];
@@ -493,6 +514,20 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
       const root = frameDocument.querySelector("[data-lilac-root]");
       viewport = fitBounds({ x: 0, y: 0, width: Math.max(1, root.scrollWidth), height: Math.max(1, frameDocument.documentElement.scrollHeight) }, stage.clientWidth, stage.clientHeight);
       applyViewport();
+    },
+    /**
+     * Move the selection by (dx, dy), or resize the single selected layer by (dw, dh), as
+     * a drag would: the single-pointer alternative to dragging (buttons in the editor).
+     */
+    nudge(dx, dy) {
+      if (document !== null && selection.length > 0) commit(moveBy(document, selection, dx, dy, measuredBoxes(selection)), selection.length === 1 ? "Move layer" : "Move layers");
+    },
+    resizeBy(dw, dh) {
+      if (document === null || selection.length !== 1 || !renderer.elementFor(selection[0])) return;
+      const element = renderer.elementFor(selection[0]);
+      const size = cssSize(element);
+      const inline = frameDocument.defaultView.getComputedStyle(element).display === "inline";
+      commit(resizeTo(document, selection[0], size.width + dw, size.height + dh, { inline }), "Resize layer");
     },
     /** Drop a held drag preview: the caller's commit of it was not applied. */
     clearPreview() {
