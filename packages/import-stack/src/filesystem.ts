@@ -1,4 +1,5 @@
-import { lstat, mkdir, realpath, rm } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { ImportConflictError, ImportSecurityError, ImportValidationError } from "./errors.ts";
 import { sha256Text } from "./validation.ts";
@@ -24,6 +25,30 @@ export async function canonicalFileWithinRoots(path: string, roots: string[], la
     if (rel === "" || (!rel.startsWith(".." + sep) && rel !== ".." && !isAbsolute(rel))) return source;
   }
   throw new ImportSecurityError(`${label} escapes authorized roots`);
+}
+
+// Reads a file that a path check has already admitted. The checks are repeated on the open
+// handle, so a swap after the check cannot substitute a symlink, a FIFO or a hard link to a
+// file elsewhere. A swap of a parent directory in between is not covered.
+export async function readSingleLinkFile(path: string, label: string, maxBytes: number): Promise<Buffer> {
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ELOOP") throw new ImportSecurityError(`${label} must be a regular non-symlink file`);
+    throw error;
+  }
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) throw new ImportSecurityError(`${label} must be a regular non-symlink file`);
+    if (info.nlink > 1) throw new ImportSecurityError(`${label} must not be hard-linked`);
+    if (info.size > maxBytes) throw new ImportSecurityError(`${label} exceeds ${maxBytes} bytes`);
+    const bytes = await handle.readFile();
+    if (bytes.byteLength > maxBytes) throw new ImportSecurityError(`${label} exceeds ${maxBytes} bytes`);
+    return bytes;
+  } finally {
+    await handle.close();
+  }
 }
 
 /** The name createImportJobDirectory gives a job directory: `<prefix>-<24 hex>`. */

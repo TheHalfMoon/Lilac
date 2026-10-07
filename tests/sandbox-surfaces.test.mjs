@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
-import { link, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,17 +47,25 @@ async function hostileRepository(dir) {
   gitIn(repo, "init", "-q", "-b", "main");
   gitIn(repo, "config", "user.name", "t");
   gitIn(repo, "config", "user.email", "t@example.invalid");
-  await writeFile(join(repo, ".gitattributes"), "*.txt filter=evil\n");
+  // "a=b" defeats a `-c filter.a=b.clean=` override, which Git splits at the first "=".
+  await writeFile(join(repo, ".gitattributes"), "a.txt filter=evil\nb.txt filter=a=b\n");
   await writeFile(join(repo, "a.txt"), "content\n");
+  await writeFile(join(repo, "b.txt"), "content\n");
   gitIn(repo, "add", ".");
   gitIn(repo, "commit", "-q", "-m", "init");
   gitIn(repo, "config", "core.fsmonitor", `touch ${join(markers, "fsmonitor")}; echo`);
   gitIn(repo, "config", "filter.evil.clean", `touch ${join(markers, "clean")}; cat`);
   gitIn(repo, "config", "filter.evil.process", `touch ${join(markers, "process")}`);
-  gitIn(repo, "config", "core.hooksPath", markers);
+  gitIn(repo, "config", "filter.a=b.clean", `touch ${join(markers, "clean-equals")}; cat`);
+  // A plain `git status` that refreshes the index runs post-index-change.
+  const hooks = join(dir, "hooks");
+  await mkdir(hooks);
+  await writeFile(join(hooks, "post-index-change"), `#!/bin/sh\ntouch ${join(markers, "hook")}\n`);
+  await chmod(join(hooks, "post-index-change"), 0o755);
+  gitIn(repo, "config", "core.hooksPath", hooks);
   // A newer mtime with unchanged content forces status to re-hash, which runs clean filters.
   const later = new Date(Date.now() + 5_000);
-  await utimes(join(repo, "a.txt"), later, later);
+  for (const name of ["a.txt", "b.txt"]) await utimes(join(repo, name), later, later);
   return { repo, markers };
 }
 
@@ -174,6 +182,10 @@ test("mirror disposal removes only job directories, and promotion requires a mir
     await assert.rejects(() => disposeStaticMirror(workRoot, { jobDirectory: precious, manifest: {} }), ImportSecurityError);
     await assert.rejects(() => safeRemoveImportJobDirectory(workRoot, join(precious, "nested")), ImportSecurityError);
     assert.equal((await stat(join(precious, "nested"))).isDirectory(), true, "a non-job directory survives");
+    const doclingJob = join(workRoot, `docling-${"0".repeat(24)}`);
+    await mkdir(doclingJob);
+    await assert.rejects(() => disposeStaticMirror(workRoot, { jobDirectory: doclingJob, manifest: {} }), ImportSecurityError);
+    assert.equal(existsSync(doclingJob), true, "another adapter's job directory survives mirror disposal");
 
     const result = await mirrorStaticSite(mirrorRequest(), "https://example.com/docs/page.html", { jobId: "mirror-shape", workRoot }, {
       resolveHost: async () => ["93.184.216.34"],

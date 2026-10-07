@@ -21,34 +21,44 @@ function compareCodeUnits(left: string, right: string): number {
 const execFileAsync = promisify(execFile);
 
 // An inspected worktree is untrusted, and Git reads that worktree's own config: core.fsmonitor
-// is a command `git status` runs, and filter drivers can run during status. Every command
-// therefore runs with repository-controlled execution switched off on the command line
-// (which outranks repository config), with no system or global config, and with Git's
-// environment overrides removed.
+// is a command `git status` runs, filter drivers can run during status, and a missing object
+// in a partial clone triggers a fetch through a configured transport. Every command therefore
+// runs with repository-controlled execution switched off by command-scope config (which
+// outranks repository config), with no system or global config, and with none of the
+// caller's GIT_* variables. Overrides go through GIT_CONFIG_COUNT rather than `-c`, because
+// `-c` splits at the first "=" and a repository may name a filter driver "a=b".
 const GIT_ENV_OVERRIDES = /^GIT_/u;
 
-function inspectionEnvironment(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) if (!GIT_ENV_OVERRIDES.test(key)) env[key] = value;
-  return { ...env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: devNull, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" };
-}
-
-const SAFE_GIT_OPTIONS = [
-  "-c", "core.fsmonitor=false",
-  "-c", `core.hooksPath=${devNull}`,
-  "-c", "core.untrackedCache=false",
-  "-c", "core.pager=cat",
-  "-c", "diff.external=",
-  "--no-optional-locks",
+const SAFE_GIT_CONFIG: Array<[string, string]> = [
+  ["core.fsmonitor", "false"],
+  ["core.hooksPath", devNull],
+  ["core.untrackedCache", "false"],
+  ["core.pager", "cat"],
+  ["core.sshCommand", "false"],
+  ["diff.external", ""],
+  ["protocol.allow", "never"],
 ];
 
-async function runGit(cwd: string, options: string[], args: string[]): Promise<string> {
+function inspectionEnvironment(config: Array<[string, string]>): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) if (!GIT_ENV_OVERRIDES.test(key)) env[key] = value;
+  Object.assign(env, { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: devNull, GIT_TERMINAL_PROMPT: "0", GIT_NO_LAZY_FETCH: "1" });
+  const entries = [...SAFE_GIT_CONFIG, ...config];
+  env.GIT_CONFIG_COUNT = String(entries.length);
+  entries.forEach(([key, value], index) => {
+    env[`GIT_CONFIG_KEY_${index}`] = key;
+    env[`GIT_CONFIG_VALUE_${index}`] = value;
+  });
+  return env;
+}
+
+async function runGit(cwd: string, config: Array<[string, string]>, args: string[]): Promise<string> {
   try {
-    const { stdout } = await execFileAsync("git", ["-C", cwd, ...SAFE_GIT_OPTIONS, ...options, ...args], {
+    const { stdout } = await execFileAsync("git", ["-C", cwd, "--no-optional-locks", ...args], {
       encoding: "utf8",
       windowsHide: true,
       maxBuffer: 4 * 1024 * 1024,
-      env: inspectionEnvironment(),
+      env: inspectionEnvironment(config),
     });
     return stdout;
   } catch (error) {
@@ -58,21 +68,29 @@ async function runGit(cwd: string, options: string[], args: string[]): Promise<s
 
 // Filter driver names are chosen by the repository, so they are read from its config (a
 // read executes nothing) and each driver's commands are overridden to empty, which Git
-// treats as no filter.
-async function filterOverrides(cwd: string): Promise<string[]> {
-  let listing = "";
+// treats as no filter. Exit code 1 means no filter is configured; any other failure stops
+// the inspection rather than running status without the overrides.
+async function filterOverrides(cwd: string): Promise<Array<[string, string]>> {
+  let listing: string;
   try {
-    listing = await runGit(cwd, [], ["config", "--includes", "--name-only", "--get-regexp", "^filter\\."]);
-  } catch {
-    return [];
+    const { stdout } = await execFileAsync("git", ["-C", cwd, "--no-optional-locks", "config", "-z", "--includes", "--name-only", "--get-regexp", "^filter\\."], {
+      encoding: "utf8",
+      windowsHide: true,
+      maxBuffer: 4 * 1024 * 1024,
+      env: inspectionEnvironment([]),
+    });
+    listing = stdout;
+  } catch (error) {
+    if ((error as { code?: unknown }).code === 1) return [];
+    throw new SupervisorWorktreeError(error instanceof Error ? error.message : "Git inspection failed");
   }
   const drivers = new Set<string>();
-  for (const key of listing.split("\n")) {
-    const match = /^filter\.(.+)\.(?:clean|smudge|process|required)$/u.exec(key.trim());
+  for (const key of listing.split("\0")) {
+    const match = /^filter\.(.+)\.(?:clean|smudge|process|required)$/su.exec(key);
     if (match) drivers.add(match[1]);
   }
-  return [...drivers].flatMap((driver) => [
-    "-c", `filter.${driver}.clean=`, "-c", `filter.${driver}.smudge=`, "-c", `filter.${driver}.process=`, "-c", `filter.${driver}.required=false`,
+  return [...drivers].flatMap((driver): Array<[string, string]> => [
+    [`filter.${driver}.clean`, ""], [`filter.${driver}.smudge`, ""], [`filter.${driver}.process`, ""], [`filter.${driver}.required`, "false"],
   ]);
 }
 
