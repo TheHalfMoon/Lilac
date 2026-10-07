@@ -70,6 +70,7 @@ test("commands produce history operations that apply cleanly", () => {
   assert.deepEqual(apply(anchored, moveBy(anchored, ["n"], 1, 2, { n: { left: 50, top: 60, width: 40, height: 20 } })).nodes.n.props.style, { position: "absolute", left: "51px", top: "62px", width: "40px" });
   assert.deepEqual(reorder(d, "missing", 1), [], "an unknown id cannot be reordered");
   assert.deepEqual(resizeTo(d, "card", Number.NaN, 10), [], "a non-finite size is never written");
+  assert.equal(resizeTo(d, "title", 10, 10, { inline: true })[0].set.style.display, "inline-block");
   d = apply(d, resizeTo(d, "card", 240.256, 0));
   assert.equal(d.nodes.card.props.style.width, "240.26px");
   assert.equal(d.nodes.card.props.style.height, "1px", "sizes stay positive");

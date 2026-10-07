@@ -248,6 +248,9 @@ test("moves and resizes commit the geometry the user saw, for margins, padding a
     assert.match(width, /^\d+(\.\d+)?px$/u);
     assert.match(height, /^\d+(\.\d+)?px$/u);
     assert.equal(Number.parseFloat(width), Math.round((inline.width - 6 + 30) * 100) / 100, "content width plus the drag");
+    assert.equal(result.doc.nodes.inline.props.style.display, "inline-block", "an inline box becomes inline-block so the size applies");
+    const resized = await rectOf(page, "inline");
+    assert.ok(Math.abs(resized.width - (inline.width + 30)) < 0.5, `the rendered box grew by the drag (${inline.width} to ${resized.width})`);
     assert.deepEqual(h.errors, []);
   } finally {
     await h.close();
@@ -288,6 +291,23 @@ test("cancelled, abandoned and tiny drags never commit or leave a preview behind
     assert.equal(await page.evaluate(() => window.commits.length), 0);
     const width = await page.evaluate(() => window.canvas.renderer.elementFor("card").style.width);
     assert.equal(width, result.doc.nodes.card.props.style.width, "the element shows the committed size, not a stale preview");
+    // While a committed move waits for its update, a second drag does not start.
+    await page.keyboard.press("Escape");
+    const badgeStart = await page.evaluate(() => window.screenOf("badge"));
+    const drag = async (from, by) => {
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(from.x + by, from.y, { steps: 3 });
+      await page.mouse.up();
+    };
+    await drag(badgeStart, 20);
+    assert.equal(await page.evaluate(() => window.commits.length), 1);
+    await drag({ x: badgeStart.x + 20, y: badgeStart.y }, 20);
+    assert.equal(await page.evaluate(() => window.commits.length), 1, "no second drag while the first is held");
+    const moved = await h.commit();
+    assert.equal(moved.doc.nodes.badge.props.style.left, "340px");
+    await drag({ x: badgeStart.x + 20, y: badgeStart.y }, 20);
+    assert.equal((await h.commit()).doc.nodes.badge.props.style.left, "360px", "after the update, drags work again");
     // A right-click neither selects nor arms a drag.
     await page.keyboard.press("Escape");
     const badge = await page.evaluate(() => window.screenOf("badge"));
