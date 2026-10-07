@@ -78,6 +78,14 @@ export interface ImportReview {
   };
   sourceBindings: { bound: number; elements: number };
   semantics: { byRole: Partial<Record<SemanticRole, number>>; unknownRoles: number; overrides: number };
+  /** Accessibility findings from @lilac/design-assurance; advisory, they do not block the commit. */
+  accessibility: {
+    findings: number;
+    byRule: Record<string, number>;
+    items: Array<{ ruleId: string; wcag: string; severity: string; message: string; nodeId: string | null }>;
+    /** Items beyond the review cap that were counted but not listed. */
+    truncated: number;
+  };
   commitReady: boolean;
   blockingReasons: string[];
 }

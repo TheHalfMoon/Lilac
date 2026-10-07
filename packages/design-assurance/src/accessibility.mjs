@@ -3,8 +3,9 @@
 // are both audited by the same deterministic rules; adapters below build it.
 
 import { DesignAssuranceError } from "./errors.mjs";
+import { compareCodeUnits } from "./order.mjs";
 
-export const ACCESSIBILITY_LIMITS = Object.freeze({ maxDepth: 256, maxNodes: 100_000, maxNameLength: 200 });
+export const ACCESSIBILITY_LIMITS = Object.freeze({ maxDepth: 256, maxNodes: 100_000 });
 
 export const ACCESSIBILITY_RULES = Object.freeze({
   "a11y/image-alt": { wcag: "1.1.1", severity: "major" },
@@ -17,12 +18,6 @@ export const ACCESSIBILITY_RULES = Object.freeze({
 
 const UNLABELLED_INPUT_TYPES = new Set(["hidden", "submit", "reset", "button", "image"]);
 const BUTTON_INPUT_TYPES = new Set(["submit", "reset", "button"]);
-
-// Code-unit string order: unlike localeCompare, independent of the process locale.
-function compareCodeUnits(left, right) {
-  if (left < right) return -1;
-  return left > right ? 1 : 0;
-}
 
 function attribute(node, name) {
   const value = Object.hasOwn(node.attributes, name) ? node.attributes[name] : undefined;
@@ -45,18 +40,21 @@ function inputType(node) {
   return (attribute(node, "type") ?? "text").trim().toLowerCase();
 }
 
-function bounded(text) {
-  const collapsed = text.replace(/\s+/gu, " ").trim();
-  const points = [...collapsed];
-  return points.length > ACCESSIBILITY_LIMITS.maxNameLength ? points.slice(0, ACCESSIBILITY_LIMITS.maxNameLength).join("") : collapsed;
+const FORM_CONTROLS = new Set(["input", "select", "textarea"]);
+
+function isHidden(node) {
+  return attribute(node, "aria-hidden") === "true" || attribute(node, "hidden") !== undefined;
 }
 
-// Text a node contributes to an ancestor's name: its own text, image alt text, and descendants'.
+// Text a node contributes to an ancestor's name: its own text, image alt text,
+// and descendants'. Hidden subtrees and nested form controls (whose option or
+// value text is not a label) contribute nothing.
 function contentText(node) {
   const parts = [];
   const stack = [node];
   while (stack.length > 0) {
     const current = stack.pop();
+    if (current !== node && (isHidden(current) || FORM_CONTROLS.has(lowerTag(current)))) continue;
     if (current.text !== undefined) parts.push(current.text);
     if (lowerTag(current) === "img" && present(attribute(current, "alt"))) parts.push(attribute(current, "alt"));
     for (let index = current.children.length - 1; index >= 0; index -= 1) stack.push(current.children[index]);
@@ -64,24 +62,27 @@ function contentText(node) {
   return parts.join(" ");
 }
 
-function accessibleName(node, context) {
+// Text of the elements aria-labelledby references; empty when none resolve.
+function labelledByText(node, context) {
   const labelledBy = attribute(node, "aria-labelledby");
-  if (present(labelledBy)) {
-    const referenced = labelledBy.trim().split(/\s+/u).map((id) => context.byId.get(id)).filter(Boolean);
-    const text = referenced.map((target) => contentText(target)).join(" ");
-    if (present(text)) return bounded(text);
-  }
-  if (present(attribute(node, "aria-label"))) return bounded(attribute(node, "aria-label"));
+  if (!present(labelledBy)) return "";
+  return labelledBy.trim().split(/\s+/u).map((id) => context.byId.get(id)).filter(Boolean).map((target) => contentText(target)).join(" ");
+}
+
+function accessibleName(node, context) {
+  const labelledBy = labelledByText(node, context);
+  if (present(labelledBy)) return labelledBy;
+  if (present(attribute(node, "aria-label"))) return attribute(node, "aria-label");
   const tag = lowerTag(node);
   if ((tag === "img" || (tag === "input" && inputType(node) === "image")) && attribute(node, "alt") !== undefined) {
-    return bounded(attribute(node, "alt"));
+    return attribute(node, "alt");
   }
   if (tag === "input" && BUTTON_INPUT_TYPES.has(inputType(node)) && present(attribute(node, "value"))) {
-    return bounded(attribute(node, "value"));
+    return attribute(node, "value");
   }
   const content = contentText(node);
-  if (present(content)) return bounded(content);
-  if (present(attribute(node, "title"))) return bounded(attribute(node, "title"));
+  if (present(content)) return content;
+  if (present(attribute(node, "title"))) return attribute(node, "title");
   return "";
 }
 
@@ -243,7 +244,7 @@ export function auditAccessibility(tree) {
         if (lowerTag(cursor.node) === "label" && present(contentText(cursor.node))) ancestorLabel = true;
       }
       const labelled = present(attribute(node, "aria-label"))
-        || (present(attribute(node, "aria-labelledby")) && present(accessibleName(node, context)))
+        || present(labelledByText(node, context))
         || (present(id) && labelFor.has(id.trim()))
         || ancestorLabel
         || present(attribute(node, "title"));
@@ -282,7 +283,8 @@ export function auditAccessibility(tree) {
         const ratio = contrastRatio(foreground, background);
         const required = isLargeText(entry) ? 3 : 4.5;
         if (ratio < required) {
-          report("a11y/text-contrast", entry, `Text contrast ${ratio.toFixed(2)}:1 is below ${required}:1`);
+          // Floor, so a ratio of 4.4995 is not reported as "4.50 is below 4.5".
+          report("a11y/text-contrast", entry, `Text contrast ${(Math.floor(ratio * 100) / 100).toFixed(2)}:1 is below ${required}:1`);
         }
       }
     }
@@ -296,13 +298,27 @@ export function auditAccessibility(tree) {
 
 // ---- Adapters --------------------------------------------------------------
 
+// Counts converted nodes so shared references cannot expand a small input
+// into an exponentially large tree before the audit's own bound applies.
+function nodeBudget(label) {
+  let count = 0;
+  return () => {
+    count += 1;
+    if (count > ACCESSIBILITY_LIMITS.maxNodes) throw new DesignAssuranceError(`${label} exceeds ${ACCESSIBILITY_LIMITS.maxNodes} nodes`);
+  };
+}
+
 /** Neutral tree for a code-ir DesignDoc ({ componentName, root: { tag, props, text?, children? } }). */
 export function accessibilityTreeFromDesignDoc(doc) {
   if (doc === null || typeof doc !== "object" || doc.root === null || typeof doc.root !== "object") {
     throw new DesignAssuranceError("design document needs a root node");
   }
+  const budget = nodeBudget("design document");
   const convert = (node, depth) => {
     if (depth > ACCESSIBILITY_LIMITS.maxDepth) throw new DesignAssuranceError(`design document exceeds depth ${ACCESSIBILITY_LIMITS.maxDepth}`);
+    budget();
+    if (node === null || typeof node !== "object") throw new DesignAssuranceError("design document nodes must be objects");
+    if (node.children !== undefined && !Array.isArray(node.children)) throw new DesignAssuranceError("design document node children must be an array");
     const props = node.props ?? {};
     return {
       tag: node.tag,
@@ -331,10 +347,13 @@ export function accessibilityTreeFromImportProposal(proposal) {
     names.add(resource.attribute);
     resourceAttributes.set(resource.nodeId, names);
   }
+  const budget = nodeBudget("import proposal");
   const convert = (id, depth) => {
     if (depth > ACCESSIBILITY_LIMITS.maxDepth) throw new DesignAssuranceError(`import proposal exceeds depth ${ACCESSIBILITY_LIMITS.maxDepth}`);
-    const node = Object.hasOwn(proposal.nodes, id) ? proposal.nodes[id] : undefined;
-    if (!node) throw new DesignAssuranceError(`import proposal references missing node ${String(id).slice(0, 80)}`);
+    budget();
+    const node = typeof id === "string" && Object.hasOwn(proposal.nodes, id) ? proposal.nodes[id] : undefined;
+    if (!node || typeof node !== "object") throw new DesignAssuranceError(`import proposal references missing node ${String(id).slice(0, 80)}`);
+    if (node.kind !== "text" && !Array.isArray(node.children)) throw new DesignAssuranceError("import proposal node children must be an array");
     if (node.kind === "text") return { id, tag: "#text", attributes: {}, text: node.text ?? "", children: [] };
     const attributes = { ...node.attributes };
     for (const name of resourceAttributes.get(id) ?? []) if (!Object.hasOwn(attributes, name)) attributes[name] = "";

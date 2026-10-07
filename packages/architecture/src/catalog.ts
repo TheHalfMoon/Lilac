@@ -239,8 +239,8 @@ const SUBSYSTEMS = [
     title: "Website and app intake product layer",
     owner: "@lilac/intake",
     status: "implemented",
-    boundary: "Review-before-commit summaries of import proposals, web semantics derived only from markup (OBSERVED evidence), commit of reviewed imports into persisted projects through the import-stack history transaction, and network imports gated by import.fetch policy decisions. Composes import-stack, network-policy, and persistence; creates no second document authority.",
-    dependsOn: ["import-export", "network-policy", "persistence", "history"],
+    boundary: "Review-before-commit summaries of import proposals, web semantics derived only from markup (OBSERVED evidence), commit of reviewed imports into persisted projects through the import-stack history transaction, network imports gated by import.fetch policy decisions, and an advisory accessibility summary of each proposal from design-assurance. Composes import-stack, network-policy, persistence, and design-assurance; creates no second document authority.",
+    dependsOn: ["import-export", "network-policy", "persistence", "history", "design-assurance"],
   },
   {
     id: "desktop-bridge",

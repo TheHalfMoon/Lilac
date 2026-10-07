@@ -8,6 +8,7 @@
     "node": ">=22.18.0"
   },
   "dependencies": {
+    "@lilac/design-assurance": "0.0.0",
     "@lilac/history": "0.0.0",
     "@lilac/import-stack": "0.0.0",
     "@lilac/network-policy": "0.0.0",

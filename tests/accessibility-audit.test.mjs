@@ -12,6 +12,7 @@ import {
 } from "../packages/design-assurance/src/index.mjs";
 import { buildCodeIr, codeToDesign, designToCode } from "../packages/code-ir/src/index.ts";
 import { IMPORT_SCHEMA_VERSION, defaultImportPolicy, importHtmlSnapshot } from "../packages/import-stack/src/index.ts";
+import { reviewImport } from "../packages/intake/src/index.ts";
 
 const el = (tag, attributes = {}, children = [], extra = {}) => ({ tag, attributes, children, ...extra });
 const text = (value, extra = {}) => ({ tag: "#text", attributes: {}, text: value, children: [], ...extra });
@@ -85,7 +86,11 @@ test("text contrast where colours resolve", () => {
   assert.deepEqual(rules(card("rgba(0,0,0,0.5)", "#fff")), [], "translucent colours are skipped, not guessed");
   assert.deepEqual(rules(card("#777", "url(x.png)")), [], "an unresolvable background is skipped");
   const message = auditAccessibility(card("#777", "#fff")).findings[0].message;
-  assert.match(message, /4\.48:1 is below 4\.5:1/u);
+  assert.match(message, /4\.47:1 is below 4\.5:1/u, "the ratio is floored, not rounded up");
+  // True ratio 4.4995: fails, and is not reported as "4.50 is below 4.5".
+  const edge = auditAccessibility(card("rgb(2,2,2)", "rgb(207,0,207)")).findings;
+  assert.equal(edge.length, 1);
+  assert.match(edge[0].message, /4\.49:1 is below 4\.5:1/u);
 });
 
 test("generated JSX is audited identically before emission and after re-parsing", () => {
@@ -158,4 +163,45 @@ test("text colour and size inherit from ancestors", () => {
   ], { style: "background: #fff" });
   const findings = auditAccessibility(tree).findings;
   assert.deepEqual(findings.map((finding) => finding.path), ["/section[1]/div[1]/#text[1]"]);
+});
+
+test("hidden content and nested controls do not name or label", () => {
+  assert.deepEqual(rules(el("div", {}, [el("button", {}, [el("span", { "aria-hidden": "true" }, [text("X")])])])), ["a11y/button-name"]);
+  assert.deepEqual(rules(el("nav", {}, [el("a", { href: "/" }, [el("span", { hidden: "" }, [text("Home")])])])), ["a11y/link-name"]);
+  assert.deepEqual(rules(el("form", {}, [el("label", {}, [el("select", {}, [el("option", {}, [text("One")])])])])), ["a11y/control-label"], "option text is not a label");
+  assert.deepEqual(rules(el("form", {}, [el("textarea", { "aria-labelledby": "missing" }, [text("draft")])])), ["a11y/control-label"], "content is not a label for a control");
+  assert.deepEqual(rules(el("form", {}, [el("label", {}, [text("Pick"), el("select", {}, [el("option", {}, [text("One")])])])])), []);
+});
+
+test("adapters bound shared references and reject malformed nodes", () => {
+  // Every level reuses one child id twice, which would expand to 2^40 nodes.
+  const nodes = {};
+  for (let level = 0; level < 40; level += 1) {
+    const id = `n${level}`;
+    const child = `n${level + 1}`;
+    nodes[id] = { id, kind: "element", tag: "div", attributes: {}, style: {}, children: level < 39 ? [child, child] : [] };
+  }
+  const started = performance.now();
+  assert.throws(() => accessibilityTreeFromImportProposal({ nodes, rootIds: ["n0"] }), /exceeds 100000 nodes/u);
+  assert.ok(performance.now() - started < 5000, "the budget stops expansion early");
+  const shared = { tag: "span", props: {} };
+  let level = { tag: "div", props: {}, children: [shared, shared] };
+  for (let index = 0; index < 40; index += 1) level = { tag: "div", props: {}, children: [level, level] };
+  assert.throws(() => accessibilityTreeFromDesignDoc({ componentName: "X", root: level }), /exceeds 100000 nodes/u);
+  assert.throws(() => accessibilityTreeFromImportProposal({ nodes: { a: { kind: "element", tag: "div", attributes: {} } }, rootIds: ["a"] }), DesignAssuranceError);
+  assert.throws(() => accessibilityTreeFromDesignDoc({ componentName: "X", root: { tag: "div", props: {}, children: "x" } }), DesignAssuranceError);
+});
+
+test("intake review surfaces accessibility findings without blocking the commit", () => {
+  const proposal = importHtmlSnapshot({
+    schemaVersion: IMPORT_SCHEMA_VERSION, requestId: "a11y-2", actorId: "user-1", intent: "Import", at: "2026-10-07T09:00:00.000Z",
+    policy: defaultImportPolicy("offline"), source: { kind: "html-snapshot", uri: "https://example.com/page", baseUrl: "https://example.com/page" },
+  }, '<main><h1>Title</h1><img src="/a.png"><button></button></main>');
+  const review = reviewImport(proposal);
+  assert.equal(review.accessibility.findings, 2);
+  assert.deepEqual(review.accessibility.byRule, { "a11y/button-name": 1, "a11y/image-alt": 1 });
+  assert.deepEqual(review.accessibility.items.map((item) => item.wcag), ["4.1.2", "1.1.1"]);
+  assert.ok(review.accessibility.items.every((item) => proposal.nodes[item.nodeId]));
+  assert.equal(review.accessibility.truncated, 0);
+  assert.equal(review.commitReady, true, "accessibility findings are advisory");
 });
