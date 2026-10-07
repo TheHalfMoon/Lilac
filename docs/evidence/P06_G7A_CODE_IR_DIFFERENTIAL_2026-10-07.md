@@ -34,7 +34,7 @@ An exploratory seeded differential over 3000 generated design documents found th
 
 ## Tests
 
-`tests/code-ir-differential.test.mjs` has 8 tests. On base (code-ir changes stashed), 7 fail; the shrinker self-test passes there because it tests only the shrinker.
+`tests/code-ir-differential.test.mjs` had 8 tests at first; review delta 1 brought it to 11. On base (code-ir changes stashed), 7 fail; the shrinker self-test passes there because it tests only the shrinker.
 
 1. **design to code to design.** Over 400 seeded generated documents, the round trip is the identity. The alphabet includes entity starters, braces, quotes, backslashes, tabs, CRLF, no-break and non-ASCII characters, U+2028 and entity-like text. A failure reports its seed, the shrunk minimal input and a `LILAC_PROPERTY_SEED` replay line.
 2. **Emitted code is a fixpoint.** For 200 seeds, code to design to code returns the same code.
@@ -44,6 +44,32 @@ An exploratory seeded differential over 3000 generated design documents found th
 6. **Regressions.** Each original divergence, including empty text and children, round-trips.
 7. **Shrinker.** A deliberately lossy round trip is reduced to the minimal `{"tag":"span","props":{},"text":"{"}`.
 8. **Golden fixtures.** Three files in `tests/fixtures/code-ir/` (`card.jsx`, `form.jsx`, `pricing.jsx`) lift to the designs pinned in `manifest.json`, with pinned fingerprints, and survive a round trip.
+
+**Review delta 1.** The combined judge returned one must-fix. Its independent differential (3573 documents with a different distribution, keyword-like names and extreme numbers) found no divergence in the emitter or round trip. The security judge returned one must-fix.
+
+**Must-fix 1: recovery still promoted descendants (combined judge).** Three inputs still made a nested element a root: a fragment `<>…</>`, an apostrophe in JSX inside braces (`{a && <b>Don't</b>}`), and a comment inside braces. The security judge added a mismatched closing tag (`<a>{x}</c>…</a>`). Recovery now:
+- tracks open tags by name and stops on a mismatched or fragment close;
+- stops on a fragment open;
+- stops on a braced region that contains `<` or a comment.
+
+Stopping means no further roots from that file, which is the conservative choice.
+
+**Must-fix 2: quadratic trimming (security judge).** `cleanJsxText` trimmed trailing spaces with `/[ ]+$/u`, which backtracks quadratically: 64K characters took 4.1 s and 262K took 64 s. Trimming now uses index scans, and raw text is bounded at 65,536 source characters before it is decoded.
+
+**Worth-considering, fixed.**
+- **Numeric references** take any number of digits and a lowercase `x` only, as in Babel and TypeScript. Any other `&#` is refused.
+- **Octal-style input:** `"\01"` is refused as an octal escape, and numbers with leading zeros (`{010}`) are refused.
+- **Lone surrogates** in JS strings and in design text or props are refused. Saved as UTF-8 they would come back as U+FFFD.
+- **`__proto__`:** a prop named `__proto__` is kept as an own key, so the design normal form refuses it instead of silently dropping it.
+- **`-0`** normalises to `0`.
+
+Three tests were added; each fails on `bc311a7`:
+
+9. The four ambiguous recovery inputs yield no roots.
+10. 64,000-character runs of spaces or tabs, trailing on the first line or leading on a later line, are trimmed within 1 s. Over-long raw text is refused.
+11. These are refused: lone surrogates (parser and `designToCode`), `__proto__`, `\01` and `{010}`, plus `&#X41;` and `&#;`. Long numeric references decode, and `-0` round-trips as `0`.
+
+`tests/code-ir-differential.test.mjs` now has 11 tests.
 
 ## Gate
 

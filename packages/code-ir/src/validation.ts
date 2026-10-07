@@ -287,13 +287,16 @@ function normalizeDesignNode(value: unknown, label: string, depth: number): Desi
     if (typeof entry !== "string" && typeof entry !== "number" && typeof entry !== "boolean") {
       throw new CodeIrValidationError(`${label}.props values must be literals`);
     }
-    props[key] = entry;
+    if (typeof entry === "string" && !entry.isWellFormed()) throw new CodeIrValidationError(`${label}.props.${key} contains a lone surrogate`);
+    // -0 and 0 are the same design; JSX writes both as 0.
+    props[key] = typeof entry === "number" && Object.is(entry, -0) ? 0 : entry;
   }
   const node: DesignDocNode = { tag: value.tag as string, props };
   if (value.text !== undefined) {
     if (typeof value.text !== "string" || value.text.length > 4096) {
       throw new CodeIrValidationError(`${label}.text must be a bounded string`);
     }
+    if (!value.text.isWellFormed()) throw new CodeIrValidationError(`${label}.text contains a lone surrogate`);
     // Empty text and an empty child list are the same design as none; the normal form
     // omits them, so they fingerprint and round-trip identically.
     if (value.text !== "") node.text = value.text as string;

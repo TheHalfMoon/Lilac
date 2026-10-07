@@ -122,6 +122,53 @@ test("a failed element is skipped whole: none of its descendants becomes a root"
   assert.deepEqual(tricky.rootIds.map((id) => tricky.symbols[id].name), ["em"]);
 });
 
+test("recovery stops rather than guess when the failed element's structure is ambiguous", () => {
+  // Each input once promoted <h1>inner</h1> to a root; now nothing is a root.
+  for (const source of [
+    "<Card><>{x}</><h1>inner</h1></Card>",
+    "<Card>{a && <b>Don't</b>}<Inner>{'}'}</Inner><h1>inner</h1></Card>",
+    "<Card>{/* don't */}<Inner>{'}'}</Inner><h1>inner</h1></Card>",
+    "<a>{x}</c><h1>inner</h1></a>",
+  ]) {
+    assert.throws(() => buildCodeIr([{ path: "R.jsx", content: source }]), /no supported elements/u, source);
+  }
+});
+
+test("long whitespace runs are trimmed in linear time", () => {
+  // Trailing runs on the first line and leading and trailing runs on a middle line are
+  // trimmed; each run is one token, so only the trimming cost grows with it.
+  for (const filler of [" ", "\t"]) {
+    const run = filler.repeat(64_000);
+    for (const source of [`<a>x${run}\n</a>`, `<a>\n${run}y\n</a>`]) {
+      const started = performance.now();
+      const ir = buildCodeIr([{ path: "W.jsx", content: source }]);
+      assert.match(codeToDesign(ir, ir.rootIds[0], "Wide").root.text, /^[xy]$/u);
+      assert.ok(performance.now() - started < 1_000, `${JSON.stringify(filler)} run took ${(performance.now() - started).toFixed(0)} ms`);
+    }
+  }
+  assert.throws(() => buildCodeIr([{ path: "W.jsx", content: `<a>${" ".repeat(70_000)}x</a>` }]), /exceeds 65536 source characters/u);
+});
+
+test("lone surrogates, __proto__ props and ambiguous numerals are refused, -0 is 0", () => {
+  const lift = (source) => {
+    const ir = buildCodeIr([{ path: "S.jsx", content: source }]);
+    return codeToDesign(ir, ir.rootIds[0], "Snippet").root;
+  };
+  assert.throws(() => lift("<p>{\"\\uD800\"}</p>"), /lone surrogate/u);
+  assert.throws(() => lift("<p title={\"a\\uDC00\"} />"), /lone surrogate/u);
+  assert.throws(() => designToCode({ componentName: "S", root: { tag: "p", props: {}, text: `a${char(0xd800)}b` } }), /lone surrogate/u);
+  assert.throws(() => designToCode({ componentName: "S", root: { tag: "p", props: { title: char(0xdc00) } } }), /lone surrogate/u);
+  assert.throws(() => lift("<div __proto__=\"evil\" />"), /unsupported key/u);
+  assert.equal(lift("<div constructor=\"c\" />").props.constructor, "c");
+  assert.throws(() => lift("<p>{\"\\01\"}</p>"), /octal escapes/u);
+  assert.throws(() => lift("<p n={010} />"), /non-literal/u);
+  assert.equal(lift("<p>&#00000065;&#x0000041;</p>").text, "AA", "numeric references take any number of digits");
+  assert.throws(() => lift("<p>&#X41;</p>"), /malformed character reference/u);
+  assert.throws(() => lift("<p>&#;</p>"), /malformed character reference/u);
+  const negativeZero = { componentName: "Z", root: { tag: "p", props: { n: -0 } } };
+  assert.ok(Object.is(designRoundTrip(negativeZero).root.props.n, 0));
+});
+
 test("each original divergence is fixed", () => {
   const cases = [
     { tag: "p", props: {}, text: "a & b < c > d { e } &amp;" },

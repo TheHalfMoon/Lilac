@@ -59,9 +59,11 @@ function symbolToDesignNode(ir: CodeIr, symbolId: string, depth: number): Design
   if (symbol.kind !== "element" && symbol.kind !== "component") {
     throw new CodeIrValidationError(`round-trip symbol ${symbolId} is not renderable`);
   }
+  // defineProperty, so a prop named __proto__ is an own key that the design normal form
+  // refuses, not an assignment that silently drops it.
   const props: Record<string, string | number | boolean> = {};
   for (const prop of symbol.props) {
-    props[prop.name] = prop.literal.value;
+    Object.defineProperty(props, prop.name, { value: prop.literal.value, enumerable: true, writable: true, configurable: true });
   }
   const node: DesignDocNode = { tag: symbol.name, props };
   const texts = symbol.texts.map((entry) => entry.value).join("");

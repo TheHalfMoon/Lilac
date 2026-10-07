@@ -104,10 +104,13 @@ function skipWhitespace(state: ParserState): void {
 // JSX would decode it to a character this parser cannot know.
 const NAMED_ENTITIES: Readonly<Record<string, string>> = Object.freeze({ amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: "\u00a0" });
 
+// Numeric references take any number of digits and a lowercase x, as in Babel and
+// TypeScript; any other "&#" is refused rather than guessed.
 function decodeJsxEntities(raw: string, label: string): string {
-  return raw.replace(/&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{0,31});/gu, (_match, body: string) => {
+  return raw.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[A-Za-z][A-Za-z0-9]{0,31});|&#/gu, (match, body: string | undefined) => {
+    if (body === undefined) throw new CodeIrValidationError(`${label} has a malformed character reference`);
     if (body.startsWith("#")) {
-      const code = body[1] === "x" || body[1] === "X" ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10);
+      const code = body[1] === "x" ? Number.parseInt(body.slice(2), 16) : Number.parseInt(body.slice(1), 10);
       if (!(code > 0 && code <= 0x10ffff) || (code >= 0xd800 && code <= 0xdfff)) throw new CodeIrValidationError(`${label} has an invalid character reference &${body};`);
       return String.fromCodePoint(code);
     }
@@ -116,6 +119,9 @@ function decodeJsxEntities(raw: string, label: string): string {
     return named;
   });
 }
+
+// Raw text (indentation included) is bounded before it is decoded or trimmed.
+const MAX_RAW_TEXT = 65_536;
 
 // JSX whitespace (Babel's cleanJSXElementLiteralChild): tabs become spaces, lines after the
 // first lose leading spaces, lines before the last lose trailing spaces, empty lines drop,
@@ -127,8 +133,17 @@ function cleanJsxText(value: string): string {
   let out = "";
   lines.forEach((line, index) => {
     let trimmed = line.replace(/\t/gu, " ");
-    if (index !== 0) trimmed = trimmed.replace(/^[ ]+/u, "");
-    if (index !== lines.length - 1) trimmed = trimmed.replace(/[ ]+$/u, "");
+    // Index scans, not regexes: /[ ]+$/ backtracks quadratically on long space runs.
+    if (index !== 0) {
+      let start = 0;
+      while (trimmed[start] === " ") start += 1;
+      trimmed = trimmed.slice(start);
+    }
+    if (index !== lines.length - 1) {
+      let end = trimmed.length;
+      while (end > 0 && trimmed[end - 1] === " ") end -= 1;
+      trimmed = trimmed.slice(0, end);
+    }
     if (trimmed === "") return;
     out += index === lastNonEmpty ? trimmed : `${trimmed} `;
   });
@@ -167,7 +182,7 @@ function scanJsStringLiteral(source: string, start: number): { value: string; en
     const simple: Record<string, string> = { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", v: "\v" };
     if (escaped in simple) { out += simple[escaped]; continue; }
     if (escaped === "0" && !/[0-9]/u.test(source[index] ?? "")) { out += "\0"; continue; }
-    if (/[1-9]/u.test(escaped)) throw new CodeIrValidationError("JSX string literal octal escapes are outside the supported subset");
+    if (/[0-9]/u.test(escaped)) throw new CodeIrValidationError("JSX string literal octal escapes are outside the supported subset");
     if (escaped === "x") { out += String.fromCharCode(hex(source.slice(index, index + 2), "\\x")); index += 2; continue; }
     if (escaped === "u" && source[index] === "{") {
       const close = source.indexOf("}", index);
@@ -181,10 +196,13 @@ function scanJsStringLiteral(source: string, start: number): { value: string; en
     out += escaped;
   }
   if (index >= source.length) throw new CodeIrValidationError("JSX string literal is unterminated");
+  // A lone surrogate cannot be saved as UTF-8 and would come back as U+FFFD.
+  if (!out.isWellFormed()) throw new CodeIrValidationError("JSX string literal contains a lone surrogate");
   return { value: out, end: index + 1 };
 }
 
-const NUMERIC_LITERAL = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/u;
+// No leading zeros: JS reads 010 as octal or refuses it.
+const NUMERIC_LITERAL = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/u;
 
 // The literal inside an expression container opened at `open`: true, false, a number or
 // a quoted string. Returns null for anything else. On success, the parser is moved past
@@ -311,6 +329,7 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
       const first = textParts[0];
       const last = textParts[textParts.length - 1];
       textParts.length = 0;
+      if (last.end - first.start > MAX_RAW_TEXT) throw new CodeIrValidationError(`JSX text in ${name} exceeds ${MAX_RAW_TEXT} source characters`);
       const value = cleanJsxText(decodeJsxEntities(state.source.slice(first.start, last.end), `JSX text in ${name}`));
       if (value === "") return;
       if (value.length > 4096) throw new CodeIrValidationError(`JSX text in ${name} exceeds 4096 characters`);
@@ -446,11 +465,14 @@ function bindComponentDefinitions(state: ParserState, roots: SourceSymbol[]): vo
 }
 
 // End offset of a braced expression starting at `start`, skipping quoted strings, template
-// literals and nested braces; -1 when it never closes.
+// literals and nested braces; -1 when it never closes. JSX or a comment inside the braces
+// makes quotes ambiguous (an apostrophe in JSX text is not a string), so those also give
+// -1: recovery then stops instead of guessing where the element ends.
 function bracedEnd(source: string, start: number): number {
   let depth = 0;
   for (let index = start; index < source.length; index += 1) {
     const char = source[index];
+    if (char === "<" || (char === "/" && (source[index + 1] === "*" || source[index + 1] === "/"))) return -1;
     if (char === '"' || char === "'" || char === "`") {
       for (index += 1; index < source.length && source[index] !== char; index += 1) if (source[index] === "\\") index += 1;
       continue;
@@ -466,7 +488,7 @@ function bracedEnd(source: string, start: number): number {
 // after this offset, so no descendant of a failed element becomes a root.
 function failedElementEnd(state: ParserState, startIndex: number): number {
   const { source, tokens } = state;
-  let depth = 0;
+  const open: string[] = [];
   let offset = tokens[startIndex].start;
   while (offset < source.length) {
     const char = source[offset];
@@ -480,12 +502,18 @@ function failedElementEnd(state: ParserState, startIndex: number): number {
     if (source[offset + 1] === "/") {
       const close = source.indexOf(">", offset);
       if (close < 0) return -1;
-      depth -= 1;
+      // A closing tag must name the innermost open element; a mismatch or a fragment
+      // close means the structure is not what it seems, so recovery stops.
+      if (source.slice(offset + 2, close).trim() !== open.pop()) return -1;
       offset = close + 1;
-      if (depth <= 0) return offset;
+      if (open.length === 0) return offset;
       continue;
     }
+    if (/^<\s*>/u.test(source.slice(offset, offset + 64))) return -1;
     if (!isIdentStart(source[offset + 1] ?? "")) { offset += 1; continue; }
+    let nameEnd = offset + 1;
+    while (nameEnd < source.length && isIdentPart(source[nameEnd])) nameEnd += 1;
+    const tagName = source.slice(offset + 1, nameEnd);
     // An opening tag: scan its header to > or />.
     let index = offset + 1;
     let selfClosing = false;
@@ -509,8 +537,8 @@ function failedElementEnd(state: ParserState, startIndex: number): number {
       index += 1;
     }
     offset = index;
-    if (!selfClosing) depth += 1;
-    else if (depth === 0) return offset;
+    if (!selfClosing) open.push(tagName);
+    else if (open.length === 0) return offset;
   }
   return -1;
 }
