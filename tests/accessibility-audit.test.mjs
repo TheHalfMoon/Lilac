@@ -146,7 +146,7 @@ test("malformed and oversized trees fail closed", () => {
   assert.throws(() => auditAccessibility({ tag: "div", attributes: {}, children: {} }), DesignAssuranceError);
   let deep = el("div");
   for (let level = 0; level < ACCESSIBILITY_LIMITS.maxDepth + 1; level += 1) deep = el("div", {}, [deep]);
-  assert.throws(() => auditAccessibility(deep), /depth 256/u);
+  assert.throws(() => auditAccessibility(deep), /depth 1024/u);
   const wide = el("div", {}, Array.from({ length: ACCESSIBILITY_LIMITS.maxNodes }, () => el("span")));
   assert.throws(() => auditAccessibility(wide), /exceeds 100000 nodes/u);
   const name = "x".repeat(1000);
@@ -204,4 +204,21 @@ test("intake review surfaces accessibility findings without blocking the commit"
   assert.ok(review.accessibility.items.every((item) => proposal.nodes[item.nodeId]));
   assert.equal(review.accessibility.truncated, 0);
   assert.equal(review.commitReady, true, "accessibility findings are advisory");
+});
+
+test("imports at the import depth hard limit can be reviewed", () => {
+  const depth = 256;
+  const html = `${"<div>".repeat(depth)}<img src="/a.png">${"</div>".repeat(depth)}`;
+  const policy = { ...defaultImportPolicy("offline"), maxDomDepth: 256 };
+  const proposal = importHtmlSnapshot({
+    schemaVersion: IMPORT_SCHEMA_VERSION, requestId: "a11y-deep", actorId: "user-1", intent: "Import", at: "2026-10-07T09:00:00.000Z",
+    policy, source: { kind: "html-snapshot", uri: "https://example.com/page", baseUrl: "https://example.com/page" },
+  }, html);
+  assert.equal(reviewImport(proposal).accessibility.findings, 1);
+});
+
+test("hidden elements are not audited but still label", () => {
+  assert.deepEqual(rules(el("div", {}, [el("button", { hidden: "" }), el("div", { "aria-hidden": "TRUE" }, [el("img"), el("input")])])), []);
+  assert.deepEqual(rules(el("form", {}, [el("span", { id: "l", hidden: "" }, [text("Email")]), el("input", { "aria-labelledby": "l" })])), []);
+  assert.deepEqual(rules(el("div", { "aria-hidden": "false" }, [el("img")])), ["a11y/image-alt"]);
 });

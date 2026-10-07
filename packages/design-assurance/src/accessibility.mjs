@@ -5,7 +5,9 @@
 import { DesignAssuranceError } from "./errors.mjs";
 import { compareCodeUnits } from "./order.mjs";
 
-export const ACCESSIBILITY_LIMITS = Object.freeze({ maxDepth: 256, maxNodes: 100_000 });
+// maxDepth matches the document model's tree depth limit and covers the import
+// hard limit (DOM depth 256) plus a synthetic fragment root.
+export const ACCESSIBILITY_LIMITS = Object.freeze({ maxDepth: 1_024, maxNodes: 100_000 });
 
 export const ACCESSIBILITY_RULES = Object.freeze({
   "a11y/image-alt": { wcag: "1.1.1", severity: "major" },
@@ -43,7 +45,7 @@ function inputType(node) {
 const FORM_CONTROLS = new Set(["input", "select", "textarea"]);
 
 function isHidden(node) {
-  return attribute(node, "aria-hidden") === "true" || attribute(node, "hidden") !== undefined;
+  return (attribute(node, "aria-hidden") ?? "").trim().toLowerCase() === "true" || attribute(node, "hidden") !== undefined;
 }
 
 // Text a node contributes to an ancestor's name: its own text, image alt text,
@@ -192,7 +194,10 @@ export function auditAccessibility(tree) {
   const walk = [[tree, `/${tree.tag}[1]`, null]];
   while (walk.length > 0) {
     const [node, path, parent] = walk.pop();
-    const entry = { node, path, parent, declarations: parseDeclarations(node.style) };
+    // Hidden subtrees are not exposed to assistive technology, so they are not
+    // audited; their ids still resolve as aria-labelledby targets.
+    const hidden = (parent?.hidden ?? false) || isHidden(node);
+    const entry = { node, path, parent, hidden, declarations: parseDeclarations(node.style) };
     entries.push(entry);
     const id = attribute(node, "id");
     if (present(id) && !byId.has(id)) byId.set(id, node);
@@ -225,6 +230,7 @@ export function auditAccessibility(tree) {
 
   let previousHeading = null;
   for (const entry of entries) {
+    if (entry.hidden) continue;
     const { node } = entry;
     const tag = lowerTag(node);
     const nodeRole = role(node);
@@ -365,6 +371,6 @@ export function accessibilityTreeFromImportProposal(proposal) {
       children: node.children.map((child) => convert(child, depth + 1)),
     };
   };
-  const roots = proposal.rootIds.map((id) => convert(id, 1));
+  const roots = proposal.rootIds.map((id) => convert(id, 0));
   return roots.length === 1 ? roots[0] : { tag: "#fragment", attributes: {}, children: roots };
 }

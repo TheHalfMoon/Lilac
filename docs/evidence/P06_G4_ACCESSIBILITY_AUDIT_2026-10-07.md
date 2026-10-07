@@ -7,7 +7,8 @@ Part of P06 gate 4 (#100).
 `@lilac/design-assurance` adds `src/accessibility.mjs`, re-exported from the package index. `DesignAssuranceError` moved to `src/errors.mjs` to avoid a circular import; the export is unchanged. The audit is Lilac-owned, deterministic and adds no dependency.
 
 - `auditAccessibility(tree)` runs over a neutral tree, where each node is `{ id?, tag, attributes, text?, style?, children }`. Findings carry `ruleId`, `wcag`, `severity`, `path`, `nodeId` (when known) and a fixed-text `message`. They are sorted by path, then rule, then message, in code-unit order.
-- Bounds: depth 256 and 100,000 nodes. Both adapters count converted nodes, so shared references (a child id or object reused) cannot expand a small input into an exponentially large tree.
+- Bounds: depth 1,024 and 100,000 nodes. The depth limit matches `DOCUMENT_LIMITS.maxTreeDepth` and covers the import hard limit (DOM depth 256) plus the synthetic fragment root. At 256 the audit made `reviewImport` throw on a valid import at the import depth limit; review delta 2 fixed that and added a test at the limit. Both adapters count converted nodes, so shared references (a child id or object reused) cannot expand a small input into an exponentially large tree.
+- Hidden subtrees (`aria-hidden` compared case-insensitively, or `hidden`) are not exposed to assistive technology. They are not audited, but their ids still resolve as `aria-labelledby` targets.
 - Names never leave the module, so they are not truncated. Hidden subtrees (`aria-hidden="true"`, `hidden`) and nested form controls contribute no name content, so option text is not a label. `aria-labelledby` labels a control only when it resolves to text.
 - `DesignAssuranceError` and `compareCodeUnits` are shared internal modules (`errors.mjs`, `order.mjs`).
 
@@ -30,7 +31,7 @@ Adapters:
 
 ## Evidence
 
-`tests/accessibility-audit.test.mjs` has 14 tests:
+`tests/accessibility-audit.test.mjs` has 16 tests:
 - Contrast against WCAG reference values: black on white 21.00, `#777` on white 4.48, `#767676` on white 4.54.
 - A positive and a negative case for every rule.
 - Large-text thresholds.
@@ -42,6 +43,8 @@ Adapters:
 - Hidden content and nested controls.
 - The 4.4995 boundary.
 - Intake review surfacing.
+- Review at the import depth hard limit.
+- Hidden elements excluded from the audit.
 
 ## Disposition
 
