@@ -9,7 +9,8 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const AT = "2026-10-07T12:00:00.000Z";
@@ -177,14 +178,21 @@ async function main() {
   }
 }
 
+// --expect <file>: also require the report to equal a committed expected report. A relative
+// path is taken from the repository root, so the command works from any directory.
 const expectAt = process.argv.indexOf("--expect");
+const expectPath = expectAt < 0 ? null : process.argv[expectAt + 1];
+if (expectAt >= 0 && (expectPath === undefined || expectPath.startsWith("--"))) {
+  process.stderr.write("smoke: --expect needs a file path\n");
+  process.exit(2);
+}
+const expectFile = expectPath === null ? null : isAbsolute(expectPath) ? expectPath : fileURLToPath(new URL(`../${expectPath}`, import.meta.url));
 main().then(
   (report) => {
     const text = `${JSON.stringify(report, null, 2)}\n`;
     process.stdout.write(text);
-    // --expect <file>: also require the report to equal a committed expected report.
-    if (expectAt >= 0 && readFileSync(process.argv[expectAt + 1], "utf8") !== text) {
-      process.stderr.write(`smoke report differs from ${process.argv[expectAt + 1]}\n`);
+    if (expectFile !== null && readFileSync(expectFile, "utf8") !== text) {
+      process.stderr.write(`smoke report differs from ${expectFile}\n`);
       process.exitCode = 1;
     }
   },

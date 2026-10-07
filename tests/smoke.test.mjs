@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,4 +38,18 @@ test("npm run smoke runs the smoke script", () => {
   const npm = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(npm.scripts.smoke, "node scripts/smoke.mjs --expect tests/fixtures/smoke/expected-report.json");
   execFileSync(process.execPath, [SCRIPT, "--expect", FIXTURE], { encoding: "utf8", env: { PATH: process.env.PATH ?? "" } });
+});
+
+test("--expect fails on a mismatch and works from any directory", () => {
+  const options = { encoding: "utf8", cwd: "/", env: { PATH: process.env.PATH ?? "" }, stdio: "pipe" };
+  execFileSync(process.execPath, [SCRIPT, "--expect", "tests/fixtures/smoke/expected-report.json"], options);
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "lilac-smoke-expect-")));
+  try {
+    const tampered = join(dir, "expected.json");
+    writeFileSync(tampered, EXPECTED.replace(/"networkAttempts": 0/, '"networkAttempts": 1'));
+    assert.throws(() => execFileSync(process.execPath, [SCRIPT, "--expect", tampered], options), (error) => error.status === 1 && /differs from/.test(String(error.stderr)));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  assert.throws(() => execFileSync(process.execPath, [SCRIPT, "--expect"], options), (error) => error.status === 2);
 });
