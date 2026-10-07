@@ -107,11 +107,16 @@ export function moveBy(document, ids, dx, dy, measured = {}) {
   });
 }
 
-/** Set `id`'s CSS `width`/`height` (the box its `box-sizing` names), at least 1px. */
-export function resizeTo(document, id, width, height) {
+/**
+ * Set `id`'s CSS `width`/`height` (the box its `box-sizing` names), at least 1px. An inline
+ * box ignores both, so `{ inline: true }` also makes it `inline-block`, which keeps it in the
+ * line while honouring the size.
+ */
+export function resizeTo(document, id, width, height, { inline = false } = {}) {
   if (!Number.isFinite(width) || !Number.isFinite(height)) return [];
-  const style = styleOf(document, id);
-  return [{ type: "set-props", nodeId: id, set: { style: { ...style, width: px(Math.max(1, width)), height: px(Math.max(1, height)) } } }];
+  const style = { ...styleOf(document, id), width: px(Math.max(1, width)), height: px(Math.max(1, height)) };
+  if (inline) style.display = "inline-block";
+  return [{ type: "set-props", nodeId: id, set: { style } }];
 }
 
 export function setStyle(document, id, changes) {
@@ -300,7 +305,9 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     const id = hitTest({ x: event.clientX, y: event.clientY });
     const extend = event.shiftKey || event.metaKey || event.ctrlKey;
     if (id === null || !selection.includes(id) || extend) setSelection(selectNode(selection, id, { extend }));
-    if (id !== null && selection.includes(id)) {
+    // While a committed drag's preview waits for its update, no new drag starts: it would be
+    // computed from the document the preview has already moved past.
+    if (id !== null && selection.includes(id) && held === null) {
       const ids = [...selection];
       drag = { kind: "move", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, ids, moved: false };
       // Capture on the stage, which outlives every move: the overlay is redrawn as it goes.
@@ -308,7 +315,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     }
   });
   overlay.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || event.target?.dataset?.lilacHandle !== "resize" || selection.length !== 1) return;
+    if (event.button !== 0 || event.target?.dataset?.lilacHandle !== "resize" || selection.length !== 1 || held !== null) return;
     event.preventDefault();
     event.stopPropagation();
     stage.focus();
@@ -318,8 +325,9 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     drag = {
       kind: "resize", pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, id, moved: false,
       width: size.width, height: size.height,
+      inlineBox: frameDocument.defaultView.getComputedStyle(element).display === "inline",
       // The inline values the preview overwrites, restored when the drag ends.
-      inline: { width: element.style.getPropertyValue("width"), height: element.style.getPropertyValue("height") },
+      inline: Object.fromEntries(["width", "height", "display"].map((name) => [name, element.style.getPropertyValue(name)])),
     };
     stage.setPointerCapture?.(event.pointerId);
   });
@@ -330,7 +338,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
       for (const id of current.ids) renderer.elementFor(id)?.style.removeProperty("translate");
     } else {
       const element = renderer.elementFor(current.id);
-      for (const name of ["width", "height"]) {
+      for (const name of ["width", "height", "display"]) {
         if (current.inline[name] === "") element?.style.removeProperty(name);
         else element?.style.setProperty(name, current.inline[name]);
       }
@@ -371,6 +379,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
       for (const id of drag.ids) renderer.elementFor(id)?.style.setProperty("translate", `${dx}px ${dy}px`);
     } else {
       const element = renderer.elementFor(drag.id);
+      if (drag.inlineBox) element?.style.setProperty("display", "inline-block");
       element?.style.setProperty("width", `${Math.max(1, drag.width + dx)}px`);
       element?.style.setProperty("height", `${Math.max(1, drag.height + dy)}px`);
     }
@@ -389,7 +398,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
         operations = ids.length > 0 ? moveBy(document, ids, dx, dy, boxes) : [];
         intent = ids.length === 1 ? "Move layer" : "Move layers";
       } else if (Object.hasOwn(document.nodes, drag.id)) {
-        operations = resizeTo(document, drag.id, drag.width + dx, drag.height + dy);
+        operations = resizeTo(document, drag.id, drag.width + dx, drag.height + dy, { inline: drag.inlineBox });
         intent = "Resize layer";
       }
     }
