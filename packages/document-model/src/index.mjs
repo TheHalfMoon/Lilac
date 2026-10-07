@@ -184,10 +184,12 @@ export function createDocument({
   const sourceNodes = Array.isArray(nodes) ? nodes : Object.values(nodes);
   for (const input of sourceNodes) {
     const node = createNode(input);
-    if (record[node.id]) {
+    // Own-key check and data definition: a node id such as "__proto__" or
+    // "constructor" is an ordinary key, not an inherited member.
+    if (Object.hasOwn(record, node.id)) {
       throw new DocumentInvariantError(`Duplicate node id ${node.id}`);
     }
-    record[node.id] = node;
+    Object.defineProperty(record, node.id, { value: node, writable: true, enumerable: true, configurable: true });
   }
 
   const resolvedRoots = rootIds === null

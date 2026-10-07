@@ -25,6 +25,10 @@ export function createPrng(seed) {
 // Seeds come from LILAC_PROPERTY_SEED (to replay one failure) or a fixed list.
 export function propertySeeds(count) {
   const pinned = process.env.LILAC_PROPERTY_SEED;
-  if (pinned !== undefined && pinned !== "") return [Number.parseInt(pinned, 10)];
+  if (pinned !== undefined && pinned !== "") {
+    const seed = Number(pinned);
+    if (!/^\d+$/u.test(pinned) || !Number.isSafeInteger(seed)) throw new Error(`LILAC_PROPERTY_SEED must be a decimal integer, got ${JSON.stringify(pinned)}`);
+    return [seed];
+  }
   return Array.from({ length: count }, (_, index) => 0x5eed + index * 7919);
 }
