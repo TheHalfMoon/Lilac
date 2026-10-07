@@ -262,6 +262,16 @@ function acquireLock(lockPath: string, record: LockRecord, override: OpenProject
   return lockOverride;
 }
 
+// For cleanup paths (failed open, close), which must not throw: an identity check that
+// cannot complete counts as "moved", leaving the lock for breakStaleLock.
+function stillPinned(projectDir: string, directory: DirectoryIdentity): boolean {
+  try {
+    return isSameDirectory(projectDir, directory);
+  } catch {
+    return false;
+  }
+}
+
 function releaseLock(lockPath: string, record: LockRecord): void {
   if (sameHolder(readLock(lockPath), record)) removeFile(lockPath);
 }
@@ -342,8 +352,9 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       recovery: { tornTailBytes: parsed.tornTailBytes, replayedEntries: replayed, migratedFrom, lockOverride },
     });
   } catch (error) {
-    // After a swap, the lock path points elsewhere; only release a lock in the pinned directory.
-    if (isSameDirectory(projectDir, directory)) releaseLock(files.lock, lockRecord);
+    // After a swap, the lock path points elsewhere; only release a lock in the pinned
+    // directory. Cleanup never replaces the original error.
+    if (stillPinned(projectDir, directory)) releaseLock(files.lock, lockRecord);
     throw error;
   }
 }
@@ -493,6 +504,6 @@ export class ProjectStore {
     this.#closed = true;
     // After the project directory moved or was swapped, the lock path points elsewhere;
     // the lock is then left for breakStaleLock rather than removing a file outside.
-    if (isSameDirectory(this.projectDir, this.#directory)) releaseLock(join(this.projectDir, PROJECT_FILES.lock), this.#lock);
+    if (stillPinned(this.projectDir, this.#directory)) releaseLock(join(this.projectDir, PROJECT_FILES.lock), this.#lock);
   }
 }

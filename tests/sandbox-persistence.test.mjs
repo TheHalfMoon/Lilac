@@ -212,3 +212,14 @@ test("closing after the root moved leaves the lock instead of touching another d
   assert.equal(existsSync(join(outside, PROJECT_FILES.directory, PROJECT_FILES.lock)), true, "the outside copy is untouched");
   assert.equal(existsSync(join(parent, "moved", PROJECT_FILES.directory, PROJECT_FILES.lock)), true, "the moved project keeps its lock for breakStaleLock");
 }));
+
+test("close never throws when the identity check cannot complete", () => withRoot((root, parent) => {
+  const store = open(root);
+  // A root replaced by a dangling symlink loop makes realpath fail with ELOOP, which the
+  // write path rethrows; close must still return and leave the lock for breakStaleLock.
+  renameSync(root, join(parent, "moved"));
+  symlinkSync(root, root);
+  assert.throws(() => store.checkpoint());
+  assert.doesNotThrow(() => store.close());
+  assert.equal(existsSync(join(parent, "moved", PROJECT_FILES.directory, PROJECT_FILES.lock)), true);
+}));
