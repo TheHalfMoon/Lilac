@@ -74,9 +74,8 @@ test("out-of-subset constructs fail as unsupported with reasons", () => {
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<div></span>" }]), /no supported elements/u);
   assert.throws(() => buildCodeIr([{ path: "E.txt", content: "<div />" }]), CodeIrUnsupportedError);
   const nested = "<div>" + "<section>".repeat(40) + "x" + "</section>".repeat(40) + "</div>";
-  const deep = buildCodeIr([{ path: "E.jsx", content: nested }]);
-  assert.ok(deep.unsupported.length > 0);
-  assert.ok(deep.rootIds.length <= 1);
+  // A failed element is skipped whole: no nested <section> is promoted to a root (#123).
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: nested }]), /no supported elements: unparseable top-level JSX: JSX nesting exceeds maxDepth/u);
   const unclosedDeep = "<div>" + "<section>".repeat(40);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: unclosedDeep }]), /maxDepth/u);
 });

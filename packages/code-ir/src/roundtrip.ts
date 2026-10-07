@@ -6,12 +6,20 @@ import {
 } from "./types.ts";
 import { canonicalCodeIrStringify, normalizeCodeIr, normalizeDesignDoc, sha256Text } from "./validation.ts";
 
-function escapeText(text: string): string {
-  return text.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;");
+// Raw JSX text is entity-decoded and whitespace-trimmed by every JSX parser, so only text
+// that survives both exactly is written raw (with & < > { } as entities). Anything else
+// (edge spaces, tabs, line breaks) is written as a string literal child, which is exact.
+function emitText(text: string): string {
+  if (text !== "" && !/[\t\n\r]/u.test(text) && !text.startsWith(" ") && !text.endsWith(" ")) {
+    return text.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;").replace(/\{/gu, "&#123;").replace(/\}/gu, "&#125;");
+  }
+  return `{${JSON.stringify(text)}}`;
 }
 
-function escapeAttr(value: string | number | boolean): string {
-  return String(value).replace(/&/gu, "&amp;").replace(/"/gu, "&quot;").replace(/</gu, "&lt;");
+// JSX attribute strings have no escapes, so a value with a quote or an ampersand is written
+// as a string literal expression instead.
+function emitAttrValue(value: string): string {
+  return /["&]/u.test(value) ? `{${JSON.stringify(value)}}` : `"${value}"`;
 }
 
 function emitNode(node: DesignDocNode, indent: string): string {
@@ -24,11 +32,12 @@ function emitNode(node: DesignDocNode, indent: string): string {
     .map(([key, value]) => {
       if (typeof value === "boolean") return ` ${key}={${value ? "true" : "false"}}`;
       if (typeof value === "number") return ` ${key}={${String(value)}}`;
-      return ` ${key}="${escapeAttr(value)}"`;
+      return ` ${key}=${emitAttrValue(value)}`;
     })
     .join("");
-  const children = (node.children ?? []).map((child) => emitNode(child, `${indent}  `)).join("");
-  const text = node.text === undefined ? "" : escapeText(node.text);
+  // One child per line: whitespace that touches a line break is not text in JSX.
+  const children = (node.children ?? []).map((child) => `${emitNode(child, `${indent}  `)}\n`).join("");
+  const text = node.text === undefined ? "" : emitText(node.text);
   if (children === "" && text === "") return `${indent}<${node.tag}${props} />`;
   return `${indent}<${node.tag}${props}>${text}${children === "" ? "" : `\n${children}${indent}`}</${node.tag}>`;
 }
@@ -50,9 +59,11 @@ function symbolToDesignNode(ir: CodeIr, symbolId: string, depth: number): Design
   if (symbol.kind !== "element" && symbol.kind !== "component") {
     throw new CodeIrValidationError(`round-trip symbol ${symbolId} is not renderable`);
   }
+  // defineProperty, so a prop named __proto__ is an own key that the design normal form
+  // refuses, not an assignment that silently drops it.
   const props: Record<string, string | number | boolean> = {};
   for (const prop of symbol.props) {
-    props[prop.name] = prop.literal.value;
+    Object.defineProperty(props, prop.name, { value: prop.literal.value, enumerable: true, writable: true, configurable: true });
   }
   const node: DesignDocNode = { tag: symbol.name, props };
   const texts = symbol.texts.map((entry) => entry.value).join("");
