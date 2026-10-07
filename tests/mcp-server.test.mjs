@@ -210,6 +210,9 @@ test("every call is authorized: unknown, workspace and unimplemented tools; payl
     const { token } = (await owner("POST", "/api/agents/create", { name: "Agent" })).json;
     await owner("POST", "/api/projects/create", { name: "p" });
     assert.match(text(await tool(token, "rm_rf", {})), /Not allowed: unknown tool/u);
+    // An agent connected while the project is open may use it at once.
+    const { token: later } = (await owner("POST", "/api/agents/create", { name: "Later" })).json;
+    assert.equal((await tool(later, "get_basic_info", {})).isError, undefined);
     assert.match(text(await tool(token, "open_file", { path: "/etc/passwd" })), /Not allowed: open_file acts on the workspace/u);
     assert.match(text(await tool(token, "create_file", {})), /Not allowed/u);
     assert.match(text(await tool(token, "get_screenshot", {})), /does not implement get_screenshot/u, "a Paper tool Lilac lacks is authorized, then reported");

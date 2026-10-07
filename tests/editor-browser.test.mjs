@@ -465,3 +465,76 @@ test("a refused event stream is retried with backoff, not in a loop, and resumes
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("an agent's MCP changes appear live, ask the person before deleting, and can be reverted", browserTestOptions(), async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-agent-")));
+  const host = await startStudioHost({ projectsRoot: root, now });
+  const editor = await openEditor(host);
+  try {
+    const { page } = editor;
+    await page.locator("#new-project-name").fill("shared");
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => document.getElementById("project-name").textContent === "shared");
+    await waitRevision(page, 0);
+
+    // The person connects an agent in the editor; the credential is shown once.
+    await page.locator("#action-agents").click();
+    await page.locator("#agent-name").fill("Claude Code");
+    await page.keyboard.press("Enter");
+    const token = await page.locator("#agent-credential").inputValue();
+    assert.match(token, /^lilac_agent_/u);
+    assert.equal(await page.locator("#dialog[open] pre.setup").last().textContent(), host.mcpUrl);
+    await page.locator("#dialog[open] button.primary").click();
+
+    let id = 0;
+    const tool = (name, args) => fetch(host.mcpUrl, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method: "tools/call", params: { name, arguments: args } }),
+    }).then((response) => response.json()).then((answer) => answer.result);
+
+    // Agent edits appear on the canvas and in the tree as they are committed.
+    const frameId = (await tool("create_artboard", { name: "Landing", width: 640, height: 400 })).structuredContent.nodeId;
+    await waitRevision(page, 1);
+    assert.equal(await page.locator(`#layer-${frameId} .label`).textContent(), "Landing");
+    assert.equal(await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`)?.style.width, frameId), "640px");
+    await tool("update_styles", { updates: [{ nodeId: frameId, styles: { background: "#123456" } }] });
+    await waitRevision(page, 2);
+    assert.equal(await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`).style.background, frameId), "rgb(18, 52, 86)");
+    // The history attributes the changes to the agent, by name, with its tool.
+    const latest = page.locator("#history li").first();
+    assert.equal(await latest.getAttribute("class"), "agent");
+    assert.equal(await latest.locator(".who").textContent(), "Claude Code · agent · update_styles · revision 2");
+    // The agent sees the person's selection.
+    await page.locator(`#layer-${frameId}`).click();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.deepEqual((await tool("get_selection", {})).structuredContent.nodes.map((node) => node.id), [frameId]);
+
+    // Deleting asks the person in the editor; declining leaves the layer.
+    const declined = tool("delete_nodes", { nodeIds: [frameId] });
+    await page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Claude Code asks for your approval");
+    assert.match(await page.locator("#dialog[open] .request").textContent(), /^Delete 1 layer: Landing$/u);
+    await page.locator("#dialog[open] button", { hasText: "Decline" }).click();
+    assert.match((await declined).content[0].text, /declined/u);
+    assert.equal(await layerCount(page), 1);
+    // Approving lets it through; the canvas drops the layer.
+    const approved = tool("delete_nodes", { nodeIds: [frameId] });
+    // (The new request may arrive before the decline's answer; its dialog must stay open.)
+    await page.locator("#dialog[open] button:not([disabled])", { hasText: "Approve" }).click();
+    assert.equal((await approved).isError, undefined);
+    await waitRevision(page, 3);
+    assert.equal(await layerCount(page), 0);
+    // The person reverts the agent's delete from the history: the layer is back.
+    await page.locator("#history li").first().locator("button.revert").click();
+    await waitRevision(page, 4);
+    assert.equal(await layerCount(page), 1);
+    assert.equal((await historyIntents(page))[0], "Revert: Delete layer");
+    assert.match(await page.locator("#history li").first().locator(".who").textContent(), /^You /u);
+    assert.deepEqual(editor.foreign, []);
+    assert.deepEqual(editor.errors, []);
+  } finally {
+    await editor.close();
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

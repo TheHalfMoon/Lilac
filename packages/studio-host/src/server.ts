@@ -198,7 +198,12 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       return { selected: selection.length };
     },
     "GET /api/agents": () => ({ agents: agents.list(), mcpUrl: `http://${LOOPBACK}:${port}/mcp` }),
-    "POST /api/agents/create": (body) => ({ ...agents.create(body?.name, now()), mcpUrl: `http://${LOOPBACK}:${port}/mcp` }),
+    "POST /api/agents/create": (body) => {
+      const created = agents.create(body?.name, now());
+      // The open project grants the new agent at once.
+      session?.setAgentGrants(agents.grants());
+      return { ...created, mcpUrl: `http://${LOOPBACK}:${port}/mcp` };
+    },
     "POST /api/agents/revoke": (body) => {
       agents.revoke(body?.agentId);
       session?.setAgentGrants(agents.grants());

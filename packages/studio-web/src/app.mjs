@@ -280,17 +280,23 @@ function showConfirmations(pending) {
   confirming = next.id;
   showDialog(`${next.agentName} asks for your approval`, (close) => {
     const error = el("p", { class: "error", role: "alert" });
+    // Close only this request's dialog: by the time the decision is answered, the dialog may
+    // already show the next request.
+    const finish = () => {
+      if (confirming !== next.id) return;
+      confirming = null;
+      close();
+      showConfirmations(state.confirmations);
+    };
     const decide = async (approve) => {
+      for (const button of $("dialog").querySelectorAll("button")) button.disabled = true;
       try {
         await state.client.post("/api/confirmations/decide", { id: next.id, approve });
-        confirming = null;
-        close();
         setStatus(approve ? `Approved: ${next.summary}.` : `Declined: ${next.summary}.`);
       } catch (failure) {
-        confirming = null;
-        close();
         if (!handleSessionEnded(failure)) setStatus(describeError(failure));
       }
+      finish();
     };
     return [
       el("p", {}, `The agent ${next.agentName} wants to make a change that needs your approval:`),

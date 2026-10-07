@@ -28,8 +28,9 @@ const distributedOrPermissive = (entry) => PERMISSIVE.has(entry.license) || (NOT
 // not incorporated at all (the upstream of an upstream; an optional local dev tool).
 const URL_ALIASES = { "inikulin/parse5": "parse5", "fb55/entities": "entities", "microsoft/playwright": "playwright-core" };
 const URL_NOT_INCORPORATED = new Set(["ehmo/platform-design-skills", "trailhq/Graft", "owner/repo"]); // owner/repo: the placeholder in docs
-// owner/name literals that are not upstream projects: rule ids, MIME types, and Lilac paths.
-const NOT_DONORS = /^(a11y|lilac-mobile-method|application|text|packages|internal|LilacImportStack)\//u;
+// owner/name literals that are not upstream projects: rule ids, MIME types, Lilac paths, and
+// MCP JSON-RPC method names (tools/list).
+const NOT_DONORS = /^(a11y|lilac-mobile-method|application|text|packages|internal|LilacImportStack|tools|notifications|resources|prompts|completion|logging|sampling|roots)\//u;
 const PATH_LIKE = /\.(ts|mts|mjs|js|cjs|json|md|ya?ml|tsx|jsx|css|html?|txt|svg|png|go|py|rs|toml|lock|sh)$/iu;
 
 test("every entry is well formed and ids are unique", () => {
