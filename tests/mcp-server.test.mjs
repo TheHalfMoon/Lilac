@@ -1,15 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { PAPER_MCP_TOOL_NAMES, classifyPaperTool, validateMCPServerConfig, validateMCPToolDefinition } from "../packages/mcp-protocol/src/index.mjs";
-import { assertLoopbackUrl, discoverMcpUrl, mcpToolDefinitions, startStudioHost } from "../packages/studio-host/src/index.ts";
+import { mcpToolDefinitions, startStudioHost } from "../packages/studio-host/src/index.ts";
 
 // PC5 (#146, #82): Lilac's MCP server in the studio host. Agents connected by the person,
-// the MCP protocol over loopback HTTP and the stdio relay, authorization of every call
+// the MCP protocol over loopback HTTP, authorization of every call
 // through requireMCPToolCall, attribution of every agent edit, and the person's
 // confirmation for consequential tools. Closes PC gate 7 with gate 8's live canvas test.
 
@@ -271,46 +270,6 @@ test("consequential calls wait for the person's decision, bound to the exact cal
   }, { confirmationWaitMs: 300 });
 });
 
-test("the stdio relay forwards a stdio MCP client to the running host, and only on loopback", async () => {
-  for (const bad of ["http://example.com/mcp", "https://127.0.0.1:1/mcp", "http://127.0.0.1:1/other", "http://user:pw@127.0.0.1:1/mcp", "http://10.0.0.1:1/mcp", "file:///mcp"]) {
-    assert.throws(() => assertLoopbackUrl(bad), /only connects/u, bad);
-  }
-  assert.equal(assertLoopbackUrl("http://localhost:4123/mcp"), "http://localhost:4123/mcp");
-  await withStudio(async ({ root, owner }) => {
-    const { token } = (await owner("POST", "/api/agents/create", { name: "Relay agent" })).json;
-    await owner("POST", "/api/projects/create", { name: "relay" });
-    const child = spawn(process.execPath, ["scripts/lilac-mcp.mjs", "--projects", root], { env: { ...process.env, LILAC_MCP_TOKEN: token }, stdio: ["pipe", "pipe", "pipe"] });
-    let out = "";
-    child.stdout.on("data", (chunk) => {
-      out += chunk;
-    });
-    const lines = [
-      { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "stdio-test" } } },
-      { jsonrpc: "2.0", method: "notifications/initialized" },
-      { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "create_artboard", arguments: { name: "From stdio", width: 320, height: 200 } } },
-    ];
-    for (const line of lines) child.stdin.write(`${JSON.stringify(line)}\n`);
-    child.stdin.write("not json\n");
-    child.stdin.end();
-    const code = await new Promise((resolve) => child.on("close", resolve));
-    assert.equal(code, 0);
-    const answers = out.trim().split("\n").map((line) => JSON.parse(line));
-    assert.equal(answers.length, 3, "two answers and a parse error; the notification has none");
-    const byId = Object.fromEntries(answers.filter((answer) => answer.id !== null).map((answer) => [answer.id, answer]));
-    assert.equal(byId[1].result.serverInfo.name, "lilac");
-    assert.equal(byId[2].result.structuredContent.revision, 1);
-    assert.equal(answers.find((answer) => answer.id === null).error.code, -32700);
-    // Without a credential, the relay refuses to start.
-    const bare = spawn(process.execPath, ["scripts/lilac-mcp.mjs", "--projects", root], { env: { ...process.env, LILAC_MCP_TOKEN: "" } });
-    let err = "";
-    bare.stderr.on("data", (chunk) => {
-      err += chunk;
-    });
-    assert.equal(await new Promise((resolve) => bare.on("close", resolve)), 2);
-    assert.match(err, /LILAC_MCP_TOKEN/u);
-  });
-});
-
 test("results and work stay bounded: tree summaries, duplicates, and waiting approvals", async () => {
   await withStudio(async ({ owner, tool, host }) => {
     const { token } = (await owner("POST", "/api/agents/create", { name: "Agent" })).json;
@@ -382,7 +341,7 @@ test("approvals: one serves every identical waiting call; caps, revocation and r
   }, { confirmationWaitMs: 5_000 });
 });
 
-test("a damaged registry or a stale discovery file fails closed", async () => {
+test("a damaged registry fails closed without stopping Lilac; the discovery file goes on close", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-mcp-files-")));
   try {
     writeFileSync(join(root, ".lilac-agents.json"), "{ not json", { mode: 0o600 });
@@ -392,14 +351,10 @@ test("a damaged registry or a stale discovery file fails closed", async () => {
       assert.deepEqual(listing.agents, []);
       assert.match(listing.problem, /not valid JSON/u);
       assert.ok(readdirSync(root).some((name) => name.startsWith(".lilac-agents.json.unreadable-")), "the damaged file is set aside");
-      assert.equal(discoverMcpUrl(root), host.mcpUrl);
     } finally {
       await host.close();
     }
     assert.equal(existsSync(join(root, ".lilac-studio.json")), false, "the discovery file is removed on close");
-    // A discovery file left by a Lilac that is no longer running is not followed.
-    writeFileSync(join(root, ".lilac-studio.json"), JSON.stringify({ version: 1, url: "http://127.0.0.1:9", mcpUrl: "http://127.0.0.1:9/mcp", pid: 2 ** 22 + 4321, nonce: "x" }), { mode: 0o600 });
-    assert.throws(() => discoverMcpUrl(root), /not running/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
