@@ -85,9 +85,9 @@ store.manifest.journalGenesis; // "lilac-journal-genesis"
 
 - **Verify first.** The whole legacy project is verified under its own writer lock before anything is created. That covers its manifest, snapshot, document, the full journal chain, replay, and every object against its hash.
 - **Refusals create nothing.** A legacy project that is newer, damaged or still locked by the earlier release is refused, and nothing is created.
-- **All or nothing.** The new directory is assembled beside the project and renamed into place, so a crash leaves either no `.ninerr` or a complete one. A leftover `.ninerr.tmp-*` directory is not a project, and migration can simply run again.
+- **All or nothing.** The new directory is assembled beside the project, verified as a project itself, and renamed into place, so a crash leaves either no `.ninerr` or a complete one. A leftover `.ninerr.tmp-*` directory is not a project, and migration can simply run again.
 - **Exact copy.**
-  - The journal, snapshot and objects are copied byte for byte.
+  - The journal and the objects are copied byte for byte, and the snapshot reference is written as the same canonical JSON.
   - The manifest becomes schema 2 in the Ninerr format and records the legacy genesis domain.
   - A torn journal tail is carried over and recovered by the first open, as usual.
 - **Deterministic.** The same legacy project always produces the same `.ninerr` bytes.
@@ -95,7 +95,9 @@ store.manifest.journalGenesis; // "lilac-journal-genesis"
   - Changes made in Ninerr afterwards are not written back to it.
   - Once `.ninerr` exists, it is the project and the legacy directory is ignored.
 
-The studio host does this automatically. A legacy project is listed with the others and migrated the first time it is opened, and the editor says so.
+The studio host does this automatically. A legacy project is listed with the others and migrated the first time it is opened, and the editor says so. A legacy project that is still locked is not taken over: the editor says to close it in the earlier release, or, if that release crashed, to remove the legacy lock file.
+
+A legacy project on read-only storage cannot be migrated, because its lock cannot be taken. The failure is reported as an error; copy the project to writable storage first.
 
 ## Host migration steps
 
