@@ -32,3 +32,16 @@ Issue: #190 (N0 umbrella). Builds on N0-G2b, the Ninerr project format.
 
 - **Ninerr changes are not written back.** After migration, the earlier release still opens the legacy directory, but changes made in Ninerr are not written back to it. Once `.ninerr` exists, it is the project.
 - **Leftover staging directories are not cleaned up.** A crash during migration can leave a `.ninerr.tmp-*` directory, as an interrupted `createProject` can. Neither is removed automatically.
+
+## Review delta 1
+
+The full ps-review panel found one host must-fix in this grain. A locked legacy project returned `project-locked`, so the editor offered a takeover that could never work, because migration never overrides a legacy lock.
+- It now returns `409 legacy-project-locked` with what to do: close the project in the earlier release, or, if that release crashed, remove its `.lilac/lock`. The editor shows that message instead of the takeover dialog.
+- This is tested both with and without `breakStaleLock`. Nothing is created and the legacy lock is left in place.
+
+Also taken from the panel's worth-considering items:
+- **Object fan-out entries.** A two-hex entry under the legacy `objects/` that is not a real directory is corruption. Before, it was skipped and its objects silently left behind (tested).
+- **Staging is verified before the rename.** The staging copy is checked as a project (`readVerifiedProject`), so an incomplete copy can never become `.ninerr`.
+- **Rename failures.** A rename that fails because `.ninerr` appeared meanwhile is reported as "already exists". Windows reports it as `EPERM`.
+- **Concurrent hosts.** When another host migrated the project meanwhile, the studio host opens it.
+- **Documentation.** `docs/MIGRATION.md` now says the snapshot reference is rewritten as the same canonical JSON, not copied byte for byte. It also states the read-only-storage residual.

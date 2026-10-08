@@ -31,11 +31,6 @@ export function resolveProjectsFolder(chosen?: string): { path: string; note: st
   return { path: resolve(folder), note: null };
 }
 
-/** The projects folder's path; see `resolveProjectsFolder`. */
-export function projectsFolder(chosen?: string): string {
-  return resolveProjectsFolder(chosen).path;
-}
-
 /**
  * Make sure the projects folder exists. A folder Ninerr creates is this user's alone. An
  * existing one is left as it is (it may be shared on purpose); the note says when other

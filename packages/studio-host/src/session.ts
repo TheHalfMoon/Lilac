@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { LocalCollaborationRoom, createAccessPolicy, createCollaborationState } from "@lilac/collaboration";
 import { createDocument } from "@lilac/document-model";
 import { createHistoryState } from "@lilac/history";
-import { PROJECT_FILES, createProject, migrateLegacyProject, openProject, projectLayout, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
+import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, createProject, migrateLegacyProject, openProject, projectLayout, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
 import { StudioError } from "./errors.ts";
 
 /** Who is acting. People act through the editor; agents act through MCP (PC5). */
@@ -132,7 +132,7 @@ export class StudioSession {
     try {
       // A project from before the rename is migrated into the Ninerr format first; its
       // original directory is left unchanged next to the new one (persistence, N0-G2).
-      const legacy = projectLayout(root) === "legacy" ? migrateLegacyProject(root, { owner: input.owner.actorId, at }) : null;
+      const legacy = projectLayout(root) === "legacy" ? migrateLegacy(root, name, input.owner.actorId, at) : null;
       const store = openProject(root, { owner: input.owner.actorId, at, ...(input.breakStaleLock ? { breakStaleLock: input.breakStaleLock } : {}) });
       return new StudioSession(name, store, input.owner, input.now, legacy?.migratedFrom ?? null);
     } catch (error) {
@@ -446,6 +446,24 @@ function asEditError(error: unknown, conflictCode?: string): Error {
   if (CLIENT_ERRORS.has(name)) return conflictCode ? new StudioError(409, conflictCode, `the change can no longer be applied: ${message}`) : new StudioError(400, "invalid-edit", message);
   if (error instanceof RangeError) return new StudioError(400, "invalid-edit", "the edit is too deeply nested");
   return error instanceof Error ? error : new Error("edit failed");
+}
+
+/**
+ * Migrate a legacy project before it is opened. A legacy lock is never overridden: it means
+ * the earlier release has the project open, or crashed while it did, so the person is told
+ * that rather than offered a takeover. When another host migrated it meanwhile, it is opened.
+ */
+function migrateLegacy(root: string, name: string, owner: string, at: string): ReturnType<typeof migrateLegacyProject> | null {
+  try {
+    return migrateLegacyProject(root, { owner, at });
+  } catch (error) {
+    const kind = error instanceof Error ? error.name : "";
+    if (kind === "PersistenceLockError") {
+      throw new StudioError(409, "legacy-project-locked", `${name} was made before the rename to Ninerr and is open in the earlier release. Close it there and open it here again. If the earlier release is not running, its lock was left by a crash: remove ${name}/${LEGACY_PROJECT_DIRECTORY}/${PROJECT_FILES.lock} and open it again.`);
+    }
+    if (kind === "PersistenceValidationError" && /Ninerr project already exists/u.test(error instanceof Error ? error.message : "")) return null;
+    throw error;
+  }
 }
 
 function asOpenError(error: unknown, name: string): Error {

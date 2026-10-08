@@ -58,6 +58,19 @@ test("a damaged legacy agent registry fails closed and is not moved", () => with
   assert.deepEqual(readdirSync(root).sort(), [".lilac-agents.json"], "nothing is set aside or created");
 }));
 
+test("a credential revoked in Ninerr never comes back from the legacy registry, even after the Ninerr registry is damaged", () => withRoot((root) => {
+  writeOwnerOnly(join(root, ".lilac-agents.json"), `${JSON.stringify({ version: 1, agents: [LEGACY_AGENT] }, null, 2)}\n`);
+  new AgentRegistry(root, owner).revoke(LEGACY_AGENT.agentId);
+  writeOwnerOnly(join(root, ".ninerr-agents.json"), "{ damaged");
+  const damaged = new AgentRegistry(root, owner);
+  assert.match(damaged.problem ?? "", /not valid JSON/u);
+  assert.equal(damaged.authenticate(LEGACY_TOKEN), null);
+  assert.deepEqual(JSON.parse(readFileSync(join(root, ".ninerr-agents.json"), "utf8")).agents, [], "the set-aside registry is replaced by an empty one");
+  for (const launch of [1, 2]) assert.equal(new AgentRegistry(root, owner).authenticate(LEGACY_TOKEN), null, `launch ${launch}: the legacy registry is not imported again`);
+  rmSync(join(root, ".ninerr-agents.json"));
+  assert.equal(new AgentRegistry(root, owner).authenticate(LEGACY_TOKEN), null, "not even when the Ninerr registry is gone, while the set-aside copy is kept");
+}));
+
 test("legacy codebase links are read until the first change, which saves the Ninerr file", () => withRoot((root) => {
   const legacyText = `${JSON.stringify({ version: 1, links: { site: "/home/someone/site" } }, null, 2)}\n`;
   writeOwnerOnly(join(root, ".lilac-codebases.json"), legacyText);
@@ -97,6 +110,28 @@ test("the projects folder: explicit, then NINERR_PROJECTS, then LILAC_PROJECTS, 
     set(saved);
   }
 }));
+
+test("a legacy project still locked by the earlier release is not taken over, and the person is told what to do", async () => {
+  const root = scratch();
+  cpSync(LEGACY_PROJECT, join(root, "old"), { recursive: true });
+  writeFileSync(join(root, "old", ".lilac", "lock"), JSON.stringify({ owner: "lilac-app", pid: 2 ** 22 + 4321, at: AT, nonce: "n" }));
+  const host = await startStudioHost({ projectsRoot: root, now: () => AT });
+  try {
+    for (const body of [{ name: "old" }, { name: "old", breakStaleLock: { reason: "it crashed" } }]) {
+      const response = await fetch(`${host.url}/api/projects/open`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+      const json = await response.json();
+      assert.equal(response.status, 409);
+      assert.equal(json.error.code, "legacy-project-locked", "not the takeover dialog's code");
+      assert.match(json.error.message, /open in the earlier release. Close it there/u);
+      assert.match(json.error.message, /remove old\/\.lilac\/lock/u);
+    }
+    assert.equal(existsSync(join(root, "old", ".ninerr")), false, "nothing is created");
+    assert.ok(existsSync(join(root, "old", ".lilac", "lock")), "the legacy lock is left in place");
+  } finally {
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("the studio host lists a legacy project and opens it by migrating it, leaving the original unchanged", async () => {
   const root = scratch();
