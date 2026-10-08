@@ -5,7 +5,9 @@
 //
 // with the environment variable LILAC_MCP_TOKEN set to the agent credential Lilac showed
 // when you connected the agent. `--url http://127.0.0.1:<port>/mcp` may be given instead of
-// --projects. The relay forwards to the running Lilac on this computer only.
+// --projects. Without either, the projects folder is found as the app finds it. The relay
+// forwards to the running Lilac on this computer only.
+import { resolveProjectsFolder } from "../packages/studio-host/src/projects-folder.ts";
 import { discoverMcpUrl, runRelay } from "../packages/studio-host/src/relay.ts";
 
 function fail(message) {
@@ -23,10 +25,12 @@ if (typeof token !== "string" || token === "") fail("set LILAC_MCP_TOKEN to the 
 let mcpUrl;
 try {
   const url = option("--url");
-  const projects = option("--projects") ?? process.env.LILAC_PROJECTS;
   if (url !== undefined) mcpUrl = url;
-  else if (projects !== undefined) mcpUrl = discoverMcpUrl(projects);
-  else fail("give --projects <folder> or --url <Lilac MCP URL>");
+  else {
+    const { path, note } = resolveProjectsFolder(option("--projects"));
+    if (note !== null) process.stderr.write(`lilac-mcp: note: ${note}\n`);
+    mcpUrl = discoverMcpUrl(path);
+  }
   await runRelay({ mcpUrl, token, input: process.stdin, output: process.stdout });
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));

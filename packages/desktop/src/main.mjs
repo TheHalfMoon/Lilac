@@ -6,7 +6,7 @@
 // but the host, or be granted any permission.
 import { BrowserWindow, Menu, app, dialog, session } from "electron";
 import { fileURLToPath } from "node:url";
-import { prepareProjectsFolder, projectsFolder, startStudioHost } from "../../studio-host/src/index.ts";
+import { prepareProjectsFolder, resolveProjectsFolder, startStudioHost } from "../../studio-host/src/index.ts";
 import { editorOrigin, mayNavigate, mayRequest, windowPreferences } from "./policy.mjs";
 
 const PRELOAD = fileURLToPath(new URL("./preload.cjs", import.meta.url));
@@ -145,7 +145,8 @@ async function start() {
   await app.whenReady();
   // Said once, so a log shows which kind of run this is.
   process.stderr.write(`lilac: desktop app (${PACKAGED ? "packaged" : "development"}), Electron ${process.versions.electron}\n`);
-  const projectsRoot = projectsFolder();
+  const { path: projectsRoot, note: folderNote } = resolveProjectsFolder();
+  if (folderNote !== null) process.stderr.write(`lilac: note: ${folderNote}\n`);
   try {
     prepareProjectsFolder(projectsRoot);
     host = await startStudioHost({ projectsRoot, port: 0 });

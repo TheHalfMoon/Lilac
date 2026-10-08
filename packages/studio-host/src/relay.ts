@@ -24,7 +24,7 @@ export interface RelayOptions {
 
 /** The MCP endpoint of the host running for `projectsRoot`, from its discovery file. */
 export function discoverMcpUrl(projectsRoot: string): string {
-  const path = join(projectsRoot, ".lilac-studio.json");
+  const path = join(projectsRoot, ".ninerr-studio.json");
   let info: any;
   try {
     const entry = lstatSync(path);

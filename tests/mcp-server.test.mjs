@@ -48,10 +48,10 @@ test("the person connects agents; only an agent credential reaches MCP, and none
     assert.equal(created.status, 200);
     const { agent, token, mcpUrl } = created.json;
     assert.equal(mcpUrl, host.mcpUrl);
-    assert.match(token, /^lilac_agent_[A-Za-z0-9_-]{43}$/u);
+    assert.match(token, /^ninerr_agent_[A-Za-z0-9_-]{43}$/u);
     assert.deepEqual((await owner("GET", "/api/agents")).json.agents, [agent], "the listing never includes the credential");
     // The registry holds only a hash, with owner-only permissions.
-    const registry = join(root, ".lilac-agents.json");
+    const registry = join(root, ".ninerr-agents.json");
     assert.equal(statSync(registry).mode & 0o777, 0o600);
     assert.ok(!readFileSync(registry, "utf8").includes(token));
     // MCP: no credential, the editor's token, a wrong credential, or a GET are refused.
@@ -62,9 +62,9 @@ test("the person connects agents; only an agent credential reaches MCP, and none
     assert.equal((await fetch(host.mcpUrl, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", origin: "http://evil.test" }, body: "{}" })).status, 403, "a foreign origin is refused");
     assert.equal((await mcp(token, "ping")).json.result !== undefined, true);
     // The discovery file tells relays where the host is, and holds no credential.
-    const discovery = JSON.parse(readFileSync(join(root, ".lilac-studio.json"), "utf8"));
+    const discovery = JSON.parse(readFileSync(join(root, ".ninerr-studio.json"), "utf8"));
     assert.equal(discovery.mcpUrl, host.mcpUrl);
-    assert.equal(statSync(join(root, ".lilac-studio.json")).mode & 0o777, 0o600);
+    assert.equal(statSync(join(root, ".ninerr-studio.json")).mode & 0o777, 0o600);
     // A restarted host keeps the agent (the hash is persisted) under a new endpoint.
     await host.close();
     const again = await startStudioHost({ projectsRoot: root, now });
@@ -344,13 +344,13 @@ test("approvals: one serves every identical waiting call; caps, revocation and r
 test("a damaged registry fails closed without stopping Lilac; the discovery file goes on close", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-mcp-files-")));
   try {
-    writeFileSync(join(root, ".lilac-agents.json"), "{ not json", { mode: 0o600 });
+    writeFileSync(join(root, ".ninerr-agents.json"), "{ not json", { mode: 0o600 });
     const host = await startStudioHost({ projectsRoot: root, now });
     try {
       const listing = await fetch(`${host.url}/api/agents`, { headers: { authorization: `Bearer ${host.token}` } }).then((response) => response.json());
       assert.deepEqual(listing.agents, []);
       assert.match(listing.problem, /not valid JSON/u);
-      assert.ok(readdirSync(root).some((name) => name.startsWith(".lilac-agents.json.unreadable-")), "the damaged file is set aside");
+      assert.ok(readdirSync(root).some((name) => name.startsWith(".ninerr-agents.json.unreadable-")), "the damaged file is set aside");
       // Connecting an agent writes a fresh registry, and the problem is no longer reported.
       await fetch(`${host.url}/api/agents/create`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify({ name: "Fresh" }) });
       const after = await fetch(`${host.url}/api/agents`, { headers: { authorization: `Bearer ${host.token}` } }).then((response) => response.json());
@@ -359,7 +359,7 @@ test("a damaged registry fails closed without stopping Lilac; the discovery file
     } finally {
       await host.close();
     }
-    assert.equal(existsSync(join(root, ".lilac-studio.json")), false, "the discovery file is removed on close");
+    assert.equal(existsSync(join(root, ".ninerr-studio.json")), false, "the discovery file is removed on close");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

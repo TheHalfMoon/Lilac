@@ -56,11 +56,11 @@ test("the network trap refuses connections off this computer and allows loopback
 
 test("one command serves Lilac on this computer only, with single-use links, and stops cleanly", browserTestOptions(), async () => {
   const projects = realpathSync(mkdtempSync(join(tmpdir(), "lilac-web-")));
-  const lilac = await startLilac(join(projects, "Lilac Projects"));
+  const lilac = await startLilac(join(projects, "Ninerr Projects"));
   const browser = await browse();
   try {
     assert.match(lilac.output.stdout, /^Lilac is running on this computer only/mu);
-    assert.match(lilac.output.stdout, /^Projects folder: .*Lilac Projects$/mu);
+    assert.match(lilac.output.stdout, /^Projects folder: .*Ninerr Projects$/mu);
     const url = new URL(lilac.first);
     assert.equal(url.hostname, "127.0.0.1");
     // Not reachable on any other address of this computer.
@@ -96,7 +96,7 @@ test("one command serves Lilac on this computer only, with single-use links, and
     await browser.close();
     assert.equal(await lilac.stop(), 0, "Ctrl+C or SIGTERM stops Lilac cleanly");
     assert.match(lilac.output.stdout, /Stopping Lilac\./u);
-    assert.equal(existsSync(join(projects, "Lilac Projects", ".lilac-studio.json")), false);
+    assert.equal(existsSync(join(projects, "Ninerr Projects", ".ninerr-studio.json")), false);
     assert.deepEqual(attemptsIn(lilac.output.stderr), [], "Lilac never tried to reach the network");
     rmSync(projects, { recursive: true, force: true });
   }

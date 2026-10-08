@@ -86,7 +86,7 @@ export async function preparePackage(archive) {
       APPDATA: join(home, "AppData", "Roaming"),
       LOCALAPPDATA: join(home, "AppData", "Local"),
       XDG_CONFIG_HOME: join(home, ".config"),
-      LILAC_PROJECTS: projects,
+      NINERR_PROJECTS: projects,
       HTTPS_PROXY: "",
       HTTP_PROXY: "",
       https_proxy: "",

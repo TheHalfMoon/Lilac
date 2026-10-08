@@ -2,16 +2,18 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { chmodSync, closeSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { StudioError } from "./errors.ts";
+import { LEGACY_AGENT_REGISTRY_FILE, LEGACY_AGENT_TOKEN_PREFIX, registrySource } from "./legacy.ts";
 import type { StudioActor } from "./session.ts";
 
-// Agents the person has connected to Lilac. Each gets its own credential, shown once when
-// it is created; only the credential's sha256 is stored, in `<projectsRoot>/.lilac-agents.json`
+// Agents the person has connected to Ninerr. Each gets its own credential, shown once when
+// it is created; only the credential's sha256 is stored, in `<projectsRoot>/.ninerr-agents.json`
 // (owner-only permissions), so a connected MCP client keeps working across launches and a
 // leaked registry reveals no credential. An agent acts as itself (kind "agent"), owned by
 // the person who connected it; revoking it takes effect immediately.
 
 export const AGENT_CAPABILITIES = Object.freeze(["read", "document-write", "comments"]);
-const REGISTRY_FILE = ".lilac-agents.json";
+const REGISTRY_FILE = ".ninerr-agents.json";
+const TOKEN_PREFIX = "ninerr_agent_";
 const MAX_AGENTS = 32;
 const NAME = /^[\p{L}\p{N} ._()-]{1,60}$/u;
 
@@ -37,7 +39,7 @@ export class AgentRegistry {
 
   #problem: string | null;
 
-  /** Why the registry could not be read (Lilac started with no agents), until it is saved again. */
+  /** Why the registry could not be read (Ninerr started with no agents), until it is saved again. */
   get problem(): string | null {
     return this.#problem;
   }
@@ -45,22 +47,35 @@ export class AgentRegistry {
   constructor(projectsRoot: string, owner: StudioActor) {
     this.#path = join(projectsRoot, REGISTRY_FILE);
     this.#owner = owner;
+    // The registry from before the rename (legacy.ts) is read when there is no Ninerr
+    // registry yet, saved under the Ninerr name, and itself never changed.
+    const source = registrySource(projectsRoot, REGISTRY_FILE, LEGACY_AGENT_REGISTRY_FILE);
     let agents: AgentRecord[] = [];
     let problem: string | null = null;
     try {
-      agents = readRegistry(this.#path);
+      agents = readRegistry(source.path);
     } catch (error) {
-      // A damaged registry must not stop Lilac: it is set aside (kept for inspection) and
+      // A damaged registry must not stop Ninerr: it is set aside (kept for inspection) and
       // every agent has to be connected again. Failing closed means no agent gets access.
+      // A damaged legacy registry is only ignored; it is not ours to move.
       problem = error instanceof StudioError ? error.message : "the agent registry could not be read";
-      try {
-        renameSync(this.#path, `${this.#path}.unreadable-${Date.now()}`);
-      } catch {
-        // left in place; it is ignored until replaced by the next save
+      if (!source.legacy) {
+        try {
+          renameSync(this.#path, `${this.#path}.unreadable-${Date.now()}`);
+        } catch {
+          // left in place; it is ignored until replaced by the next save
+        }
       }
     }
     this.#agents = agents;
     this.#problem = problem;
+    if (source.legacy && problem === null) {
+      try {
+        this.#save(agents);
+      } catch {
+        // The agents still work from memory; the next change saves the Ninerr registry.
+      }
+    }
   }
 
   list(): AgentSummary[] {
@@ -73,7 +88,7 @@ export class AgentRegistry {
       throw new StudioError(400, "invalid-agent-name", "an agent name is 1-60 letters, digits, spaces, dots, dashes, underscores or parentheses");
     }
     if (this.#agents.length >= MAX_AGENTS) throw new StudioError(409, "too-many-agents", `at most ${MAX_AGENTS} agents may be connected`);
-    const token = `lilac_agent_${randomBytes(32).toString("base64url")}`;
+    const token = `${TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
     const record: AgentRecord = { agentId: `agent-${randomUUID()}`, displayName: displayName.trim(), tokenSha256: digest(token).toString("hex"), createdAt: at };
     this.#save([...this.#agents, record]);
     return { agent: { agentId: record.agentId, displayName: record.displayName, createdAt: at }, token };
@@ -87,7 +102,7 @@ export class AgentRegistry {
 
   /** The agent a credential belongs to, as the actor it acts as; null when none matches. */
   authenticate(token: string): StudioActor | null {
-    if (!token.startsWith("lilac_agent_")) return null;
+    if (!token.startsWith(TOKEN_PREFIX) && !token.startsWith(LEGACY_AGENT_TOKEN_PREFIX)) return null;
     const presented = digest(token);
     let found: AgentRecord | null = null;
     // Compare against every record, so the time taken does not depend on which matched.

@@ -31,8 +31,8 @@ test("the links are kept owner-only, and a file others could change is not trust
     links.set("site", "/home/someone/site/src");
     assert.equal(new CodebaseLinks(root).get("site"), "/home/someone/site/src");
     if (typeof process.getuid === "function") {
-      assert.equal(statSync(join(root, ".lilac-codebases.json")).mode & 0o777, 0o600);
-      chmodSync(join(root, ".lilac-codebases.json"), 0o666);
+      assert.equal(statSync(join(root, ".ninerr-codebases.json")).mode & 0o777, 0o600);
+      chmodSync(join(root, ".ninerr-codebases.json"), 0o666);
       assert.equal(new CodebaseLinks(root).get("site"), null, "a links file others can write is ignored");
     }
     links.set("site", null);

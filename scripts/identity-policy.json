@@ -97,16 +97,6 @@
       "reason": "Docling is an optional, independently licensed local runtime that the import stack invokes; it is never distributed."
     },
     {
-      "id": "persisted-host-files",
-      "category": "PERSISTED_DATA",
-      "path": "^(packages/studio-host/src/(agents|codebase|relay|server|projects-folder)\\.ts|scripts/lilac\\.mjs)$",
-      "terms": [
-        "lilac"
-      ],
-      "line": "\\.lilac-|lilac_agent_|Lilac Projects|lilac-tmp",
-      "reason": "Registries, discovery file, credential prefix and projects-folder default written to the user's disk (N0-G2)."
-    },
-    {
       "id": "persisted-history-tools",
       "category": "PERSISTED_DATA",
       "path": "^packages/studio-host/src/(session|server)\\.ts$",
