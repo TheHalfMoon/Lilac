@@ -45,3 +45,11 @@ Also taken from the panel's worth-considering items:
 - **Rename failures.** A rename that fails because `.ninerr` appeared meanwhile is reported as "already exists". Windows reports it as `EPERM`.
 - **Concurrent hosts.** When another host migrated the project meanwhile, the studio host opens it.
 - **Documentation.** `docs/MIGRATION.md` now says the snapshot reference is rewritten as the same canonical JSON, not copied byte for byte. It also states the read-only-storage residual.
+
+## Review delta 2
+
+The delta re-review found no must-fix. Taken from it: `legacy-project-locked` now distinguishes a running lock holder from a stopped one.
+- **A running holder** can be the earlier release, or another Ninerr window migrating the project at that moment. The person is told to close it there or wait, and is never told to remove the lock.
+- **A stopped holder** gets the advice to remove the lock.
+
+Both cases are tested.

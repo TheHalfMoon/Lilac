@@ -8,14 +8,14 @@
     "ACTIVE_INTERNAL_IDENTITY": 347,
     "PUBLIC_API": 59,
     "PERSISTED_DATA": 8,
-    "LEGACY_COMPATIBILITY": 46,
+    "LEGACY_COMPATIBILITY": 47,
     "TEST_FIXTURE": 473,
     "THIRD_PARTY_INDEPENDENT_OBLIGATION": 198,
     "IMMUTABLE_HISTORICAL_FACT": 413,
     "REMOVE_ENTIRELY": 288
   },
   "byTerm": {
-    "lilac": 1589,
+    "lilac": 1590,
     "paper": 476,
     "firstmate": 29,
     "no-mistakes": 21,
@@ -39,7 +39,7 @@
     "donor-provenance-records": 308,
     "independent-runtime-docling": 93,
     "independent-runtime-impeccable": 82,
-    "legacy-identity-readers": 39,
+    "legacy-identity-readers": 40,
     "legacy-project-fixture": 7,
     "paper-recovery-evidence": 191,
     "paper-recovery-workflows": 97,
@@ -50,5 +50,5 @@
     "tests": 473,
     "third-party-notices": 23
   },
-  "censusSha256": "6f8e25158383cc12c2d06de30361c871386d377018b35542a736d1fc5ace3361"
+  "censusSha256": "a214c2a18588d331edd9cc6ce67423724876a5859118024f124d0b7aa2e2072f"
 }

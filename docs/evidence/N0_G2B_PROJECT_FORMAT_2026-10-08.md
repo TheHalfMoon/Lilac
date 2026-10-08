@@ -63,3 +63,9 @@ The full ps-review panel (correctness, parsimony, product and security) found no
 - **New tests:**
   - an in-place upgrade and a torn-tail repair are both written when the open succeeds;
   - the frozen corpus is pinned by a SHA-256 of all its bytes, not only its file names.
+
+## Review delta 2
+
+The delta re-review found no must-fix. Taken from it:
+- **Host steps are checked before the lock is taken.** A host step for a built-in version is now refused before the lock is acquired, overridden or cleaned. A refused call therefore changes nothing on disk. Tested with a stale lock, `breakStaleLock` and a leftover temporary.
+- **`genesisDigest` checks its domain at run time.** Types are stripped, and JavaScript callers are not type-checked.

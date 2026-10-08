@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { chmodSync, closeSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { StudioError } from "./errors.ts";
 import { LEGACY_AGENT_REGISTRY_FILE, LEGACY_AGENT_TOKEN_PREFIX, registrySource } from "./legacy.ts";
@@ -14,6 +14,8 @@ import type { StudioActor } from "./session.ts";
 export const AGENT_CAPABILITIES = Object.freeze(["read", "document-write", "comments"]);
 const REGISTRY_FILE = ".ninerr-agents.json";
 const TOKEN_PREFIX = "ninerr_agent_";
+/** Present once the legacy registry has been imported; it is never imported again. */
+const IMPORTED_MARKER = ".ninerr-agents.imported";
 const MAX_AGENTS = 32;
 const NAME = /^[\p{L}\p{N} ._()-]{1,60}$/u;
 
@@ -49,10 +51,16 @@ export class AgentRegistry {
     this.#owner = owner;
     // The registry from before the rename (legacy.ts) is read when there is no Ninerr
     // registry yet, saved under the Ninerr name, and itself never changed. It is imported at
-    // most once: never again after a damaged Ninerr registry was set aside, so a credential
-    // revoked in Ninerr cannot come back from the legacy file.
-    const setAside = readdirSync(projectsRoot).some((name) => name.startsWith(`${REGISTRY_FILE}.unreadable-`));
-    const source = setAside ? { path: this.#path, legacy: false } : registrySource(projectsRoot, REGISTRY_FILE, LEGACY_AGENT_REGISTRY_FILE);
+    // most once, so a credential revoked in Ninerr cannot come back from the legacy file: a
+    // marker records the import, and a set-aside damaged registry counts as one. A folder
+    // that cannot be listed counts as one too (fail closed).
+    let imported = true;
+    try {
+      imported = readdirSync(projectsRoot).some((name) => name === IMPORTED_MARKER || name.startsWith(`${REGISTRY_FILE}.unreadable-`));
+    } catch {
+      // stays true
+    }
+    const source = imported ? { path: this.#path, legacy: false } : registrySource(projectsRoot, REGISTRY_FILE, LEGACY_AGENT_REGISTRY_FILE);
     let agents: AgentRecord[] = [];
     let problem: string | null = null;
     try {
@@ -81,6 +89,11 @@ export class AgentRegistry {
       }
     }
     if (source.legacy && problem === null) {
+      try {
+        writeFileSync(join(projectsRoot, IMPORTED_MARKER), "The agent registry from before the rename was imported into .ninerr-agents.json.\n", { mode: 0o600, flag: "wx" });
+      } catch {
+        // already there
+      }
       try {
         this.#save(agents);
       } catch {
