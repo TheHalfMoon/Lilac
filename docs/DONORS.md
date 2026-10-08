@@ -20,10 +20,10 @@ This ledger tracks code, design, architecture, and behavior sources considered b
 - Rule: do not describe partial shipped-artifact recovery as a complete monorepo import, and do not represent public utility repositories as the complete Paper product source.
 - Public-repository boundary: Lilac records metadata, hashes, paths, and compatibility evidence publicly; raw proprietary recovered source remains outside the public repository unless public redistribution rights are separately established.
 
-Primary recovery evidence:
+Primary recovery evidence, retired from the tree in N0-G5 and pinned in `docs/provenance/RETIRED_PAPER_RECORDS.md`:
 
-- `docs/evidence/PAPER_PUBLIC_SHIPPED_RECOVERY_CENSUS_2026-10-01.md`
-- `docs/evidence/PAPER_DESKTOP_HISTORY_EXPANSION_2026-10-01.md`
+- `PAPER_PUBLIC_SHIPPED_RECOVERY_CENSUS_2026-10-01.md`
+- `PAPER_DESKTOP_HISTORY_EXPANSION_2026-10-01.md`
 
 ### Public Paper repositories observed
 

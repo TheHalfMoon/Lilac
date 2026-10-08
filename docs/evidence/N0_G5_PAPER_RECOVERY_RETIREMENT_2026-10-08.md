@@ -34,3 +34,13 @@ This part removes the three behaviour-evidence records:
 - `PAPER_LOCAL_RUNTIME_RECOVERY_2026-10-02.md`.
 
 In the same change, the provenance of `@ninerr/collaboration` and `@ninerr/import-stack` cites them through the retired record. The tests check, for each cited path, that the record pins a blob for it and that it is no longer in the tree.
+
+## N0-G5c
+This part removes the remaining eight dated Paper evidence records:
+- the deep, desktop and history recovery records;
+- the Linux CLI and public MCP configuration censuses;
+- the public shipped recovery census;
+- the local forensic closure;
+- the archive index.
+
+`docs/DONORS.md` cited two of them; it now names them as retired and points to the retired record. With this part, N0-G5 is complete: none of the eighteen files is in the tree, and the retired record pins every one.
