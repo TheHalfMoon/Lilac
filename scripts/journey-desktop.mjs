@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { preparePackage, waitForRevision } from "./desktop/drive.mjs";
+import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 const archive = process.argv[2] ? resolve(process.argv[2]) : null;
 if (archive === null || process.argv.length !== 3 || !existsSync(archive)) {
@@ -222,7 +223,7 @@ async function main() {
       return state;
     };
     const before = await snapshot();
-    step("7a closing Lilac quits it cleanly", (await lilac.quit()) === 0 && !existsSync(join(projects, "journey", ".lilac", "lock")));
+    step("7a closing Lilac quits it cleanly", (await lilac.quit()) === 0 && !existsSync(join(projects, "journey", PROJECT_FILES.directory, "lock")));
     lilac = await launch();
     page = lilac.page;
     await page.locator("#dialog[open] [data-project=journey]").click();
@@ -234,7 +235,7 @@ async function main() {
     step("7b the project reopens as it was: every layer, the page and the component, as code", JSON.stringify(after) === JSON.stringify(before) && filled === "rgb(51, 102, 153)", { before: { ...before, page: before.page.slice(0, 120) }, after: { ...after, page: after.page.slice(0, 120) }, filled });
     step("7c closing Lilac quits it cleanly again", (await lilac.quit()) === 0);
     // The project's journal keeps who made each change: the agent's three, as the agent.
-    const journal = readFileSync(join(projects, "journey", ".lilac", "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const journal = readFileSync(join(projects, "journey", PROJECT_FILES.directory, "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
     const byAgent = journal.filter((line) => JSON.stringify(line).includes('"actorKind":"agent"')).length;
     step("7d the journal keeps the agent's changes as the agent's", byAgent === 3, { byAgent });
 

@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { extname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isLoopbackAddress } from "@lilac/network-policy";
+import { PROJECT_FILES } from "@lilac/persistence";
 import { AgentRegistry } from "./agents.ts";
 import { StudioError } from "./errors.ts";
 import { exportJsx, importJsx } from "./code.ts";
@@ -169,7 +170,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     "GET /api/session": () => ({ ...describe(), user: { actorId: owner.actorId, displayName: owner.displayName ?? owner.actorId } }),
     "GET /api/projects": () => ({
       projects: readdirSync(projectsRoot, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && existsSync(join(projectsRoot, entry.name, ".lilac")))
+        .filter((entry) => entry.isDirectory() && existsSync(join(projectsRoot, entry.name, PROJECT_FILES.directory)))
         .map((entry) => entry.name)
         .sort(),
     }),

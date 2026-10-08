@@ -87,7 +87,7 @@ async function main() {
     const { createDocument, serializeDocument } = await import("../packages/document-model/src/index.mjs");
     const { createHistoryState, commitTransaction, undo, redo } = await import("../packages/history/src/index.mjs");
     const { LocalCollaborationRoom, createCollaborationState } = await import("../packages/collaboration/src/index.ts");
-    const { createProject, openProject } = await import("../packages/persistence/src/index.ts");
+    const { PROJECT_FILES, createProject, openProject } = await import("../packages/persistence/src/index.ts");
     const { IMPORT_SCHEMA_VERSION, defaultImportPolicy, importHtmlSnapshot } = await import("../packages/import-stack/src/index.ts");
     const { commitIntake, reviewImport } = await import("../packages/intake/src/index.ts");
     const { buildCodeIr, codeToDesign, designToCode, roundTripFingerprint } = await import("../packages/code-ir/src/index.ts");
@@ -151,7 +151,7 @@ async function main() {
     check(nodes.some((node) => node.props?.semantics?.role === "main"), "intake recorded the main landmark");
     const documentDigest = sha256(serializeDocument(reopened.document));
     reopened.close();
-    const journal = readFileSync(join(root, ".lilac", "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
+    const journal = readFileSync(join(root, PROJECT_FILES.directory, PROJECT_FILES.journal), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
     check(journal.some((tx) => tx.id === "tx-agent" && tx.actor === agent.actorId && tx.metadata.collaboration.ownerActorId === owner.actorId), "the agent edit is durably attributed to its owner");
     steps.push("reopen");
 
@@ -171,7 +171,7 @@ async function main() {
       networkAttempts: attempts.length,
       documentSha256: documentDigest,
       emittedJsxSha256: sha256(emitted),
-      projectFiles: treeDigests(join(root, ".lilac")),
+      projectFiles: treeDigests(join(root, PROJECT_FILES.directory)),
     };
   } finally {
     rmSync(root, { recursive: true, force: true });
