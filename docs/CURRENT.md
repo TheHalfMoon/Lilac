@@ -10,11 +10,11 @@ Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 
 
 ## Canonical main
 
-`e702f58914cb4df13e005447889665b1ca36060c`
+`ff08a1fa3b809af13ffaab2610b4da30ddb35981`
 
-This is the normal merge commit for PR #145 (P07c SBOM and attribution bundle with signed release evidence, Issue #144).
+This is the normal merge commit for PR #170 (PC8b, 10,000-node performance within the gate-13 budgets), which closed the PC8 grain (umbrella #168).
 
-Post-merge Foundation checks completed `SUCCESS` on that exact SHA (630/630 tests).
+Post-merge Foundation checks completed `SUCCESS` on that exact SHA (709/709 tests).
 
 ## Post-grain program state
 
@@ -70,18 +70,27 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (630/630 test
 | 3 | Document interaction and editing | CLOSED_CANONICAL |
 | 4 | Persistence and reopen workflow | CLOSED_CANONICAL |
 | 5 | Desktop bridge | OPEN |
-| 6 | Local web mode | OPEN |
-| 7 | MCP server and authorization integration | OPEN |
-| 8 | MCP and agent mutations visible live on the canvas | OPEN |
+| 6 | Local web mode | CLOSED_CANONICAL |
+| 7 | MCP server and authorization integration | CLOSED_CANONICAL |
+| 8 | MCP and agent mutations visible live on the canvas | CLOSED_CANONICAL |
 | 9 | Mutation attribution, history and undo/redo through the real UI | CLOSED_CANONICAL |
-| 10 | Import → edit → save → reopen through the UI | OPEN |
-| 11 | Design/code workflow through the product | OPEN |
-| 12 | Accessibility qualification | OPEN |
-| 13 | Large-document canvas and render performance qualification | OPEN |
-| 14 | Crash and recovery behaviour through the actual app surface | OPEN |
+| 10 | Import → edit → save → reopen through the UI | CLOSED_CANONICAL |
+| 11 | Design/code workflow through the product | CLOSED_CANONICAL |
+| 12 | Accessibility qualification | CLOSED_CANONICAL |
+| 13 | Large-document canvas and render performance qualification | CLOSED_CANONICAL |
+| 14 | Crash and recovery behaviour through the actual app surface | CLOSED_CANONICAL |
 | 15 | Supported desktop packaging | OPEN |
-| 16 | Offline/local-first smoke flow through the product surface | OPEN |
+| 16 | Offline/local-first smoke flow through the product surface | CLOSED_CANONICAL |
 | 17 | A release-candidate end-to-end test | OPEN |
+
+  Closed PC gates, by grain. Each PR head carried successful OCR delegation, Jev Exact-Head Qualification and Foundation checks, and each merge's post-merge Foundation checks succeeded:
+  - PC1 #151 (`53c452f`), PC2 #153 (`3066033`), PC3 #156 (`9b33cee`), PC4 #158 and #159 (`47e602a`, `25ca79e`): gates 1, 2, 3, 4 and 9.
+  - PC5 #161 and #162 (`ea37472`, `c4e834d`): gates 7 and 8 (#82).
+  - PC6a #164 (`b03ed74`) and PC6b #165 (`dc67d01`): gates 10 and 11.
+  - PC7 #167 (`b46cd1c`): gates 6 and 16.
+  - PC8 (#168): PC8a #169 (`5f05fa4`), gate 12; PC8b #170 (`ff08a1f`), gate 13; PC8c #171 (`7123c0e`), gate 14.
+  - Evidence for each is in `docs/evidence/` (PC4_*, PC5_*, PC6A_*, PC6B_*, PC7_*, PC8A_*, PC8B_*, PC8C_*).
+  - Remaining: PC9, the desktop shell and packaging (gates 5 and 15), and PC10, the release-candidate end-to-end test (gate 17).
 
   Grain plan. A grain may advance a gate, but only the grain named as closing it may set it `CLOSED_CANONICAL`, after end-to-end evidence through the product surface:
   1. PC1: studio host, loopback project API and change stream (advances 4)
