@@ -60,7 +60,8 @@ jobs:
         run: |
           set -uo pipefail
           archive=$(ls dist/desktop/Lilac-${{ matrix.target }}.tar.gz dist/desktop/Lilac-${{ matrix.target }}.zip 2>/dev/null | head -n 1)
-          node scripts/smoke-desktop.mjs "$archive" | tee smoke.json
+          echo "archive: [$archive]" > smoke.err
+          node scripts/smoke-desktop.mjs "$archive" 2>>smoke.err | tee smoke.json
           exit "${PIPESTATUS[0]}"
       - name: Annotate the evidence
         if: always()
@@ -71,9 +72,17 @@ jobs:
           const fs = require("node:fs");
           const head = process.argv[2];
           const escape = (value) => String(value).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
-          const read = (path) => { try { return JSON.parse(fs.readFileSync(path, "utf8").trim().split("\n").at(-1)); } catch { return null; } };
+          // The manifest is one JSON document; the smoke result is its output's last line.
+          const read = (path, lastLine = false) => {
+            try {
+              const text = fs.readFileSync(path, "utf8").trim();
+              return JSON.parse(lastLine ? text.split("\n").at(-1) : text);
+            } catch {
+              return null;
+            }
+          };
           const manifest = read("dist/desktop/Lilac-${{ matrix.target }}.json");
-          const smoke = read("smoke.json");
+          const smoke = read("smoke.json", true);
           const fuses = manifest ? Object.entries(manifest.fuses).map(([name, on]) => `${name}=${on ? 1 : 0}`).join(",") : "none";
           console.log(`::notice title=Desktop package evidence::${escape([
             `head=${head}`,
@@ -89,8 +98,8 @@ jobs:
           ].join("; "))}`);
           if (smoke !== null && !smoke.ok) console.log(`::error title=Desktop smoke failure::${escape(`head=${head} target=${{ matrix.target }} ${smoke.error}`)}`);
           // Job logs are not always readable: the end of a failed step's output, as an annotation.
-          for (const [file, title] of [["package.log", "Desktop package output"], ["smoke.json", "Desktop smoke output"]]) {
-            if ((manifest !== null && file === "package.log") || (file === "smoke.json" && smoke?.ok)) continue;
+          for (const [file, title] of [["package.log", "Desktop package output"], ["smoke.err", "Desktop smoke errors"]]) {
+            if ((manifest !== null && file === "package.log") || (file === "smoke.err" && smoke?.ok)) continue;
             try {
               const text = fs.readFileSync(file, "utf8").replace(/\x1b\[[0-9;]*m/g, "");
               console.log(`::warning title=${title}::${escape(`head=${head} target=${{ matrix.target }} ${text.slice(-900)}`)}`);
