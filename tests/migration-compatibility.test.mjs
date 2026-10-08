@@ -129,6 +129,12 @@ test("this release writes the golden fixture byte-for-byte, so the format has no
   }
 });
 
+test("the genesis digest needs a known domain, also from JavaScript", () => {
+  assert.throws(() => genesisDigest("p"), (error) => error instanceof PersistenceValidationError && /known journal genesis domain/.test(error.message));
+  assert.throws(() => genesisDigest("p", "other"), PersistenceValidationError);
+  assert.match(genesisDigest("p", "ninerr-journal-genesis"), /^[0-9a-f]{64}$/u);
+});
+
 test("project manifest versions: only schema 2 opens unless a registered step migrates it", () => {
   assert.equal(PROJECT_SCHEMA_VERSION, 2);
   const cases = [

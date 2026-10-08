@@ -446,6 +446,8 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   const projectDir = projectDirectory(root);
   assertId(options?.owner, "owner");
   assertTimestamp(options.at, "at");
+  // Checked before the lock is taken: a refused call changes nothing on disk.
+  const migrations = withBuiltInMigrations(options.migrations);
   if (!assertNotSymlink(projectDir, "project directory")) {
     if (hasLegacyProject(projectDir)) {
       throw new PersistenceVersionError("this root holds a legacy project from before Ninerr; it must be migrated before it can be opened");
@@ -473,7 +475,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       // A lock override renames the stale lock aside before reading it; a crash in between
       // leaves that renamed copy behind. The previous holder is already in the override record.
       + removeStaleFiles(projectDir, (name) => LEFTOVER_LOCK.test(name));
-    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, replayed } = readVerifiedProject(projectDir, withBuiltInMigrations(options.migrations));
+    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, replayed } = readVerifiedProject(projectDir, migrations);
     // Repairs are written only once every check has passed, so an open refused as newer or
     // corrupt leaves the project's files as it found them.
     if (migratedFrom !== null) {
