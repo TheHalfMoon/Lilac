@@ -1,7 +1,7 @@
 {
   "schema": "identity-census-summary/1",
-  "filesScanned": 514,
-  "filesWithFindings": 136,
+  "filesScanned": 515,
+  "filesWithFindings": 137,
   "gatedFindings": 569,
   "byCategory": {
     "ACTIVE_PRODUCT_IDENTITY": 175,
@@ -11,28 +11,28 @@
     "LEGACY_COMPATIBILITY": 52,
     "TEST_FIXTURE": 51,
     "THIRD_PARTY_INDEPENDENT_OBLIGATION": 198,
-    "IMMUTABLE_HISTORICAL_FACT": 464,
+    "IMMUTABLE_HISTORICAL_FACT": 492,
     "REMOVE_ENTIRELY": 0
   },
   "byTerm": {
-    "lilac": 563,
-    "paper": 191,
-    "firstmate": 29,
-    "no-mistakes": 21,
-    "doop": 28,
-    "classifier-dev": 15,
+    "lilac": 567,
+    "paper": 201,
+    "firstmate": 30,
+    "no-mistakes": 22,
+    "doop": 29,
+    "classifier-dev": 16,
     "jev-search": 9,
-    "unreal-agent": 26,
-    "website-downloader": 15,
-    "appllama": 25,
-    "docling": 124,
-    "design-resources": 16,
-    "firecrawl": 28,
-    "impeccable": 165,
-    "ui-tars": 28
+    "unreal-agent": 27,
+    "website-downloader": 16,
+    "appllama": 26,
+    "docling": 126,
+    "design-resources": 17,
+    "firecrawl": 30,
+    "impeccable": 166,
+    "ui-tars": 29
   },
   "byRule": {
-    "dated-evidence": 464,
+    "dated-evidence": 492,
     "default-donor": 39,
     "default-lilac": 127,
     "default-paper": 48,
@@ -45,5 +45,5 @@
     "tests": 51,
     "third-party-notices": 23
   },
-  "censusSha256": "6add4557bf99adebfe3bc36eb8fdc83462f4514240312b61db695f7cb55c7f4f"
+  "censusSha256": "322ea60203c73221e8783c9783dcf3f99d01d5b2ed807261fdfcbaeb0f880266"
 }

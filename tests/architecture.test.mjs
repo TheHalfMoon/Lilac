@@ -130,3 +130,17 @@ test("every workspace package is owned by a delivered catalog subsystem", () => 
 test("known package list matches the workspace exactly", () => {
   assert.deepEqual([...IMPLEMENTED_PACKAGES].sort(), workspacePackages());
 });
+
+test("a stub names its own planned remainder, and an implemented subsystem names none", () => {
+  // `stub` means a delivered slice with a planned remainder of its own; its boundary names it.
+  // An implemented boundary may say other subsystems are planned, but not that its own work is.
+  // A phrase cannot tell whose remainder it is, so review checks that; these patterns catch the
+  // drift either way (N0-G6).
+  const remainder = /\bplanned\.|\b(?:is|are) planned\b|\bplanned (?:\(#|until)\b|\b(?:remains?|remaining|waits?|awaits) (?:planned|until)\b|\bnot yet\b/iu;
+  const contradictions = NINERR_ARCHITECTURE_MAP.subsystems.flatMap((subsystem) => {
+    if (subsystem.status === "stub" && !remainder.test(subsystem.boundary)) return [`${subsystem.id} is a stub but its boundary states no planned remainder`];
+    if (subsystem.status === "implemented" && remainder.test(subsystem.boundary)) return [`${subsystem.id} is implemented but its boundary states planned work`];
+    return [];
+  });
+  assert.deepEqual(contradictions, []);
+});
