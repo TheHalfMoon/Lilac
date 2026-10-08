@@ -71,3 +71,9 @@ The delta re-review found no must-fix. It pointed out that the residual above wa
 The delta re-review found no must-fix. Taken from it: the import marker is written with the first successful save of the imported registry, not before it.
 - A failed save is now retried on the next launch. Before, the marker blocked the retry and the agents were dropped silently.
 - Only an existing marker counts as done. Any other failure writing it is retried with the next save.
+
+## Review delta 4 (from the final re-review)
+
+- **Crash window.** A Ninerr registry next to a legacy one, with no marker, means the process stopped between the save and the marker write. The next launch now writes the missing marker (tested). Before, that window could leave the import unrecorded for good.
+- **Not covered by a test:** a failed first save leaves no marker, so the import is attempted again on the next launch. This is shown by reading `#save`, which writes the marker only after the registry write succeeds. Making a registry write fail on demand needs a filesystem fault this suite does not inject.
+- **A merge artifact is corrected.** `tests/editor-browser.test.mjs` expects `ninerr_agent_` credentials again; a merge had carried the N0-G2b-only expectation `lilac_agent_` into this grain.
