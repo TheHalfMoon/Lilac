@@ -327,7 +327,7 @@ function showConfirmations(pending) {
 
 let selectionTimer = null;
 function shareSelection() {
-  // MCP's get_selection reads what is selected here; send it after the selection settles.
+  // MCP's selection reads what is selected here; send it after the selection settles.
   clearTimeout(selectionTimer);
   selectionTimer = setTimeout(() => {
     if (state.client !== null && state.document !== null) state.client.post("/api/selection", { nodeIds: state.selection }).catch(() => {});

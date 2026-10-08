@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DOCUMENT_SCHEMA_VERSION, createDocument } from "../packages/document-model/src/index.mjs";
-import { MCP_CONFIRMATION_WINDOW_MS, MCP_TRANSPORTS, PAPER_MCP_OBSERVED_AT, PAPER_MCP_TOOL_NAMES, authorizeMCPToolCall, classifyPaperTool, mcpArgumentsSha256 } from "../packages/mcp-protocol/src/index.mjs";
+import { MCP_CONFIRMATION_WINDOW_MS, MCP_TOOL_NAMES, MCP_TRANSPORTS, authorizeMCPToolCall, classifyTool, mcpArgumentsSha256 } from "../packages/mcp-protocol/src/index.mjs";
+import { CONFIRMATION_WAIT_MS } from "../packages/studio-host/src/mcp.ts";
 import { createAccessPolicy } from "../packages/collaboration/src/index.ts";
 import { PROJECT_FILES, PROJECT_MIGRATIONS, PROJECT_SCHEMA_VERSION, createProject, migrateLegacyProject, openProject, projectLayout } from "../packages/persistence/src/index.ts";
 
@@ -36,12 +37,14 @@ test("every repository path the release documents cite exists", () => {
 test("the MCP documentation matches the tool surface, classes and confirmation window", () => {
   const doc = read("docs/MCP.md");
   const classes = { read: [], write: [], consequential: [] };
-  for (const name of PAPER_MCP_TOOL_NAMES) classes[classifyPaperTool(name)].push(name);
-  assert.match(doc, new RegExp(`${PAPER_MCP_TOOL_NAMES.length}-tool public surface observed on ${PAPER_MCP_OBSERVED_AT}`));
+  for (const name of MCP_TOOL_NAMES) classes[classifyTool(name)].push(name);
+  assert.match(doc, new RegExp(`the ${MCP_TOOL_NAMES.length} tools the server offers`));
   assert.match(doc, new RegExp(`the ${classes.read.length} read-only tools`));
-  assert.deepEqual(classes.consequential, ["delete_nodes"]);
-  assert.match(doc, /\| consequential \| `delete_nodes` \|/);
-  assert.equal(classifyPaperTool("not_a_tool"), "unknown");
+  assert.equal(CONFIRMATION_WAIT_MS, 50_000);
+  assert.match(doc, /up to 50 seconds for an answer \(`CONFIRMATION_WAIT_MS`\)/);
+  assert.deepEqual(classes.consequential, ["delete_layers"]);
+  assert.match(doc, /\| consequential \| `delete_layers` \|/);
+  assert.equal(classifyTool("not_a_tool"), "unknown");
   assert.deepEqual([...MCP_TRANSPORTS], ["stdio", "http"]);
   assert.match(doc, /`stdio` and `http`/);
   assert.equal(MCP_CONFIRMATION_WINDOW_MS, 5 * 60 * 1000);
@@ -54,30 +57,31 @@ test("the MCP documentation matches the tool surface, classes and confirmation w
   const policy = createAccessPolicy("doc-1", [{ principalKind: "actor", principalId: user.actorId, capabilities: ["read", "document-write", "comments"] }]);
   const decide = (toolName) => {
     const args = {};
-    const confirmation = classifyPaperTool(toolName) === "consequential"
+    const confirmation = classifyTool(toolName) === "consequential"
       ? { confirmation: { documentId: "doc-1", toolName, argumentsSha256: mcpArgumentsSha256(args), actorId: user.actorId, confirmedAt: AT } }
       : {};
     return authorizeMCPToolCall(policy, { actor: user, toolName, arguments: args, at: AT, ...confirmation });
   };
-  let listed = 0;
+  const listed = [];
   for (const [, label, cell, capabilityCell] of doc.matchAll(/^\| (read|write|consequential) \| ([^|]+) \| ([^|]+) \|$/gm)) {
     const cls = label;
     const capability = /`([a-z-]+)`/.exec(capabilityCell)[1];
     for (const [, name] of cell.matchAll(/`([a-z_]+)`/g)) {
-      assert.equal(classifyPaperTool(name), cls, `${name} is listed as ${cls}`);
+      assert.equal(classifyTool(name), cls, `${name} is listed as ${cls}`);
       const decision = decide(name);
       assert.equal(decision.outcome, "allowed", `${name} with every capability`);
       assert.equal(decision.capability, capability, `${name} needs ${capability}`);
-      listed += 1;
+      listed.push(name);
     }
   }
-  assert.ok(listed >= 10, `the class table names ${listed} tools`);
-  for (const name of ["open_file", "create_file", "list_resources", "rename_resource"]) {
-    assert.ok(doc.includes(`\`${name}\``));
-    assert.equal(decide(name).outcome, "denied", `${name} is always denied`);
-  }
+  assert.deepEqual(listed.sort(), [...MCP_TOOL_NAMES].sort(), "the class table names every tool once");
+  // The rename table maps each earlier name to a current tool; an earlier name is unknown now.
+  const renamed = [...doc.matchAll(/^\| `([a-z_]+)` \| `([a-z_]+)` \|$/gm)];
+  assert.equal(renamed.length, MCP_TOOL_NAMES.length);
+  assert.deepEqual(renamed.map((row) => row[2]).sort(), [...MCP_TOOL_NAMES].sort());
+  for (const [, before] of renamed) assert.equal(decide(before).outcome, "denied", `${before} is no longer a tool`);
   assert.ok(decide("x".repeat(1000)).reason.length <= 100, "an unknown tool's reason is bounded");
-  assert.match(doc, /\*\*Not implemented\*\* \| #82/);
+  assert.doesNotMatch(doc, /Not implemented/);
 });
 
 test("the migration documentation matches the version constants and layout", () => {

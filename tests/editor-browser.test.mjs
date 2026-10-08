@@ -465,31 +465,31 @@ test("an agent's MCP changes appear live, ask the person before deleting, and ca
     }).then((response) => response.json()).then((answer) => answer.result);
 
     // Agent edits appear on the canvas and in the tree as they are committed.
-    const frameId = (await tool("create_artboard", { name: "Landing", width: 640, height: 400 })).structuredContent.nodeId;
+    const frameId = (await tool("create_frame", { name: "Landing", width: 640, height: 400 })).structuredContent.nodeId;
     await waitRevision(page, 1);
     assert.equal(await page.locator(`#layer-${frameId} .label`).textContent(), "Landing");
     assert.equal(await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${nodeId}"]`)?.style.width, frameId), "640px");
-    await tool("update_styles", { updates: [{ nodeId: frameId, styles: { background: "#123456" } }] });
+    await tool("set_styles", { updates: [{ nodeId: frameId, styles: { background: "#123456" } }] });
     await waitRevision(page, 2);
     assert.equal(await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${nodeId}"]`).style.background, frameId), "rgb(18, 52, 86)");
     // The history attributes the changes to the agent, by name, with its tool.
     const latest = page.locator("#history li").first();
     assert.equal(await latest.getAttribute("class"), "agent");
-    assert.equal(await latest.locator(".who").textContent(), "Claude Code · agent · update_styles · revision 2");
+    assert.equal(await latest.locator(".who").textContent(), "Claude Code · agent · set_styles · revision 2");
     // The agent sees the person's selection.
     await page.locator(`#layer-${frameId}`).click();
     await new Promise((resolve) => setTimeout(resolve, 300));
-    assert.deepEqual((await tool("get_selection", {})).structuredContent.nodes.map((node) => node.id), [frameId]);
+    assert.deepEqual((await tool("selection", {})).structuredContent.nodes.map((node) => node.id), [frameId]);
 
     // Deleting asks the person in the editor; declining leaves the layer.
-    const declined = tool("delete_nodes", { nodeIds: [frameId] });
+    const declined = tool("delete_layers", { nodeIds: [frameId] });
     await page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Claude Code asks for your approval");
     assert.match(await page.locator("#dialog[open] .request").textContent(), /^Delete 1 layer: Landing \(main\)$/u);
     await page.locator("#dialog[open] button", { hasText: "Decline" }).click();
     assert.match((await declined).content[0].text, /declined/u);
     assert.equal(await layerCount(page), 1);
     // Approving lets it through; the canvas drops the layer.
-    const approved = tool("delete_nodes", { nodeIds: [frameId] });
+    const approved = tool("delete_layers", { nodeIds: [frameId] });
     // (The new request may arrive before the decline's answer; its dialog must stay open.)
     await page.locator("#dialog[open] button:not([disabled])", { hasText: "Approve" }).click();
     assert.equal((await approved).isError, undefined);

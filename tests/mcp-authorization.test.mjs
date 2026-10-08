@@ -5,9 +5,9 @@ import {
   MCPAuthorizationError,
   MCPContractError,
   MCP_CONFIRMATION_WINDOW_MS,
-  PAPER_MCP_TOOL_NAMES,
+  MCP_TOOL_NAMES,
   authorizeMCPToolCall,
-  classifyPaperTool,
+  classifyTool,
   mcpArgumentsSha256,
   requireMCPToolCall,
 } from "../packages/mcp-protocol/src/index.mjs";
@@ -24,24 +24,18 @@ const CAPABILITIES = ["read", "presence", "document-write", "comments", "admin",
 const policyFor = (capabilities, actor = user) => createAccessPolicy("doc-1", capabilities.length === 0 ? [] : [{ principalKind: "actor", principalId: actor.actorId, capabilities }]);
 const call = (toolName, extra = {}) => ({ actor: user, toolName, arguments: { nodeIds: ["n1"] }, at: AT, ...extra });
 const confirmation = (toolName, args = { nodeIds: ["n1"] }, overrides = {}) => ({ documentId: "doc-1", toolName, argumentsSha256: mcpArgumentsSha256(args), actorId: user.actorId, confirmedAt: "2026-10-07T11:59:00.000Z", ...overrides });
-const WORKSPACE_TOOLS = new Set(["open_file", "create_file", "list_resources", "rename_resource"]);
 
 const subsets = (items) => items.reduce((all, item) => all.concat(all.map((set) => [...set, item])), [[]]);
-const required = (tool) => (classifyPaperTool(tool) === "read" ? "read" : tool === "set_comment_thread_status" ? "comments" : "document-write");
+const required = (tool) => (classifyTool(tool) === "read" ? "read" : "document-write");
 
-test("every Paper tool over every capability set: allowed exactly when its capability is granted", () => {
+test("every tool over every capability set: allowed exactly when its capability is granted", () => {
   for (const capabilities of subsets(CAPABILITIES)) {
     const policy = policyFor(capabilities);
-    for (const tool of PAPER_MCP_TOOL_NAMES) {
-      const toolClass = classifyPaperTool(tool);
+    for (const tool of MCP_TOOL_NAMES) {
+      const toolClass = classifyTool(tool);
       const withConfirmation = toolClass === "consequential" ? { confirmation: confirmation(tool) } : {};
       const decision = authorizeMCPToolCall(policy, call(tool, withConfirmation));
       assert.equal(decision.toolClass, toolClass);
-      if (WORKSPACE_TOOLS.has(tool)) {
-        assert.equal(decision.outcome, "denied", `${tool} is workspace-scoped`);
-        assert.match(decision.reason, /workspace/u);
-        continue;
-      }
       assert.equal(decision.capability, required(tool));
       assert.equal(decision.documentId, "doc-1");
       assert.equal(decision.outcome, capabilities.includes(required(tool)) ? "allowed" : "denied", `${tool} with [${capabilities}]`);
@@ -52,7 +46,7 @@ test("every Paper tool over every capability set: allowed exactly when its capab
 test("read grants cannot write", () => {
   for (const capabilities of [["read"], ["read", "presence"], ["read", "presence", "comments"]]) {
     const policy = policyFor(capabilities);
-    for (const tool of PAPER_MCP_TOOL_NAMES.filter((name) => classifyPaperTool(name) !== "read" && name !== "set_comment_thread_status")) {
+    for (const tool of MCP_TOOL_NAMES.filter((name) => classifyTool(name) !== "read")) {
       const decision = authorizeMCPToolCall(policy, call(tool, { confirmation: confirmation(tool) }));
       assert.equal(decision.outcome, "denied", tool);
       assert.throws(() => requireMCPToolCall(policy, call(tool, { confirmation: confirmation(tool) })), MCPAuthorizationError);
@@ -62,8 +56,8 @@ test("read grants cannot write", () => {
 
 test("consequential tools require a confirmation bound to this exact call", () => {
   const policy = policyFor(["read", "document-write"]);
-  const tool = "delete_nodes";
-  assert.equal(classifyPaperTool(tool), "consequential");
+  const tool = "delete_layers";
+  assert.equal(classifyTool(tool), "consequential");
   const refused = (extra, reason) => {
     const decision = authorizeMCPToolCall(policy, call(tool, extra));
     assert.equal(decision.outcome, "confirmation-required", reason);
@@ -71,7 +65,7 @@ test("consequential tools require a confirmation bound to this exact call", () =
     return decision.reason;
   };
   assert.match(refused({}, "none"), /requires explicit confirmation/u);
-  assert.match(refused({ confirmation: confirmation("rename_nodes") }, "other tool"), /different tool/u);
+  assert.match(refused({ confirmation: confirmation("rename_layers") }, "other tool"), /different tool/u);
   assert.match(refused({ confirmation: confirmation(tool, { nodeIds: ["n2"] }) }, "other arguments"), /different arguments/u);
   assert.match(refused({ confirmation: confirmation(tool, undefined, { actorId: "user-2" }) }, "other actor"), /not from the responsible person/u);
   assert.match(refused({ confirmation: confirmation(tool, undefined, { confirmedAt: "2026-10-07T11:54:59.999Z" }) }, "expired"), /expired/u);
@@ -96,22 +90,22 @@ test("consequential tools require a confirmation bound to this exact call", () =
 
 test("arguments and timestamps are validated for every known tool", () => {
   const policy = policyFor(["read", "document-write"]);
-  for (const tool of ["get_jsx", "update_styles", "delete_nodes"]) {
+  for (const tool of ["layer_code", "set_styles", "delete_layers"]) {
     assert.throws(() => authorizeMCPToolCall(policy, call(tool, { arguments: { f: () => 1 } })), MCPContractError, tool);
   }
   for (const at of ["2026-02-30T00:00:00Z", "2026-10-07T24:00:00Z", "2026-10-07T12:00:60Z", "2026-10-07T12:00:00+00:00", "2026-10-07 12:00:00Z"]) {
-    assert.throws(() => authorizeMCPToolCall(policy, call("get_jsx", { at })), MCPContractError, at);
+    assert.throws(() => authorizeMCPToolCall(policy, call("layer_code", { at })), MCPContractError, at);
   }
-  assert.equal(authorizeMCPToolCall(policy, call("get_jsx", { at: "2026-10-07T12:00:00Z" })).outcome, "allowed");
+  assert.equal(authorizeMCPToolCall(policy, call("layer_code", { at: "2026-10-07T12:00:00Z" })).outcome, "allowed");
   assert.equal(mcpArgumentsSha256(undefined), mcpArgumentsSha256({}));
   for (const args of [null, [], "ids", 42]) {
-    assert.throws(() => authorizeMCPToolCall(policy, call("get_jsx", { arguments: args })), /arguments must be an object/u, JSON.stringify(args));
+    assert.throws(() => authorizeMCPToolCall(policy, call("layer_code", { arguments: args })), /arguments must be an object/u, JSON.stringify(args));
   }
 });
 
 test("unknown tools are denied without consulting the policy", () => {
   const policy = policyFor(CAPABILITIES);
-  for (const name of ["shell", "delete_all", "DELETE_NODES", "delete_nodes ", "get_jsx\u0000", "__proto__", "constructor", "toString", "get_nodes_info"]) {
+  for (const name of ["shell", "delete_all", "DELETE_NODES", "delete_layers ", "layer_code\u0000", "__proto__", "constructor", "toString", "get_nodes_info"]) {
     const decision = authorizeMCPToolCall(policy, call(name));
     assert.equal(decision.outcome, "denied", name);
     assert.equal(decision.toolClass, "unknown");
@@ -123,45 +117,45 @@ test("unknown tools are denied without consulting the policy", () => {
   // Even a malformed policy is never consulted for an unknown tool.
   assert.equal(authorizeMCPToolCall({ not: "a policy" }, call("shell")).outcome, "denied");
   assert.throws(() => authorizeMCPToolCall(policy, call("")), MCPContractError);
-  assert.throws(() => authorizeMCPToolCall(policy, { ...call("get_jsx"), extra: true }), MCPContractError);
-  assert.throws(() => authorizeMCPToolCall(policy, call("get_jsx", { at: "yesterday" })), MCPContractError);
+  assert.throws(() => authorizeMCPToolCall(policy, { ...call("layer_code"), extra: true }), MCPContractError);
+  assert.throws(() => authorizeMCPToolCall(policy, call("layer_code", { at: "yesterday" })), MCPContractError);
 });
 
 test("revoked grants fail closed", () => {
   const granted = policyFor(["read", "document-write"]);
-  assert.equal(authorizeMCPToolCall(granted, call("update_styles")).outcome, "allowed");
+  assert.equal(authorizeMCPToolCall(granted, call("set_styles")).outcome, "allowed");
   const removed = updateAccessPolicy(granted, { grants: [], expectedRevision: granted.policyRevision });
-  assert.equal(authorizeMCPToolCall(removed, call("update_styles")).outcome, "denied");
-  assert.equal(authorizeMCPToolCall(removed, call("get_jsx")).outcome, "denied");
-  assert.equal(authorizeMCPToolCall(removed, call("update_styles")).policyRevision, 1);
+  assert.equal(authorizeMCPToolCall(removed, call("set_styles")).outcome, "denied");
+  assert.equal(authorizeMCPToolCall(removed, call("layer_code")).outcome, "denied");
+  assert.equal(authorizeMCPToolCall(removed, call("set_styles")).policyRevision, 1);
   const narrowed = updateAccessPolicy(granted, { grants: [{ principalKind: "actor", principalId: user.actorId, capabilities: ["read"] }], expectedRevision: 0 });
-  assert.equal(authorizeMCPToolCall(narrowed, call("update_styles")).outcome, "denied");
-  assert.equal(authorizeMCPToolCall(narrowed, call("get_jsx")).outcome, "allowed");
+  assert.equal(authorizeMCPToolCall(narrowed, call("set_styles")).outcome, "denied");
+  assert.equal(authorizeMCPToolCall(narrowed, call("layer_code")).outcome, "allowed");
   const expiring = createAccessPolicy("doc-1", [{ principalKind: "actor", principalId: user.actorId, capabilities: ["read"], expiresAt: "2026-10-07T11:00:00.000Z" }]);
-  assert.equal(authorizeMCPToolCall(expiring, call("get_jsx")).outcome, "denied", "expired grant");
+  assert.equal(authorizeMCPToolCall(expiring, call("layer_code")).outcome, "denied", "expired grant");
   const deleted = updateAccessPolicy(granted, { deleted: true, expectedRevision: 0 });
-  assert.equal(authorizeMCPToolCall(deleted, call("get_jsx")).outcome, "not-found");
-  assert.throws(() => requireMCPToolCall(deleted, call("get_jsx")), (error) => error.decision.outcome === "not-found");
+  assert.equal(authorizeMCPToolCall(deleted, call("layer_code")).outcome, "not-found");
+  assert.throws(() => requireMCPToolCall(deleted, call("layer_code")), (error) => error.decision.outcome === "not-found");
   const link = createAccessPolicy("doc-1", [{ principalKind: "link", principalId: "link-1", capabilities: ["read"] }]);
-  assert.equal(authorizeMCPToolCall(link, call("get_jsx", { linkGrantId: "link-1" })).outcome, "allowed");
+  assert.equal(authorizeMCPToolCall(link, call("layer_code", { linkGrantId: "link-1" })).outcome, "allowed");
   const linkRevoked = updateAccessPolicy(link, { grants: [], expectedRevision: 0 });
-  assert.equal(authorizeMCPToolCall(linkRevoked, call("get_jsx", { linkGrantId: "link-1" })).outcome, "denied");
-  assert.equal(authorizeMCPToolCall(link, call("get_jsx", { linkGrantId: "link-2" })).outcome, "denied", "another link id");
+  assert.equal(authorizeMCPToolCall(linkRevoked, call("layer_code", { linkGrantId: "link-1" })).outcome, "denied");
+  assert.equal(authorizeMCPToolCall(link, call("layer_code", { linkGrantId: "link-2" })).outcome, "denied", "another link id");
 });
 
 test("agents are judged by their own grant, not their owner's", () => {
   const ownerOnly = policyFor(["read", "document-write"], user);
-  assert.equal(authorizeMCPToolCall(ownerOnly, call("update_styles", { actor: agent })).outcome, "denied");
+  assert.equal(authorizeMCPToolCall(ownerOnly, call("set_styles", { actor: agent })).outcome, "denied");
   const agentRead = createAccessPolicy("doc-1", [
     { principalKind: "actor", principalId: user.actorId, capabilities: ["read", "document-write"] },
     { principalKind: "actor", principalId: agent.actorId, capabilities: ["read"] },
   ]);
-  assert.equal(authorizeMCPToolCall(agentRead, call("get_jsx", { actor: agent })).outcome, "allowed");
-  assert.equal(authorizeMCPToolCall(agentRead, call("update_styles", { actor: agent })).outcome, "denied");
+  assert.equal(authorizeMCPToolCall(agentRead, call("layer_code", { actor: agent })).outcome, "allowed");
+  assert.equal(authorizeMCPToolCall(agentRead, call("set_styles", { actor: agent })).outcome, "denied");
   // An agent's consequential call is confirmed by its owning person, never by the agent
   // itself or by another person.
   const agentWrite = createAccessPolicy("doc-1", [{ principalKind: "actor", principalId: agent.actorId, capabilities: ["read", "document-write"] }]);
-  const agentCall = (actorId, actor = agent) => call("delete_nodes", { actor, confirmation: confirmation("delete_nodes", undefined, { actorId }) });
+  const agentCall = (actorId, actor = agent) => call("delete_layers", { actor, confirmation: confirmation("delete_layers", undefined, { actorId }) });
   assert.equal(authorizeMCPToolCall(agentWrite, agentCall(agent.actorId)).outcome, "confirmation-required", "self-confirmation");
   assert.equal(authorizeMCPToolCall(agentWrite, agentCall("user-2")).outcome, "confirmation-required", "another person");
   // The owner must themselves be allowed to change the document.

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { canonicalStringify } from "@ninerr/agent-runtime";
 import { evaluateAccess } from "@ninerr/collaboration";
 
-import { MCPContractError, classifyPaperTool } from "./paper-tools.mjs";
+import { MCPContractError, classifyTool } from "./tools.mjs";
 
 // Tool-call authorization for the MCP surface. Every call is classified first: unknown
 // tools are denied without consulting any policy; known tools need a document capability
@@ -18,13 +18,8 @@ import { MCPContractError, classifyPaperTool } from "./paper-tools.mjs";
 
 export const MCP_CONFIRMATION_WINDOW_MS = 5 * 60 * 1000;
 
+// Every tool acts on the open document, so its class alone decides the capability it needs.
 const CAPABILITY_BY_CLASS = Object.freeze({ read: "read", write: "document-write", consequential: "document-write" });
-// Tools whose capability differs from their class default.
-const CAPABILITY_BY_TOOL = Object.freeze({ set_comment_thread_status: "comments" });
-
-// Tools that act on files or the workspace rather than the open document. No workspace
-// policy exists yet, so they are denied rather than judged against a document's policy.
-const WORKSPACE_TOOLS = new Set(["open_file", "create_file", "list_resources", "rename_resource"]);
 
 const CALL_KEYS = new Set(["actor", "toolName", "arguments", "at", "linkGrantId", "confirmation"]);
 const CONFIRMATION_KEYS = new Set(["documentId", "toolName", "argumentsSha256", "actorId", "confirmedAt"]);
@@ -89,15 +84,12 @@ export function authorizeMCPToolCall(policy, call) {
   assertKeys(call, CALL_KEYS, "tool call");
   if (typeof call.toolName !== "string" || call.toolName === "") throw new MCPContractError("tool call toolName must be a non-empty string");
   const at = timestamp(call.at, "tool call at");
-  const toolClass = classifyPaperTool(call.toolName);
+  const toolClass = classifyTool(call.toolName);
   if (toolClass === "unknown") {
     return { outcome: "denied", toolClass, capability: null, documentId: null, reason: `unknown tool ${JSON.stringify(call.toolName).slice(0, 80)}`, policyRevision: null };
   }
   canonicalArguments(call.arguments);
-  if (WORKSPACE_TOOLS.has(call.toolName)) {
-    return { outcome: "denied", toolClass, capability: null, documentId: null, reason: `${call.toolName} acts on the workspace, which has no access policy yet (#82)`, policyRevision: null };
-  }
-  const capability = CAPABILITY_BY_TOOL[call.toolName] ?? CAPABILITY_BY_CLASS[toolClass];
+  const capability = CAPABILITY_BY_CLASS[toolClass];
   const access = evaluateAccess(policy, {
     actor: call.actor,
     transport: "mcp",

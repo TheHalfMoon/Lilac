@@ -136,14 +136,14 @@ test("offline smoke: create, import, edit, code, an agent over stdio, save, rest
     await editor.locator("#code-import").fill("export function Badge() { return <span className=\"badge\" style=\"color: #aa2200\">New</span>; }");
     await editor.locator("#dialog[open] button.primary", { hasText: "Add to design" }).click();
     await waitRevision(editor, 3);
-    // An agent over the stdio relay (also trapped) adds an artboard.
+    // An agent over the stdio relay (also trapped) adds a frame.
     await editor.locator("#action-agents").click();
     await editor.locator("#agent-name").fill("Offline agent");
     await editor.keyboard.press("Enter");
     const token = await editor.locator("#agent-credential").inputValue();
     await editor.locator("#dialog[open] button.primary").click();
     const relay = run(["scripts/ninerr-mcp.mjs", "--projects", projects], { NINERR_MCP_TOKEN: token });
-    relay.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_artboard", arguments: { name: "From agent", width: 400, height: 300 } } })}\n`);
+    relay.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_frame", arguments: { name: "From agent", width: 400, height: 300 } } })}\n`);
     relay.child.stdin.end();
     assert.equal(await relay.exited, 0);
     assert.equal(JSON.parse(relay.output.stdout.trim()).result.structuredContent.revision, 4);

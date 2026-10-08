@@ -130,22 +130,22 @@ async function main() {
     };
     const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "journey", version: "1" } });
     const tools = (await rpc("tools/list", {})).tools.map((tool) => tool.name);
-    step("3b the agent initializes and lists Ninerr's tools", init?.serverInfo?.name !== undefined && tools.includes("create_artboard") && tools.includes("delete_nodes"), { server: init?.serverInfo, tools: tools.length });
-    const artboard = (await rpc("tools/call", { name: "create_artboard", arguments: { name: "From the agent", width: 480, height: 320 } })).structuredContent.nodeId;
+    step("3b the agent initializes and lists Ninerr's tools", init?.serverInfo?.name !== undefined && tools.includes("create_frame") && tools.includes("delete_layers"), { server: init?.serverInfo, tools: tools.length });
+    const frame = (await rpc("tools/call", { name: "create_frame", arguments: { name: "From the agent", width: 480, height: 320 } })).structuredContent.nodeId;
     await waitForRevision(page, 10);
-    await rpc("tools/call", { name: "update_styles", arguments: { updates: [{ nodeId: artboard, styles: { background: "#fde68a" } }] } });
+    await rpc("tools/call", { name: "set_styles", arguments: { updates: [{ nodeId: frame, styles: { background: "#fde68a" } }] } });
     await waitForRevision(page, 11);
     const agentRow = await page.locator("#history li").first().locator(".who").textContent();
-    step("3c the agent's edits appear live and are attributed to it", (await page.locator(`[role=treeitem][data-node-id="${artboard}"] > .row .label`).textContent()) === "From the agent" && /^Journey agent · agent · update_styles/u.test(agentRow ?? ""), agentRow);
-    const deletion = rpc("tools/call", { name: "delete_nodes", arguments: { nodeIds: [artboard] } });
+    step("3c the agent's edits appear live and are attributed to it", (await page.locator(`[role=treeitem][data-node-id="${frame}"] > .row .label`).textContent()) === "From the agent" && /^Journey agent · agent · set_styles/u.test(agentRow ?? ""), agentRow);
+    const deletion = rpc("tools/call", { name: "delete_layers", arguments: { nodeIds: [frame] } });
     await page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Journey agent asks for your approval", null, { polling: 100, timeout: 30_000 });
     // While the person has not decided, nothing is deleted.
     await new Promise((resolveWait) => setTimeout(resolveWait, 1000));
-    const waiting = { revision: await page.locator("#revision").textContent(), artboard: await page.locator(`[role=treeitem][data-node-id="${artboard}"]`).count() };
+    const waiting = { revision: await page.locator("#revision").textContent(), frame: await page.locator(`[role=treeitem][data-node-id="${frame}"]`).count() };
     await page.locator("#dialog[open] button:not([disabled])", { hasText: "Approve" }).click();
     const deleted = await deletion;
     await waitForRevision(page, 12);
-    step("3d a consequential call waits for the person's approval", waiting.revision === "Revision 11" && waiting.artboard === 1 && deleted.isError === undefined && (await page.locator(`[role=treeitem][data-node-id="${artboard}"]`).count()) === 0, waiting);
+    step("3d a consequential call waits for the person's approval", waiting.revision === "Revision 11" && waiting.frame === 1 && deleted.isError === undefined && (await page.locator(`[role=treeitem][data-node-id="${frame}"]`).count()) === 0, waiting);
 
     // 4. Connect a codebase: a folder of components, one brought in with its source, edited
     // on the canvas, and the edit reviewed and written back to its file.

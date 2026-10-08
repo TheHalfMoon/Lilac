@@ -160,7 +160,7 @@ test("design and code through the editor: export the selection, bring code in, u
   }
 });
 
-test("agents read a layer as JSX through MCP get_jsx", async () => {
+test("agents read a layer as JSX through MCP layer_code", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-code-mcp-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   try {
@@ -171,7 +171,7 @@ test("agents read a layer as JSX through MCP get_jsx", async () => {
     assert.equal(added.tool, "ninerr:code");
     assert.equal(added.intent, "Bring in Note");
     const paragraph = Object.values(host.session.document.nodes).find((node) => node.props.tag === "p").id;
-    const answer = await fetch(host.mcpUrl, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_jsx", arguments: { nodeId: paragraph } } }) }).then((response) => response.json());
+    const answer = await fetch(host.mcpUrl, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "layer_code", arguments: { nodeId: paragraph } } }) }).then((response) => response.json());
     assert.match(answer.result.structuredContent.code, /<p className="note">Hi<\/p>/u);
     assert.equal(answer.result.structuredContent.layers, 1);
   } finally {
