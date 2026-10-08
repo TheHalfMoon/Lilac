@@ -111,6 +111,10 @@ test("a schema-1 manifest in the current directory upgrades in place, with host 
       "a host step cannot replace a built-in one",
     );
     assert.deepEqual(tree(root), before, "refused before the lock is taken: nothing is cleaned or overridden");
+    for (const [migrations, pattern] of [[{ 0: "not a step" }, /is not a function/], [{ "-1": () => ({}) }, /is not a schema version/], [{ x: () => ({}) }, /is not a schema version/], [[], /must be an object/]]) {
+      assert.throws(() => openProject(root, { owner: "reader-1", at: GOLDEN_AT, breakStaleLock: { reason: "test" }, migrations }), (error) => error instanceof PersistenceValidationError && pattern.test(error.message));
+      assert.deepEqual(tree(root), before, "a malformed host step is refused before the lock too");
+    }
     rmSync(currentFile(root, PROJECT_FILES.lock));
     const store = openProject(root, { owner: "reader-1", at: GOLDEN_AT, migrations: hostStep });
     assert.equal(store.recovery.migratedFrom, 0, "the host step runs, then the built-in step");
