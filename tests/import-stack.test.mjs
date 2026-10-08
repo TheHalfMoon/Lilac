@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -761,4 +762,14 @@ test("provenance pins permissive donors and keeps Firecrawl reference-only", () 
   assert.equal(IMPORT_STACK_PROVENANCE.firecrawl.revision, "4244638a7041bae8b99bdd42e3c44520f9e62da1");
   assert.equal(IMPORT_STACK_PROVENANCE.firecrawl.license, "AGPL-3.0");
   assert.equal(IMPORT_STACK_PROVENANCE.firecrawl.importedCode, false);
+  // Each cited record is retired from the tree and pinned, with its blob, in the retired record.
+  {
+    const evidence = IMPORT_STACK_PROVENANCE.paper.evidence;
+    const record = readFileSync(new URL(`../${evidence.retired}`, import.meta.url), "utf8");
+    assert.ok(evidence.paths.length >= 2);
+    for (const path of evidence.paths) {
+      assert.match(record, new RegExp(`^\\| \`${path.replace(/[.]/g, "\\.")}\` \\| \`[0-9a-f]{40}\` \\|$`, "m"), path);
+      assert.ok(!existsSync(new URL(`../${path}`, import.meta.url)), `${path} is retired`);
+    }
+  }
 });

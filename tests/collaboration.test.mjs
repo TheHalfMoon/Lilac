@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -58,7 +59,16 @@ test("pins Paper evidence and Doop as AGPL reference-only with zero imported cod
   assert.equal(COLLABORATION_PROVENANCE.doop.license, "AGPL-3.0-only");
   assert.equal(COLLABORATION_PROVENANCE.doop.posture, "reference-only");
   assert.equal(COLLABORATION_PROVENANCE.doop.importedCode, false);
-  assert.ok(COLLABORATION_PROVENANCE.paperEvidence.length >= 2);
+  // Each cited record is retired from the tree and pinned, with its blob, in the retired record.
+  {
+    const evidence = COLLABORATION_PROVENANCE.paperEvidence;
+    const record = readFileSync(new URL(`../${evidence.retired}`, import.meta.url), "utf8");
+    assert.ok(evidence.paths.length >= 2);
+    for (const path of evidence.paths) {
+      assert.match(record, new RegExp(`^\\| \`${path.replace(/[.]/g, "\\.")}\` \\| \`[0-9a-f]{40}\` \\|$`, "m"), path);
+      assert.ok(!existsSync(new URL(`../${path}`, import.meta.url)), `${path} is retired`);
+    }
+  }
 });
 
 test("one authorization oracle gives the same answer across HTTP, realtime, MCP, and agent transports", () => {
