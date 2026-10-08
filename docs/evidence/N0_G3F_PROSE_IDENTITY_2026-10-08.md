@@ -38,7 +38,6 @@ The whole change exceeded the exact-head reviewer's context, so it lands in two 
   - the license register's source scan.
 
   The first split missed `codebase` and `app-crash-recovery`, because on Windows both already fail for unrelated reasons (#192). The review panel caught them. Before the merge, a manual review step also checked every literal removed from `packages/` against the tests and scripts outside this half. It was a review step, not an automated check. Those tests move together with the product text they check.
-- **N0-G3f2** renames the remaining test titles, comments and helper prose, and the scripts' prose. None of it changes what a test checks.
+- **N0-G3f2** renames the remaining test titles, comments, helper prose and test-created folder prefixes. None of it changes what a test checks. The scripts needed no prose change: their remaining old-name text is the Paper recovery script (removed in N0-G5), the census policy and the `@lilac/` refusal.
 
-## N0-G3f2
-N0-G3f2 renames the remaining test titles, comments and helper prose, and the scripts' prose. It changes no assertion against product output. It also corrects the two wording points above, which the N0-G3f1 delta review raised.
+The N0-G3f2 PR also corrects the two wording points above, which the N0-G3f1 delta review raised.
