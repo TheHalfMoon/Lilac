@@ -23,7 +23,7 @@ import {
   removeStaleFiles,
   removeStaleTemporaries,
 } from "./fsio.ts";
-import { assertJournalFormat, encodeJournalLine, genesisDigest, parseJournal } from "./journal.ts";
+import { assertJournalFormat, encodeJournalLine, genesisDigest, parseJournal, type ParsedJournal } from "./journal.ts";
 import { PROJECT_MIGRATIONS, migrateManifest, type ManifestMigration } from "./migrations.ts";
 import { getObject, putObject } from "./objects.ts";
 import {
@@ -363,6 +363,61 @@ function objectFanOutDirectories(projectDir: string): string[] {
 
 const LEFTOVER_LOCK = new RegExp(`^${PROJECT_FILES.lock.replace(".", "\\.")}\\.broken-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, "u");
 
+interface VerifiedProject {
+  manifest: ProjectManifest;
+  migratedFrom: number | null;
+  document: LilacDocument;
+  journalBytes: Buffer;
+  parsed: ParsedJournal;
+  genesis: string;
+  snapshot: SnapshotRef;
+  replayed: number;
+}
+
+/**
+ * Read and verify a project directory without writing anything: manifest (migrated in
+ * memory), snapshot, its document object, the whole journal chain, and replay of every
+ * entry after the snapshot.
+ */
+function readVerifiedProject(projectDir: string, migrations: Readonly<Record<number, ManifestMigration>>): VerifiedProject {
+  const files = paths(projectDir);
+  const rawManifest = readJsonFile(files.manifest, "manifest");
+  const { manifest: migrated, migratedFrom } = migrateManifest(rawManifest, migrations);
+  const manifest = readManifest(migrated);
+
+  const snapshot = readSnapshot(readJsonFile(files.snapshot, "snapshot reference"));
+  let document = loadDocument(projectDir, snapshot.documentObject);
+  if (document.revision !== snapshot.revision || document.id !== manifest.documentId) {
+    throw new PersistenceCorruptionError("snapshot document does not match the snapshot reference or manifest");
+  }
+
+  const journalBytes = readBounded(files.journal, PERSISTENCE_LIMITS.maxJournalBytes, "journal");
+  if (journalBytes === null) throw new PersistenceCorruptionError("journal is missing");
+  const genesis = genesisDigest(manifest.projectId);
+  const parsed = parseJournal(journalBytes, genesis);
+  // Every entry must be journal format 1, including those the snapshot already covers.
+  for (const { entry } of parsed.entries) assertJournalFormat(entry.transaction, `journal entry ${entry.seq}`, true);
+  if (snapshot.journalSeq > parsed.entries.length) {
+    throw new PersistenceCorruptionError("snapshot reference points past the end of the journal");
+  }
+  const anchor = snapshot.journalSeq === 0 ? genesis : parsed.entries[snapshot.journalSeq - 1].digest;
+  if (anchor !== snapshot.chainDigest) throw new PersistenceCorruptionError("snapshot reference does not match the journal chain");
+
+  let replayed = 0;
+  for (const { entry } of parsed.entries.slice(snapshot.journalSeq)) {
+    let next: LilacDocument;
+    try {
+      next = applyTransaction(document, entry.transaction).document as LilacDocument;
+    } catch (error) {
+      throw new PersistenceCorruptionError(`journal entry ${entry.seq} does not apply: ${(error as Error).message.slice(0, 200)}`);
+    }
+    if (next.revision !== entry.revision) throw new PersistenceCorruptionError(`journal entry ${entry.seq} revision mismatch`);
+    document = next;
+    replayed += 1;
+  }
+  return { manifest, migratedFrom, document, journalBytes, parsed, genesis, snapshot, replayed };
+}
+
 /** Open a project for writing: lock, verify, recover a torn journal tail, and replay. */
 export function openProject(root: string, options: OpenProjectOptions): ProjectStore {
   const projectDir = projectDirectory(root);
@@ -390,40 +445,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       // A lock override renames the stale lock aside before reading it; a crash in between
       // leaves that renamed copy behind. The previous holder is already in the override record.
       + removeStaleFiles(projectDir, (name) => LEFTOVER_LOCK.test(name));
-    const rawManifest = readJsonFile(files.manifest, "manifest");
-    const { manifest: migrated, migratedFrom } = migrateManifest(rawManifest, options.migrations ?? PROJECT_MIGRATIONS);
-    const manifest = readManifest(migrated);
-
-    const snapshot = readSnapshot(readJsonFile(files.snapshot, "snapshot reference"));
-    let document = loadDocument(projectDir, snapshot.documentObject);
-    if (document.revision !== snapshot.revision || document.id !== manifest.documentId) {
-      throw new PersistenceCorruptionError("snapshot document does not match the snapshot reference or manifest");
-    }
-
-    const journalBytes = readBounded(files.journal, PERSISTENCE_LIMITS.maxJournalBytes, "journal");
-    if (journalBytes === null) throw new PersistenceCorruptionError("journal is missing");
-    const genesis = genesisDigest(manifest.projectId);
-    const parsed = parseJournal(journalBytes, genesis);
-    // Every entry must be journal format 1, including those the snapshot already covers.
-    for (const { entry } of parsed.entries) assertJournalFormat(entry.transaction, `journal entry ${entry.seq}`, true);
-    if (snapshot.journalSeq > parsed.entries.length) {
-      throw new PersistenceCorruptionError("snapshot reference points past the end of the journal");
-    }
-    const anchor = snapshot.journalSeq === 0 ? genesis : parsed.entries[snapshot.journalSeq - 1].digest;
-    if (anchor !== snapshot.chainDigest) throw new PersistenceCorruptionError("snapshot reference does not match the journal chain");
-
-    let replayed = 0;
-    for (const { entry } of parsed.entries.slice(snapshot.journalSeq)) {
-      let next: LilacDocument;
-      try {
-        next = applyTransaction(document, entry.transaction).document as LilacDocument;
-      } catch (error) {
-        throw new PersistenceCorruptionError(`journal entry ${entry.seq} does not apply: ${(error as Error).message.slice(0, 200)}`);
-      }
-      if (next.revision !== entry.revision) throw new PersistenceCorruptionError(`journal entry ${entry.seq} revision mismatch`);
-      document = next;
-      replayed += 1;
-    }
+    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, replayed } = readVerifiedProject(projectDir, options.migrations ?? PROJECT_MIGRATIONS);
     // Repairs are written only once every check has passed, so an open refused as newer or
     // corrupt leaves the project's files as it found them.
     if (migratedFrom !== null) {
