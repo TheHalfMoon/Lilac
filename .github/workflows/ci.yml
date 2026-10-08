@@ -12,7 +12,7 @@ jobs:
   foundation:
     name: Foundation checks
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,6 +21,17 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --ignore-scripts
+      - name: Cache the pinned Electron archive
+        uses: actions/cache@v4
+        with:
+          path: .lilac-cache/electron/downloads
+          key: electron-${{ runner.os }}-${{ hashFiles('scripts/desktop/electron.mjs') }}
+      - name: Fetch the pinned Electron runtime (SHA-256 verified)
+        run: node scripts/fetch-electron.mjs
+      - name: Allow Chromium's sandbox (unprivileged user namespaces)
+        # Ubuntu's AppArmor restricts unprivileged user namespaces, which Chromium's sandbox
+        # uses; lift that for this job rather than run the desktop app unsandboxed.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run checks
         shell: bash
         run: |
@@ -38,4 +49,9 @@ jobs:
           failing=$(grep -E '^ *not ok [0-9]+ - ' check.log 2>/dev/null | sed -E 's/^ *not ok [0-9]+ - //' | cut -c1-200 | head -n 20 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | paste -sd ';' - || true)
           if [ -n "$failing" ]; then
             echo "::warning title=Failing tests::head=${{ github.event.pull_request.head.sha || github.sha }} ${failing}"
+            # And the first line of each failure's error (at most 10, each cut to 300 characters).
+            reasons=$(awk '/^ *not ok [0-9]+ - /{want=1; next} want && /^ +error: /{sub(/^ +error: /, ""); line=$0; if (line ~ /^[|>]-?$/) {getline; sub(/^ +/, ""); line=$0} print substr(line, 1, 300); want=0}' check.log | head -n 10 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | paste -sd ';' - || true)
+            if [ -n "$reasons" ]; then
+              echo "::warning title=Failure reasons::head=${{ github.event.pull_request.head.sha || github.sha }} ${reasons}"
+            fi
           fi
