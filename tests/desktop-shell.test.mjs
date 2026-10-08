@@ -231,7 +231,8 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     await desktop.app.close();
     assert.deepEqual(egress, [], "nothing left this computer, from any process of the app");
   } catch (error) {
-    throw new Error(`${step}: ${String(error?.message ?? error).split("\n")[0]}`, { cause: error });
+    const editor = await desktop?.window.evaluate(() => `status=${JSON.stringify(document.getElementById("status")?.textContent)} ${document.getElementById("revision")?.textContent} dialog=${JSON.stringify(document.querySelector("#dialog[open]")?.textContent?.slice(0, 160) ?? null)}`).catch(() => "unreadable");
+    throw new Error(`${step}: ${String(error?.message ?? error).split("\n")[0]}; editor: ${editor}; console: ${JSON.stringify(desktop?.errors ?? []).slice(0, 300)}`, { cause: error });
   } finally {
     await desktop?.app.close().catch(() => {});
     await new Promise((resolve) => other.close(resolve));
