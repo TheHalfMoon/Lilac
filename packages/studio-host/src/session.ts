@@ -362,7 +362,9 @@ export class StudioSession {
   #storeFailure(error: unknown): StudioError {
     const name = error instanceof Error ? error.name : "";
     const message = error instanceof Error ? error.message : "";
-    const storeBroken = /reopen|changed outside|modified outside|replaced|changed since|no longer holds|changed while|lock/iu.test(message);
+    // A failed journal write poisons the store whatever its message says (#185): the project
+    // must be reopened, never reported as the client's invalid edit.
+    const storeBroken = this.#store.needsReopen || /reopen|changed outside|modified outside|replaced|changed since|no longer holds|changed while|lock/iu.test(message);
     if ((name === "PersistenceValidationError" || name === "PersistenceCorruptionError") && !storeBroken) {
       return new StudioError(400, "invalid-edit", message.slice(0, 300));
     }

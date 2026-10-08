@@ -144,6 +144,11 @@ export interface CodeSource {
   textIndex?: number;
   /** The source's literal values when it was brought in (or last written back). */
   base: { text?: string; props: Record<string, string> };
+  /**
+   * A write-back recorded before its file was renamed into place and not yet confirmed: the
+   * bases it writes, and the SHA-256 the file has once it lands (#185). See planWriteBack.
+   */
+  pending?: { base: { text?: string; props: Record<string, string> }; sha256: string };
 }
 
 export interface ImportJsxOptions {

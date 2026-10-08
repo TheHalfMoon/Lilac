@@ -8,7 +8,7 @@ import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES } from "@lilac/persistence";
 import { AgentRegistry } from "./agents.ts";
 import { StudioError } from "./errors.ts";
 import { exportJsx, importJsx } from "./code.ts";
-import { CodebaseLinks, assertFolder, bringIn, planWriteBack, scanComponents, writeBack } from "./codebase.ts";
+import { CodebaseLinks, assertFolder, bringIn, planWriteBack, scanComponents, writeBack, type WriteBackPlan } from "./codebase.ts";
 import { ImportDesk, MAX_IMPORT_HTML_BYTES } from "./imports.ts";
 import { ConfirmationBroker, handleMcpMessage } from "./mcp.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
@@ -255,9 +255,16 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     },
     "POST /api/codebase/write": (body) => {
       const current = requireSession();
-      const { plan, operations } = writeBack(current.document, body?.nodeId, connectedFolder(current.name), body?.token);
-      // The file is written; the layers' bases follow it, as one transaction.
-      const event = current.edit(owner, { baseRevision: current.revision, operations, intent: `Write ${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} back to ${plan.file}`, tool: "lilac:codebase" });
+      // Recorded as pending, written, then confirmed: three transactions (#185, writeBack).
+      let event: ReturnType<typeof current.edit> | undefined;
+      const intents = {
+        record: (plan: WriteBackPlan) => `Write ${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} back to ${plan.file}`,
+        confirm: (plan: WriteBackPlan) => `Confirm the write to ${plan.file}`,
+        withdraw: (plan: WriteBackPlan) => `Withdraw the write to ${plan.file}`,
+      };
+      const plan = writeBack(current.document, body?.nodeId, connectedFolder(current.name), body?.token, (operations, step, planned) => {
+        event = current.edit(owner, { baseRevision: current.revision, operations, intent: intents[step](planned), tool: "lilac:codebase" });
+      });
       return { ...event, file: plan.file, written: plan.changes.length };
     },
     "POST /api/import/discard": (body) => {

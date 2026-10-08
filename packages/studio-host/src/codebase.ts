@@ -197,8 +197,8 @@ export interface WriteBackPlan {
   conflicts: Array<{ nodeId: string; field: string; reason: string }>;
   notWritten: Array<{ nodeId: string; reason: string }>;
   after: string;
-  /** The bound layers' new bases once written. */
-  rebase: Array<{ nodeId: string; codeSource: CodeSource }>;
+  /** The bound layers' new sources once written (`codeSource`), and as they stand now (`settled`). */
+  rebase: Array<{ nodeId: string; codeSource: CodeSource; settled: CodeSource }>;
 }
 
 const sourceName = (prop: string) => (prop === "className" ? "class" : prop === "htmlFor" ? "for" : prop);
@@ -296,6 +296,20 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
   const { file, component } = bound[0].source;
   if (bound.some(({ source }) => source.file !== file || source.component !== component)) throw new StudioError(409, "mixed-sources", "select one component brought in from the codebase");
   const read = readSourceFile(folder, file);
+  // A write-back recorded but never confirmed (#185): when the file is exactly what it was
+  // to become, the write landed and its bases apply. Otherwise it is unknown whether the file
+  // changed before or after that write, so the layer is a conflict and nothing is written to
+  // it; bringing the component in again settles it.
+  const unconfirmed = new Set<string>();
+  for (const entry of bound) {
+    const { pending, ...settled } = entry.source;
+    if (pending === undefined) continue;
+    if (read.sha256 === pending.sha256) entry.source = { ...settled, base: pending.base };
+    else {
+      entry.source = settled;
+      unconfirmed.add(entry.node.id);
+    }
+  }
   let ir: any;
   try {
     ir = buildCodeIr([{ path: read.file, content: read.content }]);
@@ -390,6 +404,10 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
 
   for (const { node, source } of bound) {
     if (copies.has(node.id)) continue;
+    if (unconfirmed.has(node.id)) {
+      conflicts.push({ nodeId: node.id, field: "write-back", reason: `an earlier write-back to ${file} was not confirmed and the file has changed since; check it and bring the component in again` });
+      continue;
+    }
     const isText = source.tag === "#text";
     if (isText && misplacedText.has(node.id)) {
       notWritten.push({ nodeId: node.id, reason: "a run of text moved or reordered here is not written back" });
@@ -474,7 +492,7 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
       for (const name of Object.keys(node.props?.attributes ?? {})) if (!sourceNames.has(name)) notWritten.push({ nodeId: node.id, reason: `the new attribute ${name} is not written back` });
       if (Object.keys(node.props?.style ?? {}).length > 0 && !symbol.props.some((prop: any) => prop.name === "style")) notWritten.push({ nodeId: node.id, reason: "a style the source does not have is not written back" });
     }
-    rebase.push({ nodeId: node.id, codeSource: { ...source, base: nextBase } });
+    rebase.push({ nodeId: node.id, codeSource: { ...source, base: nextBase }, settled: source });
   }
 
   // Applied from the end of the file back, so each anchor's range still holds.
@@ -529,15 +547,8 @@ function readBackFailures(file: string, content: string, component: string, chec
   }).map((check) => `${check.nodeId}:${check.field}`);
 }
 
-/**
- * Write the plan for `nodeId` to its file, if it is still exactly the plan the person
- * previewed (`token`): the same file, becoming the same content. A change to the file or
- * to the layers since the preview is refused, and must be previewed again.
- */
-export function writeBack(document: any, nodeId: unknown, folder: string, token: unknown): { plan: WriteBackPlan; operations: unknown[] } {
-  const plan = planWriteBack(document, nodeId, folder);
-  if (typeof token !== "string" || plan.token !== token) throw new StudioError(409, "plan-changed", `${plan.file} or the layers changed since the preview; preview it again`);
-  if (plan.changes.length === 0) throw new StudioError(409, "nothing-to-write", "there are no changes to write back");
+/** Rename `plan.after` into place as the plan's file, if the file is still what was planned from. */
+function replaceFile(folder: string, plan: WriteBackPlan): void {
   const { absolute } = readSourceFile(folder, plan.file);
   const mode = statSync(absolute).mode & 0o777;
   const temporary = join(dirname(absolute), `.${randomUUID()}.ninerr-tmp`);
@@ -546,7 +557,7 @@ export function writeBack(document: any, nodeId: unknown, folder: string, token:
     try {
       writeSync(fd, plan.after);
       // The file keeps its own permissions (the umask does not apply); its owner and group
-      // are this user's, as Lilac writes it.
+      // are this user's, as Ninerr writes it.
       fchmodSync(fd, mode);
       fsyncSync(fd);
     } finally {
@@ -560,5 +571,51 @@ export function writeBack(document: any, nodeId: unknown, folder: string, token:
     if (error instanceof StudioError) throw error;
     throw new StudioError(500, "write-failed", `${plan.file} could not be written`);
   }
-  return { plan, operations: plan.rebase.map(({ nodeId: id, codeSource }) => ({ type: "set-props", nodeId: id, set: { codeSource } })) };
+}
+
+/** How a write-back records its steps in the project: one committed transaction each. */
+export type WriteBackCommit = (operations: unknown[], step: "record" | "confirm" | "withdraw", plan: WriteBackPlan) => void;
+
+/**
+ * Write the plan for `nodeId` to its file, if it is still exactly the plan the person
+ * previewed (`token`): the same file, becoming the same content. A change to the file or
+ * to the layers since the preview is refused, and must be previewed again.
+ *
+ * The project and the file can never disagree silently (#185). In order:
+ * 1. `record` commits the write as pending on each layer: the bases it writes and the
+ *    SHA-256 the file will have. If this fails, nothing has been written.
+ * 2. The file is renamed into place. If that fails, `withdraw` removes the record; if the
+ *    withdrawal fails too, the record stays, and since the file does not match it, planning
+ *    reports those layers as conflicts rather than guessing.
+ * 3. `confirm` commits the new bases. If this fails, the file is written and the record is
+ *    durable: the next plan sees the file match the record and uses its bases.
+ */
+export function writeBack(document: any, nodeId: unknown, folder: string, token: unknown, commit: WriteBackCommit): WriteBackPlan {
+  const plan = planWriteBack(document, nodeId, folder);
+  if (typeof token !== "string" || plan.token !== token) throw new StudioError(409, "plan-changed", `${plan.file} or the layers changed since the preview; preview it again`);
+  if (plan.changes.length === 0) throw new StudioError(409, "nothing-to-write", "there are no changes to write back");
+  const landed = sha256(plan.after);
+  // The layers whose base this write changes take part, and so do those still carrying an
+  // earlier record (planning resolved it from the file; this write settles it). The others
+  // are the same either way.
+  const moving = plan.rebase.filter(({ nodeId: id, codeSource, settled }) => !sameBase(codeSource.base, settled.base) || document.nodes[id]?.props?.codeSource?.pending !== undefined);
+  const set = (sources: Array<{ nodeId: string; codeSource: CodeSource }>) => sources.map(({ nodeId: id, codeSource }) => ({ type: "set-props", nodeId: id, set: { codeSource } }));
+  commit(set(moving.map(({ nodeId: id, codeSource, settled }) => ({ nodeId: id, codeSource: { ...settled, pending: { base: codeSource.base, sha256: landed } } }))), "record", plan);
+  try {
+    replaceFile(folder, plan);
+  } catch (error) {
+    try {
+      commit(set(moving.map(({ nodeId: id, settled }) => ({ nodeId: id, codeSource: settled }))), "withdraw", plan);
+    } catch {
+      // The record stays and does not match the file, so planning reports a conflict.
+    }
+    throw error;
+  }
+  commit(set(moving), "confirm", plan);
+  return plan;
+}
+
+function sameBase(a: CodeSource["base"], b: CodeSource["base"]): boolean {
+  const propsA = Object.keys(a.props);
+  return a.text === b.text && propsA.length === Object.keys(b.props).length && propsA.every((prop) => Object.hasOwn(b.props, prop) && b.props[prop] === a.props[prop]);
 }
