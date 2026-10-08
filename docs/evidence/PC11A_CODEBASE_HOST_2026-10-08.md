@@ -44,10 +44,14 @@ Every comparison is made field by field:
   - layers added here (each one is listed);
   - layers removed here;
   - layers moved or reordered (each bound layer's place is compared with its source path);
+  - runs of text moved to another element, reordered, or removed;
   - copies of a bound layer, which are reported as conflicts;
-  - text holding `{ } < >`.
+  - text holding `{ } < >`;
+  - text the source writes as a `{…}` expression (such as `{" "}`), which is left as it is.
 
   The preview lists each one, so the person sees what stays as it is. Boolean and number props in the source are not mistaken for new attributes.
+- **The whole component.** A layer inside the component plans for the whole component, from its root.
+- **Read back.** Before a plan is offered, the new file is parsed again. Every written field must read back as the value written. A field that would not (whitespace, entities, a run merging with its neighbour) is left out and listed.
 - **The preview** carries a unified diff, the changes, the conflicts and what is not written. It also carries a token naming this exact plan: the file's sha256 and what the file would become.
 
 **Write.** `POST /api/codebase/write {nodeId, token}` makes the plan again and refuses unless it is the plan the person previewed. A change to the file, or to the layers, since the preview is refused. An agent editing a layer between the preview and the person's confirmation therefore cannot get unreviewed content written. The write then:
@@ -99,3 +103,10 @@ The file's owner and group become this user's, as Lilac writes it.
   - A layer changed after the preview makes the write refused (`plan-changed`), and nothing is written.
   - An added layer is listed, a moved one is listed, and a copy of a bound layer is a conflict on both.
 - **Paths** with a backslash, a drive (`C:`), an alternate stream (`:`) or `./` are refused too.
+- **Runs of text** (`<p>Hello <b>x</b>{" "}and more</p>`):
+  - A child layer previews for its whole component, with nothing spurious.
+  - The `{" "}` expression is left as it is and listed.
+  - The other runs are written and read back.
+  - The bindings still hold afterwards.
+  - A run moved into another element is listed and not written to its old place.
+  - A removed run is listed.

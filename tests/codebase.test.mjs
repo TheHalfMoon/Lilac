@@ -288,3 +288,67 @@ test("write-back keeps the file's own changes, writes only the previewed plan, a
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("runs of text: an expression is left alone, moved or removed runs are listed, and a child plans for its component", async () => {
+  const root = scratch();
+  const projects = join(root, "projects");
+  const code = join(root, "code");
+  mkdirSync(projects);
+  mkdirSync(code);
+  const path = join(code, "Line.jsx");
+  const LINE = `export function Line() {
+  return (
+    <div>
+      <p>Hello <b>x</b>{" "}and more</p>
+      <h2>Title</h2>
+    </div>
+  );
+}
+`;
+  writeFileSync(path, LINE);
+  const host = await startStudioHost({ projectsRoot: projects, now });
+  const call = async (method, route, body) => {
+    const response = await fetch(`${host.url}${route}`, { method, headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    return { status: response.status, json: await response.json() };
+  };
+  const edit = (operations) => call("POST", "/api/edit", { baseRevision: host.session.revision, intent: "Edit", operations });
+  const nodes = () => Object.values(host.session.document.nodes);
+  try {
+    await call("POST", "/api/projects/create", { name: "lines" });
+    await call("POST", "/api/codebase/connect", { folder: code });
+    await call("POST", "/api/codebase/import", { file: "Line.jsx", component: "Line" });
+    const runs = nodes().filter((node) => node.props.codeSource?.tag === "#text").sort((a, b) => a.props.codeSource.textIndex - b.props.codeSource.textIndex);
+    const h2 = nodes().find((node) => node.props.tag === "h2");
+    const div = nodes().find((node) => node.props.tag === "div" && node.props.codeSource?.path === "");
+    assert.equal(runs.length, 3, runs.map((run) => JSON.stringify(run.props.text)).join(","));
+
+    // A child plans for its whole component: nothing spurious is listed.
+    let preview = (await call("POST", "/api/codebase/preview", { nodeId: h2.id })).json;
+    assert.deepEqual(preview.notWritten, [], JSON.stringify(preview.notWritten));
+
+    // The {" "} run is an expression: left as it is, and listed. The others are written,
+    // and read back as written.
+    await edit(runs.map((run, index) => ({ type: "set-props", nodeId: run.id, set: { text: ["Z ", " plus ", "Z more"][index] } })));
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: h2.id })).json;
+    assert.deepEqual(preview.changes.map((change) => change.to).sort(), ["Z ", "Z more"]);
+    assert.ok(preview.notWritten.some((entry) => entry.nodeId === runs[1].id && /expression/u.test(entry.reason)), JSON.stringify(preview.notWritten));
+    assert.equal((await call("POST", "/api/codebase/write", { nodeId: h2.id, token: preview.token })).status, 200);
+    assert.match(readFileSync(path, "utf8"), /<p>Z <b>x<\/b>\{" "\}Z more<\/p>/u, "the expression stays");
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: div.id })).json;
+    assert.deepEqual(preview.conflicts, [], "the bindings still hold");
+    assert.deepEqual(preview.changes, []);
+
+    // A run moved into another element is listed, and never written to its old place.
+    await edit([{ type: "move-node", nodeId: runs[2].id, parentId: h2.id, index: 0 }, { type: "set-props", nodeId: runs[2].id, set: { text: "Moved" } }]);
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: div.id })).json;
+    assert.ok(preview.notWritten.some((entry) => entry.nodeId === runs[2].id && /moved or reordered/u.test(entry.reason)), JSON.stringify(preview.notWritten));
+    assert.ok(!preview.changes.some((change) => change.to === "Moved"));
+    // A run removed is listed.
+    await edit([{ type: "remove-node", nodeId: runs[2].id }]);
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: div.id })).json;
+    assert.ok(preview.notWritten.some((entry) => /text removed/u.test(entry.reason)), JSON.stringify(preview.notWritten));
+  } finally {
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
