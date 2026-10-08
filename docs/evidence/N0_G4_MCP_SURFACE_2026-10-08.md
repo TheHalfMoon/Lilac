@@ -1,18 +1,28 @@
-# N0-G4: Ninerr's own MCP tool surface
+# N0-G4b: the MCP tools carry Ninerr names
 
-Issue: #190 (N0 umbrella).
+Issue: #190 (N0 umbrella). This is the second half of N0-G4. The first half, `N0_G4A_MCP_CATALOG_2026-10-09.md` (#208), replaced the mirrored Paper tool list with Ninerr's own catalog. The tools kept their Paper-style names there; this half gives them Ninerr's.
 
-## Before
-The protocol package recorded another product's public MCP tool list: 36 names, an observation date and a version stamp. The server had to offer a subset of those names. The package also carried:
-- drift checks against that list;
-- the classification of all 36 tools, including tools Ninerr never served;
-- denials for four workspace tools that Ninerr does not implement;
-- a capability exception for a comment tool that Ninerr does not implement.
+| Before | Now | Class |
+| --- | --- | --- |
+| `get_basic_info` | `project_info` | read |
+| `get_tree_summary` | `layer_tree` | read |
+| `get_node_info` | `layer_details` | read |
+| `get_children` | `layer_children` | read |
+| `find_nodes` | `find_layers` | read |
+| `get_selection` | `selection` | read |
+| `get_jsx` | `layer_code` | read |
+| `get_guide` | `guide` | read |
+| `finish_working_on_nodes` | `finish_task` | read |
+| `create_artboard` | `create_frame` | write |
+| `set_text_content` | `set_text` | write |
+| `rename_nodes` | `rename_layers` | write |
+| `update_styles` | `set_styles` | write |
+| `move_nodes` | `move_layers` | write |
+| `duplicate_nodes` | `duplicate_layers` | write |
+| `delete_nodes` | `delete_layers` | consequential |
 
-## After
-- **The catalog.** `packages/mcp-protocol/src/tools.mjs` holds the 16 tools the server offers, each with its class: 9 read, 6 write, 1 consequential. `classifyTool` classifies only own names, so `toString` and `__proto__` are unknown.
-- **The server check.** `assertMCPToolSurface` checks that a server's tools are exactly the catalog. The studio host runs it on its own definitions when it loads, so a tool cannot be added to the server without classifying it.
-- **Authorization.** It needs no per-tool exceptions: every tool acts on the open document, and its class decides the capability.
-- **Ninerr names.** The tools have their own names, such as `layer_tree`, `set_styles`, `create_frame` and `delete_layers`. Nothing was released under the earlier names, so no aliases are kept, and an earlier name is now an unknown tool. `docs/MCP.md` lists the mapping.
-- **History.** Entries recorded before the change keep the tool name they were made with.
-- **Docs.** `docs/MCP.md` now describes the server that exists: its transports, how to connect, the tools, authorization and the server's obligations. `tests/release-docs.test.mjs` checks the doc against the catalog, including the rename table.
+- **Classes.** The classes are unchanged. The server, the catalog, the editor tests, the stdio relay test, web mode and the desktop journey all use the new names.
+- **No aliases.** Nothing was released under the earlier names, so no aliases are kept. An earlier name is now an unknown tool, denied before any policy is consulted. The protocol, server and docs tests check that.
+- **History.** Entries recorded before this change keep the tool name they were made with: the journal is append-only.
+- **Docs.** `docs/MCP.md` lists the mapping, and `tests/release-docs.test.mjs` checks that table against the catalog.
+- **Prose.** "Artboard" in the server's tool title, its description and its history label becomes "frame", the word the editor uses.

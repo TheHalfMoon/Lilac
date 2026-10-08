@@ -106,15 +106,6 @@
       "reason": "Environment variables users and MCP clients set (N0-G3, legacy names read with a notice)."
     },
     {
-      "id": "public-mcp-catalog",
-      "category": "PUBLIC_API",
-      "path": "^(packages/mcp-protocol/|packages/studio-host/src/mcp\\.ts|docs/MCP\\.md)",
-      "terms": [
-        "paper"
-      ],
-      "reason": "MCP tool catalog mirrored from Paper and checked for drift against it (N0-G4)."
-    },
-    {
       "id": "donor-provenance-records",
       "category": "ACTIVE_INTERNAL_IDENTITY",
       "path": "^(packages/[a-z-]+/src/provenance\\.(ts|mjs)|packages/[a-z-]+/NOTICE\\.md|docs/DONORS\\.md|docs/DONOR_[A-Z_0-9-]+\\.md|docs/provenance/)",

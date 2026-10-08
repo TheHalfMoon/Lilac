@@ -205,7 +205,7 @@ test("agents read and edit through tools; every edit is an attributed transactio
   });
 });
 
-test("every call is authorized: unknown, workspace and unimplemented tools; payload identity is ignored", async () => {
+test("every call is authorized: names outside the catalog are unknown; payload identity is ignored", async () => {
   await withStudio(async ({ owner, tool, host }) => {
     const { token } = (await owner("POST", "/api/agents/create", { name: "Agent" })).json;
     await owner("POST", "/api/projects/create", { name: "p" });
@@ -214,7 +214,7 @@ test("every call is authorized: unknown, workspace and unimplemented tools; payl
     const { token: later } = (await owner("POST", "/api/agents/create", { name: "Later" })).json;
     assert.equal((await tool(later, "project_info", {})).isError, undefined);
     // A name outside Ninerr's catalog is unknown, whatever another product calls its tools.
-    for (const name of ["open_file", "get_screenshot", "get_tree_summary", "toString"]) {
+    for (const name of ["open_file", "get_screenshot", "list_resources", "get_tree_summary", "toString"]) {
       assert.match(text(await tool(token, name, {})), /Not allowed: unknown tool/u, name);
     }
     assert.match(text(await tool(token, "project_info", "nope")), /Invalid call/u);

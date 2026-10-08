@@ -35,7 +35,7 @@ test("each tool is classified by what it does to the document", () => {
   assert.equal(classifyTool("set_styles"), "write");
   assert.equal(classifyTool("delete_layers"), "consequential");
   // A name outside the catalog is unknown, including a name the catalog's own object inherits.
-  for (const name of ["future_tool", "get_tree_summary", "toString", "constructor", "__proto__"]) assert.equal(classifyTool(name), "unknown", name);
+  for (const name of ["future_tool", "get_screenshot", "get_tree_summary", "toString", "constructor", "__proto__"]) assert.equal(classifyTool(name), "unknown", name);
   assert.throws(() => classifyTool(""), MCPContractError);
   const classes = MCP_TOOL_NAMES.map(classifyTool);
   assert.equal(classes.filter((value) => value === "read").length, 9);
