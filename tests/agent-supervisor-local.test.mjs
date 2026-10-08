@@ -61,7 +61,7 @@ test("metadata file guard refuses symbolic links before record parsing", () => {
 });
 
 test("local file task store performs deterministic compare-and-swap without identity drift", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "lilac-supervisor-"));
+  const directory = await mkdtemp(join(tmpdir(), "ninerr-supervisor-"));
   try {
     const store = new FileTaskStore(directory);
     const first = taskRecord();
@@ -114,7 +114,7 @@ test("task mutation mutex serializes lifecycle actions for the same durable task
   assert.deepEqual(order, ["start-1", "end-1", "start-2", "end-2", "start-3", "end-3"]);
 });
 test("file queue store persists acknowledgement and replays the next unacknowledged wake", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "lilac-supervisor-queue-"));
+  const directory = await mkdtemp(join(tmpdir(), "ninerr-supervisor-queue-"));
   try {
     const store = new FileQueueStore(directory);
     let queue = createSupervisorQueue();
@@ -142,12 +142,12 @@ test("file queue store persists acknowledgement and replays the next unacknowled
   }
 });
 test("relaunch preserves real worktree HEAD, status, tracked edits, and untracked bytes exactly", async () => {
-  const root = await mkdtemp(join(tmpdir(), "lilac-worktree-preserve-"));
+  const root = await mkdtemp(join(tmpdir(), "ninerr-worktree-preserve-"));
   const repo = join(root, "repo");
   try {
     await execFileAsync("git", ["init", "-b", "impl/preserve", repo], { windowsHide: true });
     await execFileAsync("git", ["-C", repo, "config", "user.name", "Lilac Test"], { windowsHide: true });
-    await execFileAsync("git", ["-C", repo, "config", "user.email", "lilac-test@example.invalid"], { windowsHide: true });
+    await execFileAsync("git", ["-C", repo, "config", "user.email", "ninerr-test@example.invalid"], { windowsHide: true });
     const trackedPath = join(repo, "tracked.txt");
     const untrackedPath = join(repo, "untracked.bin");
     await writeFile(trackedPath, "base\n", "utf8");
@@ -290,7 +290,7 @@ test("concurrent relaunch requests hold one task mutation owner through stop, la
 });
 
 test("file supervisor ownership admits one live mutation generation and safely transfers after release", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "lilac-supervisor-owner-"));
+  const directory = await mkdtemp(join(tmpdir(), "ninerr-supervisor-owner-"));
   try {
     const first = await FileSupervisorLockAdapter.acquire(directory, "generation-a", T0);
     assert.equal(await first.isMutationOwner("generation-a"), true);
@@ -316,7 +316,7 @@ test("file supervisor ownership admits one live mutation generation and safely t
 });
 
 test("file supervisor ownership reclaims only a positively dead process lock", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "lilac-supervisor-stale-owner-"));
+  const directory = await mkdtemp(join(tmpdir(), "ninerr-supervisor-stale-owner-"));
   try {
     const child = spawn(process.execPath, ["-e", "process.exit(0)"], { stdio: "ignore" });
     const deadPid = child.pid;
@@ -334,7 +334,7 @@ test("file supervisor ownership reclaims only a positively dead process lock", a
 });
 
 test("file supervisor task lock serializes same-task mutations under the global owner", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "lilac-supervisor-task-lock-"));
+  const directory = await mkdtemp(join(tmpdir(), "ninerr-supervisor-task-lock-"));
   try {
     const owner = await FileSupervisorLockAdapter.acquire(directory, "generation-a", T0);
     let active = 0;
@@ -359,16 +359,16 @@ test("file supervisor task lock serializes same-task mutations under the global 
 
 
 test("local process runtime persists endpoint identity, avoids implicit credential inheritance, and preserves worktree on stop", async () => {
-  const root = await mkdtemp(join(tmpdir(), "lilac-local-runtime-"));
+  const root = await mkdtemp(join(tmpdir(), "ninerr-local-runtime-"));
   const runtimeDir = join(root, "runtime");
   const probe = join(root, "env-probe.txt");
   const endpoint = { endpointId: "endpoint-local-1", backend: "local-process", attachedAt: T0 };
-  const previousSecret = process.env.LILAC_TEST_SECRET;
-  process.env.LILAC_TEST_SECRET = "must-not-be-inherited";
+  const previousSecret = process.env.NINERR_TEST_SECRET;
+  process.env.NINERR_TEST_SECRET = "must-not-be-inherited";
   const adapter = new LocalProcessRuntimeAdapter(runtimeDir, {
     hold: {
       executable: process.execPath,
-      args: ["-e", `require("node:fs").writeFileSync(${JSON.stringify(probe)}, process.env.LILAC_TEST_SECRET ?? "absent"); setInterval(() => {}, 1000);`],
+      args: ["-e", `require("node:fs").writeFileSync(${JSON.stringify(probe)}, process.env.NINERR_TEST_SECRET ?? "absent"); setInterval(() => {}, 1000);`],
       environment: {},
       interrupt: async () => {},
     },
@@ -410,8 +410,8 @@ test("local process runtime persists endpoint identity, avoids implicit credenti
       supervisorGenerationId: "generation-a",
     }), /endpoint identity/u);
   } finally {
-    if (previousSecret === undefined) delete process.env.LILAC_TEST_SECRET;
-    else process.env.LILAC_TEST_SECRET = previousSecret;
+    if (previousSecret === undefined) delete process.env.NINERR_TEST_SECRET;
+    else process.env.NINERR_TEST_SECRET = previousSecret;
     try { await adapter.stop(endpoint); } catch { /* test cleanup only */ }
     await rm(root, { recursive: true, force: true });
   }
@@ -419,7 +419,7 @@ test("local process runtime persists endpoint identity, avoids implicit credenti
 
 
 test("local process stop waits for an owned child that exited before stop to finish closing", async () => {
-  const root = await mkdtemp(join(tmpdir(), "lilac-local-runtime-self-exit-"));
+  const root = await mkdtemp(join(tmpdir(), "ninerr-local-runtime-self-exit-"));
   const runtimeDir = join(root, "runtime");
   const endpoint = { endpointId: "endpoint-self-exit", backend: "local-process", attachedAt: T0 };
   const adapter = new LocalProcessRuntimeAdapter(runtimeDir, {
@@ -452,12 +452,12 @@ test("local process stop waits for an owned child that exited before stop to fin
 });
 
 test("task-set lock and durable task registry prevent different task ids from sharing one active worktree", async () => {
-  const root = await mkdtemp(join(tmpdir(), "lilac-worktree-owner-"));
+  const root = await mkdtemp(join(tmpdir(), "ninerr-worktree-owner-"));
   const state = join(root, "state");
   try {
     await execFileAsync("git", ["init", "-b", "impl/shared", root], { windowsHide: true });
     await execFileAsync("git", ["-C", root, "config", "user.name", "Lilac Test"], { windowsHide: true });
-    await execFileAsync("git", ["-C", root, "config", "user.email", "lilac-test@example.invalid"], { windowsHide: true });
+    await execFileAsync("git", ["-C", root, "config", "user.email", "ninerr-test@example.invalid"], { windowsHide: true });
     await writeFile(join(root, "base.txt"), "base\n", "utf8");
     await execFileAsync("git", ["-C", root, "add", "base.txt"], { windowsHide: true });
     await execFileAsync("git", ["-C", root, "commit", "-m", "base"], { windowsHide: true });

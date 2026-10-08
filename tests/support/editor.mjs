@@ -1,6 +1,6 @@
 import { findBrowser } from "./browser.mjs";
 
-// Open the Lilac editor of a running studio host in Chromium, as a person would from its
+// Open the Ninerr editor of a running studio host in Chromium, as a person would from its
 // launch link. Every request outside the host's origin is aborted and recorded, and page
 // errors are collected, so a test can assert the editor stayed local and clean.
 export async function openEditor(host) {

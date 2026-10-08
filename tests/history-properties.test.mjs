@@ -6,7 +6,7 @@ import { canRedo, canUndo, commitTransaction, createHistoryState, redo, undo } f
 import { createPrng, propertySeeds } from "./support/prng.mjs";
 
 // Generated undo/redo properties over every history operation type. A failure
-// names its seed; replay it with LILAC_PROPERTY_SEED=<seed>.
+// names its seed; replay it with NINERR_PROPERTY_SEED=<seed>.
 
 const PROP_KEYS = ["x", "y", "fill", "text", "__proto__", "constructor", "toString", "a.b", ""];
 

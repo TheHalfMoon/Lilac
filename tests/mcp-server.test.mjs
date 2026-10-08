@@ -88,7 +88,7 @@ test("the MCP protocol: initialize, tools/list, notifications and errors", async
     const init = (await mcp(token, "initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1" } })).json;
     assert.equal(init.result.protocolVersion, "2025-03-26", "a supported version is echoed");
     assert.deepEqual(init.result.capabilities, { tools: { listChanged: false } });
-    assert.equal(init.result.serverInfo.name, "lilac");
+    assert.equal(init.result.serverInfo.name, "ninerr");
     assert.equal((await mcp(token, "initialize", { protocolVersion: "1999-01-01" })).json.result.protocolVersion, "2025-06-18", "an unknown version gets the latest");
     assert.equal((await mcp(token, "notifications/initialized", undefined, { notification: true })).status, 202);
     const { tools } = (await mcp(token, "tools/list")).json.result;

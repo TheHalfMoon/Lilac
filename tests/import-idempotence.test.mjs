@@ -119,7 +119,7 @@ test("generated markup re-imports to itself", () => {
     const random = createPrng(seed);
     const html = Array.from({ length: random.int(1, 3) }, () => generate(random, 0, random.next() < 0.3)).join("");
     if (representable(html)) inScope += 1;
-    assertFixpoint(html, `seed ${seed} (replay with LILAC_PROPERTY_SEED=${seed})`, seed % 2 === 0);
+    assertFixpoint(html, `seed ${seed} (replay with NINERR_PROPERTY_SEED=${seed})`, seed % 2 === 0);
   }
   // The property is not vacuous: most generated inputs are representable and checked.
   if (seeds.length > 1) assert.ok(inScope >= seeds.length * 0.5, `only ${inScope} of ${seeds.length} inputs were representable`);

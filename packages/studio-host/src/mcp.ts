@@ -16,7 +16,7 @@ import type { StudioActor, StudioSession } from "./session.ts";
 // the editor (the host's own confirmation flow), never from the client (#82, P06 G8).
 
 export const MCP_PROTOCOL_VERSIONS = Object.freeze(["2025-06-18", "2025-03-26", "2024-11-05"]);
-const SERVER_INFO = Object.freeze({ name: "lilac", title: "Lilac", version: "0.0.0" });
+const SERVER_INFO = Object.freeze({ name: "ninerr", title: "Ninerr", version: "0.0.0" });
 const MAX_RESULT_NODES = 500;
 const MAX_TREE_DEPTH = 12;
 const MAX_DUPLICATED_NODES = 5_000;
@@ -519,7 +519,7 @@ export async function handleMcpMessage(context: McpContext, actor: StudioActor, 
     case "initialize": {
       const requested = params?.protocolVersion;
       const protocolVersion = MCP_PROTOCOL_VERSIONS.includes(requested) ? requested : MCP_PROTOCOL_VERSIONS[0];
-      return { jsonrpc: "2.0", id, result: { protocolVersion, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO, instructions: "Lilac design documents. Call get_guide first." } };
+      return { jsonrpc: "2.0", id, result: { protocolVersion, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO, instructions: "Ninerr design documents. Call get_guide first." } };
     }
     case "ping":
       return { jsonrpc: "2.0", id, result: {} };
