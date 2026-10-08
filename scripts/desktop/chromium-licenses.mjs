@@ -1,6 +1,6 @@
 // The component licenses in an Electron runtime's LICENSES.chromium.html, by family, and
 // a check that every component whose license text mentions a copyleft or other
-// non-permissive license, by full name or SPDX id, is one Lilac has reviewed
+// non-permissive license, by full name or SPDX id, is one Ninerr has reviewed
 // (docs/evidence/PC9B_DESKTOP_PACKAGING_2026-10-08.md).
 // A runtime that brings a new such component fails packaging until it is reviewed.
 import { createHash } from "node:crypto";
@@ -23,10 +23,10 @@ const FAMILIES = [
 const NOT_PERMISSIVE = new Set(["LGPL", "GPL", "MPL", "EPL", "CDDL", "AGPL"]);
 
 // Reviewed components whose license text names a non-permissive license, with why each
-// is acceptable for an Apache-2.0 Lilac that redistributes the runtime changed only in
+// is acceptable for an Apache-2.0 Ninerr that redistributes the runtime changed only in
 // Electron's fuse bytes.
 export const REVIEWED = Object.freeze({
-  WebKit: "LGPL-2.0+/LGPL-2.1+ and BSD files in Blink (from WebKit and KHTML), statically linked into the Electron binary. Lilac changes the binary only in Electron's documented fuse bytes (recorded in lilac-package.json); its corresponding source is Electron v44.7.0, with Chromium at its pinned revision, plus those fuse settings. Lilac's own code is a separate program the runtime loads, not linked into it. The LGPL source offer for a binary release is part of the release audit (PC-L, #139)",
+  WebKit: "LGPL-2.0+/LGPL-2.1+ and BSD files in Blink (from WebKit and KHTML), statically linked into the Electron binary. Ninerr changes the binary only in Electron's documented fuse bytes (recorded in ninerr-package.json); its corresponding source is Electron v44.7.0, with Chromium at its pinned revision, plus those fuse settings. Ninerr's own code is a separate program the runtime loads, not linked into it. The LGPL source offer for a binary release is part of the release audit (PC-L, #139)",
   // Apache-2.0 WITH LLVM-exception: its text names GPLv2 only to permit combining with it.
   "compiler-rt": "Apache-2.0 WITH LLVM-exception; GPLv2 is named only in the exception",
   libcxx: "Apache-2.0 WITH LLVM-exception; GPLv2 is named only in the exception",
@@ -40,7 +40,7 @@ export const REVIEWED = Object.freeze({
   "Node.js": "MIT; the GPL text is in build tooling it bundles (pkg-config macro), not in the binary",
   JSZip: "dual MIT or GPL-3.0; used under MIT",
   hunspell: "MPL-1.1/GPL-2.0/LGPL-2.1 tri-license; used under MPL-1.1, file-level, unmodified; source is public",
-  "hunspell dictionaries": "dictionaries under MPL/LGPL tri-licenses; Lilac turns spell checking off and downloads none",
+  "hunspell dictionaries": "dictionaries under MPL/LGPL tri-licenses; Ninerr turns spell checking off and downloads none",
   "hyphenation-patterns": "tri-licensed patterns (MPL/LGPL/other); unmodified, source public",
   "Netscape Portable Runtime (NSPR)": "MPL-2.0, file-level; unmodified, source public",
   "Mozilla Personal Security Manager": "MPL-2.0, file-level; unmodified, source public",

@@ -1,4 +1,4 @@
-// The Lilac desktop app: a thin Electron shell around the same studio host local web mode
+// The Ninerr desktop app: a thin Electron shell around the same studio host local web mode
 // runs (MASTER_PLAN PC gate 5). The host runs in this, the main process, on 127.0.0.1;
 // the window shows the editor it serves, through the same single-use launch link a browser
 // would use. The window is context-isolated and sandboxed with no Node, its preload is
@@ -11,8 +11,8 @@ import { editorOrigin, mayNavigate, mayRequest, windowPreferences } from "./poli
 
 const PRELOAD = fileURLToPath(new URL("./preload.cjs", import.meta.url));
 // A development run starts Electron's default app with this folder (process.defaultApp);
-// a packaged Lilac starts itself. (app.isPackaged would not do: it goes by the
-// executable's name, which a packaged macOS Lilac keeps as Electron's.)
+// a packaged Ninerr starts itself. (app.isPackaged would not do: it goes by the
+// executable's name, which a packaged macOS Ninerr keeps as Electron's.)
 const PACKAGED = process.defaultApp !== true;
 
 // Every renderer is sandboxed, whatever a window asks for.
@@ -25,16 +25,16 @@ let quitting = false;
 // A quit that waits on the host gives up after this long, rather than hang.
 const CLOSE_TIMEOUT_MS = 10_000;
 // A renderer that keeps crashing is not reloaded forever: at most 3 times a minute, then
-// Lilac says so and quits (every change was already committed).
+// Ninerr says so and quits (every change was already committed).
 const MAX_RELOADS_PER_MINUTE = 3;
 const reloads = [];
 
-// One Lilac per user: a second start brings the running window forward.
+// One Ninerr per user: a second start brings the running window forward.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   start().catch(async (error) => {
-    dialog.showErrorBox("Lilac could not start", error instanceof Error ? error.message : String(error));
+    dialog.showErrorBox("Ninerr could not start", error instanceof Error ? error.message : String(error));
     // A host that did start is closed, so its projects' locks are released.
     await host?.close().catch(() => {});
     app.exit(1);
@@ -90,7 +90,7 @@ function reloadAfterCrash() {
   const now = Date.now();
   while (reloads.length > 0 && now - reloads[0] > 60_000) reloads.shift();
   if (reloads.length >= MAX_RELOADS_PER_MINUTE) {
-    dialog.showErrorBox("Lilac stopped", "The editor stopped repeatedly. Your work is saved; start Lilac again.");
+    dialog.showErrorBox("Ninerr stopped", "The editor stopped repeatedly. Your work is saved; start Ninerr again.");
     app.quit();
     return;
   }
@@ -104,7 +104,7 @@ function openWindow() {
     height: 800,
     minWidth: 640,
     minHeight: 480,
-    title: "Lilac",
+    title: "Ninerr",
     show: false,
     backgroundColor: "#16141f",
     webPreferences: windowPreferences(PRELOAD, { devTools: !PACKAGED }),
@@ -112,7 +112,7 @@ function openWindow() {
   // A renderer that crashed is replaced, with a fresh link: nothing is lost, as every
   // change was committed by the host.
   window.webContents.on("render-process-gone", (_event, details) => {
-    process.stderr.write(`lilac: the editor's renderer stopped (${details.reason}, exit code ${details.exitCode})\n`);
+    process.stderr.write(`ninerr: the editor's renderer stopped (${details.reason}, exit code ${details.exitCode})\n`);
     if (window !== null && !quitting && details.reason !== "clean-exit") reloadAfterCrash();
   });
   window.once("ready-to-show", () => window.show());
@@ -129,7 +129,7 @@ async function start() {
     if (window.isMinimized()) window.restore();
     window.focus();
   });
-  // Closing the window quits Lilac, on every platform: the host stops with it.
+  // Closing the window quits Ninerr, on every platform: the host stops with it.
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", (event) => {
     if (host === null || quitting) return;
@@ -144,14 +144,14 @@ async function start() {
 
   await app.whenReady();
   // Said once, so a log shows which kind of run this is.
-  process.stderr.write(`lilac: desktop app (${PACKAGED ? "packaged" : "development"}), Electron ${process.versions.electron}\n`);
+  process.stderr.write(`ninerr: desktop app (${PACKAGED ? "packaged" : "development"}), Electron ${process.versions.electron}\n`);
   const { path: projectsRoot, note: folderNote } = resolveProjectsFolder();
-  if (folderNote !== null) process.stderr.write(`lilac: note: ${folderNote}\n`);
+  if (folderNote !== null) process.stderr.write(`ninerr: note: ${folderNote}\n`);
   try {
     prepareProjectsFolder(projectsRoot);
     host = await startStudioHost({ projectsRoot, port: 0 });
   } catch (error) {
-    dialog.showErrorBox("Lilac could not start", error instanceof Error ? error.message : String(error));
+    dialog.showErrorBox("Ninerr could not start", error instanceof Error ? error.message : String(error));
     app.exit(1);
     return;
   }

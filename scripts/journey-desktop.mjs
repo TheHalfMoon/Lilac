@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The release-candidate journey through a packaged Lilac desktop app (MASTER_PLAN PC gate
+// The release-candidate journey through a packaged Ninerr desktop app (MASTER_PLAN PC gate
 // 17, #178): what MASTER_PLAN's "definition of genuinely complete" asks a fresh user to be
 // able to do (install, create and edit, use an agent, connect a codebase, round-trip a
 // component, export) with no hidden paid infrastructure.
@@ -9,7 +9,7 @@
 // The packaged app runs as a person runs it (scripts/desktop/drive.mjs): a fresh home and
 // projects folder, behind a local proxy that records any connection the browser side makes
 // off this computer, driven over Chromium's remote-debugging protocol. The agent is an MCP
-// client speaking to Lilac's own endpoint on 127.0.0.1 with the credential the editor
+// client speaking to Ninerr's own endpoint on 127.0.0.1 with the credential the editor
 // showed. The result is printed as one JSON line; the exit code is 0 only if every step held.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,7 +19,7 @@ import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 const archive = process.argv[2] ? resolve(process.argv[2]) : null;
 if (archive === null || process.argv.length !== 3 || !existsSync(archive)) {
-  process.stderr.write("usage: node scripts/journey-desktop.mjs <Lilac-<target>.tar.gz|zip>\n");
+  process.stderr.write("usage: node scripts/journey-desktop.mjs <Ninerr-<target>.tar.gz|zip>\n");
   process.exit(2);
 }
 // Every step below, so a run that stops early reports how far it got out of all of them.
@@ -31,7 +31,7 @@ const step = (name, ok, detail) => {
 };
 
 // The page a person imports: a heading, a paragraph with inline style, a stylesheet and an
-// image that Lilac must not fetch.
+// image that Ninerr must not fetch.
 const PAGE = `<!doctype html><html><head><title>Launch</title><link rel="stylesheet" href="https://cdn.example.com/site.css"></head>
 <body><main><h1>Launch day</h1><p style="color: #335577">Everything ships today.</p><img src="https://cdn.example.com/hero.png" alt="Hero"></main></body></html>`;
 const COMPONENT = `export function PriceCard() {
@@ -44,22 +44,22 @@ const COMPONENT = `export function PriceCard() {
 }`;
 
 async function main() {
-  const files = mkdtempSync(join(tmpdir(), "lilac-journey-files-"));
+  const files = mkdtempSync(join(tmpdir(), "ninerr-journey-files-"));
   const run = await preparePackage(archive);
   try {
     const { projects, egress, launch } = run;
     const pagePath = join(files, "launch.html");
     writeFileSync(pagePath, PAGE);
-    // The person's codebase: a folder of components, outside Lilac's projects folder.
+    // The person's codebase: a folder of components, outside Ninerr's projects folder.
     const codebase = join(files, "app", "src");
     mkdirSync(codebase, { recursive: true });
     const cardFile = join(codebase, "PriceCard.jsx");
     writeFileSync(cardFile, COMPONENT);
 
     // 1. Install and start: a fresh home, and the editor asks for a project.
-    let lilac = await launch();
-    let { page } = lilac;
-    step("1 the packaged app starts with the projects dialog", lilac.packaged() && (await page.locator("#dialog[open] #new-project-name").count()) === 1);
+    let ninerr = await launch();
+    let { page } = ninerr;
+    step("1 the packaged app starts with the projects dialog", ninerr.packaged() && (await page.locator("#dialog[open] #new-project-name").count()) === 1);
 
     // 2. Create and edit.
     await page.locator("#new-project-name").fill("journey");
@@ -122,7 +122,7 @@ async function main() {
     await page.locator("#dialog[open] .agent-row").first().waitFor();
     const shownAgain = await page.locator("#agent-credential").count();
     await page.keyboard.press("Escape");
-    step("3a the editor shows the agent's credential and Lilac's MCP URL once", shownAgain === 0 && /^ninerr_agent_/u.test(token) && /^http:\/\/127\.0\.0\.1:\d+\/mcp$/u.test(mcpUrl ?? ""), mcpUrl);
+    step("3a the editor shows the agent's credential and Ninerr's MCP URL once", shownAgain === 0 && /^ninerr_agent_/u.test(token) && /^http:\/\/127\.0\.0\.1:\d+\/mcp$/u.test(mcpUrl ?? ""), mcpUrl);
     let id = 0;
     const rpc = async (method, params) => {
       const response = await fetch(mcpUrl, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) });
@@ -130,7 +130,7 @@ async function main() {
     };
     const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "journey", version: "1" } });
     const tools = (await rpc("tools/list", {})).tools.map((tool) => tool.name);
-    step("3b the agent initializes and lists Lilac's tools", init?.serverInfo?.name !== undefined && tools.includes("create_artboard") && tools.includes("delete_nodes"), { server: init?.serverInfo, tools: tools.length });
+    step("3b the agent initializes and lists Ninerr's tools", init?.serverInfo?.name !== undefined && tools.includes("create_artboard") && tools.includes("delete_nodes"), { server: init?.serverInfo, tools: tools.length });
     const artboard = (await rpc("tools/call", { name: "create_artboard", arguments: { name: "From the agent", width: 480, height: 320 } })).structuredContent.nodeId;
     await waitForRevision(page, 10);
     await rpc("tools/call", { name: "update_styles", arguments: { updates: [{ nodeId: artboard, styles: { background: "#fde68a" } }] } });
@@ -223,9 +223,9 @@ async function main() {
       return state;
     };
     const before = await snapshot();
-    step("7a closing Lilac quits it cleanly", (await lilac.quit()) === 0 && !existsSync(join(projects, "journey", PROJECT_FILES.directory, "lock")));
-    lilac = await launch();
-    page = lilac.page;
+    step("7a closing Ninerr quits it cleanly", (await ninerr.quit()) === 0 && !existsSync(join(projects, "journey", PROJECT_FILES.directory, "lock")));
+    ninerr = await launch();
+    page = ninerr.page;
     await page.locator("#dialog[open] [data-project=journey]").click();
     await waitForRevision(page, 19);
     const after = await snapshot();
@@ -233,7 +233,7 @@ async function main() {
     // each earlier change is kept in the project's journal, not shown after a reopen, #179.)
     const filled = await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`)?.style.background, box);
     step("7b the project reopens as it was: every layer, the page and the component, as code", JSON.stringify(after) === JSON.stringify(before) && filled === "rgb(51, 102, 153)", { before: { ...before, page: before.page.slice(0, 120) }, after: { ...after, page: after.page.slice(0, 120) }, filled });
-    step("7c closing Lilac quits it cleanly again", (await lilac.quit()) === 0);
+    step("7c closing Ninerr quits it cleanly again", (await ninerr.quit()) === 0);
     // The project's journal keeps who made each change: the agent's three, as the agent.
     const journal = readFileSync(join(projects, "journey", PROJECT_FILES.directory, "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
     const byAgent = journal.filter((line) => JSON.stringify(line).includes('"actorKind":"agent"')).length;

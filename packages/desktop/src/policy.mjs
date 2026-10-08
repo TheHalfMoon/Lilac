@@ -1,4 +1,4 @@
-// What the Lilac desktop window may do, as plain functions over URLs, so the rules are
+// What the Ninerr desktop window may do, as plain functions over URLs, so the rules are
 // testable without Electron. The window shows the editor the studio host serves on
 // 127.0.0.1, and nothing else: it never navigates away, opens no windows, and the page's
 // own requests go only to that host.
@@ -6,7 +6,7 @@
 /** The editor's origin, from the host's URL (http://127.0.0.1:<port>). */
 export function editorOrigin(hostUrl) {
   const url = new URL(hostUrl);
-  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || url.port === "") throw new Error("the desktop app only shows a Lilac host on 127.0.0.1");
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || url.port === "") throw new Error("the desktop app only shows a Ninerr host on 127.0.0.1");
   return url.origin;
 }
 
@@ -40,7 +40,7 @@ export function mayRequest(origin, target, { devtools = false } = {}) {
   return url.origin === origin;
 }
 
-/** The web preferences every Lilac window gets: no Node, isolated and sandboxed. */
+/** The web preferences every Ninerr window gets: no Node, isolated and sandboxed. */
 export function windowPreferences(preload, { devTools = false } = {}) {
   return {
     preload,

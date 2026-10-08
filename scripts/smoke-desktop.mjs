@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Smoke-test a packaged Lilac desktop app (MASTER_PLAN PC gate 15):
+// Smoke-test a packaged Ninerr desktop app (MASTER_PLAN PC gate 15):
 //
 //   node scripts/smoke-desktop.mjs <archive made by scripts/package-desktop.mjs>
 //
@@ -13,12 +13,12 @@
 import { existsSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { preparePackage, sleep, waitForRevision } from "./desktop/drive.mjs";
-import { LILAC_FUSES, readFuses } from "./desktop/fuses.mjs";
+import { NINERR_FUSES, readFuses } from "./desktop/fuses.mjs";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 const archive = process.argv[2] ? resolve(process.argv[2]) : null;
 if (archive === null || process.argv.length !== 3 || !existsSync(archive)) {
-  process.stderr.write("usage: node scripts/smoke-desktop.mjs <Lilac-<target>.tar.gz|zip>\n");
+  process.stderr.write("usage: node scripts/smoke-desktop.mjs <Ninerr-<target>.tar.gz|zip>\n");
   process.exit(2);
 }
 const checks = [];
@@ -32,16 +32,16 @@ async function main() {
   try {
     const { packaged, manifest, executable, projects, egress, launch, spawnRaw } = run;
     const fusedBinary = manifest.target.startsWith("darwin-")
-      ? join(packaged, "Lilac.app", "Contents", "Frameworks", "Electron Framework.framework", "Versions", "A", "Electron Framework")
+      ? join(packaged, "Ninerr.app", "Contents", "Frameworks", "Electron Framework.framework", "Versions", "A", "Electron Framework")
       : executable;
-    check("fuses are set in the binary", JSON.stringify(readFuses(fusedBinary)) === JSON.stringify(LILAC_FUSES), readFuses(fusedBinary));
+    check("fuses are set in the binary", JSON.stringify(readFuses(fusedBinary)) === JSON.stringify(NINERR_FUSES), readFuses(fusedBinary));
 
     // First run: a project, a layer, a rename.
-    let lilac = await launch();
-    let { page } = lilac;
+    let ninerr = await launch();
+    let { page } = ninerr;
     check("the editor runs isolated, in the desktop app", await page.evaluate(() => typeof process === "undefined" && typeof require === "undefined" && window.lilacDesktop?.desktop === true));
     // A packaged run allows no developer tools (in the window, its requests and its menu).
-    check("it runs as a packaged app", lilac.packaged(), lilac.packaged() ? undefined : lilac.output().slice(-300));
+    check("it runs as a packaged app", ninerr.packaged(), ninerr.packaged() ? undefined : ninerr.output().slice(-300));
     await page.locator("#new-project-name").fill("smoke");
     await page.locator("#dialog[open] button.primary", { hasText: "Create project" }).click();
     await waitForRevision(page, 0);
@@ -52,35 +52,35 @@ async function main() {
     await waitForRevision(page, 2);
     check("an edit is committed", true);
     check("the project is locked while open", existsSync(join(projects, "smoke", PROJECT_FILES.directory, "lock")));
-    const firstExit = await lilac.quit();
-    check("closing Lilac quits it cleanly", firstExit === 0, firstExit === 0 ? undefined : { exit: firstExit, output: lilac.output().slice(-400) });
+    const firstExit = await ninerr.quit();
+    check("closing Ninerr quits it cleanly", firstExit === 0, firstExit === 0 ? undefined : { exit: firstExit, output: ninerr.output().slice(-400) });
     check("quitting releases the project", !existsSync(join(projects, "smoke", PROJECT_FILES.directory, "lock")) && !existsSync(join(projects, ".ninerr-studio.json")));
 
     // Second run: the change is there.
-    lilac = await launch();
-    page = lilac.page;
+    ninerr = await launch();
+    page = ninerr.page;
     await page.locator("#dialog[open] [data-project=smoke]").click();
     await waitForRevision(page, 2);
     const labels = await page.locator("#layers [role=treeitem] .label").allTextContents();
     check("the change is there after a restart", labels.includes("Packaged"), labels.includes("Packaged") ? undefined : labels);
-    const secondExit = await lilac.quit();
-    check("closing Lilac quits it cleanly again", secondExit === 0, secondExit === 0 ? undefined : { exit: secondExit, output: lilac.output().slice(-400) });
+    const secondExit = await ninerr.quit();
+    check("closing Ninerr quits it cleanly again", secondExit === 0, secondExit === 0 ? undefined : { exit: secondExit, output: ninerr.output().slice(-400) });
 
     // The RunAsNode fuse: the environment variable no longer turns the binary into Node.
-    // Instead of running the script, the binary starts Lilac (which says so), and is stopped.
-    const marker = "lilac-ran-as-node";
+    // Instead of running the script, the binary starts Ninerr (which says so), and is stopped.
+    const marker = "ninerr-ran-as-node";
     const asNode = spawnRaw(["-e", `process.stdout.write(${JSON.stringify(marker)})`], { ELECTRON_RUN_AS_NODE: "1" });
     let asNodeOutput = "";
     asNode.stdout.on("data", (chunk) => (asNodeOutput += chunk));
     asNode.stderr.on("data", (chunk) => (asNodeOutput += chunk));
     const asNodeExited = new Promise((resolveExit) => asNode.once("exit", resolveExit));
-    for (let tries = 0; tries < 100 && !asNodeOutput.includes("lilac: desktop app") && asNode.exitCode === null; tries += 1) await sleep(100);
-    const startedLilac = asNodeOutput.includes("lilac: desktop app (packaged)");
+    for (let tries = 0; tries < 100 && !asNodeOutput.includes("ninerr: desktop app") && asNode.exitCode === null; tries += 1) await sleep(100);
+    const startedNinerr = asNodeOutput.includes("ninerr: desktop app (packaged)");
     if (asNode.exitCode === null) {
       asNode.kill();
       await Promise.race([asNodeExited, sleep(10_000)]);
     }
-    check("ELECTRON_RUN_AS_NODE has no effect", !asNodeOutput.includes(marker) && startedLilac, startedLilac && !asNodeOutput.includes(marker) ? undefined : { ranTheScript: asNodeOutput.includes(marker), startedLilac });
+    check("ELECTRON_RUN_AS_NODE has no effect", !asNodeOutput.includes(marker) && startedNinerr, startedNinerr && !asNodeOutput.includes(marker) ? undefined : { ranTheScript: asNodeOutput.includes(marker), startedNinerr });
 
     // The proxy sees the browser side's requests (pages and Chromium's own); the host's Node
     // code makes none, and its offline guarantee is the network policy's (PC7, P05 D6b).

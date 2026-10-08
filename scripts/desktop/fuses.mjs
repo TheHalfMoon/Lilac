@@ -18,10 +18,10 @@ export const FUSES = Object.freeze([
   "EnableWasmTrapHandlers",
 ]);
 
-// Lilac's desktop app: it is never run as a plain Node (ELECTRON_RUN_AS_NODE), never reads
+// Ninerr's desktop app: it is never run as a plain Node (ELECTRON_RUN_AS_NODE), never reads
 // NODE_OPTIONS, never accepts --inspect, and never gives file: pages extra privileges.
 // WebAssembly trap handlers stay on; the others stay at Electron's default (off).
-export const LILAC_FUSES = Object.freeze({
+export const NINERR_FUSES = Object.freeze({
   RunAsNode: false,
   EnableCookieEncryption: false,
   EnableNodeOptionsEnvironmentVariable: false,
@@ -39,7 +39,7 @@ function locate(bytes, path) {
   const start = at + SENTINEL.length;
   if (bytes[start] !== 1) throw new Error(`${path} has fuse version ${bytes[start]}; only version 1 is understood`);
   const count = bytes[start + 1];
-  if (count !== FUSES.length) throw new Error(`${path} has ${count} fuses; Lilac knows ${FUSES.length}`);
+  if (count !== FUSES.length) throw new Error(`${path} has ${count} fuses; Ninerr knows ${FUSES.length}`);
   return start + 2;
 }
 
@@ -54,7 +54,7 @@ export function readFuses(path) {
 }
 
 /** Set every fuse in the binary at `path` as `wanted` says; a removed fuse is left alone. */
-export function writeFuses(path, wanted = LILAC_FUSES) {
+export function writeFuses(path, wanted = NINERR_FUSES) {
   const bytes = readFileSync(path);
   const offset = locate(bytes, path);
   FUSES.forEach((name, index) => {

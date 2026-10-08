@@ -1,5 +1,5 @@
-// The Electron runtime the Lilac desktop app is built on, pinned by version and by the
-// SHA-256 of each official release archive. Lilac does not depend on the `electron` npm
+// The Electron runtime the Ninerr desktop app is built on, pinned by version and by the
+// SHA-256 of each official release archive. Ninerr does not depend on the `electron` npm
 // package (or its downloader and their dependencies): the archive is fetched from the
 // Electron project's GitHub release, checked against the pinned digest, and unpacked into
 // a cache in this repository. Nothing unchecked is ever unpacked or run.
@@ -24,7 +24,7 @@ export const ELECTRON_ARCHIVES = Object.freeze({
 export const ELECTRON_LICENSE_SHA256 = "5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-export const ELECTRON_CACHE = join(ROOT, ".lilac-cache", "electron");
+export const ELECTRON_CACHE = join(ROOT, ".ninerr-cache", "electron");
 
 export const currentTarget = () => `${process.platform}-${process.arch}`;
 
@@ -52,7 +52,7 @@ export function electronExecutable(target = currentTarget()) {
 /** The executable when it has been fetched, or null. */
 export function findElectron(target = currentTarget()) {
   const path = electronExecutable(target);
-  return existsSync(path) && existsSync(join(electronDirectory(target), ".lilac-verified")) ? path : null;
+  return existsSync(path) && existsSync(join(electronDirectory(target), ".ninerr-verified")) ? path : null;
 }
 
 function unzip(archive, into) {
@@ -73,7 +73,7 @@ function unzip(archive, into) {
  */
 export async function fetchElectron(target = currentTarget(), { log = () => {} } = {}) {
   const expected = ELECTRON_ARCHIVES[target];
-  if (expected === undefined) throw new Error(`Lilac's desktop app is not built for ${target} (supported: ${Object.keys(ELECTRON_ARCHIVES).join(", ")})`);
+  if (expected === undefined) throw new Error(`Ninerr's desktop app is not built for ${target} (supported: ${Object.keys(ELECTRON_ARCHIVES).join(", ")})`);
   const found = findElectron(target);
   if (found !== null) return found;
   const name = archiveName(target);
@@ -96,7 +96,7 @@ export async function fetchElectron(target = currentTarget(), { log = () => {} }
   rmSync(staging, { recursive: true, force: true });
   mkdirSync(staging, { recursive: true });
   unzip(archive, staging);
-  writeFileSync(join(staging, ".lilac-verified"), `${name} ${expected}\n`);
+  writeFileSync(join(staging, ".ninerr-verified"), `${name} ${expected}\n`);
   rmSync(directory, { recursive: true, force: true });
   renameSync(staging, directory);
   log(`Electron ${ELECTRON_VERSION} for ${target} is ready: ${electronExecutable(target)}`);

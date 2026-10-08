@@ -155,7 +155,7 @@ export function buildReleaseBundle(out, { sourceCommit, root = ROOT, nodeModules
   const projectPackage = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const manifest = {
     schema: BUNDLE_SCHEMA,
-    product: "Lilac",
+    product: "Ninerr",
     sourceCommit,
     lockfileSha256: sha256(lockText),
     // No project license has been declared; recorded as such rather than guessed.
