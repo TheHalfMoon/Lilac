@@ -3,10 +3,13 @@ name: Desktop
 # PC gates 15 and 17: package the Lilac desktop app on each supported platform's own
 # runner, smoke-test the packaged app, and run the release-candidate journey through it
 # (scripts/package-desktop.mjs, scripts/smoke-desktop.mjs, scripts/journey-desktop.mjs).
+# The release workflow calls it too (P07d), so a release's archives are built and tested
+# exactly as every pull request's are.
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
