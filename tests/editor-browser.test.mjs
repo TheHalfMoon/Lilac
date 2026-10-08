@@ -453,7 +453,7 @@ test("an agent's MCP changes appear live, ask the person before deleting, and ca
     await page.locator("#agent-name").fill("Claude Code");
     await page.keyboard.press("Enter");
     const token = await page.locator("#agent-credential").inputValue();
-    assert.match(token, /^ninerr_agent_/u);
+    assert.match(token, /^lilac_agent_/u);
     assert.equal(await page.locator("#dialog[open] pre.setup").last().textContent(), host.mcpUrl);
     await page.locator("#dialog[open] button.primary").click();
 
