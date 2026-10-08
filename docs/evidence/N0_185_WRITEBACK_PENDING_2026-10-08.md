@@ -68,6 +68,6 @@ With records settled on open, the earlier "write-back conflict until the compone
 
 The delta re-review found no must-fix. Taken from it:
 - **A failed rename keeps its temporary until the withdrawal is committed.** If the withdrawal fails too, the temporary still proves the rename never happened, and the next settle withdraws the record. Before, the temporary was removed first, which left a permanent conflict. Tested: the record and its temporary stay, then the next preview settles both and offers the change again.
-- **Temporary removal never fails a request.** A file held open on Windows, for example by a scanner, is left for the next settle.
+- **Temporary removal never fails a request.** A file held open on Windows, for example by a scanner, is left in place, which is harmless: nothing reads it, as scanning reads only `.jsx` and `.tsx` files. No record names it any more, so it is not retried.
 - **Scanning decodes source the same way planning does.** A file that is not exact UTF-8 is not offered for bringing in (tested).
 - **Opening a project with a connected codebase** still ignores a folder that cannot be read during settling. A failed store write is now reported as needing a reopen, not swallowed.

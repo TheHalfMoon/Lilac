@@ -642,12 +642,12 @@ function replaceFile(folder: string, plan: WriteBackPlan, { temporary, absolute 
   }
 }
 
-/** Remove a leftover temporary; one that cannot be removed now is harmless and settles later. */
+/** Remove a leftover temporary. One that cannot be removed now stays in place: harmless, as scanning reads only .jsx and .tsx files. */
 export function removeTemporary(path: string): void {
   try {
     rmSync(path, { force: true });
   } catch {
-    // held open elsewhere (a scanner on Windows); left for the next settle
+    // held open elsewhere (a scanner on Windows); left in place
   }
 }
 
