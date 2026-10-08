@@ -49,7 +49,8 @@ test("two builds of the same commit are byte-identical and verify", () => withBu
 test("every external package has its license texts in the bundle", () => withBundles(1, ([out]) => {
   buildReleaseBundle(out, { sourceCommit: COMMIT });
   const index = JSON.parse(readFileSync(join(out, "licenses", "index.json"), "utf8"));
-  const expected = [...new Set(externalPackages(lock).map((pkg) => purlFor(pkg.name, pkg.version)))];
+  // Every npm package, and the desktop app's Electron runtime (not an npm package).
+  const expected = [...new Set(externalPackages(lock).map((pkg) => purlFor(pkg.name, pkg.version))), "pkg:github/electron/electron@44.7.0"];
   assert.deepEqual(index.map((entry) => entry.purl), expected);
   const sbom = JSON.parse(readFileSync(join(out, "sbom.cdx.json"), "utf8"));
   assert.deepEqual(new Set(sbom.components.map((component) => component.purl).filter(Boolean)), new Set(expected));

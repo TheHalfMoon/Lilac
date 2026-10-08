@@ -19,6 +19,10 @@ export const ELECTRON_ARCHIVES = Object.freeze({
   "win32-x64": "eee30dc8fa1f5ea95490e59f44e46ea68dd24c6e93d22facf70fe5c2d4c2665c",
 });
 
+// Electron's own LICENSE (MIT), the same in every release archive; a copy is kept at
+// docs/provenance/ELECTRON_LICENSE.txt for the release bundle.
+export const ELECTRON_LICENSE_SHA256 = "5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d";
+
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 export const ELECTRON_CACHE = join(ROOT, ".lilac-cache", "electron");
 

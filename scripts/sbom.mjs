@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ELECTRON_ARCHIVES, ELECTRON_VERSION, archiveName } from "./desktop/electron.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SPDX_ID = /^[A-Za-z0-9.+-]+$/u;
@@ -166,6 +167,22 @@ export function buildSbom(lockText, policy) {
       ...(properties.length > 0 ? { properties } : {}),
     });
   }
+  // The desktop app's runtime: not an npm package, but pinned by the SHA-256 of each
+  // official release archive (scripts/desktop/electron.mjs) and redistributed in the
+  // desktop packages.
+  const electronRef = `pkg:github/electron/electron@${ELECTRON_VERSION}`;
+  components.set(electronRef, {
+    type: "framework",
+    "bom-ref": electronRef,
+    name: "electron",
+    version: ELECTRON_VERSION,
+    purl: electronRef,
+    scope: "required",
+    licenses: [{ license: { id: "MIT" } }],
+    externalReferences: Object.keys(ELECTRON_ARCHIVES).sort().map((target) => ({ type: "distribution", url: `https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/${archiveName(target)}`, hashes: [{ alg: "SHA-256", content: ELECTRON_ARCHIVES[target] }] })),
+    properties: [{ name: "lilac:runtime", value: "desktop" }, { name: "lilac:notices", value: "LICENSES.chromium.html (shipped unchanged)" }],
+  });
+  if (components.has("workspace:@lilac/desktop")) addEdges("workspace:@lilac/desktop", [electronRef]);
   return {
     bomFormat: "CycloneDX",
     specVersion: "1.5",

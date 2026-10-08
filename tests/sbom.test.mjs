@@ -111,6 +111,8 @@ test("the --check command exits non-zero on a violation", () => {
   try {
     mkdirSync(join(dir, "scripts"));
     writeFileSync(join(dir, "scripts", "sbom.mjs"), readFileSync(SCRIPT));
+    mkdirSync(join(dir, "scripts", "desktop"));
+    writeFileSync(join(dir, "scripts", "desktop", "electron.mjs"), readFileSync(new URL("../scripts/desktop/electron.mjs", import.meta.url)));
     writeFileSync(join(dir, "scripts", "license-policy.json"), JSON.stringify(policy));
     writeFileSync(join(dir, "package-lock.json"), lockWith({ "node_modules/gpl": pkg("GPL-3.0-only") }));
     writeFileSync(join(dir, "THIRD_PARTY_NOTICES.md"), NOTICE);

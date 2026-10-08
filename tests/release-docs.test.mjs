@@ -14,7 +14,7 @@ import { PROJECT_FILES, PROJECT_MIGRATIONS, PROJECT_SCHEMA_VERSION, createProjec
 // exists, and every number or example they state is checked against the implementation.
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
-const DOCS = ["SECURITY.md", "docs/MCP.md", "docs/MIGRATION.md", "docs/RELEASE.md"];
+const DOCS = ["SECURITY.md", "docs/DESKTOP.md", "docs/MCP.md", "docs/MIGRATION.md", "docs/RELEASE.md"];
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
 
 function globExists(pattern) {

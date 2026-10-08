@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ELECTRON_VERSION, WINDOWS_TAR, currentTarget, electronDirectory, fetchElectron } from "./desktop/electron.mjs";
+import { ELECTRON_LICENSE_SHA256, ELECTRON_VERSION, WINDOWS_TAR, currentTarget, electronDirectory, fetchElectron } from "./desktop/electron.mjs";
 import { classifyChromiumLicenses } from "./desktop/chromium-licenses.mjs";
 import { LILAC_FUSES, writeFuses } from "./desktop/fuses.mjs";
 
@@ -25,14 +25,6 @@ const BUNDLE_ID = "io.github.thehalfmoon.lilac";
 // The editor's browser-side packages, which the host serves as static files.
 const SERVED = ["studio-web", "document-model", "history", "renderer", "canvas"];
 
-const args = process.argv.slice(2);
-const at = args.indexOf("--out");
-if (args.some((arg, index) => arg !== "--out" && index !== at + 1) || (at >= 0 && (args[at + 1] === undefined || args[at + 1].startsWith("--")))) {
-  process.stderr.write("usage: node scripts/package-desktop.mjs [--out <folder>]\n");
-  process.exit(2);
-}
-const out = resolve(at >= 0 ? args[at + 1] : join(ROOT, "dist", "desktop"));
-const target = currentTarget();
 const log = (line) => process.stdout.write(`${line}\n`);
 const run = (command, commandArgs, options = {}) => {
   const result = spawnSync(command, commandArgs, { stdio: "inherit", ...options });
@@ -95,7 +87,20 @@ function treeDigest(directory) {
   return hash.digest("hex");
 }
 
+/** The output folder from the command line (--out <folder>), or exit with the usage. */
+function outputFolder(args) {
+  // Nothing, or exactly --out and a value.
+  const valid = args.length === 0 || (args.length === 2 && args[0] === "--out" && !args[1].startsWith("--"));
+  if (!valid) {
+    process.stderr.write("usage: node scripts/package-desktop.mjs [--out <folder>]\n");
+    process.exit(2);
+  }
+  return resolve(args.length === 2 ? args[1] : join(ROOT, "dist", "desktop"));
+}
+
 async function main() {
+  const out = outputFolder(process.argv.slice(2));
+  const target = currentTarget();
   await fetchElectron(target, { log });
   const name = `Lilac-${target}`;
   const staging = join(out, name);
@@ -133,7 +138,7 @@ async function main() {
   // one Lilac has reviewed; the notice ships unchanged.
   const chromiumLicenses = classifyChromiumLicenses(join(staging, "LICENSES.chromium.html"));
   if (chromiumLicenses.unreviewed.length > 0) throw new Error(`LICENSES.chromium.html names components not yet reviewed: ${JSON.stringify(chromiumLicenses.unreviewed)}`);
-  if (!existsSync(join(staging, "LICENSE"))) throw new Error("the runtime's LICENSE is missing");
+  if (!existsSync(join(staging, "LICENSE")) || createHash("sha256").update(readFileSync(join(staging, "LICENSE"))).digest("hex") !== ELECTRON_LICENSE_SHA256) throw new Error("the runtime's LICENSE is missing or not the reviewed text");
   const fuses = writeFuses(fused, LILAC_FUSES);
 
   // The app, as plain files.
