@@ -220,7 +220,12 @@ async function main() {
 }
 
 main().then(
-  () => process.stdout.write(`${JSON.stringify({ archive: basename(archive), ok: steps.length === TOTAL_STEPS, total: TOTAL_STEPS, steps })}\n`),
+  () => {
+    // Every step must have run: a step added or removed without the total fails the run.
+    const ok = steps.length === TOTAL_STEPS;
+    process.stdout.write(`${JSON.stringify({ archive: basename(archive), ok, total: TOTAL_STEPS, steps })}\n`);
+    if (!ok) process.exit(1);
+  },
   (error) => {
     process.stdout.write(`${JSON.stringify({ archive: basename(archive), ok: false, total: TOTAL_STEPS, error: String(error?.message ?? error).slice(0, 800), steps })}\n`);
     process.exit(1);
