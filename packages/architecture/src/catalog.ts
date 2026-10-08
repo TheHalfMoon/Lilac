@@ -5,7 +5,7 @@ const SUBSYSTEMS = [
   {
     id: "document-model",
     title: "Document model",
-    owner: "@lilac/document-model",
+    owner: "@ninerr/document-model",
     status: "implemented",
     boundary: "Typed Lilac document graph, nodes, and identities. Sole structural authority alongside history.",
     dependsOn: [],
@@ -13,7 +13,7 @@ const SUBSYSTEMS = [
   {
     id: "history",
     title: "History",
-    owner: "@lilac/history",
+    owner: "@ninerr/history",
     status: "implemented",
     boundary: "Reversible history transactions. Sole canonical document mutation authority alongside document-model.",
     dependsOn: ["document-model"],
@@ -21,7 +21,7 @@ const SUBSYSTEMS = [
   {
     id: "canvas-viewport",
     title: "Canvas and viewport",
-    owner: "@lilac/canvas",
+    owner: "@ninerr/canvas",
     status: "stub",
     boundary: "Pan, zoom and viewport transforms over the rendered document, with hit testing through the renderer's node identity (PC3). Reads document-model; never mutates it directly.",
     dependsOn: ["document-model", "renderer"],
@@ -29,7 +29,7 @@ const SUBSYSTEMS = [
   {
     id: "selection-transform",
     title: "Selection, transform, and snapping",
-    owner: "@lilac/canvas",
+    owner: "@ninerr/canvas",
     status: "stub",
     boundary: "Selection sets and move, resize, nudge, reorder, insert and delete commands that produce history operations, with drag previews committed once on release (PC3). Rotation, grouping, clipping and snapping guides are planned.",
     dependsOn: ["canvas-viewport", "document-model"],
@@ -85,7 +85,7 @@ const SUBSYSTEMS = [
   {
     id: "renderer",
     title: "Renderer",
-    owner: "@lilac/renderer",
+    owner: "@ninerr/renderer",
     status: "stub",
     boundary: "Read-only rendering of document state as web semantics in a script-free sandboxed frame: allowlisted tags, attributes, URLs and styles under the frozen web-semantic props convention (tag, text, attributes, style), a stable data-lilac-id node to DOM identity, and incremental patches from history affectedNodeIds (PC2). Layout comes from the browser's CSS engine; tokens, text shaping, vector editing and media remain their own planned subsystems.",
     dependsOn: ["document-model"],
@@ -93,7 +93,7 @@ const SUBSYSTEMS = [
   {
     id: "persistence",
     title: "Persistence",
-    owner: "@lilac/persistence",
+    owner: "@ninerr/persistence",
     status: "stub",
     boundary: "Local project persistence for documents: content-addressed objects, a hash-chained append-only journal of history transactions, atomic writes, crash recovery, single-writer locking, and manifest migration (P05 D6a). Agent-state persistence is planned. Document state is only produced by replaying history transactions.",
     dependsOn: ["document-model", "history"],
@@ -117,7 +117,7 @@ const SUBSYSTEMS = [
   {
     id: "code-ir",
     title: "Code intermediate representation",
-    owner: "@lilac/code-ir",
+    owner: "@ninerr/code-ir",
     status: "stub",
     boundary: "Stable Lilac code/design IR with rendered node to source symbol provenance. Bounded JSX/TSX, CSS, and Tailwind adapters with range-anchored source patches are delivered (P05 D1 vertical slice); full-language parsing and further languages are planned.",
     dependsOn: ["document-model"],
@@ -125,7 +125,7 @@ const SUBSYSTEMS = [
   {
     id: "round-trip-sync",
     title: "Round-trip synchronization",
-    owner: "@lilac/code-ir",
+    owner: "@ninerr/code-ir",
     status: "stub",
     boundary: "Conflict detection, hunk-based three-way reconciliation, and golden code/design round-trip fixpoints are delivered (P05 D1 vertical slice). From a connected codebase folder (PC11), components come into the design bound to their source, and edits to their text and literal props are written back as a previewed, three-way, range-anchored patch; structural edits and live synchronization are planned. Never silently overwrites human code.",
     dependsOn: ["code-ir", "history"],
@@ -229,7 +229,7 @@ const SUBSYSTEMS = [
   {
     id: "network-policy",
     title: "Network capability policy and providers",
-    owner: "@lilac/network-policy",
+    owner: "@ninerr/network-policy",
     status: "implemented",
     boundary: "Default-deny network capability policy (offline, local-only, allowlist grants) with two-phase URL and resolved-address decisions, the single owner of address classification (consumed by import-stack, intake, and design-assurance browser scans), a bring-your-own provider registry holding credential references only, and offline readiness reporting. Decides only; never opens connections, resolves names, or stores credential values.",
     dependsOn: [],

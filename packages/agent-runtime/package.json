@@ -5,6 +5,6 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@lilac/history": "0.0.0"
+    "@ninerr/history": "0.0.0"
   }
 }

@@ -221,5 +221,5 @@ test("bounds and malformed inputs fail closed", () => {
 });
 
 test("provenance marks the package as project-owned", () => {
-  assert.equal(CODE_IR_PROVENANCE.package, "@lilac/code-ir");
+  assert.equal(CODE_IR_PROVENANCE.package, "@ninerr/code-ir");
 });

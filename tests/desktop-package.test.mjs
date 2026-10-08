@@ -91,3 +91,15 @@ test("the package holds the packages the shell and the editor reach, and no othe
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("the packaged app resolves a workspace package to its own entry, and refuses anything else in the scope", async () => {
+  const { resolveWorkspaceEntry } = await import("../packages/desktop/src/resolve.mjs");
+  const appRoot = new URL("../", import.meta.url);
+  assert.equal(resolveWorkspaceEntry("@ninerr/history", appRoot), new URL("packages/history/src/index.mjs", appRoot).href);
+  assert.equal(resolveWorkspaceEntry("node:fs", appRoot), null, "anything outside the workspace scopes resolves normally");
+  assert.equal(resolveWorkspaceEntry("@ninerrx/history", appRoot), null, "a look-alike scope is not the workspace's");
+  for (const specifier of ["@ninerr/history/src/index.mjs", "@ninerr/", "@ninerr/../x", "@Ninerr/history", "@NINERR/history", "@lilac/a/b", "@Lilac/history"]) {
+    assert.throws(() => resolveWorkspaceEntry(specifier, appRoot), /is not a packaged workspace package entry/u, specifier);
+  }
+  assert.throws(() => resolveWorkspaceEntry("@lilac/history", appRoot), /is not the name of packages\/history/u, "a stale name is refused, not quietly mapped");
+});

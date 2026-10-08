@@ -1,4 +1,4 @@
-import { commitTransaction, createTransaction } from "@lilac/history";
+import { commitTransaction, createTransaction } from "@ninerr/history";
 import { AgentRuntimeError } from "./errors.ts";
 import { assertNonEmptyString, assertPlainObject, cloneJson } from "./json.ts";
 import type { OperationEnvelope } from "./operation.ts";

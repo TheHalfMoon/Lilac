@@ -1,5 +1,5 @@
 import { defaultImportPolicy, type ImportPolicy } from "@lilac/import-stack";
-import { evaluateUrl, type UrlDecision } from "@lilac/network-policy";
+import { evaluateUrl, type UrlDecision } from "@ninerr/network-policy";
 
 export type NetworkImportPlan =
   | { allowed: true; importPolicy: ImportPolicy; decision: UrlDecision }

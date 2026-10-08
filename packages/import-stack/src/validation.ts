@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { defaultNetworkPolicy, normalizeNetworkPolicy, type NetworkPolicy } from "@lilac/network-policy";
+import { defaultNetworkPolicy, normalizeNetworkPolicy, type NetworkPolicy } from "@ninerr/network-policy";
 import { ImportValidationError } from "./errors.ts";
 import {
   IMPORT_HARD_LIMITS,

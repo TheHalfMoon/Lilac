@@ -1,4 +1,4 @@
-import { commitTransaction } from "@lilac/history";
+import { commitTransaction } from "@ninerr/history";
 import { appendCollaborationFact, normalizeCollaborationLog } from "./durable.ts";
 import { CollaborationConflictError, CollaborationValidationError } from "./errors.ts";
 import { assertBoundedString, assertPlainObject, assertTimestamp, durableActor, normalizeActor, normalizeAnchor } from "./validation.ts";

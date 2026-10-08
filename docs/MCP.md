@@ -66,4 +66,4 @@ A consequential call needs `confirmation: { documentId, toolName, argumentsSha25
 - take `actor` from its own authenticated session; for an agent, `ownerActorId` must be an authenticated user;
 - produce `confirmation` from its own confirmation flow with that person;
 - never take either from the MCP client's request payload;
-- apply every mutation as a history transaction with agent attribution through collaboration, and grant no ambient filesystem or network authority. Loopback HTTP must go through `@lilac/network-policy` local-only decisions.
+- apply every mutation as a history transaction with agent attribution through collaboration, and grant no ambient filesystem or network authority. Loopback HTTP must go through `@ninerr/network-policy` local-only decisions.

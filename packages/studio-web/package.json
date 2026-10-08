@@ -10,9 +10,9 @@
     "./provenance": "./src/provenance.mjs"
   },
   "dependencies": {
-    "@lilac/canvas": "0.0.0",
-    "@lilac/document-model": "0.0.0",
-    "@lilac/history": "0.0.0"
+    "@ninerr/canvas": "0.0.0",
+    "@ninerr/document-model": "0.0.0",
+    "@ninerr/history": "0.0.0"
   },
   "engines": {
     "node": ">=22.18.0"

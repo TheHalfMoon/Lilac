@@ -74,7 +74,7 @@ A project written before the product was named Ninerr lives in `<root>/.lilac` (
 `migrateLegacyProject` turns it into a Ninerr project:
 
 ```js
-import { migrateLegacyProject, openProject, projectLayout } from "@lilac/persistence";
+import { migrateLegacyProject, openProject, projectLayout } from "@ninerr/persistence";
 
 if (projectLayout(root) === "legacy") migrateLegacyProject(root, { owner: "my-app", at: new Date().toISOString() });
 const store = openProject(root, { owner: "my-app", at: new Date().toISOString() });
