@@ -14,22 +14,28 @@ const PRELOAD = fileURLToPath(new URL("./preload.cjs", import.meta.url));
 // Every renderer is sandboxed, whatever a window asks for.
 app.enableSandbox();
 
+let host = null;
+let window = null;
+let quitting = false;
+
+// A quit that waits on the host gives up after this long, rather than hang.
+const CLOSE_TIMEOUT_MS = 10_000;
+// A renderer that keeps crashing is not reloaded forever: at most 3 times a minute, then
+// Lilac says so and quits (every change was already committed).
+const MAX_RELOADS_PER_MINUTE = 3;
+const reloads = [];
+
 // One Lilac per user: a second start brings the running window forward.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  start().catch((error) => {
+  start().catch(async (error) => {
     dialog.showErrorBox("Lilac could not start", error instanceof Error ? error.message : String(error));
+    // A host that did start is closed, so its projects' locks are released.
+    await host?.close().catch(() => {});
     app.exit(1);
   });
 }
-
-// A quit that waits on the host gives up after this long, rather than hang.
-const CLOSE_TIMEOUT_MS = 10_000;
-
-let host = null;
-let window = null;
-let quitting = false;
 
 function harden(origin) {
   const defaults = session.defaultSession;
@@ -76,6 +82,18 @@ function menu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function reloadAfterCrash() {
+  const now = Date.now();
+  while (reloads.length > 0 && now - reloads[0] > 60_000) reloads.shift();
+  if (reloads.length >= MAX_RELOADS_PER_MINUTE) {
+    dialog.showErrorBox("Lilac stopped", "The editor stopped repeatedly. Your work is saved; start Lilac again.");
+    app.quit();
+    return;
+  }
+  reloads.push(now);
+  window.loadURL(host.launchUrl());
+}
+
 function openWindow() {
   window = new BrowserWindow({
     width: 1280,
@@ -90,7 +108,8 @@ function openWindow() {
   // A renderer that crashed is replaced, with a fresh link: nothing is lost, as every
   // change was committed by the host.
   window.webContents.on("render-process-gone", (_event, details) => {
-    if (window !== null && !quitting && details.reason !== "clean-exit") window.loadURL(host.launchUrl());
+    process.stderr.write(`lilac: the editor's renderer stopped (${details.reason}, exit code ${details.exitCode})\n`);
+    if (window !== null && !quitting && details.reason !== "clean-exit") reloadAfterCrash();
   });
   window.once("ready-to-show", () => window.show());
   window.on("closed", () => {

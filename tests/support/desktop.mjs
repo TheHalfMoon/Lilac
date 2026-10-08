@@ -48,6 +48,11 @@ export async function launchDesktop({ env = {}, args = [] } = {}) {
     timeout: 30_000,
   });
   const errors = [];
+  // The app's own output (Electron's and Lilac's), for a launch that fails.
+  let output = "";
+  app.process().stderr?.on("data", (chunk) => {
+    output = (output + chunk).slice(-4000);
+  });
   let window = null;
   try {
     window = await app.firstWindow();
@@ -62,6 +67,6 @@ export async function launchDesktop({ env = {}, args = [] } = {}) {
     const seen = window === null ? "no window" : await window.evaluate(() => `${location.href} status=${JSON.stringify(document.getElementById("status")?.textContent ?? document.body?.innerText?.slice(0, 200) ?? "")}`).catch((reason) => `unreadable (${reason.message.split("\n")[0]})`);
     // An app that did not come up is still stopped, so the test run can end.
     await app.close().catch(() => app.process().kill("SIGKILL"));
-    throw new Error(`the desktop app did not become ready: ${error.message.split("\n")[0]}; window: ${seen}; console: ${JSON.stringify(errors).slice(0, 400)}`);
+    throw new Error(`the desktop app did not become ready: ${error.message.split("\n")[0]}; window: ${seen}; console: ${JSON.stringify(errors).slice(0, 400)}; app: ${JSON.stringify(output.slice(-600))}`);
   }
 }
