@@ -159,7 +159,7 @@ const SUBSYSTEMS = [
     title: "Agent runtime MCP surface",
     owner: "@ninerr/mcp-protocol",
     status: "stub",
-    boundary: "MCP contract validation (client, tool, server-config, and the server's tools against Ninerr's tool catalog) and tool-call authorization through the collaboration access oracle. The local MCP endpoint runs in the studio host (PC5, #82): Streamable HTTP on loopback plus a stdio relay, agents connected by the person with their own credentials, every call through requireMCPToolCall, agent edits as attributed history transactions, and the person's confirmation in the editor for consequential tools. 16 of Paper's 36 tools are implemented (get_jsx joined in PC6); workspace tools stay denied, and screenshots, tokens, comments and write_html are later grains.",
+    boundary: "MCP contract validation (client, tool, server-config, and the server's tools against Ninerr's tool catalog) and tool-call authorization through the collaboration access oracle. The local MCP endpoint runs in the studio host (PC5, #82): Streamable HTTP on loopback plus a stdio relay, agents connected by the person with their own credentials, every call through requireMCPToolCall, agent edits as attributed history transactions, and the person's confirmation in the editor for consequential tools. The server offers the 16 tools of Ninerr's catalog (packages/mcp-protocol/src/tools.mjs); any other name is denied as unknown.",
     dependsOn: ["agent-runtime", "document-model", "history", "collaboration", "studio-host"],
   },
   {

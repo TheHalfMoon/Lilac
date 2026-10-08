@@ -17,3 +17,5 @@ The protocol package recorded another product's public MCP tool list: 36 names, 
 - **Docs.** `docs/MCP.md` now describes the server that exists: its transports, how to connect, the tools, authorization and the server's obligations. `tests/release-docs.test.mjs` checks it against the catalog.
 
 The tools keep the names they have today. N0-G4b renames them.
+
+**Review follow-ups.** The architecture catalog's description of the MCP surface, the license register's Paper evidence note, and a server test title now describe the catalog. The `public-mcp-catalog` census rule is removed: it matched the deleted Paper list, and kept, it would have exempted new Paper text in the MCP package from the identity gate.

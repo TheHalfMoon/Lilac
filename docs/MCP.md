@@ -35,6 +35,7 @@ The server identifies itself as `ninerr` and tells the agent to call `get_guide`
 So the 9 read-only tools need only `read`.
 
 - **Reading.**
+  - `get_guide`: how Ninerr documents, layers and edits work; the server asks the agent to call it first.
   - `get_basic_info`: the open project and document.
   - `get_tree_summary`, `get_children` and `get_node_info`: the layers.
   - `find_nodes`: search by name or text.

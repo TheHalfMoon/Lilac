@@ -205,7 +205,7 @@ test("agents read and edit through tools; every edit is an attributed transactio
   });
 });
 
-test("every call is authorized: unknown, workspace and unimplemented tools; payload identity is ignored", async () => {
+test("every call is authorized: names outside the catalog are unknown; payload identity is ignored", async () => {
   await withStudio(async ({ owner, tool, host }) => {
     const { token } = (await owner("POST", "/api/agents/create", { name: "Agent" })).json;
     await owner("POST", "/api/projects/create", { name: "p" });
