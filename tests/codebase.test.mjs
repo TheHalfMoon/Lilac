@@ -343,6 +343,13 @@ test("runs of text: an expression is left alone, moved or removed runs are liste
     preview = (await call("POST", "/api/codebase/preview", { nodeId: div.id })).json;
     assert.ok(preview.notWritten.some((entry) => entry.nodeId === runs[2].id && /moved or reordered/u.test(entry.reason)), JSON.stringify(preview.notWritten));
     assert.ok(!preview.changes.some((change) => change.to === "Moved"));
+    // A run moved past an element sibling is out of place too.
+    const hello = runs[0];
+    const bold = nodes().find((node) => node.props.tag === "b");
+    await edit([{ type: "move-node", nodeId: hello.id, parentId: hello.parentId, index: host.session.document.nodes[hello.parentId].children.indexOf(bold.id) + 1 }, { type: "set-props", nodeId: hello.id, set: { text: "Hi " } }]);
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: div.id })).json;
+    assert.ok(preview.notWritten.some((entry) => entry.nodeId === hello.id && /moved or reordered/u.test(entry.reason)), JSON.stringify(preview.notWritten));
+    assert.ok(!preview.changes.some((change) => change.to === "Hi "));
     // A run removed is listed.
     await edit([{ type: "remove-node", nodeId: runs[2].id }]);
     preview = (await call("POST", "/api/codebase/preview", { nodeId: div.id })).json;

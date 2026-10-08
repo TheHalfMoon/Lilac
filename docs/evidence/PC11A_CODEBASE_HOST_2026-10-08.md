@@ -44,7 +44,7 @@ Every comparison is made field by field:
   - layers added here (each one is listed);
   - layers removed here;
   - layers moved or reordered (each bound layer's place is compared with its source path);
-  - runs of text moved to another element, reordered, or removed;
+  - runs of text moved to another element, reordered (among themselves or against an element beside them), or removed;
   - copies of a bound layer, which are reported as conflicts;
   - text holding `{ } < >`;
   - text the source writes as a `{…}` expression (such as `{" "}`), which is left as it is.
@@ -109,4 +109,5 @@ The file's owner and group become this user's, as Lilac writes it.
   - The other runs are written and read back.
   - The bindings still hold afterwards.
   - A run moved into another element is listed and not written to its old place.
+  - A run moved past an element beside it is listed as moved, and its new text is not written.
   - A removed run is listed.

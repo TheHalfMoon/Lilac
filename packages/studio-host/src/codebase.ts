@@ -366,6 +366,18 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
       if (index > 0 && runs[index - 1].props.codeSource.textIndex >= run.props.codeSource.textIndex) misplacedText.add(run.id);
     });
     const symbol = symbolAt(source.path);
+    // Runs and elements together, in the source's own order (by position, as importJsx
+    // reads them): a run moved past an element is out of place too.
+    if (symbol && runs.length > 0) {
+      const sourceOrder = [
+        ...symbol.texts.map((entry: any, textIndex: number) => ({ at: entry.range.startOffset, key: `t${textIndex}`, empty: entry.value === "" })),
+        ...symbol.children.map((child: string, index: number) => ({ at: ir.symbols[child].range.startOffset, key: `e${index}`, empty: false })),
+      ].filter((piece) => !piece.empty).sort((a, b) => a.at - b.at).map((piece) => piece.key);
+      const here = node.children.map((child: string) => document.nodes[child]).filter(isBound).map((child: any) => (child.props.codeSource.tag === "#text" ? `t${child.props.codeSource.textIndex}` : `e${child.props.codeSource.path.split(".").at(-1)}`));
+      const present = new Set(here);
+      const expected = sourceOrder.filter((key) => present.has(key));
+      if (here.join(",") !== expected.join(",")) for (const run of runs) misplacedText.add(run.id);
+    }
     if (symbol && symbol.children.length > 0) {
       const sourceRuns = symbol.texts.filter((entry: any) => entry.value !== "").length;
       const present = bound.filter(({ source: other }) => other.tag === "#text" && other.path === source.path).length;
@@ -478,6 +490,8 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
     const failing = readBackFailures(read.file, after, component, checks);
     if (failing.length > 0) {
       if (exclude.size > 0) throw new StudioError(409, "patch-refused", `the change to ${file} would not read back as written`);
+      // Rebuilt once without those fields (exclude is then not empty, so this recursion is
+      // at most one level deep).
       return planWriteBack(document, nodeId, folder, new Set(failing));
     }
   }
