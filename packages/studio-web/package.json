@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The Lilac editor: the browser application the studio host serves.",
+  "description": "The Ninerr editor: the browser application the studio host serves.",
   "exports": {
     ".": "./src/index.mjs",
     "./client": "./src/client.mjs",

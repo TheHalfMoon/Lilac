@@ -15,7 +15,7 @@ const MAX_LINE_BYTES = 1024 * 1024;
 export interface RelayOptions {
   /** The host's MCP endpoint, e.g. http://127.0.0.1:41234/mcp. */
   mcpUrl: string;
-  /** The agent credential Lilac showed when the agent was connected. */
+  /** The agent credential Ninerr showed when the agent was connected. */
   token: string;
   input: Readable;
   output: Writable;
@@ -34,10 +34,10 @@ export function discoverMcpUrl(projectsRoot: string): string {
     if (typeof process.getuid === "function" && entry.uid !== process.getuid()) throw new Error("not this user's");
     info = JSON.parse(readFileSync(path, "utf8"));
   } catch {
-    throw new Error("Lilac is not running for this projects folder (start Lilac first)");
+    throw new Error("Ninerr is not running for this projects folder (start Ninerr first)");
   }
-  // A file left by a Lilac that crashed names a port someone else may now hold.
-  if (!Number.isSafeInteger(info?.pid) || info.pid <= 0 || !processAlive(info.pid)) throw new Error("Lilac is not running for this projects folder (start Lilac first)");
+  // A file left by a Ninerr that crashed names a port someone else may now hold.
+  if (!Number.isSafeInteger(info?.pid) || info.pid <= 0 || !processAlive(info.pid)) throw new Error("Ninerr is not running for this projects folder (start Ninerr first)");
   return assertLoopbackUrl(info?.mcpUrl);
 }
 
@@ -59,7 +59,7 @@ export function assertLoopbackUrl(value: unknown): string {
   }
   const host = url.hostname.replace(/^\[|\]$/gu, "");
   if (url.protocol !== "http:" || !(host === "localhost" || isLoopbackAddress(host)) || url.pathname !== "/mcp" || url.username !== "" || url.password !== "") {
-    throw new Error("the relay only connects to a Lilac MCP endpoint on this computer (http://127.0.0.1:<port>/mcp)");
+    throw new Error("the relay only connects to a Ninerr MCP endpoint on this computer (http://127.0.0.1:<port>/mcp)");
   }
   return url.href;
 }
@@ -101,15 +101,15 @@ export async function runRelay(options: RelayOptions): Promise<void> {
               write(JSON.stringify(answer));
               return;
             }
-            if (id !== null) write(errorLine(id, answer?.error?.message ?? `Lilac answered ${response.status}`));
+            if (id !== null) write(errorLine(id, answer?.error?.message ?? `Ninerr answered ${response.status}`));
             return;
           } catch {
             // fall through
           }
         }
-        if (id !== null) write(errorLine(id, `Lilac answered ${response.status}`));
+        if (id !== null) write(errorLine(id, `Ninerr answered ${response.status}`));
       } catch {
-        if (id !== null) write(errorLine(id, "Lilac is not reachable; is it still running?"));
+        if (id !== null) write(errorLine(id, "Ninerr is not reachable; is it still running?"));
       }
     })();
     inflight.add(task);

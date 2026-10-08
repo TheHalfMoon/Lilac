@@ -8,7 +8,7 @@ import { PROVIDER_CAPABILITIES, type FeatureRequirement, type ReadinessReport } 
  * provider; that declaration is not self-proving, so every required feature here is
  * exercised one-for-one, with all network primitives trapped, by
  * tests/offline-guarantee.test.mjs. Optional features degrade (or are unavailable) without
- * a provider. Only features that exist in Lilac today are listed; the local MCP endpoint
+ * a provider. Only features that exist in Ninerr today are listed; the local MCP endpoint
  * is not implemented yet (#82).
  */
 export const CORE_FEATURES: readonly FeatureRequirement[] = Object.freeze([

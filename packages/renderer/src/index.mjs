@@ -1,4 +1,4 @@
-// @ninerr/renderer: turns a Lilac document into web semantics inside a sandboxed frame.
+// @ninerr/renderer: turns a Ninerr document into web semantics inside a sandboxed frame.
 //
 // Rendering contract (docs/ARCHITECTURE.md): web semantics out, a stable node -> DOM identity
 // (`data-ninerr-id`), no renderer-only document state, and an explicit sandbox for imported

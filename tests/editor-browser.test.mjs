@@ -52,7 +52,7 @@ const waitRevision = (page, revision) => page.waitForFunction((r) => document.ge
 const historyIntents = (page) => page.locator("#history li .intent").allTextContents();
 
 test("create, edit, undo and redo, save and reopen a project through the editor", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-editor-")));
   let host = await startStudioHost({ projectsRoot: root, now });
   let editor = await openEditor(host);
   try {
@@ -117,10 +117,10 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
     await waitRevision(page, 9);
     const textId = await page.locator("#layers [role=treeitem][aria-selected=true]").getAttribute("data-node-id");
     assert.equal(host.session.document.nodes[textId].parentId, boxId);
-    await page.locator("#inspect-text").fill("Hello from Lilac");
+    await page.locator("#inspect-text").fill("Hello from Ninerr");
     await page.keyboard.press("Tab");
     await waitRevision(page, 10);
-    assert.equal(host.session.document.nodes[textId].props.text, "Hello from Lilac");
+    assert.equal(host.session.document.nodes[textId].props.text, "Hello from Ninerr");
 
     // Select the box from the layers tree with the keyboard, then nudge it on the canvas.
     await page.locator(`#layer-${textId}`).focus();
@@ -166,7 +166,7 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
     assert.deepEqual(editor.errors, []);
     await editor.close();
 
-    // Quit and start Lilac again: the project reopens from disk exactly as it was.
+    // Quit and start Ninerr again: the project reopens from disk exactly as it was.
     await host.close();
     host = await startStudioHost({ projectsRoot: root, now });
     editor = await openEditor(host);
@@ -187,7 +187,7 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
 });
 
 test("changes made elsewhere appear live, typing in progress is kept, and undo follows them", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-live-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-editor-live-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const editor = await openEditor(host);
   try {
@@ -244,7 +244,7 @@ test("changes made elsewhere appear live, typing in progress is kept, and undo f
 });
 
 test("lock takeover, crash recovery and reopen-after-failure are handled in the editor", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-recovery-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-editor-recovery-")));
   const setup = await startStudioHost({ projectsRoot: root, now });
   const token = { authorization: `Bearer ${setup.token}`, "content-type": "application/json" };
   await fetch(`${setup.url}/api/projects/create`, { method: "POST", headers: token, body: JSON.stringify({ name: "crashed" }) });
@@ -285,7 +285,7 @@ test("lock takeover, crash recovery and reopen-after-failure are handled in the 
     await page.locator("#lock-reason").fill("the previous session crashed");
     await page.keyboard.press("Enter");
     // Recovery is reported: the lock takeover and the discarded torn write.
-    await page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Lilac recovered this project");
+    await page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Ninerr recovered this project");
     const report = await page.locator("#dialog[open] ul.report li").allTextContents();
     assert.equal(report.length, 2);
     assert.match(report[0], /unfinished write.*discarded \(15 bytes\)/u);
@@ -294,7 +294,7 @@ test("lock takeover, crash recovery and reopen-after-failure are handled in the 
     assert.equal(await page.locator("#project-name").textContent(), "crashed");
     assert.equal(host.session.recovery.lockOverride.reason, "the previous session crashed");
 
-    // The project's files change outside Lilac: the next edit asks for a reopen, which works.
+    // The project's files change outside Ninerr: the next edit asks for a reopen, which works.
     appendFileSync(join(root, "crashed", PROJECT_FILES.directory, "journal.log"), "tampered\n");
     await page.locator("#action-insert-box").click();
     await page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Reopen the project");
@@ -319,7 +319,7 @@ test("lock takeover, crash recovery and reopen-after-failure are handled in the 
 });
 
 test("a change that arrives while the editor is refreshing is not lost", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-race-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-editor-race-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const editor = await openEditor(host);
   try {
@@ -363,7 +363,7 @@ test("a change that arrives while the editor is refreshing is not lost", browser
 });
 
 test("a project switch during a load ends on the project the host has open", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-switch-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-editor-switch-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const call = (path, body) => fetch(`${host.url}${path}`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify(body ?? {}) }).then((response) => response.json());
   const insert = (revision, id) => call("/api/edit", { baseRevision: revision, intent: id, operations: [{ type: "insert-node", parentId: null, index: 0, node: { id, type: "element", props: { tag: "div" } } }] });
@@ -407,7 +407,7 @@ test("a project switch during a load ends on the project the host has open", bro
 });
 
 test("a refused event stream is retried with backoff, not in a loop, and resumes", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-streams-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-editor-streams-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   // Another token holder takes every stream slot.
   const taken = [];
@@ -438,7 +438,7 @@ test("a refused event stream is retried with backoff, not in a loop, and resumes
 });
 
 test("an agent's MCP changes appear live, ask the person before deleting, and can be reverted", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-agent-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-editor-agent-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const editor = await openEditor(host);
   try {

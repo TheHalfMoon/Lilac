@@ -1,4 +1,4 @@
-// Lilac-owned accessibility audit of generated and imported output.
+// Ninerr-owned accessibility audit of generated and imported output.
 // Input is a neutral tree, so code-ir design documents and import proposals
 // are both audited by the same deterministic rules; adapters below build it.
 

@@ -280,9 +280,9 @@ test("the runner starts the browser only through a wrapper that forces the proxy
     await writeFile(fakeBrowser, `#!/bin/sh\nfor a do printf '%s\\n' "$a"; done > ${record}\nexit 3\n`);
     await chmod(fakeBrowser, 0o755);
     const runner = createImpeccableCliRunner({ browserExecutable: fakeBrowser, timeoutMs: 60_000 });
-    const before = readdirSync(tmpdir()).filter((name) => name.startsWith("lilac-browser-")).length;
+    const before = readdirSync(tmpdir()).filter((name) => name.startsWith("ninerr-browser-")).length;
     await assert.rejects(runner.scanTarget("http://site.test/", { proxyUrl: "http://127.0.0.1:9" }));
-    assert.equal(readdirSync(tmpdir()).filter((name) => name.startsWith("lilac-browser-")).length, before, "the wrapper is removed");
+    assert.equal(readdirSync(tmpdir()).filter((name) => name.startsWith("ninerr-browser-")).length, before, "the wrapper is removed");
     if (!existsSync(record)) return assert.fail("the engine did not start the configured browser");
     const argv = readFileSync(record, "utf8").trim().split("\n");
     assert.deepEqual(argv.slice(0, 5), [

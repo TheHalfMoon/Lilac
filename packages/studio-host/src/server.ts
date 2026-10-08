@@ -350,7 +350,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       // browser always sends Origin on a POST, and only this host's own origin is accepted.
       if (origin === undefined) throw new StudioError(403, "origin-required", "the launch ticket is redeemed only by the editor page");
       const { ticket } = ((await readJson(request)) ?? {}) as { ticket?: unknown };
-      if (!redeemTicket(typeof ticket === "string" ? ticket : null)) throw new StudioError(401, "invalid-ticket", "this launch link has been used or has expired; open Lilac again");
+      if (!redeemTicket(typeof ticket === "string" ? ticket : null)) throw new StudioError(401, "invalid-ticket", "this launch link has been used or has expired; open Ninerr again");
       respondJson(response, 200, { token });
       return;
     }
@@ -378,7 +378,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     }
     const header = request.headers.authorization;
     const actor = typeof header === "string" && header.startsWith("Bearer ") ? agents.authenticate(header.slice(7)) : null;
-    if (actor === null) throw new StudioError(401, "unauthorized", "an agent credential from Lilac is required");
+    if (actor === null) throw new StudioError(401, "unauthorized", "an agent credential from Ninerr is required");
     const message = await readJson(request);
     if (Array.isArray(message)) {
       respondJson(response, 400, { jsonrpc: "2.0", id: null, error: { code: -32600, message: "batches are not supported" } });

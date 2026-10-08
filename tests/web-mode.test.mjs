@@ -86,7 +86,7 @@ test("one command serves Ninerr on this computer only, with single-use links, an
     await waitRevision(tab.page, 1);
     // A link works once; Enter prints a fresh one, which opens a second editor on the same project.
     const reused = await openTabUnready(browser, ninerr.origin, ninerr.first);
-    await reused.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Open Lilac from its launcher");
+    await reused.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Open Ninerr from its launcher");
     const fresh = await openTab(browser, ninerr.origin, await ninerr.newLink());
     await waitRevision(fresh.page, 1);
     assert.equal(await layerCount(fresh.page), 2);

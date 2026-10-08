@@ -7,7 +7,7 @@ const SUBSYSTEMS = [
     title: "Document model",
     owner: "@ninerr/document-model",
     status: "implemented",
-    boundary: "Typed Lilac document graph, nodes, and identities. Sole structural authority alongside history.",
+    boundary: "Typed Ninerr document graph, nodes, and identities. Sole structural authority alongside history.",
     dependsOn: [],
   },
   {
@@ -119,7 +119,7 @@ const SUBSYSTEMS = [
     title: "Code intermediate representation",
     owner: "@ninerr/code-ir",
     status: "stub",
-    boundary: "Stable Lilac code/design IR with rendered node to source symbol provenance. Bounded JSX/TSX, CSS, and Tailwind adapters with range-anchored source patches are delivered (P05 D1 vertical slice); full-language parsing and further languages are planned.",
+    boundary: "Stable Ninerr code/design IR with rendered node to source symbol provenance. Bounded JSX/TSX, CSS, and Tailwind adapters with range-anchored source patches are delivered (P05 D1 vertical slice); full-language parsing and further languages are planned.",
     dependsOn: ["document-model"],
   },
   {
@@ -263,7 +263,7 @@ const SUBSYSTEMS = [
     title: "Desktop bridge",
     owner: "@ninerr/desktop",
     status: "implemented",
-    boundary: "The desktop app: a thin Electron shell that runs the studio host in its main process and shows the editor in one context-isolated, sandboxed window with no Node and a minimal preload, denied navigation, windows, webviews, downloads, permissions and every request but the host's (PC9a). Packages for Linux x64, macOS arm64 and Windows x64 are a Lilac-owned assembly of the pinned, SHA-256-verified Electron runtime with its fuses set (no RunAsNode, NODE_OPTIONS or inspector), smoke-tested and journey-tested per platform (PC9b, PC10). Publisher signing and notarization are planned (#139).",
+    boundary: "The desktop app: a thin Electron shell that runs the studio host in its main process and shows the editor in one context-isolated, sandboxed window with no Node and a minimal preload, denied navigation, windows, webviews, downloads, permissions and every request but the host's (PC9a). Packages for Linux x64, macOS arm64 and Windows x64 are a Ninerr-owned assembly of the pinned, SHA-256-verified Electron runtime with its fuses set (no RunAsNode, NODE_OPTIONS or inspector), smoke-tested and journey-tested per platform (PC9b, PC10). Publisher signing and notarization are planned (#139).",
     dependsOn: ["studio-host", "mcp-surface", "persistence"],
   },
   {

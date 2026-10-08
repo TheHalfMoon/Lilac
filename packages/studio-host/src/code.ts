@@ -175,7 +175,7 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
   // Anything code-ir could not read is refused as a whole, never partly imported.
   if (ir.unsupported.length > 0) {
     const first = ir.unsupported[0];
-    throw refuse(`this code uses something Lilac cannot bring in yet (${String(first.reason ?? first.kind ?? "unsupported construct")}, line ${first.range?.startLine ?? "?"})`);
+    throw refuse(`this code uses something Ninerr cannot bring in yet (${String(first.reason ?? first.kind ?? "unsupported construct")}, line ${first.range?.startLine ?? "?"})`);
   }
   // The exported component's own element, by name, not whichever element came first.
   // A component's definition is the component symbol whose element is a root; a JSX use of

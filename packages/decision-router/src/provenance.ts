@@ -8,5 +8,5 @@ export const DECISION_ROUTER_PROVENANCE = {
     "src/jev.ts",
     "src/mcp.ts",
   ],
-  posture: "Guidance only. Lilac reimplements dimension/label schemas, bounds, batching, threshold, and review-routing semantics as project-owned code. No donor SaaS, billing, quota, gateway, analytics, or frontend code is imported.",
+  posture: "Guidance only. Ninerr reimplements dimension/label schemas, bounds, batching, threshold, and review-routing semantics as project-owned code. No donor SaaS, billing, quota, gateway, analytics, or frontend code is imported.",
 } as const;
