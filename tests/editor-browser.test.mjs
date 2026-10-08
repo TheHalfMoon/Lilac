@@ -44,7 +44,7 @@ const screenOf = (page, id) => page.evaluate((nodeId) => {
   const frame = document.querySelector("iframe");
   const outer = frame.getBoundingClientRect();
   const zoom = outer.width / frame.offsetWidth;
-  const inner = frame.contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`).getBoundingClientRect();
+  const inner = frame.contentDocument.querySelector(`[data-ninerr-id="${nodeId}"]`).getBoundingClientRect();
   return { x: outer.left + (inner.left + inner.width / 2) * zoom, y: outer.top + (inner.top + inner.height / 2) * zoom };
 }, id);
 const layerCount = (page) => page.locator("#layers [role=treeitem]").count();
@@ -89,7 +89,7 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
     await page.mouse.up();
     await waitRevision(page, 3);
     assert.deepEqual([host.session.document.nodes[boxId].props.style.left, host.session.document.nodes[boxId].props.style.top], ["52px", "42px"]);
-    const handle = await page.locator("[data-lilac-handle]").boundingBox();
+    const handle = await page.locator("[data-ninerr-handle]").boundingBox();
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
     await page.mouse.down();
     await page.mouse.move(handle.x + handle.width / 2 - 20, handle.y + handle.height / 2 + 10, { steps: 4 });
@@ -132,7 +132,7 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
     await waitRevision(page, 11);
     assert.equal(host.session.document.nodes[boxId].props.style.left, "42px");
     // The canvas shows it: the rendered element moved with the document.
-    const left = await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${id}"]`).style.left, boxId);
+    const left = await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${id}"]`).style.left, boxId);
     assert.equal(left, "42px");
 
     // Undo and redo from the keyboard are committed, attributed transactions.
@@ -176,7 +176,7 @@ test("create, edit, undo and redo, save and reopen a project through the editor"
     assert.deepEqual(host.session.document, JSON.parse(saved));
     assert.equal(await page.locator(`#layer-${boxId} .label`).textContent(), "Hero card");
     // The renderer shows the reopened document.
-    assert.equal(await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${id}"]`).style.width, boxId), "200px");
+    assert.equal(await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${id}"]`).style.width, boxId), "200px");
     assert.deepEqual(editor.foreign, []);
     assert.deepEqual(editor.errors, []);
   } finally {
@@ -204,7 +204,7 @@ test("changes made elsewhere appear live, typing in progress is kept, and undo f
     const call = (path, body) => fetch(`${host.url}${path}`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify(body) }).then((response) => response.json());
     await call("/api/edit", { baseRevision: 1, intent: "Recolour from script", operations: [{ type: "set-props", nodeId: boxId, set: { style: { ...host.session.document.nodes[boxId].props.style, background: "#ff0000" } } }] });
     await waitRevision(page, 2);
-    assert.equal(await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${id}"]`).style.background, boxId), "rgb(255, 0, 0)");
+    assert.equal(await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${id}"]`).style.background, boxId), "rgb(255, 0, 0)");
     assert.equal((await historyIntents(page))[0], "Recolour from script");
     assert.equal(await page.locator("#inspect-style-background").inputValue(), "#ff0000", "the inspector shows the new value");
 
@@ -226,12 +226,12 @@ test("changes made elsewhere appear live, typing in progress is kept, and undo f
     // editor's undo (the same person's latest change) brings it back, in the canvas too.
     await call("/api/edit", { baseRevision: 5, intent: "Delete from script", operations: [{ type: "remove-node", nodeId: boxId }] });
     await waitRevision(page, 6);
-    assert.equal(await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${id}"]`), boxId), null);
+    assert.equal(await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${id}"]`), boxId), null);
     assert.equal(await layerCount(page), 1);
     await page.locator("[role=application]").focus();
     await page.keyboard.press("Control+z");
     await waitRevision(page, 7);
-    assert.equal(await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${id}"]`)?.style.color, boxId), "navy");
+    assert.equal(await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${id}"]`)?.style.color, boxId), "navy");
     assert.equal((await historyIntents(page))[0], "Undo: Delete from script");
     assert.equal(await page.locator("#revision").textContent(), "Revision 7");
     assert.deepEqual(editor.foreign, []);
@@ -352,7 +352,7 @@ test("a change that arrives while the editor is refreshing is not lost", browser
     assert.equal(await page.locator("#project-name").textContent(), "second");
     assert.equal(await layerCount(page), 2, "both changes are on the canvas and in the tree");
     assert.deepEqual(await historyIntents(page), ["Second layer", "First layer"]);
-    assert.equal(await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelectorAll("[data-lilac-id]").length), 2);
+    assert.equal(await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelectorAll("[data-ninerr-id]").length), 2);
     assert.deepEqual(editor.foreign, []);
     assert.deepEqual(editor.errors, []);
   } finally {
@@ -468,10 +468,10 @@ test("an agent's MCP changes appear live, ask the person before deleting, and ca
     const frameId = (await tool("create_artboard", { name: "Landing", width: 640, height: 400 })).structuredContent.nodeId;
     await waitRevision(page, 1);
     assert.equal(await page.locator(`#layer-${frameId} .label`).textContent(), "Landing");
-    assert.equal(await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`)?.style.width, frameId), "640px");
+    assert.equal(await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${nodeId}"]`)?.style.width, frameId), "640px");
     await tool("update_styles", { updates: [{ nodeId: frameId, styles: { background: "#123456" } }] });
     await waitRevision(page, 2);
-    assert.equal(await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`).style.background, frameId), "rgb(18, 52, 86)");
+    assert.equal(await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${nodeId}"]`).style.background, frameId), "rgb(18, 52, 86)");
     // The history attributes the changes to the agent, by name, with its tool.
     const latest = page.locator("#history li").first();
     assert.equal(await latest.getAttribute("class"), "agent");

@@ -103,7 +103,7 @@ export function exportJsx(document: any, nodeId: unknown): { componentName: stri
     const plan = planElement(node);
     const props: Record<string, string> = {};
     for (const [name, value] of Object.entries(plan.attributes as Record<string, string>)) {
-      if (name === "data-lilac-href") props.href = value;
+      if (name === "data-ninerr-href") props.href = value;
       else if (name === "class") props.className = value;
       else if (name === "for") props.htmlFor = value;
       else if (/^[A-Za-z_][A-Za-z0-9_:.-]*$/u.test(name) && !/[\r\n]/u.test(value)) props[name] = value;

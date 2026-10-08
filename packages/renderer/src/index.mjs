@@ -1,7 +1,7 @@
 // @ninerr/renderer: turns a Lilac document into web semantics inside a sandboxed frame.
 //
 // Rendering contract (docs/ARCHITECTURE.md): web semantics out, a stable node -> DOM identity
-// (`data-lilac-id`), no renderer-only document state, and an explicit sandbox for imported
+// (`data-ninerr-id`), no renderer-only document state, and an explicit sandbox for imported
 // markup. This module has no imports and no Node built-ins, so the browser loads it as is.
 //
 // Web-semantic props convention (PC2, frozen): a node's props may hold
@@ -97,7 +97,7 @@ export function planElement(node) {
       const value = sanitizeAttribute(tag, namespace, lower, rawValue);
       if (value === null) dropped += 1;
       // Links are rendered inert: the canvas is an editing surface, never a browser.
-      else if (lower === "href") attributes["data-lilac-href"] = value;
+      else if (lower === "href") attributes["data-ninerr-href"] = value;
       else attributes[namespace === "svg" ? SVG_ATTRIBUTES.get(lower) ?? lower : lower] = value;
     }
   }
@@ -119,7 +119,7 @@ function sanitizeAttribute(tag, namespace, name, rawValue) {
   const value = typeof rawValue === "number" || typeof rawValue === "boolean" ? String(rawValue) : rawValue;
   if (typeof value !== "string" || value.length > MAX_VALUE) return null;
   // Event handlers, inline styles (they go through `style`), and our own identity never pass.
-  if (name.startsWith("on") || name === "style" || name.startsWith("data-lilac") || name === "id") return null;
+  if (name.startsWith("on") || name === "style" || name.startsWith("data-ninerr") || name.startsWith("data-lilac") || name === "id") return null;
   if (name.startsWith("aria-") && /^aria-[a-z]{1,32}$/u.test(name)) return value;
   if (/^data-[a-z0-9-]{1,64}$/u.test(name)) return value;
   if (namespace === "svg") return SVG_ATTRIBUTES.has(name) && !/javascript:|url\s*\(/iu.test(value) ? value : null;
@@ -137,7 +137,7 @@ export const FRAME_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-i
 export const FRAME_SANDBOX = "allow-same-origin";
 
 export function frameSrcdoc() {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}"><style>html,body{margin:0;padding:0}body{font-family:system-ui,sans-serif}[data-lilac-root]{position:relative;min-height:100vh}a[data-lilac-href]{color:LinkText;text-decoration:underline}</style></head><body><div data-lilac-root inert></div></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}"><style>html,body{margin:0;padding:0}body{font-family:system-ui,sans-serif}[data-ninerr-root]{position:relative;min-height:100vh}a[data-ninerr-href]{color:LinkText;text-decoration:underline}</style></head><body><div data-ninerr-root inert></div></body></html>`;
 }
 
 /**
@@ -163,7 +163,7 @@ export function mountSandboxedRenderer(container) {
           }
         }, true);
       }
-      resolve({ frame, renderer: createRenderer(frameDocument.querySelector("[data-lilac-root]")) });
+      resolve({ frame, renderer: createRenderer(frameDocument.querySelector("[data-ninerr-root]")) });
     }, { once: true });
     container.appendChild(frame);
   });
@@ -181,7 +181,7 @@ export function createRenderer(root) {
   function build(node) {
     const plan = planElement(node);
     const element = plan.namespace === "svg" ? doc.createElementNS(SVG_NS, plan.tag) : doc.createElement(plan.tag);
-    element.setAttribute("data-lilac-id", node.id);
+    element.setAttribute("data-ninerr-id", node.id);
     stats.created += 1;
     apply(element, node, plan);
     elements.set(node.id, element);
@@ -190,7 +190,7 @@ export function createRenderer(root) {
 
   function apply(element, node, plan) {
     for (const attribute of [...element.attributes]) {
-      if (attribute.name !== "data-lilac-id" && !Object.hasOwn(plan.attributes, attribute.name)) element.removeAttribute(attribute.name);
+      if (attribute.name !== "data-ninerr-id" && !Object.hasOwn(plan.attributes, attribute.name)) element.removeAttribute(attribute.name);
     }
     for (const [name, value] of Object.entries(plan.attributes)) {
       if (element.getAttribute(name) !== value) element.setAttribute(name, value);
@@ -204,22 +204,22 @@ export function createRenderer(root) {
       // The browser's CSS parser is the final judge; count what it refused.
       if (element.style.getPropertyValue(name) === "") rejected += 1;
     }
-    element.setAttribute("data-lilac-type", node.type);
+    element.setAttribute("data-ninerr-type", node.type);
     stats.dropped += plan.dropped + rejected;
     const first = element.firstChild;
-    const textNode = first !== null && first.nodeType === 3 && first.__lilacText ? first : null;
+    const textNode = first !== null && first.nodeType === 3 && first.__ninerrText ? first : null;
     if (plan.text === null) textNode?.remove();
     else if (textNode) textNode.data = plan.text;
     else {
       const created = doc.createTextNode(plan.text);
-      created.__lilacText = true;
+      created.__ninerrText = true;
       element.insertBefore(created, element.firstChild);
     }
   }
 
   // Put exactly `ids` (in order) as the element children of `parent`, after any text node.
   function reconcileChildren(parent, ids, document) {
-    let cursor = parent.firstChild !== null && parent.firstChild.__lilacText ? parent.firstChild.nextSibling : parent.firstChild;
+    let cursor = parent.firstChild !== null && parent.firstChild.__ninerrText ? parent.firstChild.nextSibling : parent.firstChild;
     const wanted = new Set(ids);
     for (const id of ids) {
       const node = document.nodes[id];
@@ -230,7 +230,7 @@ export function createRenderer(root) {
     // Anything left after the wanted children is no longer a child here.
     for (let extra = cursor; extra !== null;) {
       const next = extra.nextSibling;
-      const id = extra.getAttribute?.("data-lilac-id");
+      const id = extra.getAttribute?.("data-ninerr-id");
       if (id && !wanted.has(id)) {
         if (!Object.hasOwn(document.nodes, id)) forget(extra);
         extra.remove();
@@ -246,8 +246,8 @@ export function createRenderer(root) {
   }
 
   function forget(element) {
-    for (const descendant of [element, ...element.querySelectorAll("[data-lilac-id]")]) {
-      elements.delete(descendant.getAttribute("data-lilac-id"));
+    for (const descendant of [element, ...element.querySelectorAll("[data-ninerr-id]")]) {
+      elements.delete(descendant.getAttribute("data-ninerr-id"));
       stats.removed += 1;
     }
   }
@@ -284,7 +284,7 @@ export function createRenderer(root) {
           if (element.localName !== plan.tag || element.namespaceURI !== namespace) {
             // A changed tag or namespace needs a new element; its children move across.
             target = build(node);
-            for (const child of [...element.childNodes]) if (!child.__lilacText) target.appendChild(child);
+            for (const child of [...element.childNodes]) if (!child.__ninerrText) target.appendChild(child);
             element.replaceWith(target);
           } else {
             apply(element, node, plan);
@@ -309,8 +309,8 @@ export function createRenderer(root) {
     },
     /** The node id of the rendered element at or above `target`, or null. */
     nodeIdFor(target) {
-      const element = target?.closest?.("[data-lilac-id]");
-      return element ? element.getAttribute("data-lilac-id") : null;
+      const element = target?.closest?.("[data-ninerr-id]");
+      return element ? element.getAttribute("data-ninerr-id") : null;
     },
     get size() {
       return elements.size;

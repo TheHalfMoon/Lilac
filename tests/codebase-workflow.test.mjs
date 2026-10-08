@@ -52,8 +52,8 @@ test("connect a folder, bring a component in, edit it and write the edit back to
     // Bring the component in.
     await page.locator("#codebase-components button", { hasText: "Bring in" }).click();
     await waitRevision(page, 1);
-    const section = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("section.card").getAttribute("data-lilac-id"));
-    const heading = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("h2").getAttribute("data-lilac-id"));
+    const section = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("section.card").getAttribute("data-ninerr-id"));
+    const heading = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("h2").getAttribute("data-ninerr-id"));
     assert.match(await page.locator("#status").textContent(), /^Bring in PriceCard from PriceCard\.jsx: \d+ layers added\.$/u);
 
     // Reviewed from the selection Bring in leaves (the frame around the component), it plans
