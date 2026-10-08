@@ -61,7 +61,7 @@ test("a codebase folder is an existing directory outside the projects folder, an
     assert.throws(() => assertFolder("/", projects), /not the whole disk|outside/u);
 
     assert.equal(readSourceFile(code, "src/Card.jsx").content, CARD);
-    for (const file of ["../secret.jsx", "src/../../secret.jsx", join(root, "secret.jsx"), "src//Card.jsx", "src/Card.js", ""]) {
+    for (const file of ["../secret.jsx", "src/../../secret.jsx", join(root, "secret.jsx"), "src//Card.jsx", "./src/Card.jsx", "src\\..\\..\\secret.jsx", "C:secret.jsx", "src/Card.jsx:stream.jsx", "src/Card.js", ""]) {
       assert.throws(() => readSourceFile(code, file), /inside the connected folder|outside|not in/u, file);
     }
     symlinkSync(join(root, "secret.jsx"), join(code, "src", "Linked.jsx"));
@@ -152,8 +152,8 @@ test("bring a component in, edit it, preview and write back: three-way, atomic, 
     assert.equal(readFileSync(cardPath, "utf8"), CARD, "a preview writes nothing");
 
     // A stale preview is refused; the previewed one is written.
-    assert.equal((await call("POST", "/api/codebase/write", { nodeId: section.id, sha256: "0".repeat(64) })).status, 409);
-    const written = await call("POST", "/api/codebase/write", { nodeId: section.id, sha256: preview.sha256 });
+    assert.equal((await call("POST", "/api/codebase/write", { nodeId: section.id, token: "0".repeat(64) })).status, 409);
+    const written = await call("POST", "/api/codebase/write", { nodeId: section.id, token: preview.token });
     assert.equal(written.status, 200, JSON.stringify(written.json));
     assert.equal(written.json.written, 3);
     assert.equal(readFileSync(cardPath, "utf8"), CARD
@@ -174,7 +174,7 @@ test("bring a component in, edit it, preview and write back: three-way, atomic, 
     preview = (await call("POST", "/api/codebase/preview", { nodeId: section.id })).json;
     assert.deepEqual(preview.changes.map((change) => `${change.field}:${change.to}`), ["text:Team"]);
     assert.deepEqual(preview.conflicts.map((conflict) => conflict.field), ["className"]);
-    await call("POST", "/api/codebase/write", { nodeId: section.id, sha256: preview.sha256 });
+    await call("POST", "/api/codebase/write", { nodeId: section.id, token: preview.token });
     const after = readFileSync(cardPath, "utf8");
     assert.match(after, /<h2>Team<\/h2>/u);
     assert.match(after, /All of Free, plus more\./u, "the file's own change is kept");
@@ -184,9 +184,9 @@ test("bring a component in, edit it, preview and write back: three-way, atomic, 
     await edit([{ type: "set-props", nodeId: h2Now.id, set: { text: "Teams" } }]);
     preview = (await call("POST", "/api/codebase/preview", { nodeId: section.id })).json;
     writeFileSync(cardPath, `${readFileSync(cardPath, "utf8")}\n`);
-    const stale = await call("POST", "/api/codebase/write", { nodeId: section.id, sha256: preview.sha256 });
+    const stale = await call("POST", "/api/codebase/write", { nodeId: section.id, token: preview.token });
     assert.equal(stale.status, 409);
-    assert.equal(stale.json.error.code, "file-changed");
+    assert.equal(stale.json.error.code, "plan-changed");
     assert.match(readFileSync(cardPath, "utf8"), /<h2>Team<\/h2>/u, "nothing was written");
 
     // What is not written back is said, not done.
@@ -201,6 +201,88 @@ test("bring a component in, edit it, preview and write back: three-way, atomic, 
     const disconnect = await call("POST", "/api/codebase/disconnect", {});
     assert.equal(disconnect.json.folder, null);
     assert.equal((await call("POST", "/api/codebase/preview", { nodeId: section.id })).status, 409);
+  } finally {
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("write-back keeps the file's own changes, writes only the previewed plan, and lists what it leaves", async () => {
+  const root = scratch();
+  const projects = join(root, "projects");
+  const code = join(root, "code");
+  mkdirSync(projects);
+  mkdirSync(code);
+  const path = join(code, "Note.jsx");
+  const NOTE = `export function Note() {
+  return (
+    <article className="note" data-kind="tip" disabled>
+      <h3>Title</h3>
+      <p>Hello <b>you</b> there</p>
+      <span>Footer</span>
+    </article>
+  );
+}
+`;
+  writeFileSync(path, NOTE);
+  chmodSync(path, 0o664);
+  const host = await startStudioHost({ projectsRoot: projects, now });
+  const call = async (method, route, body) => {
+    const response = await fetch(`${host.url}${route}`, { method, headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    return { status: response.status, json: await response.json() };
+  };
+  const edit = (operations) => call("POST", "/api/edit", { baseRevision: host.session.revision, intent: "Edit", operations });
+  const find = (predicate) => Object.values(host.session.document.nodes).find(predicate);
+  try {
+    await call("POST", "/api/projects/create", { name: "notes" });
+    await call("POST", "/api/codebase/connect", { folder: code });
+    await call("POST", "/api/codebase/import", { file: "Note.jsx", component: "Note" });
+    const article = find((node) => node.props.tag === "article");
+    const h3 = find((node) => node.props.tag === "h3");
+    const hello = find((node) => node.type === "text" && node.props.text.trim() === "Hello");
+    const span = find((node) => node.props.tag === "span");
+    assert.deepEqual(hello.props.codeSource, { file: "Note.jsx", component: "Note", path: "1", tag: "#text", textIndex: 0, base: { text: hello.props.text, props: {} } }, "a run of text is bound too");
+
+    // Nothing changed: no spurious notes for the source's boolean prop.
+    let preview = (await call("POST", "/api/codebase/preview", { nodeId: article.id })).json;
+    assert.deepEqual(preview.changes, []);
+    assert.deepEqual(preview.notWritten, [], JSON.stringify(preview.notWritten));
+
+    // A change in the file to a field the person did not touch is never undone.
+    writeFileSync(path, readFileSync(path, "utf8").replace("<span>Footer</span>", "<span>Footer from the file</span>"));
+    await edit([{ type: "set-props", nodeId: h3.id, set: { text: "Heading" } }, { type: "set-props", nodeId: hello.id, set: { text: "Hi " } }]);
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: article.id })).json;
+    assert.deepEqual(preview.changes.map((change) => `${change.field}:${change.to}`).sort(), ["text:Heading", "text:Hi "], "the run of text is written too");
+    assert.equal((await call("POST", "/api/codebase/write", { nodeId: article.id, token: preview.token })).status, 200);
+    let after = readFileSync(path, "utf8");
+    assert.match(after, /<h3>Heading<\/h3>/u);
+    assert.match(after, /<p>Hi <b>you<\/b> there<\/p>/u, "the text's surroundings are kept");
+    assert.match(after, /Footer from the file/u);
+    assert.equal(statSync(path).mode & 0o777, 0o664, "the file keeps its permissions");
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: article.id })).json;
+    assert.deepEqual(preview.changes, [], "and nothing reverts it later");
+    assert.equal(find((node) => node.id === span.id).props.codeSource.base.text, "Footer", "the untouched field keeps its base");
+
+    // Only the previewed plan is written: a layer changed after the preview is refused.
+    await edit([{ type: "set-props", nodeId: h3.id, set: { text: "Reviewed" } }]);
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: article.id })).json;
+    await edit([{ type: "set-props", nodeId: h3.id, set: { text: "Not reviewed" } }]);
+    const refused = await call("POST", "/api/codebase/write", { nodeId: article.id, token: preview.token });
+    assert.equal(refused.status, 409);
+    assert.equal(refused.json.error.code, "plan-changed");
+    assert.match(readFileSync(path, "utf8"), /<h3>Heading<\/h3>/u, "nothing was written");
+
+    // What is not written is listed: an added layer, a moved one, a copied one.
+    await edit([{ type: "insert-node", node: { id: "extra", type: "element", props: { tag: "em", text: "new" } }, parentId: article.id, index: 0 }]);
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: article.id })).json;
+    assert.ok(preview.notWritten.some((entry) => entry.nodeId === "extra" && /added here/u.test(entry.reason)), JSON.stringify(preview.notWritten));
+    await edit([{ type: "remove-node", nodeId: "extra" }, { type: "move-node", nodeId: span.id, parentId: article.id, index: 0 }]);
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: article.id })).json;
+    assert.ok(preview.notWritten.some((entry) => /moved or reordered/u.test(entry.reason)), JSON.stringify(preview.notWritten));
+    await edit([{ type: "move-node", nodeId: span.id, parentId: article.id, index: 2 }]);
+    await edit([{ type: "insert-node", node: { id: "copy", type: "element", props: { ...find((node) => node.id === h3.id).props } }, parentId: article.id, index: 3 }]);
+    preview = (await call("POST", "/api/codebase/preview", { nodeId: article.id })).json;
+    assert.deepEqual(preview.conflicts.filter((conflict) => /a copy/u.test(conflict.reason)).map((conflict) => conflict.nodeId).sort(), [h3.id, "copy"].sort());
   } finally {
     await host.close();
     rmSync(root, { recursive: true, force: true });
