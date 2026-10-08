@@ -24,6 +24,10 @@ export const ELECTRON_CACHE = join(ROOT, ".lilac-cache", "electron");
 
 export const currentTarget = () => `${process.platform}-${process.arch}`;
 
+// Windows' own bsdtar, which reads and writes zip archives (a Git for Windows tar earlier
+// on the PATH would not).
+export const WINDOWS_TAR = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+
 export function archiveName(target) {
   return `electron-v${ELECTRON_VERSION}-${target}.zip`;
 }
@@ -53,7 +57,7 @@ function unzip(archive, into) {
   const [command, args] = process.platform === "darwin"
     ? ["ditto", ["-x", "-k", archive, into]]
     : process.platform === "win32"
-      ? ["tar", ["-xf", archive, "-C", into]]
+      ? [WINDOWS_TAR, ["-xf", archive, "-C", into]]
       : ["unzip", ["-q", archive, "-d", into]];
   const result = spawnSync(command, args, { stdio: "inherit" });
   if (result.status !== 0) throw new Error(`${command} could not unpack ${archive}`);
