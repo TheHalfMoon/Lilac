@@ -25,4 +25,4 @@ Issue: #190 (N0 umbrella). This is the second half of N0-G4. The first half, `N0
 - **No aliases.** Nothing was released under the earlier names, so no aliases are kept. An earlier name is now an unknown tool, denied before any policy is consulted. The protocol, server and docs tests check that.
 - **History.** Entries recorded before this change keep the tool name they were made with: the journal is append-only.
 - **Docs.** `docs/MCP.md` lists the mapping, and `tests/release-docs.test.mjs` checks that table against the catalog.
-- **Prose.** "Artboard" in the server's tool title, its description and its history label becomes "frame", the word the editor uses.
+- **Prose.** "Artboard" in the server's tool title, its description and its history label becomes "frame", the word the editor uses. `set_styles` is titled and labelled "Set styles". The server tests check both history labels, that the guide names every reading and editing tool and only tools of the catalog, and that the server tells agents to call `guide` first. That check found the guide had never mentioned `layer_code`; it does now.

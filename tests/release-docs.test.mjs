@@ -79,7 +79,11 @@ test("the MCP documentation matches the tool surface, classes and confirmation w
   const renamed = [...doc.matchAll(/^\| `([a-z_]+)` \| `([a-z_]+)` \|$/gm)];
   assert.equal(renamed.length, MCP_TOOL_NAMES.length);
   assert.deepEqual(renamed.map((row) => row[2]).sort(), [...MCP_TOOL_NAMES].sort());
-  for (const [, before] of renamed) assert.equal(decide(before).outcome, "denied", `${before} is no longer a tool`);
+  for (const [, before, now] of renamed) {
+    assert.notEqual(before, now);
+    assert.equal(classifyTool(before), "unknown", `${before} is no longer a tool`);
+    assert.match(decide(before).reason, /^unknown tool/u);
+  }
   assert.ok(decide("x".repeat(1000)).reason.length <= 100, "an unknown tool's reason is bounded");
   assert.doesNotMatch(doc, /Not implemented/);
 });

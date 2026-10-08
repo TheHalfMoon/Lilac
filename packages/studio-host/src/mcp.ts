@@ -193,7 +193,7 @@ const TOOLS: Tool[] = [
       guide: [
         "A Ninerr document is a tree of layers. Each layer has an id, a type (frame, element, text, ...) and props: tag (an HTML element), text, name (the layer name), attributes and style (CSS properties).",
         "Every edit you make is one history transaction attributed to you; the person sees it live on the canvas and can undo it.",
-        "Read with project_info, layer_tree, layer_children, layer_details, find_layers and selection.",
+        "Read with project_info, layer_tree, layer_children, layer_details, find_layers and selection; layer_code gives a layer as JSX.",
         "Edit with create_frame, set_text, rename_layers, set_styles, move_layers and duplicate_layers. delete_layers needs the person to approve it in Ninerr.",
         "Style values are CSS strings (\"24px\", \"#336699\"); null removes a property.",
       ].join("\n"),
@@ -252,7 +252,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "set_styles",
-    title: "Update styles",
+    title: "Set styles",
     description: "Change CSS properties of layers. Values are CSS strings; null removes the property.",
     inputSchema: object({ updates: { type: "array", minItems: 1, maxItems: 500, items: object({ nodeId: { type: "string" }, styles: { type: "object", additionalProperties: { type: ["string", "null"] } } }, ["nodeId", "styles"]) } }, ["updates"]),
     run: ({ session, edit }, args) => {
@@ -270,7 +270,7 @@ const TOOLS: Tool[] = [
         }
         return { type: "set-props", nodeId: node.id, set: { style } };
       });
-      return edit(operations, "Update styles");
+      return edit(operations, "Set styles");
     },
   },
   {

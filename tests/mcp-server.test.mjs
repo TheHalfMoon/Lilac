@@ -88,6 +88,7 @@ test("the MCP protocol: initialize, tools/list, notifications and errors", async
     const init = (await mcp(token, "initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "1" } })).json;
     assert.equal(init.result.protocolVersion, "2025-03-26", "a supported version is echoed");
     assert.deepEqual(init.result.capabilities, { tools: { listChanged: false } });
+    assert.match(init.result.instructions, /Call guide first/u);
     assert.equal(init.result.serverInfo.name, "ninerr");
     assert.equal((await mcp(token, "initialize", { protocolVersion: "1999-01-01" })).json.result.protocolVersion, "2025-06-18", "an unknown version gets the latest");
     assert.equal((await mcp(token, "notifications/initialized", undefined, { notification: true })).status, 202);
@@ -164,7 +165,12 @@ test("agents read and edit through tools; every edit is an attributed transactio
     assert.equal((await tool(token, "layer_children", { nodeId: frameId })).structuredContent.children.length, 2);
     await owner("POST", "/api/selection", { nodeIds: ["title"] });
     assert.deepEqual((await tool(token, "selection", {})).structuredContent.nodes.map((node) => node.id), ["title"]);
-    assert.match((await tool(token, "guide", {})).structuredContent.guide, /history transaction/u);
+    const guide = (await tool(token, "guide", {})).structuredContent.guide;
+    assert.match(guide, /history transaction/u);
+    // Every tool the guide names is a tool of the catalog, and it names every one.
+    const named = [...guide.matchAll(/\b[a-z]+(?:_[a-z]+)+\b|\bselection\b|\bguide\b/gu)].map((match) => match[0]);
+    for (const name of named) assert.notEqual(classifyTool(name), "unknown", `the guide names ${name}`);
+    for (const name of MCP_TOOL_NAMES.filter((name) => name !== "guide" && name !== "finish_task")) assert.ok(named.includes(name), `the guide names ${name}`);
     // Bad input is a tool error, not a failure, and changes nothing.
     const revision = host.session.revision;
     assert.equal((await tool(token, "set_text", { nodeId: "missing", text: "x" })).isError, true);
@@ -186,6 +192,8 @@ test("agents read and edit through tools; every edit is an attributed transactio
     const journal = readFileSync(join(root, "demo", PROJECT_FILES.directory, "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
     const byAgent = journal.filter((tx) => tx.metadata.collaboration.actorKind === "agent");
     assert.equal(byAgent.length, 7);
+    assert.deepEqual(byAgent.map((tx) => tx.intent).slice(0, 1), ["Create frame"]);
+    assert.ok(byAgent.some((tx) => tx.intent === "Set styles"));
     for (const tx of byAgent) {
       assert.equal(tx.metadata.ninerr.transport, "mcp");
       assert.equal(tx.metadata.collaboration.ownerActorId, "local-user");
