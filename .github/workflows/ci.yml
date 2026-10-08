@@ -12,7 +12,7 @@ jobs:
   foundation:
     name: Foundation checks
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,6 +21,17 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --ignore-scripts
+      - name: Cache the pinned Electron archive
+        uses: actions/cache@v4
+        with:
+          path: .lilac-cache/electron/downloads
+          key: electron-${{ runner.os }}-${{ hashFiles('scripts/desktop/electron.mjs') }}
+      - name: Fetch the pinned Electron runtime (SHA-256 verified)
+        run: node scripts/fetch-electron.mjs
+      - name: Allow Chromium's sandbox (unprivileged user namespaces)
+        # Ubuntu's AppArmor restricts unprivileged user namespaces, which Chromium's sandbox
+        # uses; lift that for this job rather than run the desktop app unsandboxed.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run checks
         shell: bash
         run: |

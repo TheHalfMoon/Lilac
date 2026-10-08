@@ -7,3 +7,4 @@ export { AGENT_CAPABILITIES, AgentRegistry, type AgentSummary } from "./agents.t
 export { CONFIRMATION_WAIT_MS, ConfirmationBroker, MCP_PROTOCOL_VERSIONS, handleMcpMessage, mcpToolDefinitions, type PendingConfirmation } from "./mcp.ts";
 export { assertLoopbackUrl, discoverMcpUrl, runRelay, type RelayOptions } from "./relay.ts";
 export { exportJsx, importJsx } from "./code.ts";
+export { prepareProjectsFolder, projectsFolder } from "./projects-folder.ts";

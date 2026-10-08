@@ -8,11 +8,10 @@
 // folder (default: "Lilac Projects" in your home folder, or LILAC_PROJECTS). Each link
 // works once, for two minutes; press Enter for a new one. Ctrl+C stops Lilac.
 import { spawn } from "node:child_process";
-import { mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { startStudioHost } from "../packages/studio-host/src/index.ts";
+import { prepareProjectsFolder, projectsFolder, startStudioHost } from "../packages/studio-host/src/index.ts";
 
 const args = process.argv.slice(2);
 function fail(message) {
@@ -32,25 +31,13 @@ const option = (name) => {
   return at >= 0 ? args[at + 1] : undefined;
 };
 
-const projectsRoot = resolve(option("--projects") ?? process.env.LILAC_PROJECTS ?? join(homedir(), "Lilac Projects"));
+const projectsRoot = projectsFolder(option("--projects"));
 const portText = option("--port") ?? "0";
 const port = Number(portText);
 if (!Number.isInteger(port) || port < 0 || port > 65535) fail("--port must be a number from 0 to 65535");
 try {
-  // A folder Lilac creates is this user's alone. An existing one is left as it is (it may
-  // be shared on purpose), with a warning; Lilac's own files in it are owner-only anyway.
-  const existed = (() => {
-    try {
-      statSync(projectsRoot);
-      return true;
-    } catch {
-      return false;
-    }
-  })();
-  mkdirSync(projectsRoot, { recursive: true, mode: 0o700 });
-  if (existed && process.platform !== "win32" && (statSync(projectsRoot).mode & 0o077) !== 0) {
-    process.stderr.write(`lilac: note: ${projectsRoot} can be read by other users of this computer; its projects can too\n`);
-  }
+  const { note } = prepareProjectsFolder(projectsRoot);
+  if (note !== null) process.stderr.write(`lilac: note: ${note}\n`);
 } catch (error) {
   fail(`cannot use the projects folder: ${error instanceof Error ? error.message : String(error)}`);
 }

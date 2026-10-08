@@ -42,6 +42,16 @@ Impeccable's upstream `NOTICE.md` at the pinned revision is reproduced verbatim 
 > **Original license:** MIT
 > **Author:** ehmo
 
+## Electron
+
+- Runtime: Electron `44.7.0`, the official release archives for linux-x64, darwin-arm64 and win32-x64, pinned by SHA-256 in `scripts/desktop/electron.mjs` and fetched by `scripts/fetch-electron.mjs` (not the `electron` npm package)
+- Copyright: Electron contributors; 2013-2020 GitHub Inc.
+- License: MIT
+- Bundled: Chromium, Node.js and their components, under the licenses listed in the runtime's `LICENSES.chromium.html`
+- Upstream project: https://github.com/electron/electron
+
+Lilac's desktop app (`@lilac/desktop`) runs on the Electron runtime. Lilac's own code is the shell around it, which is project-owned. A Lilac desktop package that redistributes Electron must carry Electron's `LICENSE` and `LICENSES.chromium.html` unchanged, as both ship in the release archive.
+
 ## Playwright (development only)
 
 - npm package: `playwright-core@1.56.1`, a devDependency with no dependencies of its own
