@@ -8,12 +8,12 @@ A Lilac release is a tagged commit together with a signed evidence bundle. This 
 
 | Path | Contents |
 | --- | --- |
-| `sbom.cdx.json` | CycloneDX 1.5 SBOM generated from `package-lock.json` (P06 gate 9). It is produced only if the license policy check passes. |
+| `sbom.cdx.json` | CycloneDX 1.5 SBOM generated from `package-lock.json` (P06 gate 9), plus the desktop app's Electron runtime, with the SHA-256 of each pinned release archive. It is produced only if the license policy check passes. |
 | `licenses/<sha256>.txt` | Every license text that the dependencies ship, deduplicated by content. |
-| `licenses/index.json` | For each dependency: its purl, its license, and which license texts belong to it. A package covered by a policy override, such as a platform binary, is recorded through the override's license file and sha256. This keeps the index independent of the platform the bundle was built on. The bundle is refused unless every listed text is present. |
+| `licenses/index.json` | For each dependency, and for the Electron runtime (its MIT text is kept at `docs/provenance/ELECTRON_LICENSE.txt`): its purl, its license, and which license texts belong to it. A package covered by a policy override, such as a platform binary, is recorded through the override's license file and sha256. This keeps the index independent of the platform the bundle was built on. The bundle is refused unless every listed text is present. |
 | `THIRD_PARTY_NOTICES.md`, `scripts/license-policy.json` | Notices and the license allowlist with its overrides. |
 | `docs/DONORS.md`, `docs/provenance/*` | Donor and authorization provenance (every tracked file under `docs/provenance`). |
-| `SECURITY.md`, `docs/MCP.md`, `docs/MIGRATION.md`, `docs/RELEASE.md` | The release documents. |
+| `SECURITY.md`, `docs/DESKTOP.md`, `docs/MCP.md`, `docs/MIGRATION.md`, `docs/RELEASE.md` | The release documents. |
 | `smoke-report.json` | The offline smoke-test report for this commit (`npm run smoke`). |
 | `MANIFEST.json` | The product, the source commit, the lockfile sha256, the project license, and the sha256 of every other file. |
 

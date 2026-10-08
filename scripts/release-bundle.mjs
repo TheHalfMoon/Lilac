@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ELECTRON_LICENSE_SHA256, ELECTRON_VERSION } from "./desktop/electron.mjs";
 import { buildSbom, checkPolicy, externalPackages, purlFor } from "./sbom.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -23,6 +24,7 @@ export const BUNDLE_SCHEMA = 1;
 export const BUNDLED_DOCUMENTS = Object.freeze([
   "THIRD_PARTY_NOTICES.md",
   "SECURITY.md",
+  "docs/DESKTOP.md",
   "docs/MCP.md",
   "docs/MIGRATION.md",
   "docs/RELEASE.md",
@@ -57,7 +59,7 @@ function fail(message) {
  * from an installed package (checkPolicy verifies installed overrides match), or the bundle
  * is refused.
  */
-function collectLicenses(lock, policy, nodeModules) {
+function collectLicenses(lock, policy, nodeModules, root) {
   const texts = new Map();
   const index = [];
   const seen = new Set();
@@ -89,6 +91,12 @@ function collectLicenses(lock, policy, nodeModules) {
       files: override === null ? files : [{ name: override.licenseFile, sha256: override.licenseSha256 }],
     });
   }
+  // The desktop app's runtime, which is not an npm package: its MIT text, kept in the
+  // repository and checked against the release archives' LICENSE.
+  const electronLicense = readFileSync(join(root, "docs", "provenance", "ELECTRON_LICENSE.txt"));
+  if (sha256(electronLicense) !== ELECTRON_LICENSE_SHA256) fail("docs/provenance/ELECTRON_LICENSE.txt is not Electron's reviewed LICENSE text");
+  texts.set(ELECTRON_LICENSE_SHA256, electronLicense);
+  index.push({ purl: `pkg:github/electron/electron@${ELECTRON_VERSION}`, license: "MIT", files: [{ name: "LICENSE", sha256: ELECTRON_LICENSE_SHA256 }] });
   for (const entry of index) {
     for (const file of entry.files) if (!texts.has(file.sha256)) fail(`${entry.purl}: no installed package ships its license text ${file.sha256}`);
   }
@@ -129,7 +137,7 @@ export function buildReleaseBundle(out, { sourceCommit, root = ROOT, nodeModules
   const sbom = buildSbom(lockText, policy);
   writeFile(out, "sbom.cdx.json", `${JSON.stringify(sbom, null, 2)}\n`);
 
-  const { texts, index } = collectLicenses(JSON.parse(lockText), policy, nodeModules);
+  const { texts, index } = collectLicenses(JSON.parse(lockText), policy, nodeModules, root);
   for (const [digest, bytes] of [...texts].sort(([a], [b]) => compare(a, b))) writeFile(out, `licenses/${digest}.txt`, bytes);
   writeFile(out, "licenses/index.json", `${JSON.stringify(index, null, 2)}\n`);
 

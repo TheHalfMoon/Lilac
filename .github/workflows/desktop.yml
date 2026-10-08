@@ -1,0 +1,121 @@
+name: Desktop
+
+# PC gate 15: package the Lilac desktop app on each supported platform's own runner and
+# smoke-test the packaged app (scripts/package-desktop.mjs, scripts/smoke-desktop.mjs).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Desktop package (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-latest
+          - target: darwin-arm64
+            runner: macos-latest
+          - target: win32-x64
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Check the runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual=$(node -p 'process.platform + "-" + process.arch')
+          if [ "$actual" != "${{ matrix.target }}" ]; then echo "::error::runner is $actual, not ${{ matrix.target }}"; exit 1; fi
+      - name: Cache the pinned Electron archive
+        uses: actions/cache@v4
+        with:
+          path: .lilac-cache/electron/downloads
+          key: electron-${{ matrix.target }}-${{ hashFiles('scripts/desktop/electron.mjs') }}
+      - name: Allow Chromium's sandbox (unprivileged user namespaces)
+        if: runner.os == 'Linux'
+        # As in CI: lift Ubuntu's AppArmor restriction rather than run unsandboxed.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Package
+        shell: bash
+        run: |
+          set -uo pipefail
+          node scripts/package-desktop.mjs --out dist/desktop 2>&1 | tee package.log
+          exit "${PIPESTATUS[0]}"
+      - name: Smoke-test the packaged app
+        id: smoke
+        shell: bash
+        run: |
+          set -uo pipefail
+          # The step runs under bash -e: pick the archive by testing, not with a failing ls.
+          archive=""
+          for candidate in dist/desktop/Lilac-${{ matrix.target }}.tar.gz dist/desktop/Lilac-${{ matrix.target }}.zip; do
+            if [ -f "$candidate" ]; then archive="$candidate"; fi
+          done
+          echo "archive: [$archive]" > smoke.err
+          node scripts/smoke-desktop.mjs "$archive" 2>>smoke.err | tee smoke.json
+          exit "${PIPESTATUS[0]}"
+      - name: Annotate the evidence
+        if: always()
+        shell: bash
+        run: |
+          # Check-run annotations readable through the REST API.
+          node - "${{ github.event.pull_request.head.sha || github.sha }}" <<'NODE'
+          const fs = require("node:fs");
+          const head = process.argv[2];
+          const escape = (value) => String(value).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          // The manifest is one JSON document; the smoke result is its output's last line.
+          const read = (path, lastLine = false) => {
+            try {
+              const text = fs.readFileSync(path, "utf8").trim();
+              return JSON.parse(lastLine ? text.split("\n").at(-1) : text);
+            } catch {
+              return null;
+            }
+          };
+          const manifest = read("dist/desktop/Lilac-${{ matrix.target }}.json");
+          const smoke = read("smoke.json", true);
+          const fuses = manifest ? Object.entries(manifest.fuses).map(([name, on]) => `${name}=${on === "removed" ? "r" : on ? 1 : 0}`).join(",") : "none";
+          console.log(`::notice title=Desktop package evidence::${escape([
+            `head=${head}`,
+            `target=${{ matrix.target }}`,
+            `archive=${manifest?.archive ?? "none"}`,
+            `archive_sha256=${manifest?.archiveSha256 ?? "none"}`,
+            `app_sha256=${manifest?.appSha256 ?? "none"}`,
+            `electron=${manifest?.electron ?? "none"}`,
+            `signed=${manifest?.signed ?? "none"}`,
+            `fuses=${fuses}`,
+            `smoke=${smoke === null ? "not run" : smoke.ok ? "ok" : "failed"}`,
+            `checks=${smoke === null ? 0 : smoke.checks.filter((item) => item.ok).length}/${smoke === null ? 0 : smoke.checks.length}`,
+          ].join("; "))}`);
+          if (smoke !== null && !smoke.ok) console.log(`::error title=Desktop smoke failure::${escape(`head=${head} target=${{ matrix.target }} ${smoke.error}`)}`);
+          // Job logs are not always readable: the end of a failed step's output, as an annotation.
+          for (const [file, title] of [["package.log", "Desktop package output"], ["smoke.err", "Desktop smoke errors"]]) {
+            if ((manifest !== null && file === "package.log") || (file === "smoke.err" && smoke?.ok)) continue;
+            try {
+              const text = fs.readFileSync(file, "utf8").replace(/\x1b\[[0-9;]*m/g, "");
+              console.log(`::warning title=${title}::${escape(`head=${head} target=${{ matrix.target }} ${text.slice(-900)}`)}`);
+            } catch {}
+          }
+          NODE
+      - name: Upload the package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lilac-desktop-${{ matrix.target }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            dist/desktop/Lilac-${{ matrix.target }}.*
+          if-no-files-found: error
+          retention-days: 7

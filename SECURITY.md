@@ -30,6 +30,7 @@ Lilac is local-first. Its core needs no hosted service, model or account, and it
 | MCP tool calls are authorized per document, and consequential calls need a person's confirmation | `packages/mcp-protocol` | `tests/mcp-authorization.test.mjs` (P06 gate 8) |
 | Project files are integrity-checked (content-addressed objects, hash-chained journal, single-writer lock) and fail closed on damage or unknown versions | `packages/persistence` | `tests/persistence.test.mjs`, `tests/crash-recovery.test.mjs`, `tests/migration-compatibility.test.mjs` (gates 10 and 11) |
 | Dependencies have known licenses and pinned integrity hashes | `scripts/sbom.mjs`, `scripts/license-policy.json` | `tests/sbom.test.mjs` (gate 9) |
+| The desktop window is isolated and sandboxed with no Node, may reach only Lilac's host, and is granted no permission; the packaged runtime's fuses refuse running as Node, `NODE_OPTIONS` and `--inspect` | `packages/desktop`, `scripts/desktop/fuses.mjs` | `tests/desktop-shell.test.mjs`, `tests/desktop-package.test.mjs`, `scripts/smoke-desktop.mjs` (PC gates 5 and 15) |
 
 The following are in scope:
 - a way past any of these boundaries;
@@ -39,6 +40,6 @@ The following are in scope:
 The following are out of scope:
 - **Optional connectors and reference-only donors.** This covers a hosted crawler or a model provider that a user configures.
 - **Third-party dependencies.** Report those upstream; tell us too if Lilac's use makes the problem reachable.
-- **An attacker who already runs code locally,** in the same process or user account.
+- **An attacker who already runs code locally,** in the same process or user account. This includes starting the desktop app with Chromium switches such as `--remote-debugging-port`, which no fuse covers and which give the starter control of the editor.
 
-There is no MCP server yet (#82). Reports about its future transport are welcome as design input.
+The MCP server runs inside the studio host, over loopback HTTP and a stdio relay; `docs/MCP.md` describes its transports and authorization.

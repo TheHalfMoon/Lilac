@@ -7,13 +7,13 @@
 import { currentTarget, fetchElectron } from "./desktop/electron.mjs";
 
 const args = process.argv.slice(2);
-const at = args.indexOf("--target");
-if (args.some((arg, index) => arg !== "--target" && index !== at + 1) || (at >= 0 && (args[at + 1] === undefined || args[at + 1].startsWith("--")))) {
+// Nothing, or exactly --target and a value.
+if (!(args.length === 0 || (args.length === 2 && args[0] === "--target" && !args[1].startsWith("--")))) {
   process.stderr.write("usage: node scripts/fetch-electron.mjs [--target <platform-arch>]\n");
   process.exit(2);
 }
 try {
-  await fetchElectron(at >= 0 ? args[at + 1] : currentTarget(), { log: (line) => process.stdout.write(`${line}\n`) });
+  await fetchElectron(args.length === 2 ? args[1] : currentTarget(), { log: (line) => process.stdout.write(`${line}\n`) });
 } catch (error) {
   process.stderr.write(`fetch-electron: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);

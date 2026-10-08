@@ -51,7 +51,7 @@ Impeccable's upstream `NOTICE.md` at the pinned revision is reproduced verbatim 
 - Bundled: Chromium, Node.js and their components, under the licenses listed in the runtime's `LICENSES.chromium.html`
 - Upstream project: https://github.com/electron/electron
 
-Lilac's desktop app (`@lilac/desktop`) runs on the Electron runtime. Lilac's own code is the shell around it, which is project-owned. A Lilac desktop package that redistributes Electron must carry Electron's `LICENSE` and `LICENSES.chromium.html` unchanged, as both ship in the release archive.
+Lilac's desktop app (`@lilac/desktop`) runs on the Electron runtime. Lilac's own code is the shell around it, which is project-owned. Lilac's desktop packages (`scripts/package-desktop.mjs`) carry Electron's `LICENSE` and `LICENSES.chromium.html` unchanged. Packaging refuses a runtime whose notice names a component under a non-permissive license that Lilac has not reviewed (`scripts/desktop/chromium-licenses.mjs`). The MIT text is also kept at `docs/provenance/ELECTRON_LICENSE.txt` for the release bundle.
 
 ## Playwright (development only)
 

@@ -19,10 +19,18 @@ export const ELECTRON_ARCHIVES = Object.freeze({
   "win32-x64": "eee30dc8fa1f5ea95490e59f44e46ea68dd24c6e93d22facf70fe5c2d4c2665c",
 });
 
+// Electron's own LICENSE (MIT), the same in every release archive; a copy is kept at
+// docs/provenance/ELECTRON_LICENSE.txt for the release bundle.
+export const ELECTRON_LICENSE_SHA256 = "5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d";
+
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 export const ELECTRON_CACHE = join(ROOT, ".lilac-cache", "electron");
 
 export const currentTarget = () => `${process.platform}-${process.arch}`;
+
+// Windows' own bsdtar, which reads and writes zip archives (a Git for Windows tar earlier
+// on the PATH would not).
+export const WINDOWS_TAR = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
 
 export function archiveName(target) {
   return `electron-v${ELECTRON_VERSION}-${target}.zip`;
@@ -53,7 +61,7 @@ function unzip(archive, into) {
   const [command, args] = process.platform === "darwin"
     ? ["ditto", ["-x", "-k", archive, into]]
     : process.platform === "win32"
-      ? ["tar", ["-xf", archive, "-C", into]]
+      ? [WINDOWS_TAR, ["-xf", archive, "-C", into]]
       : ["unzip", ["-q", archive, "-d", into]];
   const result = spawnSync(command, args, { stdio: "inherit" });
   if (result.status !== 0) throw new Error(`${command} could not unpack ${archive}`);
