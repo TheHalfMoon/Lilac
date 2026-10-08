@@ -58,6 +58,19 @@ test("a damaged legacy agent registry fails closed and is not moved", () => with
   assert.deepEqual(readdirSync(root).sort(), [".lilac-agents.json"], "nothing is set aside or created");
 }));
 
+test("a credential revoked in Ninerr never comes back from the legacy registry, even after the Ninerr registry is damaged", () => withRoot((root) => {
+  writeOwnerOnly(join(root, ".lilac-agents.json"), `${JSON.stringify({ version: 1, agents: [LEGACY_AGENT] }, null, 2)}\n`);
+  new AgentRegistry(root, owner).revoke(LEGACY_AGENT.agentId);
+  writeOwnerOnly(join(root, ".ninerr-agents.json"), "{ damaged");
+  const damaged = new AgentRegistry(root, owner);
+  assert.match(damaged.problem ?? "", /not valid JSON/u);
+  assert.equal(damaged.authenticate(LEGACY_TOKEN), null);
+  assert.deepEqual(JSON.parse(readFileSync(join(root, ".ninerr-agents.json"), "utf8")).agents, [], "the set-aside registry is replaced by an empty one");
+  for (const launch of [1, 2]) assert.equal(new AgentRegistry(root, owner).authenticate(LEGACY_TOKEN), null, `launch ${launch}: the legacy registry is not imported again`);
+  rmSync(join(root, ".ninerr-agents.json"));
+  assert.equal(new AgentRegistry(root, owner).authenticate(LEGACY_TOKEN), null, "not even when the Ninerr registry is gone, while the set-aside copy is kept");
+}));
+
 test("legacy codebase links are read until the first change, which saves the Ninerr file", () => withRoot((root) => {
   const legacyText = `${JSON.stringify({ version: 1, links: { site: "/home/someone/site" } }, null, 2)}\n`;
   writeOwnerOnly(join(root, ".lilac-codebases.json"), legacyText);

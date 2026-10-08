@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { chmodSync, closeSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, rmSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { StudioError } from "./errors.ts";
 import { LEGACY_AGENT_REGISTRY_FILE, LEGACY_AGENT_TOKEN_PREFIX, registrySource } from "./legacy.ts";
@@ -48,8 +48,11 @@ export class AgentRegistry {
     this.#path = join(projectsRoot, REGISTRY_FILE);
     this.#owner = owner;
     // The registry from before the rename (legacy.ts) is read when there is no Ninerr
-    // registry yet, saved under the Ninerr name, and itself never changed.
-    const source = registrySource(projectsRoot, REGISTRY_FILE, LEGACY_AGENT_REGISTRY_FILE);
+    // registry yet, saved under the Ninerr name, and itself never changed. It is imported at
+    // most once: never again after a damaged Ninerr registry was set aside, so a credential
+    // revoked in Ninerr cannot come back from the legacy file.
+    const setAside = readdirSync(projectsRoot).some((name) => name.startsWith(`${REGISTRY_FILE}.unreadable-`));
+    const source = setAside ? { path: this.#path, legacy: false } : registrySource(projectsRoot, REGISTRY_FILE, LEGACY_AGENT_REGISTRY_FILE);
     let agents: AgentRecord[] = [];
     let problem: string | null = null;
     try {
@@ -69,6 +72,14 @@ export class AgentRegistry {
     }
     this.#agents = agents;
     this.#problem = problem;
+    // A set-aside registry is replaced by an empty one at once, so the next launch reads that.
+    if (problem !== null && !source.legacy) {
+      try {
+        this.#writeRegistry([]);
+      } catch {
+        // The set-aside marker above still keeps the legacy registry from being imported.
+      }
+    }
     if (source.legacy && problem === null) {
       try {
         this.#save(agents);
@@ -119,6 +130,12 @@ export class AgentRegistry {
   }
 
   #save(next: AgentRecord[]): void {
+    this.#writeRegistry(next);
+    this.#agents = next;
+    this.#problem = null;
+  }
+
+  #writeRegistry(next: AgentRecord[]): void {
     const temporary = `${this.#path}.${randomUUID()}.tmp`;
     try {
       const fd = openSync(temporary, "wx", 0o600);
@@ -134,8 +151,6 @@ export class AgentRegistry {
       rmSync(temporary, { force: true });
       throw new StudioError(500, "agents-unwritable", "the agent registry could not be saved");
     }
-    this.#agents = next;
-    this.#problem = null;
   }
 }
 

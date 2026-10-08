@@ -42,3 +42,19 @@ Local run (Windows 11, Node 24.19.0): 747 tests, 687 pass, 26 fail, 34 skipped. 
 ## Residual
 
 The legacy agent registry keeps its records. If the earlier release is started again, it honours credentials there, including any revoked since in Ninerr. Deleting the file would end that, but it would also break a downgrade, so the file is left in place and this behaviour is stated here.
+
+## Review delta 1
+
+The full ps-review panel found two must-fixes in this grain:
+
+- **Security: revoked credentials could come back.** A damaged Ninerr agent registry is set aside, so on the next launch no Ninerr registry existed. The legacy registry was then imported again, and a legacy credential revoked in Ninerr authenticated again. The panel reproduced this.
+  - Now a set-aside registry is replaced by an empty one at once.
+  - The legacy registry is never imported while a set-aside copy exists.
+  - Tested: revoke, damage, then two launches, then removal of the Ninerr registry. The revoked credential stays refused throughout.
+- **The desktop journey (`scripts/journey-desktop.mjs`, step 3a)** still expected `lilac_agent_` credentials. Updated.
+
+Also taken from the panel:
+- The unused `projectsFolder` export is removed.
+- Both `legacy.ts` modules are in the `npm run check` syntax list.
+
+The residual in the section above still holds. If the person deletes both the Ninerr registry and every set-aside copy, the legacy registry is imported again. That takes deliberate removal of Ninerr's own files.
