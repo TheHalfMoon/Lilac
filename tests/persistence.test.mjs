@@ -21,6 +21,7 @@ import { join } from "node:path";
 
 import { createDocument } from "../packages/document-model/src/index.mjs";
 import {
+  JOURNAL_GENESIS,
   PERSISTENCE_LIMITS,
   PERSISTENCE_PROVENANCE,
   PROJECT_FILES,
@@ -161,7 +162,7 @@ test("a crash after commit is recovered on reopen with an explicit stale-lock ov
 }));
 
 test("a durable journal entry not yet reflected in memory is replayed on reopen", () => withProject((root) => {
-  const genesis = genesisDigest("proj-1");
+  const genesis = genesisDigest("proj-1", JOURNAL_GENESIS);
   const transaction = { id: "tx-1", actor: "user-1", baseRevision: 0, intent: null, tool: null, timestamp: null, metadata: {}, operations: [{ type: "set-props", nodeId: "node-1", set: { title: "Appended" } }] };
   const { line } = encodeJournalLine({ seq: 1, revision: 1, transaction }, genesis);
   appendFileSync(file(root, PROJECT_FILES.journal), line);
