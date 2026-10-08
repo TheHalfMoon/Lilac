@@ -1,7 +1,8 @@
 name: Desktop
 
-# PC gate 15: package the Lilac desktop app on each supported platform's own runner and
-# smoke-test the packaged app (scripts/package-desktop.mjs, scripts/smoke-desktop.mjs).
+# PC gates 15 and 17: package the Lilac desktop app on each supported platform's own
+# runner, smoke-test the packaged app, and run the release-candidate journey through it
+# (scripts/package-desktop.mjs, scripts/smoke-desktop.mjs, scripts/journey-desktop.mjs).
 on:
   pull_request:
   push:
@@ -14,7 +15,7 @@ jobs:
   package:
     name: Desktop package (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -67,6 +68,17 @@ jobs:
           echo "archive: [$archive]" > smoke.err
           node scripts/smoke-desktop.mjs "$archive" 2>>smoke.err | tee smoke.json
           exit "${PIPESTATUS[0]}"
+      - name: Release-candidate journey through the packaged app
+        id: journey
+        shell: bash
+        run: |
+          set -uo pipefail
+          archive=""
+          for candidate in dist/desktop/Lilac-${{ matrix.target }}.tar.gz dist/desktop/Lilac-${{ matrix.target }}.zip; do
+            if [ -f "$candidate" ]; then archive="$candidate"; fi
+          done
+          node scripts/journey-desktop.mjs "$archive" 2>journey.err | tee journey.json
+          exit "${PIPESTATUS[0]}"
       - name: Annotate the evidence
         if: always()
         shell: bash
@@ -87,6 +99,7 @@ jobs:
           };
           const manifest = read("dist/desktop/Lilac-${{ matrix.target }}.json");
           const smoke = read("smoke.json", true);
+          const journey = read("journey.json", true);
           const fuses = manifest ? Object.entries(manifest.fuses).map(([name, on]) => `${name}=${on === "removed" ? "r" : on ? 1 : 0}`).join(",") : "none";
           console.log(`::notice title=Desktop package evidence::${escape([
             `head=${head}`,
@@ -101,9 +114,16 @@ jobs:
             `checks=${smoke === null ? 0 : smoke.checks.filter((item) => item.ok).length}/${smoke === null ? 0 : smoke.checks.length}`,
           ].join("; "))}`);
           if (smoke !== null && !smoke.ok) console.log(`::error title=Desktop smoke failure::${escape(`head=${head} target=${{ matrix.target }} ${smoke.error}`)}`);
+          console.log(`::notice title=Release-candidate journey evidence::${escape([
+            `head=${head}`,
+            `target=${{ matrix.target }}`,
+            `journey=${journey === null ? "not run" : journey.ok ? "ok" : "failed"}`,
+            `steps=${journey === null ? 0 : journey.steps.filter((item) => item.ok).length}/${journey?.total ?? 0}`,
+          ].join("; "))}`);
+          if (journey !== null && !journey.ok) console.log(`::error title=Release-candidate journey failure::${escape(`head=${head} target=${{ matrix.target }} ${journey.error}`)}`);
           // Job logs are not always readable: the end of a failed step's output, as an annotation.
-          for (const [file, title] of [["package.log", "Desktop package output"], ["smoke.err", "Desktop smoke errors"]]) {
-            if ((manifest !== null && file === "package.log") || (file === "smoke.err" && smoke?.ok)) continue;
+          for (const [file, title] of [["package.log", "Desktop package output"], ["smoke.err", "Desktop smoke errors"], ["journey.err", "Release-candidate journey errors"]]) {
+            if ((manifest !== null && file === "package.log") || (file === "smoke.err" && smoke?.ok) || (file === "journey.err" && journey?.ok)) continue;
             try {
               const text = fs.readFileSync(file, "utf8").replace(/\x1b\[[0-9;]*m/g, "");
               console.log(`::warning title=${title}::${escape(`head=${head} target=${{ matrix.target }} ${text.slice(-900)}`)}`);

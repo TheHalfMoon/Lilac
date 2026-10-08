@@ -81,7 +81,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (709/709 test
 | 14 | Crash and recovery behaviour through the actual app surface | CLOSED_CANONICAL |
 | 15 | Supported desktop packaging | CLOSED_CANONICAL |
 | 16 | Offline/local-first smoke flow through the product surface | CLOSED_CANONICAL |
-| 17 | A release-candidate end-to-end test | OPEN |
+| 17 | A release-candidate end-to-end test | CLOSED_CANONICAL |
 
   Closed PC gates, by grain. Each PR head carried successful OCR delegation, Jev Exact-Head Qualification and Foundation checks, and each merge's post-merge Foundation checks succeeded:
   - PC1 #151 (`53c452f`), PC2 #153 (`3066033`), PC3 #156 (`9b33cee`), PC4 #158 and #159 (`47e602a`, `25ca79e`): gates 1, 2, 3, 4 and 9.
@@ -91,7 +91,8 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (709/709 test
   - PC8 (#168): PC8a #169 (`5f05fa4`), gate 12; PC8b #170 (`ff08a1f`), gate 13; PC8c #171 (`7123c0e`), gate 14.
   - Evidence for each is in `docs/evidence/` (PC4_*, PC5_*, PC6A_*, PC6B_*, PC7_*, PC8A_*, PC8B_*, PC8C_*).
   - PC9 (#174): PC9a #175 (`7732a1a`), gate 5, the desktop bridge; PC9b #177, gate 15, desktop packaging for Linux x64, macOS arm64 and Windows x64 with a packaged-app smoke test on each runner. Evidence: `docs/evidence/PC9A_DESKTOP_BRIDGE_2026-10-08.md`, `docs/evidence/PC9B_DESKTOP_PACKAGING_2026-10-08.md`.
-  - Remaining: PC10, the release-candidate end-to-end test (gate 17).
+  - PC10 (#178): the release-candidate journey through the packaged desktop app on Linux x64, macOS arm64 and Windows x64, gate 17. "Connect a codebase" is shown as bringing JSX in through the Code dialog, and "export" as JSX for copying. Repository or folder binding is #181, a release-scope question for the founder. Evidence: `docs/evidence/PC10_RELEASE_JOURNEY_2026-10-08.md`.
+  - All 17 PC gates are closed; the phase closes on #146 after PC10's post-merge CI.
 
   Grain plan. A grain may advance a gate, but only the grain named as closing it may set it `CLOSED_CANONICAL`, after end-to-end evidence through the product surface:
   1. PC1: studio host, loopback project API and change stream (advances 4)

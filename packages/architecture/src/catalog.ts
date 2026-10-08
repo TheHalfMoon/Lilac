@@ -247,7 +247,7 @@ const SUBSYSTEMS = [
     title: "Studio host",
     owner: "@lilac/studio-host",
     status: "stub",
-    boundary: "Single writer of an open project for the product surfaces: a loopback-only HTTP API (127.0.0.1, per-launch token, Host and Origin checks) over persistence, history and collaboration attribution, with undo/redo as committed inverse transactions, a server-sent change stream, and lock and recovery reporting (PC1); it serves the editor (PC4) and hosts the MCP endpoint and agent registry (PC5), and imports reviewed HTML offline through import-stack and intake (PC6). Local web mode (`npm start`, scripts/lilac.mjs, PC7) runs it directly; the desktop shell builds on it in a later PC grain.",
+    boundary: "Single writer of an open project for the product surfaces: a loopback-only HTTP API (127.0.0.1, per-launch token, Host and Origin checks) over persistence, history and collaboration attribution, with undo/redo as committed inverse transactions, a server-sent change stream, and lock and recovery reporting (PC1); it serves the editor (PC4) and hosts the MCP endpoint and agent registry (PC5), and imports reviewed HTML offline through import-stack and intake (PC6). Local web mode (`npm start`, scripts/lilac.mjs, PC7) runs it directly, and the desktop app runs it in Electron's main process (PC9).",
     dependsOn: ["persistence", "history", "collaboration", "network-policy", "import-export", "intake"],
   },
   {
@@ -262,9 +262,9 @@ const SUBSYSTEMS = [
     id: "desktop-bridge",
     title: "Desktop bridge",
     owner: "@lilac/desktop",
-    status: "planned",
-    boundary: "Desktop builds, local MCP endpoint hosting, and OS integration where applicable. Optional per target.",
-    dependsOn: ["mcp-surface", "persistence"],
+    status: "implemented",
+    boundary: "The desktop app: a thin Electron shell that runs the studio host in its main process and shows the editor in one context-isolated, sandboxed window with no Node and a minimal preload, denied navigation, windows, webviews, downloads, permissions and every request but the host's (PC9a). Packages for Linux x64, macOS arm64 and Windows x64 are a Lilac-owned assembly of the pinned, SHA-256-verified Electron runtime with its fuses set (no RunAsNode, NODE_OPTIONS or inspector), smoke-tested and journey-tested per platform (PC9b, PC10). Publisher signing and notarization are planned (#139).",
+    dependsOn: ["studio-host", "mcp-surface", "persistence"],
   },
   {
     id: "sandbox-security",
