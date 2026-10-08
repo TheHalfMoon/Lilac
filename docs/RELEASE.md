@@ -6,9 +6,9 @@ A Lilac release is a tagged commit together with its signed release files: the d
 
 | File | What it is |
 | --- | --- |
-| `Lilac-linux-x64.tar.gz`, `Lilac-darwin-arm64.zip`, `Lilac-win32-x64.zip` | The desktop app (`docs/DESKTOP.md` says how to install it). Each is packaged on its own platform's runner from the tagged commit, smoke-tested, and taken through the release-candidate journey before it is collected. |
-| `Lilac-<platform>.json` | Each archive's package manifest: its SHA-256, the Electron runtime and its pinned archive, the fuses, and whether it is publisher-signed (not yet, #139). |
-| `lilac-release-evidence-<sha>.tar.gz` | The evidence bundle below, as one archive. |
+| `Ninerr-linux-x64.tar.gz`, `Ninerr-darwin-arm64.zip`, `Ninerr-win32-x64.zip` | The desktop app (`docs/DESKTOP.md` says how to install it). Each is packaged on its own platform's runner from the tagged commit, smoke-tested, and taken through the release-candidate journey before it is collected. |
+| `Ninerr-<platform>.json` | Each archive's package manifest: its SHA-256, the Electron runtime and its pinned archive, the fuses, and whether it is publisher-signed (not yet, #139). |
+| `ninerr-release-evidence-<sha>.tar.gz` | The evidence bundle below, as one archive. |
 | `SHA256SUMS` | The SHA-256 of each file above. |
 
 **Local web mode** is the tagged source itself. Run it with Node 22.18 or later, and no network beyond loopback once the dependencies are installed:
@@ -46,7 +46,7 @@ The `Release Evidence` workflow (`.github/workflows/release.yml`) has five jobs.
 - **`build`** runs on every trigger:
   1. installs the dependencies with `npm ci --ignore-scripts` and runs the full `npm run check`;
   2. builds the bundle for that commit and verifies it against its manifest;
-  3. uploads it as the artifact `lilac-release-evidence-<sha>`, kept for 90 days.
+  3. uploads it as the artifact `ninerr-release-evidence-<sha>`, kept for 90 days.
 
   This job cannot request an OIDC token.
 - **`desktop`** is the Desktop workflow (`.github/workflows/desktop.yml`) itself, the same one every pull request runs. It packages each archive on its own platform's runner, smoke-tests it, and runs the release-candidate journey through it. It cannot request an OIDC token either.
@@ -54,7 +54,7 @@ The `Release Evidence` workflow (`.github/workflows/release.yml`) has five jobs.
   1. downloads the bundle and the three archives with their manifests;
   2. checks each archive against the SHA-256 its manifest records;
   3. puts the bundle in one archive and writes `SHA256SUMS`;
-  4. uploads the seven files as `lilac-release-<sha>`, kept for 90 days.
+  4. uploads the seven files as `ninerr-release-<sha>`, kept for 90 days.
 - **`attest`** runs only for a pushed tag matching `v[0-9]*`. It downloads the bundle and the collected files and signs every file with `actions/attest-build-provenance`. These are keyless Sigstore attestations through GitHub OIDC, so no signing key is stored anywhere. It runs no repository or dependency code.
 - **`publish`** runs only for a pushed tag, after `attest`. It puts the collected files in a **draft** GitHub Release for that tag. It runs only `gh`. It cannot create a tag, because the release must name an existing one, and it leaves the draft unpublished: publishing it is the owner's decision. Running `publish` again makes another draft, which the owner can delete.
 
@@ -67,19 +67,19 @@ The attestations are stored with the repository and outlive the artifact. After 
 **A desktop archive** (or any other release file). Check that this repository's release workflow signed it, for that tag, then check it against `SHA256SUMS`:
 
 ```sh
-gh attestation verify Lilac-linux-x64.tar.gz --repo TheHalfMoon/Lilac \
+gh attestation verify Ninerr-linux-x64.tar.gz --repo TheHalfMoon/Lilac \
   --source-ref refs/tags/<tag> \
   --signer-workflow TheHalfMoon/Lilac/.github/workflows/release.yml
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
-On macOS, `grep Lilac-darwin-arm64.zip SHA256SUMS | shasum -a 256 --check` does the second step. On Windows, compare `(Get-FileHash Lilac-win32-x64.zip).Hash` with the file's line in `SHA256SUMS` (it prints in capitals).
+On macOS, `grep Ninerr-darwin-arm64.zip SHA256SUMS | shasum -a 256 --check` does the second step. On Windows, compare `(Get-FileHash Ninerr-win32-x64.zip).Hash` with the file's line in `SHA256SUMS` (it prints in capitals).
 
 **The evidence bundle:**
 
 The trust anchor is the attestation on `MANIFEST.json`. `--verify` only checks that the files match the manifest. Someone who edits a file can edit the manifest to match, so `--verify` on its own proves nothing about origin.
 
-1. Download `lilac-release-evidence-<sha>.tar.gz` from the release and unpack it, or download the `lilac-release-evidence-<sha>` artifact from the workflow run for the tag.
+1. Download `ninerr-release-evidence-<sha>.tar.gz` from the release and unpack it, or download the `ninerr-release-evidence-<sha>` artifact from the workflow run for the tag.
 2. Check that the manifest was signed by this repository's release workflow, for that tag:
 
    ```sh
@@ -97,8 +97,8 @@ The trust anchor is the attestation on `MANIFEST.json`. `--verify` only checks t
 
    ```sh
    git checkout <tag> && npm ci --ignore-scripts
-   node scripts/release-bundle.mjs /tmp/lilac-rebuilt --source-commit "$(git rev-parse HEAD)"
-   diff -r /tmp/lilac-rebuilt <bundle dir>
+   node scripts/release-bundle.mjs /tmp/ninerr-rebuilt --source-commit "$(git rev-parse HEAD)"
+   diff -r /tmp/ninerr-rebuilt <bundle dir>
    ```
 
 The same attestation names every file in the bundle as a subject, so any single file can be checked the same way as in step 2.

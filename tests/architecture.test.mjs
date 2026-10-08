@@ -88,6 +88,7 @@ test("duplicate ownership and unknown references fail closed", () => {
   assert.throws(() => normalizeArchitectureMap(map([entry({ status: "implemented", owner: "@ninerr/does-not-exist" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([entry({ status: "stub", owner: "@ninerr/does-not-exist" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([entry({ owner: "not-a-package" })])), ArchitectureValidationError);
+  assert.throws(() => normalizeArchitectureMap(map([entry({ owner: "@lilac/test-owner" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([entry({ id: "Bad_Id" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap({ schemaVersion: 999, subsystems: [entry()] }), ArchitectureValidationError);
