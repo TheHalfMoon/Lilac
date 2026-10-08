@@ -48,8 +48,9 @@ export async function launchDesktop({ env = {}, args = [] } = {}) {
     timeout: 30_000,
   });
   const errors = [];
+  let window = null;
   try {
-    const window = await app.firstWindow();
+    window = await app.firstWindow();
     window.on("pageerror", (error) => errors.push(error.message));
     window.on("console", (message) => {
       if (message.type() === "error") errors.push(message.text());
@@ -57,8 +58,10 @@ export async function launchDesktop({ env = {}, args = [] } = {}) {
     await window.waitForFunction(() => document.documentElement.dataset.ready === "true");
     return { app, window, errors };
   } catch (error) {
+    // What the window showed, in the error's first line (CI annotates only that).
+    const seen = window === null ? "no window" : await window.evaluate(() => `${location.href} status=${JSON.stringify(document.getElementById("status")?.textContent ?? document.body?.innerText?.slice(0, 200) ?? "")}`).catch((reason) => `unreadable (${reason.message.split("\n")[0]})`);
     // An app that did not come up is still stopped, so the test run can end.
     await app.close().catch(() => app.process().kill("SIGKILL"));
-    throw error;
+    throw new Error(`the desktop app did not become ready: ${error.message.split("\n")[0]}; window: ${seen}; console: ${JSON.stringify(errors).slice(0, 400)}`);
   }
 }
