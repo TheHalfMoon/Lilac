@@ -7,13 +7,13 @@ Issue: #190 (N0 umbrella).
 - **Scripts and docs.**
   - `scripts/import-authorized-paper.mjs`, with its test and `docs/IMPORT_RUNBOOK.md`. This intake path never received any source: the PC-L1 audit found that no Paper source was ever committed.
   - `scripts/census-paper-asar.py`.
-- **Evidence.** The eleven dated `docs/evidence/PAPER_*` records.
+- **Evidence** (N0-G5b and N0-G5c). The eleven dated `docs/evidence/PAPER_*` records.
 
-Nothing in the product used any of these files. Only the root `check` script referred to them, and it no longer does.
+Nothing in the product used any of these files. Only the root `check` script ran one of them, and it no longer does. The census policy, the license register and dated evidence name them as records.
 
 ## Kept
-- **`docs/provenance/RETIRED_PAPER_RECORDS.md`** pins every removed file. It gives the file's blob at `ac204c2`, the last `main` commit that had all of them, and says how to read it from Git history. History is unchanged, so the records stay verifiable.
-- **The provenance records of `@ninerr/collaboration` and `@ninerr/import-stack`** still cite the behaviour evidence by path, now through the retired record. Their tests check two things for each cited file:
+- **`docs/provenance/RETIRED_PAPER_RECORDS.md`** pins every removed file. It gives each file's blob at `ac204c2`, a commit on `main`'s first-parent line at which all of them are present, and says how to read it from Git history. History is unchanged, so the records stay verifiable.
+- **The provenance records of `@ninerr/collaboration` and `@ninerr/import-stack`** (N0-G5b) still cite the behaviour evidence by path, now through the retired record. Their tests check two things for each cited file:
   - the retired record pins it with a blob;
   - it is no longer in the tree.
 - **The authorization record and the license register** (`docs/provenance/PAPER_AUTHORIZATION.md`, `LICENSE_REGISTER.json`). They move with the license work in N0-G7.

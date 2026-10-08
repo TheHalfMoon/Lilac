@@ -1,8 +1,8 @@
 # Retired Paper recovery records
 
-Before N0, Lilac kept tooling and evidence for recovering Paper's public and shipped artifacts. That tooling covered three census workflows, a source-intake script with its test and runbook, and an ASAR census script. The evidence covered the dated `PAPER_*` records. None of it has a role in Ninerr, and N0-G5 removed it from the tree.
+Before N0, Lilac kept tooling and evidence for recovering Paper's public and shipped artifacts. That tooling covered three census workflows, a source-intake script with its test and runbook, and an ASAR census script. The evidence covered the dated `PAPER_*` records. None of it has a role in Ninerr, so N0-G5 removes it from the tree in three parts. N0-G5a removes the tooling, N0-G5b the three behaviour-evidence records the provenance cites, and N0-G5c the other eight evidence records.
 
-Git history keeps every file. Each one is pinned below by its blob at commit `ac204c2061df191d29085718dc7b3a15e644734e`, the last `main` commit that had all of them. Read one with:
+Git history keeps every file. Each one is pinned below by its blob at commit `ac204c2061df191d29085718dc7b3a15e644734e`. That is a commit on `main`'s first-parent line at which all eighteen are present with these blobs. They stay byte-identical until each one is removed. Read one with:
 
     git show ac204c2061df191d29085718dc7b3a15e644734e:<path>
 
