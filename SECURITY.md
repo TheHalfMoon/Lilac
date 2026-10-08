@@ -30,6 +30,7 @@ Lilac is local-first. Its core needs no hosted service, model or account, and it
 | MCP tool calls are authorized per document, and consequential calls need a person's confirmation | `packages/mcp-protocol` | `tests/mcp-authorization.test.mjs` (P06 gate 8) |
 | Project files are integrity-checked (content-addressed objects, hash-chained journal, single-writer lock) and fail closed on damage or unknown versions | `packages/persistence` | `tests/persistence.test.mjs`, `tests/crash-recovery.test.mjs`, `tests/migration-compatibility.test.mjs` (gates 10 and 11) |
 | Dependencies have known licenses and pinned integrity hashes | `scripts/sbom.mjs`, `scripts/license-policy.json` | `tests/sbom.test.mjs` (gate 9) |
+| A connected codebase folder is used only by the person (never an agent): files are read and written only inside it (relative paths, no links, realpath-confined, bounded), and a write-back is the reviewed, three-way patch the person previewed, written atomically | `packages/studio-host/src/codebase.ts` | `tests/codebase.test.mjs` (PC11) |
 | The desktop window is isolated and sandboxed with no Node, may reach only Lilac's host, and is granted no permission; the packaged runtime's fuses refuse running as Node, `NODE_OPTIONS` and `--inspect` | `packages/desktop`, `scripts/desktop/fuses.mjs` | `tests/desktop-shell.test.mjs`, `tests/desktop-package.test.mjs`, `scripts/smoke-desktop.mjs` (PC gates 5 and 15) |
 
 The following are in scope:

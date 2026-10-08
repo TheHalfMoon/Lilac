@@ -132,14 +132,34 @@ export function exportJsx(document: any, nodeId: unknown): { componentName: stri
 }
 
 /** Layers for JSX source, inside a new page frame, as one operation. */
-export function importJsx(source: unknown): { operations: unknown[]; frameId: string; componentName: string; layers: number } {
+/** Where a layer brought in from a connected codebase came from (PC11). */
+export interface CodeSource {
+  file: string;
+  component: string;
+  /** Child indexes from the component's root element ("" is the root). */
+  path: string;
+  tag: string;
+  /** The source's literal values when it was brought in (or last written back). */
+  base: { text?: string; props: Record<string, string> };
+}
+
+export interface ImportJsxOptions {
+  /** The source file's path, as code-ir records it (its extension picks JSX or TSX). */
+  path?: string;
+  /** The exported component to bring in; by default, the first one. */
+  component?: string;
+  /** Record each element layer's source in props.codeSource, for writing edits back. */
+  bind?: boolean;
+}
+
+export function importJsx(source: unknown, options: ImportJsxOptions = {}): { operations: unknown[]; frameId: string; componentName: string; layers: number } {
   if (typeof source !== "string" || source.trim() === "") throw new StudioError(400, "invalid-code", "code must be a non-empty string");
   if (Buffer.byteLength(source) > MAX_CODE_BYTES) throw new StudioError(413, "code-too-large", "code is limited to 256 KiB");
   const refuse = (message: string) => new StudioError(422, "code-refused", message.slice(0, 300));
   const exportedNames = [...source.matchAll(/export\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9]*)/gu)].map((match) => match[1]);
   let ir: any;
   try {
-    ir = buildCodeIr([{ path: `${exportedNames[0] ?? "Imported"}.jsx`, content: source }]);
+    ir = buildCodeIr([{ path: options.path ?? `${exportedNames[0] ?? "Imported"}.jsx`, content: source }]);
   } catch (error) {
     throw refuse(error instanceof Error ? error.message : "the code could not be read");
   }
@@ -154,7 +174,8 @@ export function importJsx(source: unknown): { operations: unknown[]; frameId: st
   // first exported function with a definition is brought in (others in the file are not).
   const symbols = Object.values(ir.symbols) as any[];
   const definitionOf = (name: string) => symbols.find((symbol) => symbol.kind === "component" && symbol.name === name && symbol.children.length > 0 && ir.rootIds.includes(symbol.children[0]));
-  const declared = exportedNames.find((name) => definitionOf(name) !== undefined) ?? exportedNames[0] ?? null;
+  if (options.component !== undefined && !exportedNames.includes(options.component)) throw refuse(`${options.component} is not an exported function component of this file`);
+  const declared = options.component ?? exportedNames.find((name) => definitionOf(name) !== undefined) ?? exportedNames[0] ?? null;
   const component = declared === null ? undefined : definitionOf(declared);
   const rootId = component ? component.children[0] : (declared === null && ir.rootIds.length === 1 ? ir.rootIds[0] : null);
   if (!rootId) throw refuse(declared === null ? "bring in one exported function component, e.g. export function Card() { return <section>…</section>; }" : `${declared} does not return a JSX element`);
@@ -171,7 +192,7 @@ export function importJsx(source: unknown): { operations: unknown[]; frameId: st
   let count = 0;
   const nodes: unknown[] = [];
   const nextId = () => `code-${suffix}-${++count}`;
-  const convert = (symbolId: string, parentId: string, name?: string): string => {
+  const convert = (symbolId: string, parentId: string, name?: string, path: number[] = []): string => {
     const symbol = ir.symbols[symbolId];
     const id = nextId();
     const attributes: Record<string, string> = {};
@@ -195,6 +216,14 @@ export function importJsx(source: unknown): { operations: unknown[]; frameId: st
       props: { tag: isComponent ? "div" : symbol.name, ...(isComponent || name ? { name: name ?? symbol.name } : {}), attributes, style },
       metadata: {},
     };
+    if (options.bind) {
+      // The source's literal values, the base a later write-back compares against.
+      const base: CodeSource["base"] = { props: {} };
+      for (const prop of symbol.props) if (typeof prop.literal.value === "string") base.props[prop.name] = prop.literal.value;
+      if (symbol.children.length === 0 && symbol.texts.length === 1) base.text = symbol.texts[0].value;
+      const codeSource: CodeSource = { file: options.path ?? "", component: componentName, path: path.join("."), tag: symbol.name, base };
+      record.props.codeSource = codeSource;
+    }
     nodes.push(record);
     // Text and elements in the order they appear in the source: text alone is the
     // element's own text; mixed with elements, each run of text is its own text layer.
@@ -207,7 +236,7 @@ export function importJsx(source: unknown): { operations: unknown[]; frameId: st
       if (text !== "") record.props.text = text;
     } else {
       for (const piece of pieces) {
-        if (piece.child !== undefined) record.children.push(convert(piece.child, id));
+        if (piece.child !== undefined) record.children.push(convert(piece.child, id, undefined, [...path, symbol.children.indexOf(piece.child)]));
         else if (piece.text !== "") {
           const textId = nextId();
           nodes.push({ id: textId, type: "text", parentId: id, children: [], props: { text: piece.text }, metadata: {} });
