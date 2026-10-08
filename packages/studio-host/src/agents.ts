@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import { chmodSync, closeSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { StudioError } from "./errors.ts";
-import { LEGACY_AGENT_REGISTRY_FILE, LEGACY_AGENT_TOKEN_PREFIX, registrySource } from "./legacy.ts";
+import { LEGACY_AGENT_REGISTRY_FILE, LEGACY_AGENT_TOKEN_PREFIX, existing, registrySource } from "./legacy.ts";
 import type { StudioActor } from "./session.ts";
 
 // Agents the person has connected to Ninerr. Each gets its own credential, shown once when
@@ -63,6 +63,12 @@ export class AgentRegistry {
       // stays true
     }
     const source = imported ? { path: this.#path, legacy: false } : registrySource(projectsRoot, REGISTRY_FILE, LEGACY_AGENT_REGISTRY_FILE);
+    // A Ninerr registry next to a legacy one but no marker: an import whose marker was never
+    // written (the process stopped in between). Record it now.
+    if (!imported && !source.legacy && existing(join(projectsRoot, LEGACY_AGENT_REGISTRY_FILE))) {
+      this.#importMarker = join(projectsRoot, IMPORTED_MARKER);
+      this.#recordImport();
+    }
     let agents: AgentRecord[] = [];
     let problem: string | null = null;
     try {
@@ -146,14 +152,17 @@ export class AgentRegistry {
     this.#writeRegistry(next);
     this.#agents = next;
     this.#problem = null;
-    if (this.#importMarker !== null) {
-      try {
-        writeFileSync(this.#importMarker, "The agent registry from before the rename was imported into .ninerr-agents.json.\n", { mode: 0o600, flag: "wx" });
-        this.#importMarker = null;
-      } catch (error) {
-        // Already there is done; anything else is retried with the next save.
-        if ((error as NodeJS.ErrnoException)?.code === "EEXIST") this.#importMarker = null;
-      }
+    this.#recordImport();
+  }
+
+  /** Write the import marker, if one is due. Already there is done; any other failure is retried. */
+  #recordImport(): void {
+    if (this.#importMarker === null) return;
+    try {
+      writeFileSync(this.#importMarker, "The agent registry from before the rename was imported into .ninerr-agents.json.\n", { mode: 0o600, flag: "wx" });
+      this.#importMarker = null;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "EEXIST") this.#importMarker = null;
     }
   }
 

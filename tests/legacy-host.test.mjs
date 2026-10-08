@@ -46,10 +46,21 @@ test("a legacy agent registry is carried over: its agents and credentials keep w
   registry.revoke(LEGACY_AGENT.agentId);
   assert.equal(registry.authenticate(LEGACY_TOKEN), null, "revoking applies to the Ninerr registry");
   assert.equal(new AgentRegistry(root, owner).authenticate(LEGACY_TOKEN), null, "once a Ninerr registry exists the legacy one is not read again");
+  assert.ok(existsSync(join(root, ".ninerr-agents.imported")), "the import is recorded");
   rmSync(join(root, ".ninerr-agents.json"));
-  assert.equal(new AgentRegistry(root, owner).authenticate(LEGACY_TOKEN), null, "not even after the Ninerr registry is deleted: the import is recorded");
+  assert.equal(new AgentRegistry(root, owner).authenticate(LEGACY_TOKEN), null, "not even after the Ninerr registry is deleted");
   assert.equal(readFileSync(join(root, ".lilac-agents.json"), "utf8"), legacyText);
   assert.equal(registry.authenticate(`other_${LEGACY_TOKEN}`), null);
+}));
+
+test("an import whose marker was never written is recorded on the next launch", () => withRoot((root) => {
+  // The state a stop between saving the imported registry and writing its marker leaves.
+  writeOwnerOnly(join(root, ".lilac-agents.json"), `${JSON.stringify({ version: 1, agents: [LEGACY_AGENT] }, null, 2)}\n`);
+  writeOwnerOnly(join(root, ".ninerr-agents.json"), `${JSON.stringify({ version: 1, agents: [] }, null, 2)}\n`);
+  assert.equal(new AgentRegistry(root, owner).authenticate(LEGACY_TOKEN), null, "the Ninerr registry is the one read");
+  assert.ok(existsSync(join(root, ".ninerr-agents.imported")), "the missing marker is written");
+  rmSync(join(root, ".ninerr-agents.json"));
+  assert.equal(new AgentRegistry(root, owner).authenticate(LEGACY_TOKEN), null, "so deleting the Ninerr registry does not re-import");
 }));
 
 test("a damaged legacy agent registry fails closed and is not moved", () => withRoot((root) => {

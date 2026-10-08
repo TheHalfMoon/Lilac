@@ -71,3 +71,9 @@ The delta re-review found no must-fix. Taken from it:
 - **Temporary removal never fails a request.** A file held open on Windows, for example by a scanner, is left in place, which is harmless: nothing reads it, as scanning reads only `.jsx` and `.tsx` files. No record names it any more, so it is not retried.
 - **Scanning decodes source the same way planning does.** A file that is not exact UTF-8 is not offered for bringing in (tested).
 - **Opening a project with a connected codebase** still ignores a folder that cannot be read during settling. A failed store write is now reported as needing a reopen, not swallowed.
+
+## CI on the first PR head
+
+The Desktop journey failed on macOS and Windows at step 4b: it waited for revision 16 after the write-back. A write-back now commits two transactions, the record and then the confirmation, so the journey's later revisions move up by one. The same applies to `tests/codebase-workflow.test.mjs`. Both are updated.
+
+Linux CI showed the same failure, because that test runs in the browser suite. It was skipped on the local Windows machine for lack of Chromium.

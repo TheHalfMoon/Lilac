@@ -175,7 +175,7 @@ async function main() {
     const diff = (await page.locator("#codebase-diff").textContent()) ?? "";
     const untouched = readFileSync(cardFile, "utf8") === COMPONENT;
     await page.locator("#codebase-write").click();
-    await waitForRevision(page, 16);
+    await waitForRevision(page, 17); // a write-back is two commits: recorded, then confirmed (#185)
     const writtenBack = readFileSync(cardFile, "utf8");
     step("4b the edit is reviewed as a diff, then written back to its file", untouched && /\+      <h2>Team<\/h2>/u.test(diff) && writtenBack === COMPONENT.replace("<h2>Pro</h2>", "<h2>Team</h2>").replace("background: #f4f0ff", "background: #ffe4e6"), { diff: diff.slice(0, 400), writtenBack: writtenBack.slice(0, 300) });
 
@@ -190,7 +190,7 @@ async function main() {
     const exported = await exportOf(cardId);
     await page.locator("#code-import").fill(exported);
     await page.locator("#dialog[open] button.primary", { hasText: "Add to design" }).click();
-    await waitForRevision(page, 17);
+    await waitForRevision(page, 18);
     const cards = await page.evaluate(() => [...document.querySelector("iframe").contentDocument.querySelectorAll("section.card")].map((element) => element.getAttribute("data-lilac-id")));
     const reExported = await exportOf(cards.find((nodeId) => nodeId !== cardId));
     await page.keyboard.press("Escape");
@@ -202,7 +202,7 @@ async function main() {
     // It reads back as code: bringing the export in adds the page's layers.
     await page.locator("#code-import").fill(pageCode);
     await page.locator("#dialog[open] button.primary", { hasText: "Add to design" }).click();
-    await waitForRevision(page, 18);
+    await waitForRevision(page, 19);
     const status = await page.locator("#status").textContent();
     step("6 the page exports as JSX code, which reads back", /^export function LaunchPage\(\) \{/u.test(pageCode) && /<h1>Launch week<\/h1>/u.test(pageCode) && /Bring in LaunchPage: \d+ layers added/u.test(status ?? ""), { code: pageCode.slice(0, 200), status });
 
@@ -227,7 +227,7 @@ async function main() {
     ninerr = await launch();
     page = ninerr.page;
     await page.locator("#dialog[open] [data-project=journey]").click();
-    await waitForRevision(page, 18);
+    await waitForRevision(page, 19);
     const after = await snapshot();
     // (The history panel lists the changes made since the project was opened; who made
     // each earlier change is kept in the project's journal, not shown after a reopen, #179.)
