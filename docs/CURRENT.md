@@ -52,10 +52,25 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (721/721 test
 | 11 | File migration/version compatibility | G11 #136 → #137 `c73c48e` (615/615) | `docs/evidence/P06_G11_VERSION_COMPATIBILITY_2026-10-07.md` |
 
 - Tooling during P06: CI surfaces Jev, OCR, and test-total evidence as check-run annotations (PR #99, merge `550baae`) and the names of failing tests (T1, PR #124, merge `0acf81c`), so exact-head evidence can be read from check-run annotations.
-- P07 Release (umbrella #139). The scope-independent artifacts have landed:
-  - MCP documentation, migration docs, and security policy: #140 → PR #141, merge `9bca91b`, post-merge CI 620/620.
-  - Reproducible smoke test: #142 → PR #143, merge `285df27`, post-merge CI 625/625.
-  - SBOM and attribution bundle, and the signed-release workflow: #144 → PR #145, merge `e702f58`, post-merge CI 630/630.
+- P07 Release (umbrella #139): **ACTIVE**. Every required artifact in `docs/MASTER_PLAN.md` is delivered; the release waits only on the owner's prerequisites below.
+
+| # | P07 artifact | State | Evidence |
+|---|---|---|---|
+| 1 | Windows/macOS/Linux desktop builds where supported | DELIVERED | PC9b #177 (`be0b6a4`) packages them; P07d #187 → #188 (`df894bc`, 726/726) makes them release outputs, built and journey-tested on each platform's runner, attested on a tag. Not yet publisher-signed (prerequisite 3) |
+| 2 | Self-hosted/local web mode | DELIVERED | PC7 #167 (`b46cd1c`), `npm start`; its release form is the tagged source (`docs/RELEASE.md`, P07d) |
+| 3 | MCP documentation | DELIVERED | #140 → #141 (`9bca91b`, 620/620), `docs/MCP.md` |
+| 4 | Migration docs | DELIVERED | #140 → #141 (`9bca91b`), `docs/MIGRATION.md` |
+| 5 | Security policy | DELIVERED | #140 → #141 (`9bca91b`), `SECURITY.md`. Private vulnerability reporting is still off (prerequisite 2) |
+| 6 | SBOM and attribution bundle | DELIVERED | #144 → #145 (`e702f58`, 630/630), `scripts/release-bundle.mjs`. The project license is `NOASSERTION` until prerequisite 1 |
+| 7 | Signed release evidence | DELIVERED | #144 → #145 (`e702f58`); P07d (`df894bc`) signs the desktop archives too and makes a draft release. It signs on the first pushed `v*` tag |
+| 8 | Reproducible smoke test | DELIVERED | #142 → #143 (`285df27`, 625/625), `npm run smoke` |
+
+  Owner prerequisites before the v1 tag (none can be met by a repository change):
+  1. **License.** Confirm that the Paper authorization permits public distribution and sublicensing of Lilac's Paper-compatible interfaces and behaviour, or say what must be isolated (#148). Then PC-L2 declares Apache-2.0 and the SBOM, bundle and notices follow.
+  2. **Private vulnerability reporting.** Enable it in the repository's security settings (`SECURITY.md` names it as the channel).
+  3. **Publisher signing.** An Apple Developer ID with notarization credentials and a Windows code-signing certificate, as Actions secrets (#139).
+  4. **LGPL corresponding source.** The archives redistribute Electron's LGPL-2.1 components (FFmpeg as `libffmpeg`, and Blink). Choose how each release provides their corresponding source: mirrored with the release from Chromium's sources at Electron's revision, or a written offer.
+  5. **The tag.** Pushing `v1.0.0` is the release decision; the workflow then signs every file and makes a draft release, which the owner publishes.
 - Founder decisions (2026-10-07, recorded on #146):
   - **Scope.** Lilac ships as a usable product. Desktop builds and local web mode are required, so the PC Product Completion phase was added before P07 closes.
   - **License.** The target is Apache-2.0, applied only after an evidence-based compatibility audit.

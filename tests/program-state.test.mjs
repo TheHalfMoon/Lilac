@@ -70,3 +70,22 @@ test("each PC gate has exactly one closing grain in the plan", () => {
   }
   assert.deepEqual([...closers.keys()].sort((a, b) => a - b), Array.from({ length: 17 }, (_, index) => index + 1));
 });
+
+test("the P07 record mirrors every master-plan release artifact in order", () => {
+  const plan = read("docs/MASTER_PLAN.md");
+  const section = plan.slice(plan.indexOf("### P07"), plan.indexOf("## Definition of genuinely complete"));
+  const artifacts = [...section.matchAll(/^- (.+?);?\.?$/gm)].map((match) => match[1].replace(/;$/u, ""));
+  assert.equal(artifacts.length, 8);
+  const current = read("docs/CURRENT.md");
+  const p07 = current.slice(current.indexOf("- P07 Release (umbrella #139)"), current.indexOf("Owner prerequisites before the v1 tag"));
+  const rows = [...p07.matchAll(/^\| (\d+) \| ([^|]+) \| ([A-Z_]+) \| ([^|]+) \|$/gm)].map((match) => ({ number: Number(match[1]), artifact: match[2].trim(), state: match[3], evidence: match[4] }));
+  assert.deepEqual(rows.map((row) => row.number), artifacts.map((_, index) => index + 1));
+  for (const [index, row] of rows.entries()) {
+    assert.equal(row.artifact.toLowerCase(), artifacts[index].toLowerCase(), `P07 artifact ${row.number} is named as in the plan`);
+    assert.ok(["DELIVERED", "OPEN"].includes(row.state), `P07 artifact ${row.number} has a known state`);
+    if (row.state === "DELIVERED") assert.match(row.evidence, /#\d+ .*`[0-9a-f]{7}`/u, `P07 artifact ${row.number} names its issue or PR and merge`);
+  }
+  // P07 stays active while the owner's prerequisites stand, and no tag is claimed.
+  assert.match(current, /\| P07 Release \| ACTIVE \|/);
+  assert.match(current, /Owner prerequisites before the v1 tag/);
+});
