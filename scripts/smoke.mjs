@@ -80,7 +80,7 @@ function check(condition, message) {
 
 async function main() {
   const attempts = trapNetwork();
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-smoke-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-smoke-")));
   const steps = [];
   try {
     // Modules load only after the trap, so none holds a pre-trap reference.

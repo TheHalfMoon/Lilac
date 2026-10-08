@@ -442,7 +442,7 @@ function asOpenError(error: unknown, name: string): Error {
   const kind = error instanceof Error ? error.name : "";
   const message = error instanceof Error ? error.message : "";
   if (kind === "PersistenceLockError") return new StudioError(409, "project-locked", message.slice(0, 300));
-  if (kind === "PersistenceValidationError" && /no Lilac project exists/u.test(message)) return new StudioError(404, "project-not-found", `no project named ${name}`);
+  if (kind === "PersistenceValidationError" && /no Ninerr project exists/u.test(message)) return new StudioError(404, "project-not-found", `no project named ${name}`);
   if (kind === "PersistenceVersionError") return new StudioError(422, "project-version", message.slice(0, 300));
   if (kind === "PersistenceCorruptionError" || kind === "PersistenceValidationError") return new StudioError(422, "project-unreadable", message.slice(0, 300));
   return error instanceof Error ? error : new Error("open failed");

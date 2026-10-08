@@ -1,7 +1,7 @@
 import { NODE_FIELDS } from "@lilac/document-model";
 import { canonicalJson, sha256Hex } from "./canonical.ts";
 import { PersistenceCorruptionError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
-import { PERSISTENCE_LIMITS, type JournalEntry } from "./types.ts";
+import { JOURNAL_GENESIS_DOMAINS, PERSISTENCE_LIMITS, type JournalEntry, type JournalGenesisDomain } from "./types.ts";
 
 // Journal format 1, the format project schema 1 writes: exactly these fields on a
 // transaction, an operation of each type, and a node record. History drops fields it does
@@ -44,13 +44,19 @@ function journalFormatProblem(transaction: Record<string, unknown>): string | nu
 export function assertJournalFormat(transaction: Record<string, unknown>, label: string, replay: boolean): void {
   const problem = journalFormatProblem(transaction);
   if (problem === null) return;
-  if (replay) throw new PersistenceVersionError(`${label} uses ${problem}, which journal format 1 does not have; it was written by a newer Lilac`);
+  if (replay) throw new PersistenceVersionError(`${label} uses ${problem}, which journal format 1 does not have; it was written by a newer Ninerr`);
   throw new PersistenceValidationError(`${label} uses ${problem}, which journal format 1 cannot record`);
 }
 
-/** Chain origin, bound to the project so journals cannot be swapped between projects. */
-export function genesisDigest(projectId: string): string {
-  return sha256Hex(`lilac-journal-genesis:${projectId}`);
+/**
+ * Chain origin, bound to the project so journals cannot be swapped between projects. The
+ * domain is the one the project's manifest records (a migrated project keeps its original);
+ * it is required, so no caller can verify a migrated journal from the wrong domain.
+ */
+export function genesisDigest(projectId: string, domain: JournalGenesisDomain): string {
+  // Checked at run time too: types are stripped, and JavaScript callers are not checked.
+  if (!(JOURNAL_GENESIS_DOMAINS as readonly unknown[]).includes(domain)) throw new PersistenceValidationError("genesisDigest needs a known journal genesis domain");
+  return sha256Hex(`${domain}:${projectId}`);
 }
 
 export function chainDigest(previous: string, encodedEntry: string): string {

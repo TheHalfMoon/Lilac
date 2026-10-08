@@ -83,7 +83,7 @@ export function directoryIdentity(path: string, label: string): DirectoryIdentit
   return { path: real, dev: stat.dev, ino: stat.ino };
 }
 
-/** Resolve `<root>/.lilac`, requiring an absolute existing root and a non-symlink project directory. */
+/** Resolve `<root>/.ninerr`, requiring an absolute existing root and a non-symlink project directory. */
 export function projectDirectory(root: unknown): string {
   if (typeof root !== "string" || root.length === 0 || root.includes("\0") || !isAbsolute(root)) {
     throw new PersistenceValidationError("project root must be an absolute path");

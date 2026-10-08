@@ -1,14 +1,17 @@
-// Deterministic writer for the golden project-schema-1 fixture in
-// tests/fixtures/projects/v1-basic. Run `node tests/support/golden-project.mjs <empty dir>`
+// Deterministic writer for the golden fixture of this release (project schema 2) in
+// tests/fixtures/projects/v2-basic. Run `node tests/support/golden-project.mjs <empty dir>`
 // to regenerate it; the compatibility suite checks that this release writes the same bytes.
+// tests/fixtures/projects/v1-basic is the same history written by the release before the
+// rename (schema 1); it is frozen as the legacy migration corpus and never regenerated.
 import { createDocument } from "../../packages/document-model/src/index.mjs";
+import { pathToFileURL } from "node:url";
 import { createProject, openProject } from "../../packages/persistence/src/index.ts";
 
 export const GOLDEN_AT = "2026-10-07T12:00:00.000Z";
 
 export function writeGoldenProject(root) {
   createProject(root, {
-    projectId: "golden-v1",
+    projectId: "golden-v2",
     createdAt: GOLDEN_AT,
     document: createDocument({
       id: "doc-golden",
@@ -30,7 +33,7 @@ export function writeGoldenProject(root) {
       actor: "importer-1",
       baseRevision: 4,
       intent: "import card",
-      tool: "@lilac/import-stack",
+      tool: "@ninerr/import-stack",
       timestamp: GOLDEN_AT,
       metadata: { import: { requestId: "req-1" } },
       operations: [{
@@ -49,4 +52,4 @@ export function writeGoldenProject(root) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) writeGoldenProject(process.argv[2]);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) writeGoldenProject(process.argv[2]);

@@ -63,6 +63,12 @@
       "reason": "Golden projects in the legacy format: the migration corpus that proves old projects still open."
     },
     {
+      "id": "legacy-identity-readers",
+      "category": "LEGACY_COMPATIBILITY",
+      "path": "^(packages/persistence/src/legacy\\.ts|packages/studio-host/src/legacy\\.ts|tests/legacy-(migration|host)\\.test\\.mjs)$",
+      "reason": "The one module per package that recognizes pre-rename identity (read only, never written), and the tests that prove it (N0-G2)."
+    },
+    {
       "id": "third-party-notices",
       "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
       "path": "^(THIRD_PARTY_NOTICES\\.md|docs/provenance/LICENSE_REGISTER\\.json|scripts/license-policy\\.json|docs/provenance/ELECTRON_LICENSE\\.txt)$",
@@ -89,16 +95,6 @@
         "docling"
       ],
       "reason": "Docling is an optional, independently licensed local runtime that the import stack invokes; it is never distributed."
-    },
-    {
-      "id": "persisted-project-format",
-      "category": "PERSISTED_DATA",
-      "path": "^packages/persistence/src/(types|journal|fsio|store)\\.ts$",
-      "terms": [
-        "lilac"
-      ],
-      "line": "\\.lilac|lilac-project|lilac-journal-genesis",
-      "reason": "Project directory, manifest format and journal genesis domain written into every project (N0-G2)."
     },
     {
       "id": "persisted-host-files",

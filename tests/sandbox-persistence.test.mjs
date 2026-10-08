@@ -76,11 +76,11 @@ test("writes are refused after the project root is swapped for a symlink", () =>
   assert.deepEqual(readdirSync(join(outside, PROJECT_FILES.directory, PROJECT_FILES.objects)), []);
 }));
 
-test("writes are refused after .lilac is replaced by a fresh directory", () => withRoot((root) => {
+test("writes are refused after .ninerr is replaced by a fresh directory", () => withRoot((root) => {
   const store = open(root);
-  renameSync(join(root, PROJECT_FILES.directory), join(root, ".lilac-old"));
+  renameSync(join(root, PROJECT_FILES.directory), join(root, ".ninerr-old"));
   mkdirSync(join(root, PROJECT_FILES.directory, PROJECT_FILES.objects), { recursive: true });
-  cpSync(join(root, ".lilac-old", PROJECT_FILES.lock), file(root, PROJECT_FILES.lock));
+  cpSync(join(root, ".ninerr-old", PROJECT_FILES.lock), file(root, PROJECT_FILES.lock));
   assert.throws(() => store.checkpoint(), /changed since/u);
   assert.equal(existsSync(file(root, PROJECT_FILES.snapshot)), false);
 }));

@@ -1,18 +1,35 @@
 # Project files, versions and migration
 
-Lilac stores a project under `<root>/.lilac`. This page describes the on-disk format this release writes and reads, how version changes are handled, and what to do when a project will not open. The behaviour described here is enforced by `packages/persistence` and checked by `tests/migration-compatibility.test.mjs` (P06 gate 11).
+Ninerr stores a project under `<root>/.ninerr`. This page describes:
+
+- the on-disk format this release writes and reads;
+- how version changes are handled;
+- how projects from before the rename are handled;
+- what to do when a project will not open.
+
+`packages/persistence` enforces this behaviour. Two suites check it:
+
+- `tests/migration-compatibility.test.mjs` (P06 gate 11);
+- `tests/legacy-migration.test.mjs` (N0-G2, legacy projects).
 
 ## Layout
 
 | Path | Contents |
 | --- | --- |
-| `project.json` | The manifest: `{ format: "lilac-project", schemaVersion, projectId, documentId, createdAt }`. Exactly these fields. |
+| `project.json` | The manifest: `{ format: "ninerr-project", schemaVersion, projectId, documentId, createdAt, journalGenesis }`. Exactly these fields. |
 | `snapshot.json` | The snapshot reference: `{ revision, documentObject, journalSeq, chainDigest }`. Exactly these fields. |
 | `objects/xx/yyyy...` | Content-addressed objects. Each file is named by the SHA-256 of its bytes. A snapshot's document object is canonical JSON. |
 | `journal.log` | Newline-terminated JSON lines `{ digest, entry: { seq, revision, transaction } }`. Each digest chains to the previous one, starting from a per-project genesis digest. |
 | `lock` | The single-writer lock while a project is open. |
 
-The document is only ever produced by replaying history transactions from the snapshot's document onward. A golden project of this release is kept in `tests/fixtures/projects/v1-basic`, and this release must regenerate it byte for byte.
+**Journal genesis.** The genesis digest is `sha256("<journalGenesis>:<projectId>")`. A project created by this release records `journalGenesis: "ninerr-journal-genesis"`. A migrated project records the domain its journal was chained from. Its history is never re-chained, so every recorded digest still verifies. Only the two known domains are accepted.
+
+**The document comes only from replay.** It is produced by replaying history transactions from the snapshot's document onward.
+
+**Golden fixtures.**
+
+- `tests/fixtures/projects/v2-basic` is the golden project of this release, and this release must regenerate it byte for byte.
+- `tests/fixtures/projects/v1-basic` is the same history written before the rename. It is frozen as the legacy migration corpus.
 
 ## Versions
 
@@ -20,7 +37,7 @@ There are three version boundaries. Each is checked on open, before anything is 
 
 | Boundary | Current | Unknown or newer data |
 | --- | --- | --- |
-| Project manifest | `PROJECT_SCHEMA_VERSION` = 1 | Newer: refused. Older: migrated through a registered step, or refused. Not a non-negative integer: refused. |
+| Project manifest | `PROJECT_SCHEMA_VERSION` = 2 | Newer: refused. Older: migrated through the built-in step or a host step, or refused. Not a non-negative integer: refused. |
 | Document schema | `DOCUMENT_SCHEMA_VERSION` = 1 | Any `schemaVersion` other than the integer 1, or a document or node field outside `DOCUMENT_FIELDS`/`NODE_FIELDS`: refused. |
 | Journal format | 1 | A transaction, operation or node field outside format 1, or an unknown operation type, in any entry (including entries the snapshot already covers): refused. |
 
@@ -35,7 +52,9 @@ Every refusal above is a `PersistenceVersionError`. Its message names the bounda
 - a broken hash chain;
 - an object whose bytes do not match its name;
 - a malformed snapshot reference;
-- a structurally invalid document.
+- a structurally invalid document;
+- an unknown `journalGenesis`;
+- a schema-1 manifest that is not in the legacy format.
 
 The only damage that is repaired automatically is an unterminated last journal line from an interrupted write (`recovery.tornTailBytes`). Stale temporary files and leftover `lock.broken-*` copies are also cleared, and they are counted in `recovery.staleTemporaryFiles`.
 
@@ -44,30 +63,43 @@ This release never writes anything a format-1 reader would refuse:
 - **`commit` checks the result.** An unknown operation or node field raises `PersistenceValidationError` before anything is written.
 - **`createProject`** refuses an off-schema document with `PersistenceValidationError`.
 
-## Migrating a manifest
+## Projects from before the rename
 
-Schema 1 is the first released project schema, so the built-in registry `PROJECT_MIGRATIONS` is empty. A host that must read pre-release projects passes its own steps. Each step takes a manifest at version `n` and returns version `n + 1`:
+A project written before the product was named Ninerr lives in `<root>/.lilac` (project schema 1, format `lilac-project`). A root that holds only such a project is not opened and not overwritten:
+- `openProject` refuses it with a `PersistenceVersionError` and writes nothing.
+- `createProject` refuses to create a new project over it.
+
+A schema-1 manifest that is already in `.ninerr` (copied there by hand) upgrades in place on open. Its journal keeps verifying, because the manifest records the legacy genesis domain:
 
 ```js
 import { openProject } from "@lilac/persistence";
 
-const store = openProject(root, {
-  owner: "my-app",
-  at: new Date().toISOString(),
-  migrations: { 0: ({ legacyRoot, ...rest }) => ({ ...rest, documentId: legacyRoot }) },
-});
-store.recovery.migratedFrom; // 0
+const store = openProject(root, { owner: "my-app", at: new Date().toISOString() });
+store.recovery.migratedFrom; // 1
+store.manifest.journalGenesis; // "lilac-journal-genesis"
 ```
 
-The migrated manifest is written back atomically once the open succeeds. Migration of documents and journals is not supported. A project whose document or journal is from another version must be opened by the Lilac release that wrote it.
+## Host migration steps
+
+`PROJECT_MIGRATIONS` has one built-in step, from schema 1 to 2. It applies only to a manifest in the legacy format, and it also upgrades a schema-1 manifest placed directly in `.ninerr`.
+
+A host that reads pre-release manifests may pass `migrations` for versions without a built-in step. Each step takes a manifest at version `n` and returns version `n + 1`. A built-in step always wins for its own version. A host step that yields schema 1 must yield the legacy format, because schema 1 only ever existed in it.
+
+The migrated manifest is written back atomically once the open succeeds. Documents and journals are not migrated. A project whose document or journal is from another version must be opened by the release that wrote it.
 
 ## When a project will not open
 
-- **`PersistenceVersionError` saying "newer than supported" or "written by a newer Lilac".** The project was written by a later release; open it with that release.
-- **`PersistenceVersionError` saying "no migration from project schema N".** The manifest predates schema 1; supply a migration step as above.
+- **`PersistenceVersionError` saying "legacy project from before Ninerr".** The root holds only a project from before the rename. Open it with the earlier release; this release does not open or change it.
+- **`PersistenceVersionError` saying "newer than supported" or "written by a newer Ninerr".** The project was written by a later release; open it with that release.
+- **`PersistenceVersionError` saying "no migration from project schema N".** The manifest predates every known schema. Supply a migration step as above.
 - **`PersistenceVersionError` saying "no migration from document schema N", or "has field X" or "has node field X, which document schema 1 does not have".** The document is from another schema, or carries fields schema 1 lacks. Only the release that wrote it can read it, because documents are not migrated.
-- **`PersistenceCorruptionError`.** The files are damaged. Restore `.lilac` from a backup or version control. Lilac does not guess at repairs beyond the torn tail.
-- **`PersistenceValidationError` on open.** Examples: a project file that is a symbolic link, a file over the size limits in `PERSISTENCE_LIMITS`, or a project directory that changed during the open. A hard-linked journal is refused at the first `commit`, not at open. The project is refused without reading further. Check how the directory was copied or mounted.
+- **`PersistenceCorruptionError`.** The files are damaged. Restore `.ninerr` from a backup or version control. Ninerr does not guess at repairs beyond the torn tail.
+- **`PersistenceValidationError` on open.** The project is refused without reading further. Examples:
+  - a project file that is a symbolic link;
+  - a file over the size limits in `PERSISTENCE_LIMITS`;
+  - a project directory that changed during the open.
+
+  A hard-linked journal is refused at the first `commit`, not at open. Check how the directory was copied or mounted.
 - **`PersistenceLockError`.** Another writer holds the project. If the previous writer is known to be gone, the host may pass `breakStaleLock: { reason }`, where `reason` is a non-empty string of at most 500 characters.
-  - Lilac does not check whether the holder is still alive; that decision is the host's.
+  - Ninerr does not check whether the holder is still alive; that decision is the host's.
   - The previous holder (or `null`, if its lock was unreadable) and the reason are recorded in the new lock and in `recovery.lockOverride`.

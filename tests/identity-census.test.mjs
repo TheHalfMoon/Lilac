@@ -53,8 +53,8 @@ test("rules classify by path, term and line", () => {
   assert.equal(rule("packages/design-assurance/src/rules.mjs", "impeccable", "impeccable"), "default-donor", "the Impeccable exemption is file-specific");
   assert.equal(rule("package-lock.json", "impeccable", "\"node_modules/impeccable\""), "independent-runtime-impeccable");
   assert.equal(rule("package-lock.json", "lilac", "\"@lilac/canvas\""), "default-lilac");
-  assert.equal(rule("packages/persistence/src/types.ts", "lilac", "export const PROJECT_FORMAT = \"lilac-project\";"), "persisted-project-format");
-  assert.equal(rule("packages/persistence/src/types.ts", "lilac", "// a Lilac comment"), "default-lilac");
+  assert.equal(rule("packages/persistence/src/legacy.ts", "lilac", "export const LEGACY_PROJECT_FORMAT = \"lilac-project\";"), "legacy-identity-readers");
+  assert.equal(rule("packages/persistence/src/types.ts", "lilac", "export const PROJECT_FORMAT = \"lilac-project\";"), "default-lilac", "legacy identity outside the legacy module is gated");
   assert.equal(rule("scripts/lilac-mcp.mjs", "lilac", "const token = process.env.LILAC_MCP_TOKEN;"), "public-env");
   assert.equal(rule("packages/agent-runtime/src/operation.ts", "unreal-agent", "unreal-agent"), "default-donor");
 });

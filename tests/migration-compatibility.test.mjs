@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   PROJECT_FILES,
@@ -20,15 +21,15 @@ import { DocumentInvariantError, createDocument, validateDocument } from "../pac
 import { TransactionError, applyTransaction } from "../packages/history/src/index.mjs";
 import { GOLDEN_AT, writeGoldenProject } from "./support/golden-project.mjs";
 
-// P06 gate 11: version compatibility. A project written by this release (schema 1, journal
+// P06 gate 11: version compatibility. A project written by this release (schema 2, journal
 // format 1) must keep reopening byte-stably, and anything from another schema or format must
 // be refused as a version problem rather than replayed with its meaning lost or reported as
 // corruption.
 
-const GOLDEN = new URL("./fixtures/projects/v1-basic/", import.meta.url).pathname;
+const GOLDEN = fileURLToPath(new URL("./fixtures/projects/v2-basic/", import.meta.url));
 
 function tempRoot() {
-  return realpathSync(mkdtempSync(join(tmpdir(), "lilac-compat-")));
+  return realpathSync(mkdtempSync(join(tmpdir(), "ninerr-compat-")));
 }
 
 function tree(root) {
@@ -64,7 +65,8 @@ function journalEntries(root) {
 
 /** Rewrite the journal from `entries`, re-chaining so only the edited content differs. */
 function writeJournal(root, entries) {
-  let digest = genesisDigest(readJson(root, PROJECT_FILES.manifest).projectId);
+  const manifest = readJson(root, PROJECT_FILES.manifest);
+  let digest = genesisDigest(manifest.projectId, manifest.journalGenesis);
   let text = "";
   const snapshot = readJson(root, PROJECT_FILES.snapshot);
   for (const entry of entries) {
@@ -88,7 +90,7 @@ function refused(root, ErrorType, pattern) {
   assert.equal(existsSync(file(root, PROJECT_FILES.lock)), false, "a refused open releases the lock");
 }
 
-test("the golden schema-1 project reopens to its recorded state and close leaves it byte-identical", () => withGolden((root) => {
+test("the golden project of this release reopens to its recorded state and close leaves it byte-identical", () => withGolden((root) => {
   const before = tree(root);
   const store = open(root);
   assert.equal(store.revision, 5);
@@ -127,10 +129,16 @@ test("this release writes the golden fixture byte-for-byte, so the format has no
   }
 });
 
-test("project manifest versions: only schema 1 opens unless a registered step migrates it", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 1);
+test("the genesis digest needs a known domain, also from JavaScript", () => {
+  assert.throws(() => genesisDigest("p"), (error) => error instanceof PersistenceValidationError && /known journal genesis domain/.test(error.message));
+  assert.throws(() => genesisDigest("p", "other"), PersistenceValidationError);
+  assert.match(genesisDigest("p", "ninerr-journal-genesis"), /^[0-9a-f]{64}$/u);
+});
+
+test("project manifest versions: only schema 2 opens unless a registered step migrates it", () => {
+  assert.equal(PROJECT_SCHEMA_VERSION, 2);
   const cases = [
-    [2, /project schema 2 is newer than supported schema 1/],
+    [3, /project schema 3 is newer than supported schema 2/],
     [99, /newer than supported/],
     [0, /no migration from project schema 0/],
     [-1, /not a non-negative integer/],
@@ -144,15 +152,20 @@ test("project manifest versions: only schema 1 opens unless a registered step mi
       refused(root, PersistenceVersionError, pattern);
     });
   }
+  for (const [label, edit, pattern] of [
+    ["an unknown genesis domain", (manifest) => ({ ...manifest, journalGenesis: "other-genesis" }), /journalGenesis is not a known journal genesis domain/],
+    ["a missing genesis domain", ({ journalGenesis, ...manifest }) => manifest, /journalGenesis is not a known journal genesis domain/],
+    ["the legacy format at schema 2", (manifest) => ({ ...manifest, format: "lilac-project" }), /not a Ninerr project manifest/],
+  ]) {
+    withGolden((root) => {
+      writeFileSync(file(root, PROJECT_FILES.manifest), JSON.stringify(edit(readJson(root, PROJECT_FILES.manifest))));
+      assert.throws(() => open(root), (error) => error instanceof PersistenceCorruptionError && pattern.test(error.message), label);
+    });
+  }
+  // The genesis domain is bound into the chain: recording the other known domain breaks it.
   withGolden((root) => {
-    const manifest = readJson(root, PROJECT_FILES.manifest);
-    const { documentId, ...legacy } = manifest;
-    writeFileSync(file(root, PROJECT_FILES.manifest), JSON.stringify({ ...legacy, schemaVersion: 0, legacyRoot: documentId }));
-    const store = open(root, { migrations: { 0: ({ legacyRoot, ...rest }) => ({ ...rest, documentId: legacyRoot }) } });
-    assert.equal(store.recovery.migratedFrom, 0);
-    assert.equal(store.revision, 5);
-    store.close();
-    assert.equal(readFileSync(file(root, PROJECT_FILES.manifest), "utf8"), readFileSync(join(GOLDEN, PROJECT_FILES.directory, PROJECT_FILES.manifest), "utf8"));
+    writeFileSync(file(root, PROJECT_FILES.manifest), JSON.stringify({ ...readJson(root, PROJECT_FILES.manifest), journalGenesis: "lilac-journal-genesis" }));
+    refused(root, PersistenceCorruptionError, /hash chain|does not match the journal chain/);
   });
 });
 
@@ -191,7 +204,7 @@ test("a document object from another document schema is a version error, not cor
 
 test("journal entries using fields or operations journal format 1 lacks are refused as newer", () => {
   const cases = [
-    ["an unknown transaction field", 3, (tx) => { tx.signature = "abc"; }, /journal entry 3 uses transaction field "signature".*newer Lilac/],
+    ["an unknown transaction field", 3, (tx) => { tx.signature = "abc"; }, /journal entry 3 uses transaction field "signature".*newer Ninerr/],
     ["an unknown operation type", 4, (tx) => { tx.operations.push({ type: "reparent-all", nodeId: "text-1" }); }, /journal entry 4 uses operation type "reparent-all"/],
     ["an unknown operation field", 3, (tx) => { tx.operations[0].anchor = "start"; }, /journal entry 3 uses field "anchor" on operation 0/],
     ["an unknown node field", 2, (tx) => { tx.operations[0].node.locked = true; }, /journal entry 2 uses node field "locked" on operation 0/],
@@ -259,15 +272,14 @@ test("commit never writes an entry a journal-format-1 reader would refuse", () =
 }));
 
 test("a refused open leaves every file as it found it, even when repairs were due", () => withGolden((root) => {
-  // A torn tail and a migratable manifest are both repaired on a successful open; here a
-  // journal entry from a newer format refuses the open, so neither repair may be written.
+  // A torn tail is repaired on a successful open; here a journal entry from a newer format
+  // refuses the open, so the repair may not be written. (The legacy suite covers a due
+  // manifest migration the same way.)
   editEntry(root, 4, (tx) => { tx.signature = "abc"; });
   appendFileSync(file(root, PROJECT_FILES.journal), '{"digest":"torn');
-  const { documentId, ...legacy } = readJson(root, PROJECT_FILES.manifest);
-  writeFileSync(file(root, PROJECT_FILES.manifest), JSON.stringify({ ...legacy, schemaVersion: 0, legacyRoot: documentId }));
   const before = tree(root);
   assert.throws(
-    () => open(root, { migrations: { 0: ({ legacyRoot, ...rest }) => ({ ...rest, documentId: legacyRoot }) } }),
+    () => open(root),
     (error) => error instanceof PersistenceVersionError && /journal entry 4 uses transaction field "signature"/.test(error.message),
   );
   assert.deepEqual(tree(root), before);
