@@ -47,7 +47,7 @@ async function defaultFetchResource(url: URL, options: MirrorFetchOptions): Prom
       port: url.port || undefined,
       path: `${url.pathname}${url.search}`,
       method: "GET",
-      headers: { accept: "*/*", "accept-encoding": "identity", "user-agent": "LilacImportStack/1" },
+      headers: { accept: "*/*", "accept-encoding": "identity", "user-agent": "NinerrImportStack/1" },
       lookup: (_hostname, lookupOptions, callback) => {
         const family = selected.includes(":") ? 6 : 4;
         if (lookupOptions && typeof lookupOptions === "object" && lookupOptions.all) {

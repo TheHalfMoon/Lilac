@@ -154,7 +154,7 @@ export function assertFolder(folder: unknown, projectsRoot: string): string {
   if (!statSync(real).isDirectory()) throw new StudioError(400, "not-a-folder", "that is a file, not a folder");
   const projects = realpathSync.native(projectsRoot);
   const inside = (parent: string, child: string) => child === parent || child.startsWith(parent.endsWith(sep) ? parent : `${parent}${sep}`);
-  if (inside(projects, real) || inside(real, projects)) throw new StudioError(400, "folder-overlaps-projects", "a codebase folder must be outside Lilac's projects folder");
+  if (inside(projects, real) || inside(real, projects)) throw new StudioError(400, "folder-overlaps-projects", "a codebase folder must be outside Ninerr's projects folder");
   if (dirname(real) === real) throw new StudioError(400, "folder-is-root", "connect a project's folder, not the whole disk");
   return real;
 }
@@ -318,7 +318,7 @@ function unifiedDiff(file: string, before: string, after: string): string {
 }
 
 /**
- * A text's replacement. When the source text is exactly the value Lilac read, it is
+ * A text's replacement. When the source text is exactly the value Ninerr read, it is
  * replaced as it is; when the source spreads it over lines (code-ir reads it normalized),
  * the whitespace around it in the source is kept.
  */

@@ -90,7 +90,7 @@ export function validateAuthority(value: unknown, operationId: string): Operatio
     assertNonEmptyString(value.transactionId, `operation ${operationId}.authority.transactionId`);
   }
   if (!value.documentAffecting && value.transactionId !== null) {
-    throw new AgentRuntimeError(`non-document operation ${operationId} cannot bind a Lilac transaction`);
+    throw new AgentRuntimeError(`non-document operation ${operationId} cannot bind a Ninerr transaction`);
   }
   return {
     documentAffecting: value.documentAffecting,
@@ -126,7 +126,7 @@ export function createOperation(input: {
   const authority = validateAuthority(input.authority, input.id);
   if (authority.transactionId !== null) {
     throw new AgentRuntimeError(
-      `new operation ${input.id} cannot start bound to a Lilac transaction`,
+      `new operation ${input.id} cannot start bound to a Ninerr transaction`,
     );
   }
   const operation: OperationEnvelope = {
