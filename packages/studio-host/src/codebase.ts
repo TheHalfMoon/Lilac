@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, closeSync, fchmodSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { applyPatch, buildCodeIr } from "@lilac/code-ir";
 import { StudioError } from "./errors.ts";
 import { LEGACY_CODEBASE_LINKS_FILE, registrySource } from "./legacy.ts";
@@ -28,6 +28,57 @@ export const MAX_SCAN_ENTRIES = 20_000;
 const SOURCE = /\.(?:jsx|tsx)$/u;
 const SKIPPED = new Set(["node_modules", "dist", "build"]);
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
+const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+/** The temporary file a write-back renames into place, next to its target. */
+const TEMPORARY = /^\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.ninerr-tmp$/u;
+
+/**
+ * How a recorded write-back (#185) stands against its file now. `landed`: the file is what
+ * it was to become. `not-written`: the temporary file that would have become it is still
+ * there, so the rename never happened. Otherwise `unknown`: the file changed and it cannot
+ * be told whether before or after that write.
+ */
+function pendingState(pending: NonNullable<CodeSource["pending"]>, read: { sha256: string; absolute: string }): "landed" | "not-written" | "unknown" {
+  if (read.sha256 === pending.sha256) return "landed";
+  if (typeof pending.temp === "string" && TEMPORARY.test(pending.temp)) {
+    try {
+      if (lstatSync(join(dirname(read.absolute), pending.temp)).isFile()) return "not-written";
+    } catch {
+      // gone: the rename may have happened
+    }
+  }
+  return "unknown";
+}
+
+/**
+ * Settle every recorded write-back whose outcome is known from its file: the operations that
+ * give each such layer its settled source, and the leftover temporaries to remove once those
+ * are committed. Records whose outcome is unknown stay, and planning reports them.
+ */
+export function settleWriteBacks(document: any, folder: string): { operations: unknown[]; temporaries: string[] } {
+  const operations: unknown[] = [];
+  const temporaries: string[] = [];
+  const reads = new Map<string, { sha256: string; absolute: string } | null>();
+  for (const node of Object.values(document.nodes) as any[]) {
+    const source = node?.props?.codeSource;
+    if (!source || typeof source !== "object" || source.pending === undefined || typeof source.file !== "string") continue;
+    if (!reads.has(source.file)) {
+      try {
+        reads.set(source.file, readSourceFile(folder, source.file));
+      } catch {
+        reads.set(source.file, null);
+      }
+    }
+    const read = reads.get(source.file);
+    if (!read) continue;
+    const state = pendingState(source.pending, read);
+    if (state === "unknown") continue;
+    const { pending, ...settled } = source;
+    operations.push({ type: "set-props", nodeId: node.id, set: { codeSource: state === "landed" ? { ...settled, base: pending.base } : settled } });
+    if (state === "not-written") temporaries.push(join(dirname(read.absolute), pending.temp));
+  }
+  return { operations, temporaries };
+}
 
 /** The folder linked to each project, kept owner-only in the projects folder. */
 export class CodebaseLinks {
@@ -125,7 +176,14 @@ export function readSourceFile(folder: string, file: unknown): { file: string; c
   const real = realpathSync.native(absolute);
   if (!real.startsWith(folder.endsWith(sep) ? folder : `${folder}${sep}`)) throw new StudioError(400, "invalid-file", `${file} is outside the connected folder`);
   if (entry.size > MAX_SOURCE_BYTES) throw new StudioError(413, "file-too-large", `${file} is larger than ${MAX_SOURCE_BYTES / 1024} KiB`);
-  const content = readFileSync(real, "utf8");
+  // Exact UTF-8 only (a byte-order mark is kept): the text then encodes back to the same bytes,
+  // so its digest is the file's, and a write-back changes no byte it did not plan.
+  let content: string;
+  try {
+    content = UTF8.decode(readFileSync(real));
+  } catch {
+    throw new StudioError(409, "source-not-utf8", `${file} is not valid UTF-8 and is not read or written`);
+  }
   return { file: relative(folder, real).split(sep).join("/"), content, sha256: sha256(content), absolute: real };
 }
 
@@ -304,11 +362,9 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
   for (const entry of bound) {
     const { pending, ...settled } = entry.source;
     if (pending === undefined) continue;
-    if (read.sha256 === pending.sha256) entry.source = { ...settled, base: pending.base };
-    else {
-      entry.source = settled;
-      unconfirmed.add(entry.node.id);
-    }
+    const state = pendingState(pending, read);
+    entry.source = state === "landed" ? { ...settled, base: pending.base } : settled;
+    if (state === "unknown") unconfirmed.add(entry.node.id);
   }
   let ir: any;
   try {
@@ -547,8 +603,8 @@ function readBackFailures(file: string, content: string, component: string, chec
   }).map((check) => `${check.nodeId}:${check.field}`);
 }
 
-/** Rename `plan.after` into place as the plan's file, if the file is still what was planned from. */
-function replaceFile(folder: string, plan: WriteBackPlan): void {
+/** Write `plan.after` to a durable temporary file next to the plan's file. */
+function writeTemporary(folder: string, plan: WriteBackPlan): { temporary: string; absolute: string } {
   const { absolute } = readSourceFile(folder, plan.file);
   const mode = statSync(absolute).mode & 0o777;
   const temporary = join(dirname(absolute), `.${randomUUID()}.ninerr-tmp`);
@@ -563,6 +619,16 @@ function replaceFile(folder: string, plan: WriteBackPlan): void {
     } finally {
       closeSync(fd);
     }
+  } catch {
+    rmSync(temporary, { force: true });
+    throw new StudioError(500, "write-failed", `${plan.file} could not be written`);
+  }
+  return { temporary, absolute };
+}
+
+/** Rename the temporary into place, if the file is still exactly what was planned from. */
+function replaceFile(folder: string, plan: WriteBackPlan, { temporary, absolute }: { temporary: string; absolute: string }): void {
+  try {
     // Last check, just before the rename: the file is still exactly what was planned from.
     if (readSourceFile(folder, plan.file).sha256 !== plan.sha256) throw new StudioError(409, "plan-changed", `${plan.file} changed while it was being written; preview it again`);
     renameSync(temporary, absolute);
@@ -582,13 +648,16 @@ export type WriteBackCommit = (operations: unknown[], step: "record" | "confirm"
  * to the layers since the preview is refused, and must be previewed again.
  *
  * The project and the file can never disagree silently (#185). In order:
- * 1. `record` commits the write as pending on each layer: the bases it writes and the
- *    SHA-256 the file will have. If this fails, nothing has been written.
- * 2. The file is renamed into place. If that fails, `withdraw` removes the record; if the
- *    withdrawal fails too, the record stays, and since the file does not match it, planning
- *    reports those layers as conflicts rather than guessing.
- * 3. `confirm` commits the new bases. If this fails, the file is written and the record is
- *    durable: the next plan sees the file match the record and uses its bases.
+ * 1. The new content is written to a durable temporary file next to the file.
+ * 2. `record` commits the write as pending on each layer: the bases it writes, the SHA-256
+ *    the file will have, and the temporary's name. If this fails, the temporary is removed
+ *    and nothing has been written.
+ * 3. The temporary is renamed into place. If that fails, `withdraw` removes the record. If
+ *    the withdrawal fails too, or the process stops before the rename, the record stays; the
+ *    file does not match it, and while the temporary exists it proves the rename never
+ *    happened, so `settleWriteBacks` withdraws it later. Otherwise the layer is a conflict.
+ * 4. `confirm` commits the new bases. If this fails, the file is written and the record is
+ *    durable: the file matches it, so it settles as written.
  */
 export function writeBack(document: any, nodeId: unknown, folder: string, token: unknown, commit: WriteBackCommit): WriteBackPlan {
   const plan = planWriteBack(document, nodeId, folder);
@@ -600,9 +669,15 @@ export function writeBack(document: any, nodeId: unknown, folder: string, token:
   // are the same either way.
   const moving = plan.rebase.filter(({ nodeId: id, codeSource, settled }) => !sameBase(codeSource.base, settled.base) || document.nodes[id]?.props?.codeSource?.pending !== undefined);
   const set = (sources: Array<{ nodeId: string; codeSource: CodeSource }>) => sources.map(({ nodeId: id, codeSource }) => ({ type: "set-props", nodeId: id, set: { codeSource } }));
-  commit(set(moving.map(({ nodeId: id, codeSource, settled }) => ({ nodeId: id, codeSource: { ...settled, pending: { base: codeSource.base, sha256: landed } } }))), "record", plan);
+  const target = writeTemporary(folder, plan);
   try {
-    replaceFile(folder, plan);
+    commit(set(moving.map(({ nodeId: id, codeSource, settled }) => ({ nodeId: id, codeSource: { ...settled, pending: { base: codeSource.base, sha256: landed, temp: basename(target.temporary) } } }))), "record", plan);
+  } catch (error) {
+    rmSync(target.temporary, { force: true });
+    throw error;
+  }
+  try {
+    replaceFile(folder, plan, target);
   } catch (error) {
     try {
       commit(set(moving.map(({ nodeId: id, settled }) => ({ nodeId: id, codeSource: settled }))), "withdraw", plan);

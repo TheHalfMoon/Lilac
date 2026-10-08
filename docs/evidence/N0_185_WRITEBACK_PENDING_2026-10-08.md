@@ -47,3 +47,19 @@ The existing write-back suite (`tests/codebase.test.mjs`) still passes: three-wa
 
 - **A layer reported as a `write-back` conflict is resolved by bringing the component in again.** Showing the recorded write next to the file, and letting the person choose, is P09 source-UX work.
 - **A write-back now adds two history entries:** the write and its confirmation. Grouping them in the history view is P09 work.
+
+## Review delta 1
+
+The full ps-review panel found one must-fix, and reproduced it. Undoing a write-back's record and confirm transactions restored the old bases while the file kept the new text, which brought back the stale-base overwrite.
+- The write-back's steps are now committed as not undoable: `edit(…, { undoable: false })`. Undo cannot take back a file, so undoing them could only make the project disagree with it.
+- Tested: the first undo after a write-back reverses the person's own edit, and the bases still describe the file. A later preview then either agrees with the file or offers the undone edit as a change to write, never silently.
+
+Also taken from the panel:
+- **A crash between record and rename is recoverable.** The new content is written to a durable temporary file first, and the record names it. While that temporary exists, the rename provably never happened, so the record is withdrawn and the temporary removed. The layer no longer becomes a permanent conflict. Tested by reproducing the post-crash disk state.
+- **Records are settled whenever their outcome is known from the file.** `settleWriteBacks` runs when a project opens, and before every preview and write, across every layer bound to every file. That covers several components in one file. The settling commit is not undoable. Tested at unit level, including all three outcomes: landed, not written, and unknown.
+- **Source files must be exact UTF-8.** A byte-order mark is kept, and any other file is refused (`source-not-utf8`). The digest of the text is therefore the digest of the bytes, and a write-back rewrites no byte it did not plan. Before, invalid bytes decoded to U+FFFD and were rewritten. Tested.
+- The test's two store-failure helpers are now one.
+
+Remaining residual: a write to the file in the microseconds between the last digest check and the rename is lost. Closing that gap would need operating-system file locking. This predates #185.
+
+With records settled on open, the earlier "write-back conflict until the component is brought in again" case now arises only when the file changed in a way that cannot be told apart. That case remains P09 source-UX work.
