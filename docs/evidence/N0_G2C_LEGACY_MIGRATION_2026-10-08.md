@@ -53,3 +53,7 @@ The delta re-review found no must-fix. Taken from it: `legacy-project-locked` no
 - **A stopped holder** gets the advice to remove the lock.
 
 Both cases are tested.
+
+## Hardening carried here from the last review cycle
+
+Host migration steps are now read once, and the step table is built from the entries that were checked. A getter can therefore not hand back a different step after the check. Tested: the getter is read exactly once, and the checked step is the one that runs.

@@ -278,6 +278,19 @@ test("a schema-1 manifest in the current directory upgrades in place, with host 
   });
 });
 
+test("host steps are read once, so the step that was checked is the step that runs", () => withRoot((root) => {
+  legacyInCurrentDirectory(root);
+  const { documentId, ...manifest } = JSON.parse(readFileSync(currentFile(root, PROJECT_FILES.manifest), "utf8"));
+  writeFileSync(currentFile(root, PROJECT_FILES.manifest), JSON.stringify({ ...manifest, schemaVersion: 0, legacyRoot: documentId }));
+  const step = ({ legacyRoot, ...rest }) => ({ ...rest, documentId: legacyRoot });
+  let reads = 0;
+  const shifty = Object.defineProperty({}, "0", { enumerable: true, get: () => (reads++ === 0 ? step : "not a step") });
+  const store = openProject(root, { owner: "reader-1", at: GOLDEN_AT, migrations: shifty });
+  assert.equal(store.recovery.migratedFrom, 0);
+  store.close();
+  assert.equal(reads, 1);
+}));
+
 test("an upgrade in place and a torn-tail repair are both written when the open succeeds", () => withRoot((root) => {
   appendFileSync(legacyFile(root, PROJECT_FILES.journal), '{"digest":"torn');
   const journal = readFileSync(legacyFile(root, PROJECT_FILES.journal));

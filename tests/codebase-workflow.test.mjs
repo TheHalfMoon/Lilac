@@ -86,7 +86,7 @@ test("connect a folder, bring a component in, edit it and write the edit back to
     assert.match(diff, /\+    <section className="card" style="padding: 16px; background: #ffe4e6">/u);
     assert.equal(readFileSync(cardPath, "utf8"), CARD, "reviewing writes nothing");
     await page.locator("#codebase-write").click();
-    await waitRevision(page, 4);
+    await waitRevision(page, 5); // a write-back is two commits: recorded, then confirmed (#185)
     assert.equal(await page.locator("#status").textContent(), "Wrote 2 changes to PriceCard.jsx.");
     assert.equal(readFileSync(cardPath, "utf8"), CARD.replace("<h2>Pro</h2>", "<h2>Pro &amp; Team</h2>").replace("background: #f4f0ff", "background: #ffe4e6"));
 
@@ -95,7 +95,7 @@ test("connect a folder, bring a component in, edit it and write the edit back to
     await page.locator(`[role=treeitem][data-node-id="${heading}"] > .row`).click();
     await page.locator("#inspect-text").fill("Teams");
     await page.locator("#inspect-text").press("Tab");
-    await waitRevision(page, 5);
+    await waitRevision(page, 6);
     await page.locator(`[role=treeitem][data-node-id="${section}"] > .row`).click();
     await page.locator("#action-code").click();
     await page.locator("#codebase-review").click();
