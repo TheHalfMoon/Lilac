@@ -248,13 +248,17 @@ test("a schema-1 manifest in the current directory upgrades in place, with host 
     const { documentId, ...manifest } = JSON.parse(readFileSync(currentFile(root, PROJECT_FILES.manifest), "utf8"));
     writeFileSync(currentFile(root, PROJECT_FILES.manifest), JSON.stringify({ ...manifest, schemaVersion: 0, legacyRoot: documentId }));
     const hostStep = { 0: ({ legacyRoot, ...rest }) => ({ ...rest, documentId: legacyRoot }) };
+    // A stale lock and a leftover temporary would both be cleaned by an open that proceeds.
+    writeFileSync(currentFile(root, PROJECT_FILES.lock), JSON.stringify({ owner: "gone", pid: 1, at: GOLDEN_AT, nonce: "n" }));
+    writeFileSync(currentFile(root, `${PROJECT_FILES.snapshot}.tmp-1-0`), "stale");
     const before = tree(root);
     assert.throws(
-      () => openProject(root, { owner: "reader-1", at: GOLDEN_AT, migrations: { ...hostStep, 1: () => ({}) } }),
+      () => openProject(root, { owner: "reader-1", at: GOLDEN_AT, breakStaleLock: { reason: "test" }, migrations: { ...hostStep, 1: () => ({}) } }),
       (error) => error instanceof PersistenceValidationError && /migration from project schema 1 is built in/.test(error.message),
       "a host step cannot replace a built-in one",
     );
-    assert.deepEqual(tree(root), before);
+    assert.deepEqual(tree(root), before, "refused before the lock is taken: nothing is cleaned or overridden");
+    rmSync(currentFile(root, PROJECT_FILES.lock));
     const store = openProject(root, { owner: "reader-1", at: GOLDEN_AT, migrations: hostStep });
     assert.equal(store.recovery.migratedFrom, 0, "the host step runs, then the built-in step");
     store.close();

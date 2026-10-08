@@ -122,9 +122,15 @@ test("a legacy project still locked by the earlier release is not taken over, an
       const json = await response.json();
       assert.equal(response.status, 409);
       assert.equal(json.error.code, "legacy-project-locked", "not the takeover dialog's code");
-      assert.match(json.error.message, /open in the earlier release. Close it there/u);
+      assert.match(json.error.message, /left it locked when it stopped/u, "the lock's process is gone");
       assert.match(json.error.message, /remove old\/\.lilac\/lock/u);
     }
+    // Held by a running process: the person is told to close it there or wait, never to remove the lock.
+    writeFileSync(join(root, "old", ".lilac", "lock"), JSON.stringify({ owner: "lilac-app", pid: process.pid, at: AT, nonce: "n" }));
+    const running = await (await fetch(`${host.url}/api/projects/open`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify({ name: "old" }) })).json();
+    assert.equal(running.error.code, "legacy-project-locked");
+    assert.match(running.error.message, /open elsewhere right now/u);
+    assert.doesNotMatch(running.error.message, /remove/u);
     assert.equal(existsSync(join(root, "old", ".ninerr")), false, "nothing is created");
     assert.ok(existsSync(join(root, "old", ".lilac", "lock")), "the legacy lock is left in place");
   } finally {

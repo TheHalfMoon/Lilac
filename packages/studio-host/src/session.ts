@@ -384,8 +384,8 @@ export class StudioSession {
 }
 
 /** Refuse to break a lock whose holder is a process still running on this machine. */
-function assertLockHolderGone(root: string): void {
-  const lockPath = join(root, PROJECT_FILES.directory, PROJECT_FILES.lock);
+/** Whether the process named in a lock file is still running; false when that cannot be read. */
+function lockHolderAlive(lockPath: string): boolean {
   let pid: unknown;
   try {
     // Only a small regular file is read; links, FIFOs and anything odd are left to
@@ -399,18 +399,22 @@ function assertLockHolderGone(root: string): void {
       closeSync(fd);
     }
   } catch {
-    return; // an unreadable lock is exactly what an override is for
+    return false; // an unreadable lock is exactly what an override is for
   }
-  if (!Number.isSafeInteger(pid) || (pid as number) <= 0) return;
-  let alive = false;
+  if (!Number.isSafeInteger(pid) || (pid as number) <= 0) return false;
   try {
     process.kill(pid as number, 0);
-    alive = true;
+    return true;
   } catch (error) {
-    alive = (error as NodeJS.ErrnoException)?.code === "EPERM";
+    return (error as NodeJS.ErrnoException)?.code === "EPERM";
   }
+}
+
+function assertLockHolderGone(root: string): void {
   // Our own pid holding it means another session in this process: still live.
-  if (alive) throw new StudioError(409, "lock-held-by-live-process", "the project is open in a process that is still running");
+  if (lockHolderAlive(join(root, PROJECT_FILES.directory, PROJECT_FILES.lock))) {
+    throw new StudioError(409, "lock-held-by-live-process", "the project is open in a process that is still running");
+  }
 }
 
 function createProjectDirectory(root: string, name: string, title: string | undefined, at: string): void {
@@ -454,7 +458,12 @@ function migrateLegacy(root: string, name: string, owner: string, at: string): R
   } catch (error) {
     const kind = error instanceof Error ? error.name : "";
     if (kind === "PersistenceLockError") {
-      throw new StudioError(409, "legacy-project-locked", `${name} was made before the rename to Ninerr and is open in the earlier release. Close it there and open it here again. If the earlier release is not running, its lock was left by a crash: remove ${name}/${LEGACY_PROJECT_DIRECTORY}/${PROJECT_FILES.lock} and open it again.`);
+      // A running holder is the earlier release, or another Ninerr migrating it right now; only
+      // a lock whose process is gone may be removed by hand.
+      if (lockHolderAlive(join(root, LEGACY_PROJECT_DIRECTORY, PROJECT_FILES.lock))) {
+        throw new StudioError(409, "legacy-project-locked", `${name} was made before the rename to Ninerr and is open elsewhere right now: in the earlier release, or being opened by another Ninerr window. Close it there, or wait a moment, and open it here again.`);
+      }
+      throw new StudioError(409, "legacy-project-locked", `${name} was made before the rename to Ninerr, and the earlier release left it locked when it stopped. If that release is not running, remove ${name}/${LEGACY_PROJECT_DIRECTORY}/${PROJECT_FILES.lock} and open it here again.`);
     }
     if (kind === "PersistenceValidationError" && /Ninerr project already exists/u.test(error instanceof Error ? error.message : "")) return null;
     throw error;
