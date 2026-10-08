@@ -76,6 +76,20 @@ PC9a closes PC gate 5: "Desktop bridge: a context-isolated shell with a minimal 
 - **In this container,** they ran as an unprivileged user, together with the whole gate.
 - **In CI,** the Foundation checks job fetches the pinned runtime (with the archive cached) and runs on the non-root runner. Ubuntu's AppArmor restriction on unprivileged user namespaces is lifted for the job, so Chromium's sandbox works and is not disabled.
 
+## An intermittent CI failure, not explained
+
+**The failures.** The shell test failed in CI six times in a row, all at the same step: right after the project name was filled and Enter was pressed, the projects dialog stayed open and nothing was submitted. Nothing was logged in the console or by the app.
+
+**What it is not.** It never failed locally. The judge's probes ruled out focus, since Playwright's Electron driver emulates it, and found no path that rebuilds the dialog after the editor is ready.
+
+**Where it stands.**
+- The test now clicks the Create project button.
+- CI then passed. It also passed once more with Enter restored (a diagnostic commit, since reverted).
+- The cause is not known, and this record does not claim it is fixed.
+- It is tracked on #176.
+- A failure now names the step under way and reports the editor's state.
+- CI annotates the first line of each failure's error.
+
 ## Not in this grain
 
 These are PC9b, PC gate 15:
