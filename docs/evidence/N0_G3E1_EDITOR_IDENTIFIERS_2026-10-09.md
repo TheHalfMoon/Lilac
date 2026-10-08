@@ -4,7 +4,7 @@ Issue: #190 (N0 umbrella). This is the first half of N0-G3e. The whole change ex
 
 | Identifier | Before | Now | Data from before the rename |
 |---|---|---|---|
-| Renderer DOM attributes | `data-lilac-id`, `-root`, `-href`, `-type`, `-handle`, `-selection` | `data-ninerr-*`; the matching `dataset.ninerr*` keys and the `__ninerrText` marker | Ephemeral, never stored. The renderer still refuses document attributes in either prefix, in any case, so an imported document cannot impersonate the renderer's own. The hostile-attributes test supplies both. |
+| Renderer DOM attributes | `data-lilac-id`, `-root`, `-href`, `-type`, `-handle`, `-selection` | `data-ninerr-*`, including the canvas capture marker `data-ninerr-capture`; the matching `dataset.ninerr*` keys and the `__ninerrText` marker | Ephemeral, never stored. The renderer still refuses document attributes in either prefix, in any case, so an imported document cannot impersonate the renderer's own. The hostile-attributes test supplies both. |
 | Desktop preload bridge | `window.lilacDesktop` | `window.ninerrDesktop` | Ephemeral. |
 | Editor credential key (per tab) | `sessionStorage["lilac.token"]` | `sessionStorage["ninerr.token"]` | Per tab only. An open tab asks for a fresh link once. |
 | Editor performance marks | `lilac:render-project`, `:edit`, `:apply-change` | `ninerr:*` | Ephemeral. |
