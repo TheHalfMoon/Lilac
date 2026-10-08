@@ -4,13 +4,13 @@ Ninerr stores a project under `<root>/.ninerr`. This page describes:
 
 - the on-disk format this release writes and reads;
 - how version changes are handled;
-- how projects from before the rename are handled;
+- how projects from before the rename are migrated;
 - what to do when a project will not open.
 
 `packages/persistence` enforces this behaviour. Two suites check it:
 
 - `tests/migration-compatibility.test.mjs` (P06 gate 11);
-- `tests/legacy-migration.test.mjs` (N0-G2, legacy projects).
+- `tests/legacy-migration.test.mjs` (N0-G2).
 
 ## Layout
 
@@ -65,19 +65,39 @@ This release never writes anything a format-1 reader would refuse:
 
 ## Projects from before the rename
 
-A project written before the product was named Ninerr lives in `<root>/.lilac` (project schema 1, format `lilac-project`). A root that holds only such a project is not opened and not overwritten:
+A project written before the product was named Ninerr lives in `<root>/.lilac` (project schema 1, format `lilac-project`).
+
+- `projectLayout(root)` reports `"legacy"` for such a root.
 - `openProject` refuses it with a `PersistenceVersionError` and writes nothing.
 - `createProject` refuses to create a new project over it.
 
-A schema-1 manifest that is already in `.ninerr` (copied there by hand) upgrades in place on open. Its journal keeps verifying, because the manifest records the legacy genesis domain:
+`migrateLegacyProject` turns it into a Ninerr project:
 
 ```js
-import { openProject } from "@lilac/persistence";
+import { migrateLegacyProject, openProject, projectLayout } from "@lilac/persistence";
 
+if (projectLayout(root) === "legacy") migrateLegacyProject(root, { owner: "my-app", at: new Date().toISOString() });
 const store = openProject(root, { owner: "my-app", at: new Date().toISOString() });
-store.recovery.migratedFrom; // 1
 store.manifest.journalGenesis; // "lilac-journal-genesis"
 ```
+
+### What migration guarantees
+
+- **Verify first.** The whole legacy project is verified under its own writer lock before anything is created. That covers its manifest, snapshot, document, the full journal chain, replay, and every object against its hash.
+- **Refusals create nothing.** A legacy project that is newer, damaged or still locked by the earlier release is refused, and nothing is created.
+- **All or nothing.** The new directory is assembled beside the project, verified as a project itself, and renamed into place, so a crash leaves either no `.ninerr` or a complete one. A leftover `.ninerr.tmp-*` directory is not a project, and migration can simply run again.
+- **Exact copy.**
+  - The journal and the objects are copied byte for byte, and the snapshot reference is written as the same canonical JSON.
+  - The manifest becomes schema 2 in the Ninerr format and records the legacy genesis domain.
+  - A torn journal tail is carried over and recovered by the first open, as usual.
+- **Deterministic.** The same legacy project always produces the same `.ninerr` bytes.
+- **The original is never modified.** Its lock is taken and released, as any open does. The earlier release can still open it.
+  - Changes made in Ninerr afterwards are not written back to it.
+  - Once `.ninerr` exists, it is the project and the legacy directory is ignored.
+
+The studio host does this automatically. A legacy project is listed with the others and migrated the first time it is opened, and the editor says so. A legacy project that is still locked is not taken over: the editor says to close it in the earlier release, or, if that release crashed, to remove the legacy lock file.
+
+A legacy project on read-only storage cannot be migrated, because its lock cannot be taken. The failure is reported as an error; copy the project to writable storage first.
 
 ## Host migration steps
 
@@ -89,7 +109,7 @@ The migrated manifest is written back atomically once the open succeeds. Documen
 
 ## When a project will not open
 
-- **`PersistenceVersionError` saying "legacy project from before Ninerr".** The root holds only a project from before the rename. Open it with the earlier release; this release does not open or change it.
+- **`PersistenceVersionError` saying "legacy project from before Ninerr".** Migrate it with `migrateLegacyProject` (the studio host does this when the project is opened).
 - **`PersistenceVersionError` saying "newer than supported" or "written by a newer Ninerr".** The project was written by a later release; open it with that release.
 - **`PersistenceVersionError` saying "no migration from project schema N".** The manifest predates every known schema. Supply a migration step as above.
 - **`PersistenceVersionError` saying "no migration from document schema N", or "has field X" or "has node field X, which document schema 1 does not have".** The document is from another schema, or carries fields schema 1 lacks. Only the release that wrote it can read it, because documents are not migrated.
@@ -100,6 +120,7 @@ The migrated manifest is written back atomically once the open succeeds. Documen
   - a project directory that changed during the open.
 
   A hard-linked journal is refused at the first `commit`, not at open. Check how the directory was copied or mounted.
-- **`PersistenceLockError`.** Another writer holds the project. If the previous writer is known to be gone, the host may pass `breakStaleLock: { reason }`, where `reason` is a non-empty string of at most 500 characters.
+- **`PersistenceLockError`.** Another writer holds the project, or, for a migration, the earlier release still has the legacy project open. If the previous writer is known to be gone, the host may pass `breakStaleLock: { reason }`, where `reason` is a non-empty string of at most 500 characters.
   - Ninerr does not check whether the holder is still alive; that decision is the host's.
   - The previous holder (or `null`, if its lock was unreadable) and the reason are recorded in the new lock and in `recovery.lockOverride`.
+  - Migration never overrides a legacy lock.

@@ -74,3 +74,12 @@ export interface RecoveryReport {
   migratedFrom: number | null;
   lockOverride: LockOverride | null;
 }
+
+/** What migrating a legacy project produced. The legacy directory is left exactly as it was. */
+export interface LegacyMigrationReport {
+  projectDir: string;
+  legacyDir: string;
+  migratedFrom: number;
+  objectsCopied: number;
+  tornTailBytes: number;
+}

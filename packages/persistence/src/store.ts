@@ -1,6 +1,6 @@
 import { createHash, randomUUID, type Hash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { DOCUMENT_FIELDS, DOCUMENT_SCHEMA_VERSION, NODE_FIELDS, cloneDocument, normalizeDocument, validateDocument } from "@lilac/document-model";
 import { applyTransaction, createTransaction } from "@lilac/history";
 import { canonicalJson } from "./canonical.ts";
@@ -34,6 +34,7 @@ import {
   PROJECT_FILES,
   PROJECT_FORMAT,
   PROJECT_SCHEMA_VERSION,
+  type LegacyMigrationReport,
   type LockOverride,
   type LockRecord,
   type ProjectManifest,
@@ -41,9 +42,9 @@ import {
   type SnapshotRef,
 } from "./types.ts";
 
-// Documents are JSON graphs produced by @lilac/document-model; typed loosely here because
-// that package is plain JavaScript.
-type LilacDocument = { id: string; revision: number } & Record<string, unknown>;
+// Documents are JSON graphs produced by the document model; typed loosely here because that
+// package is plain JavaScript.
+type ProjectDocument = { id: string; revision: number } & Record<string, unknown>;
 
 const STABLE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DIGEST = /^[0-9a-f]{64}$/u;
@@ -149,7 +150,7 @@ function documentVersionProblem(record: unknown): string | null {
   return null;
 }
 
-function loadDocument(projectDir: string, digest: string): LilacDocument {
+function loadDocument(projectDir: string, digest: string): ProjectDocument {
   const record = parseJsonFile(getObject(projectDir, digest), `document object ${digest}`);
   // The object's bytes already match its content hash, so a document this release does not
   // read (another schema version, or fields schema 1 lacks) is a version mismatch, as for the
@@ -158,7 +159,7 @@ function loadDocument(projectDir: string, digest: string): LilacDocument {
   if (problem !== null) throw new PersistenceVersionError(`document object ${digest} ${problem}`);
   try {
     validateDocument(record);
-    return normalizeDocument(record) as LilacDocument;
+    return normalizeDocument(record) as ProjectDocument;
   } catch (error) {
     throw new PersistenceCorruptionError(`document object ${digest} is not a valid document: ${(error as Error).message.slice(0, 200)}`);
   }
@@ -216,6 +217,18 @@ function hasLegacyProject(projectDir: string): boolean {
   }
 }
 
+export type ProjectLayout = "current" | "legacy" | "none";
+
+/**
+ * What a root holds: a Ninerr project (`current`, whether or not a legacy directory is also
+ * there), only a legacy project that needs `migrateLegacyProject`, or neither. Reads only.
+ */
+export function projectLayout(root: string): ProjectLayout {
+  const projectDir = projectDirectory(root);
+  if (assertNotSymlink(projectDir, "project directory")) return "current";
+  return hasLegacyProject(projectDir) ? "legacy" : "none";
+}
+
 export interface CreateProjectOptions {
   projectId: string;
   document: unknown;
@@ -232,10 +245,10 @@ export function createProject(root: string, options: CreateProjectOptions): { pr
   const projectDir = projectDirectory(root);
   assertId(options?.projectId, "projectId");
   assertTimestamp(options.createdAt, "createdAt");
-  let document: LilacDocument;
+  let document: ProjectDocument;
   try {
     validateDocument(options.document);
-    document = normalizeDocument(persisted(cloneDocument(options.document))) as LilacDocument;
+    document = normalizeDocument(persisted(cloneDocument(options.document))) as ProjectDocument;
   } catch (error) {
     throw new PersistenceValidationError(`document is invalid: ${(error as Error).message.slice(0, 200)}`);
   }
@@ -384,12 +397,13 @@ function objectFanOutDirectories(projectDir: string): string[] {
   }
 }
 
+const OBJECT_TAIL = /^[0-9a-f]{62}$/u;
 const LEFTOVER_LOCK = new RegExp(`^${PROJECT_FILES.lock.replace(".", "\\.")}\\.broken-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, "u");
 
 interface VerifiedProject {
   manifest: ProjectManifest;
   migratedFrom: number | null;
-  document: LilacDocument;
+  document: ProjectDocument;
   journalBytes: Buffer;
   parsed: ParsedJournal;
   genesis: string;
@@ -428,9 +442,9 @@ function readVerifiedProject(projectDir: string, migrations: Readonly<Record<num
 
   let replayed = 0;
   for (const { entry } of parsed.entries.slice(snapshot.journalSeq)) {
-    let next: LilacDocument;
+    let next: ProjectDocument;
     try {
-      next = applyTransaction(document, entry.transaction).document as LilacDocument;
+      next = applyTransaction(document, entry.transaction).document as ProjectDocument;
     } catch (error) {
       throw new PersistenceCorruptionError(`journal entry ${entry.seq} does not apply: ${(error as Error).message.slice(0, 200)}`);
     }
@@ -450,7 +464,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   const migrations = withBuiltInMigrations(options.migrations);
   if (!assertNotSymlink(projectDir, "project directory")) {
     if (hasLegacyProject(projectDir)) {
-      throw new PersistenceVersionError("this root holds a legacy project from before Ninerr; it must be migrated before it can be opened");
+      throw new PersistenceVersionError("this root holds a legacy project from before Ninerr; migrate it before opening");
     }
     throw new PersistenceValidationError("no Ninerr project exists at this root");
   }
@@ -471,7 +485,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
     // An interrupted atomic write leaves an unreferenced temporary next to its target; the
     // target itself still holds the last durable content. Clear them under the lock.
     const staleTemporaryFiles = removeStaleTemporaries(projectDir, (target) => [PROJECT_FILES.manifest, PROJECT_FILES.snapshot, PROJECT_FILES.journal].includes(target))
-      + objectFanOutDirectories(projectDir).reduce((total, directory) => total + removeStaleTemporaries(directory, (target) => /^[0-9a-f]{62}$/u.test(target)), 0)
+      + objectFanOutDirectories(projectDir).reduce((total, directory) => total + removeStaleTemporaries(directory, (target) => OBJECT_TAIL.test(target)), 0)
       // A lock override renames the stale lock aside before reading it; a crash in between
       // leaves that renamed copy behind. The previous holder is already in the override record.
       + removeStaleFiles(projectDir, (name) => LEFTOVER_LOCK.test(name));
@@ -509,6 +523,90 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   }
 }
 
+export interface MigrateLegacyProjectOptions {
+  owner: string;
+  at: string;
+}
+
+/**
+ * Migrate a legacy project (project schema 1, in `LEGACY_PROJECT_DIRECTORY`) into a new
+ * `<root>/.ninerr`.
+ *
+ * The legacy project is verified completely first, under its own writer lock, so a legacy
+ * writer cannot change it meanwhile, and a corrupt, newer or locked legacy project is refused
+ * before anything is created. The new directory is assembled in a temporary sibling (every
+ * object re-verified against its hash as it is copied) and renamed into place, so a crash
+ * leaves either no `.ninerr` or a complete one. The legacy directory is never modified (its
+ * lock is taken and released, as any open does), so the earlier release can still open it.
+ * The journal is copied byte for byte and the manifest records the legacy genesis domain, so
+ * the chain and every recorded digest still verify. Stale temporaries and unreferenced files
+ * are not carried over; a torn journal tail is, and the first open recovers it as usual.
+ */
+export function migrateLegacyProject(root: string, options: MigrateLegacyProjectOptions): LegacyMigrationReport {
+  const projectDir = projectDirectory(root);
+  assertId(options?.owner, "owner");
+  assertTimestamp(options.at, "at");
+  if (assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("a Ninerr project already exists at this root");
+  const legacyDir = legacyDirectoryOf(projectDir);
+  if (!assertNotSymlink(legacyDir, "legacy project directory")) throw new PersistenceValidationError("no legacy project exists at this root");
+  const directory = directoryIdentity(legacyDir, "legacy project directory");
+  if (directory.path !== legacyDir) throw new PersistenceValidationError("legacy project directory must not be reached through a symbolic link");
+  const legacyFiles = paths(legacyDir);
+  const lockRecord: LockRecord = { owner: options.owner, pid: process.pid, at: options.at, nonce: randomUUID() };
+  // No override: a legacy project that is still locked is open in the earlier release.
+  acquireLock(legacyFiles.lock, lockRecord, undefined);
+  let staging: string | null = null;
+  try {
+    const verified = readVerifiedProject(legacyDir, PROJECT_MIGRATIONS);
+    if (verified.migratedFrom === null) throw new PersistenceCorruptionError("the legacy project directory holds a current-schema manifest");
+    staging = join(dirname(projectDir), `${PROJECT_FILES.directory}.tmp-${process.pid}-${randomUUID()}`);
+    mkdirSync(staging, { mode: 0o700 });
+    let objectsCopied = 0;
+    // Every two-hex entry under objects/ must be a real directory: one that is a link or a
+    // file would otherwise be skipped, and its objects silently left behind.
+    const objectsRoot = join(legacyDir, PROJECT_FILES.objects);
+    if (assertNotSymlink(objectsRoot, "object store")) {
+      if (!lstatSync(objectsRoot).isDirectory()) throw new PersistenceCorruptionError("the legacy object store is not a directory");
+      for (const name of readdirSync(objectsRoot)) {
+        if (/^[0-9a-f]{2}$/u.test(name) && !lstatSync(join(objectsRoot, name)).isDirectory()) {
+          throw new PersistenceCorruptionError(`legacy object fan-out ${name} is not a directory`);
+        }
+      }
+    }
+    for (const fanOut of objectFanOutDirectories(legacyDir)) {
+      const prefix = basename(fanOut);
+      for (const name of readdirSync(fanOut).sort()) {
+        if (!OBJECT_TAIL.test(name)) continue;
+        const digest = `${prefix}${name}`;
+        // getObject verifies the bytes against the digest; putObject stores them under it.
+        putObject(staging, getObject(legacyDir, digest));
+        objectsCopied += 1;
+      }
+    }
+    const files = paths(staging);
+    atomicWrite(files.journal, verified.journalBytes, "journal");
+    atomicWrite(files.snapshot, canonicalJson(verified.snapshot), "snapshot reference");
+    atomicWrite(files.manifest, canonicalJson(verified.manifest), "manifest");
+    // The copy is verified as a project in its own right before it becomes one.
+    readVerifiedProject(staging, PROJECT_MIGRATIONS);
+    if (!isSameDirectory(legacyDir, directory)) throw new PersistenceValidationError("legacy project directory changed while it was being migrated");
+    try {
+      renameSync(staging, projectDir);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      // Windows reports a rename onto an existing directory as EPERM.
+      if (code === "EEXIST" || code === "ENOTEMPTY" || assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("a Ninerr project already exists at this root");
+      throw error;
+    }
+    staging = null;
+    fsyncDirectory(dirname(projectDir));
+    return { projectDir, legacyDir, migratedFrom: verified.migratedFrom, objectsCopied, tornTailBytes: verified.parsed.tornTailBytes };
+  } finally {
+    if (staging !== null) rmSync(staging, { recursive: true, force: true });
+    if (stillPinned(legacyDir, directory)) releaseLock(legacyFiles.lock, lockRecord);
+  }
+}
+
 interface StoreState {
   seq: number;
   digest: string;
@@ -525,7 +623,7 @@ export class ProjectStore {
   readonly projectDir: string;
   readonly manifest: Readonly<ProjectManifest>;
   readonly recovery: Readonly<RecoveryReport>;
-  #document: LilacDocument;
+  #document: ProjectDocument;
   #seq: number;
   #digest: string;
   #journalBytes: number;
@@ -536,7 +634,7 @@ export class ProjectStore {
   #poisoned = false;
   #directory: DirectoryIdentity;
 
-  constructor(token: symbol, projectDir: string, manifest: ProjectManifest, document: LilacDocument, state: StoreState) {
+  constructor(token: symbol, projectDir: string, manifest: ProjectManifest, document: ProjectDocument, state: StoreState) {
     if (token !== STORE_TOKEN) throw new PersistenceValidationError("ProjectStore is created by openProject");
     this.projectDir = projectDir;
     this.manifest = Object.freeze({ ...manifest });
@@ -571,9 +669,9 @@ export class ProjectStore {
   }
 
   /** A copy of the current document; the store's state changes only through commit. */
-  get document(): LilacDocument {
+  get document(): ProjectDocument {
     this.#assertOpen();
-    return cloneDocument(this.#document) as LilacDocument;
+    return cloneDocument(this.#document) as ProjectDocument;
   }
 
   get revision(): number {
@@ -611,7 +709,7 @@ export class ProjectStore {
     // again would give the same document, so the first result is used; otherwise it is
     // applied again.
     const sameForm = sameValue(createTransaction(stored), validated.transaction);
-    const next = (sameForm ? validated.document : applyTransaction(this.#document, stored).document) as LilacDocument;
+    const next = (sameForm ? validated.document : applyTransaction(this.#document, stored).document) as ProjectDocument;
     const entry = { seq: this.#seq + 1, revision: next.revision, transaction: stored };
     const { line, digest } = encodeJournalLine(entry, this.#digest);
     const bytes = Buffer.byteLength(line, "utf8");

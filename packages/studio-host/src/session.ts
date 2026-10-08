@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { LocalCollaborationRoom, createAccessPolicy, createCollaborationState } from "@lilac/collaboration";
 import { createDocument } from "@lilac/document-model";
 import { createHistoryState } from "@lilac/history";
-import { PROJECT_FILES, createProject, openProject, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
+import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, createProject, migrateLegacyProject, openProject, projectLayout, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
 import { StudioError } from "./errors.ts";
 
 /** Who is acting. People act through the editor; agents act through MCP (PC5). */
@@ -84,7 +84,8 @@ export function assertProjectName(name: unknown): string {
 export class StudioSession {
   readonly name: string;
   readonly owner: StudioActor;
-  readonly recovery: Readonly<RecoveryReport>;
+  /** What opening repaired; `legacyProject` when a project from before Ninerr was migrated. */
+  readonly recovery: Readonly<RecoveryReport & { legacyProject?: true }>;
   #store: ProjectStore;
   #documentId: string;
   #grants: Array<{ principalKind: "actor"; principalId: string; capabilities: string[] }>;
@@ -101,10 +102,10 @@ export class StudioSession {
   // layers. The store still validates and applies every transaction itself.
   #base: { document: any; past: never[]; future: never[] } | null = null;
 
-  private constructor(name: string, store: ProjectStore, owner: StudioActor, now: () => string) {
+  private constructor(name: string, store: ProjectStore, owner: StudioActor, now: () => string, legacyMigratedFrom: number | null = null) {
     this.name = name;
     this.owner = owner;
-    this.recovery = store.recovery;
+    this.recovery = legacyMigratedFrom === null ? store.recovery : Object.freeze({ ...store.recovery, migratedFrom: legacyMigratedFrom, legacyProject: true as const });
     this.#store = store;
     this.#documentId = store.document.id;
     this.#grants = [{ principalKind: "actor", principalId: owner.actorId, capabilities: OWNER_CAPABILITIES }];
@@ -129,7 +130,11 @@ export class StudioSession {
     if (entry.isSymbolicLink() || !entry.isDirectory()) throw new StudioError(400, "invalid-project", `${name} is not a project directory inside the projects root`);
     if (input.breakStaleLock !== undefined) assertLockHolderGone(root);
     try {
-      return new StudioSession(name, openProject(root, { owner: input.owner.actorId, at, ...(input.breakStaleLock ? { breakStaleLock: input.breakStaleLock } : {}) }), input.owner, input.now);
+      // A project from before the rename is migrated into the Ninerr format first; its
+      // original directory is left unchanged next to the new one (persistence, N0-G2).
+      const legacy = projectLayout(root) === "legacy" ? migrateLegacy(root, name, input.owner.actorId, at) : null;
+      const store = openProject(root, { owner: input.owner.actorId, at, ...(input.breakStaleLock ? { breakStaleLock: input.breakStaleLock } : {}) });
+      return new StudioSession(name, store, input.owner, input.now, legacy?.migratedFrom ?? null);
     } catch (error) {
       throw asOpenError(error, name);
     }
@@ -378,15 +383,14 @@ export class StudioSession {
   }
 }
 
-/** Refuse to break a lock whose holder is a process still running on this machine. */
-function assertLockHolderGone(root: string): void {
-  const lockPath = join(root, PROJECT_FILES.directory, PROJECT_FILES.lock);
+/** Whether the process named in a lock file is still running; false when that cannot be read. */
+function lockHolderAlive(lockPath: string): boolean {
   let pid: unknown;
   try {
     // Only a small regular file is read; links, FIFOs and anything odd are left to
     // persistence's own lock handling.
     const entry = lstatSync(lockPath);
-    if (!entry.isFile() || entry.size > 4096) return;
+    if (!entry.isFile() || entry.size > 4096) return false;
     const fd = openSync(lockPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       pid = JSON.parse(readFileSync(fd, "utf8").slice(0, 4096)).pid;
@@ -394,18 +398,23 @@ function assertLockHolderGone(root: string): void {
       closeSync(fd);
     }
   } catch {
-    return; // an unreadable lock is exactly what an override is for
+    return false; // an unreadable lock is exactly what an override is for
   }
-  if (!Number.isSafeInteger(pid) || (pid as number) <= 0) return;
-  let alive = false;
+  if (!Number.isSafeInteger(pid) || (pid as number) <= 0) return false;
   try {
     process.kill(pid as number, 0);
-    alive = true;
+    return true;
   } catch (error) {
-    alive = (error as NodeJS.ErrnoException)?.code === "EPERM";
+    return (error as NodeJS.ErrnoException)?.code === "EPERM";
   }
+}
+
+/** Refuse to break a lock whose holder is a process still running on this machine. */
+function assertLockHolderGone(root: string): void {
   // Our own pid holding it means another session in this process: still live.
-  if (alive) throw new StudioError(409, "lock-held-by-live-process", "the project is open in a process that is still running");
+  if (lockHolderAlive(join(root, PROJECT_FILES.directory, PROJECT_FILES.lock))) {
+    throw new StudioError(409, "lock-held-by-live-process", "the project is open in a process that is still running");
+  }
 }
 
 function createProjectDirectory(root: string, name: string, title: string | undefined, at: string): void {
@@ -436,6 +445,29 @@ function asEditError(error: unknown, conflictCode?: string): Error {
   if (CLIENT_ERRORS.has(name)) return conflictCode ? new StudioError(409, conflictCode, `the change can no longer be applied: ${message}`) : new StudioError(400, "invalid-edit", message);
   if (error instanceof RangeError) return new StudioError(400, "invalid-edit", "the edit is too deeply nested");
   return error instanceof Error ? error : new Error("edit failed");
+}
+
+/**
+ * Migrate a legacy project before it is opened. A legacy lock is never overridden: it means
+ * the earlier release has the project open, or crashed while it did, so the person is told
+ * that rather than offered a takeover. When another host migrated it meanwhile, it is opened.
+ */
+function migrateLegacy(root: string, name: string, owner: string, at: string): ReturnType<typeof migrateLegacyProject> | null {
+  try {
+    return migrateLegacyProject(root, { owner, at });
+  } catch (error) {
+    const kind = error instanceof Error ? error.name : "";
+    if (kind === "PersistenceLockError") {
+      // A running holder is the earlier release, or another Ninerr migrating it right now; only
+      // a lock whose process is gone may be removed by hand.
+      if (lockHolderAlive(join(root, LEGACY_PROJECT_DIRECTORY, PROJECT_FILES.lock))) {
+        throw new StudioError(409, "legacy-project-locked", `${name} was made before the rename to Ninerr and is open elsewhere right now: in the earlier release, or being opened by another Ninerr window. Close it there, or wait a moment, and open it here again.`);
+      }
+      throw new StudioError(409, "legacy-project-locked", `${name} was made before the rename to Ninerr, and the earlier release left it locked when it stopped. If that release is not running, remove ${name}/${LEGACY_PROJECT_DIRECTORY}/${PROJECT_FILES.lock} and open it here again.`);
+    }
+    if (kind === "PersistenceValidationError" && /Ninerr project already exists/u.test(error instanceof Error ? error.message : "")) return null;
+    throw error;
+  }
 }
 
 function asOpenError(error: unknown, name: string): Error {
