@@ -65,7 +65,8 @@ function journalEntries(root) {
 
 /** Rewrite the journal from `entries`, re-chaining so only the edited content differs. */
 function writeJournal(root, entries) {
-  let digest = genesisDigest(readJson(root, PROJECT_FILES.manifest).projectId);
+  const manifest = readJson(root, PROJECT_FILES.manifest);
+  let digest = genesisDigest(manifest.projectId, manifest.journalGenesis);
   let text = "";
   const snapshot = readJson(root, PROJECT_FILES.snapshot);
   for (const entry of entries) {

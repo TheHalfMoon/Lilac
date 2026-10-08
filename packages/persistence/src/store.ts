@@ -208,6 +208,15 @@ function legacyDirectoryOf(projectDir: string): string {
   return join(dirname(projectDir), LEGACY_PROJECT_DIRECTORY);
 }
 
+/** Whether a real legacy project directory (not a file or a link) sits next to `projectDir`. */
+function hasLegacyProject(projectDir: string): boolean {
+  try {
+    return lstatSync(legacyDirectoryOf(projectDir)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export type ProjectLayout = "current" | "legacy" | "none";
 
 /**
@@ -217,7 +226,7 @@ export type ProjectLayout = "current" | "legacy" | "none";
 export function projectLayout(root: string): ProjectLayout {
   const projectDir = projectDirectory(root);
   if (assertNotSymlink(projectDir, "project directory")) return "current";
-  return assertNotSymlink(legacyDirectoryOf(projectDir), "legacy project directory") ? "legacy" : "none";
+  return hasLegacyProject(projectDir) ? "legacy" : "none";
 }
 
 export interface CreateProjectOptions {
@@ -245,7 +254,7 @@ export function createProject(root: string, options: CreateProjectOptions): { pr
   }
   assertId(document.id, "document.id");
   if (assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("a Ninerr project already exists at this root");
-  if (assertNotSymlink(legacyDirectoryOf(projectDir), "legacy project directory")) throw new PersistenceValidationError("a legacy project exists at this root; migrate it instead");
+  if (hasLegacyProject(projectDir)) throw new PersistenceValidationError("a legacy project exists at this root; migrate it instead");
   const staging = join(dirname(projectDir), `${PROJECT_FILES.directory}.tmp-${process.pid}-${randomUUID()}`);
   mkdirSync(staging, { mode: 0o700 });
   try {
@@ -452,7 +461,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   assertId(options?.owner, "owner");
   assertTimestamp(options.at, "at");
   if (!assertNotSymlink(projectDir, "project directory")) {
-    if (assertNotSymlink(legacyDirectoryOf(projectDir), "legacy project directory")) {
+    if (hasLegacyProject(projectDir)) {
       throw new PersistenceVersionError("this root holds a legacy project from before Ninerr; migrate it before opening");
     }
     throw new PersistenceValidationError("no Ninerr project exists at this root");

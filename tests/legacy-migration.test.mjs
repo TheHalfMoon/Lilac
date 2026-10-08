@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, cpSync, existsSync, mkdtempSync, symlinkSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,8 @@ import { GOLDEN_AT } from "./support/golden-project.mjs";
 
 const LEGACY = fileURLToPath(new URL("./fixtures/projects/v1-basic/", import.meta.url));
 const CURRENT = fileURLToPath(new URL("./fixtures/projects/v2-basic/", import.meta.url));
+// SHA-256 of the corpus as tree() reads it (relative path to base64 bytes, in path order).
+const LEGACY_CORPUS_SHA256 = "7927312c35d4321df2e70d4948693960170c815cb4dfee195a9afa7c3bee46c3";
 const MIGRATED_MANIFEST = '{"createdAt":"2026-10-07T12:00:00.000Z","documentId":"doc-golden","format":"ninerr-project","journalGenesis":"lilac-journal-genesis","projectId":"golden-v1","schemaVersion":2}';
 const actor = { owner: "migrator-1", at: GOLDEN_AT };
 
@@ -241,11 +244,69 @@ test("a schema-1 manifest in the current directory upgrades in place, with host 
     legacyInCurrentDirectory(root);
     const { documentId, ...manifest } = JSON.parse(readFileSync(currentFile(root, PROJECT_FILES.manifest), "utf8"));
     writeFileSync(currentFile(root, PROJECT_FILES.manifest), JSON.stringify({ ...manifest, schemaVersion: 0, legacyRoot: documentId }));
-    const store = openProject(root, { owner: "reader-1", at: GOLDEN_AT, migrations: { 0: ({ legacyRoot, ...rest }) => ({ ...rest, documentId: legacyRoot }), 1: () => ({}) } });
-    assert.equal(store.recovery.migratedFrom, 0, "a host step runs, and the built-in step wins for its own version");
+    const hostStep = { 0: ({ legacyRoot, ...rest }) => ({ ...rest, documentId: legacyRoot }) };
+    const before = tree(root);
+    assert.throws(
+      () => openProject(root, { owner: "reader-1", at: GOLDEN_AT, migrations: { ...hostStep, 1: () => ({}) } }),
+      (error) => error instanceof PersistenceValidationError && /migration from project schema 1 is built in/.test(error.message),
+      "a host step cannot replace a built-in one",
+    );
+    assert.deepEqual(tree(root), before);
+    const store = openProject(root, { owner: "reader-1", at: GOLDEN_AT, migrations: hostStep });
+    assert.equal(store.recovery.migratedFrom, 0, "the host step runs, then the built-in step");
     store.close();
     assert.equal(readFileSync(currentFile(root, PROJECT_FILES.manifest), "utf8"), MIGRATED_MANIFEST);
   });
+  withRoot((root) => {
+    legacyInCurrentDirectory(root);
+    const manifest = JSON.parse(readFileSync(currentFile(root, PROJECT_FILES.manifest), "utf8"));
+    writeFileSync(currentFile(root, PROJECT_FILES.manifest), JSON.stringify({ ...manifest, journalGenesis: "ninerr-journal-genesis" }));
+    const before = tree(root);
+    assert.throws(() => open(root), (error) => error.name === "PersistenceCorruptionError" && /schema-1 manifest must not record a journal genesis/.test(error.message), "never overwritten");
+    assert.deepEqual(tree(root), before);
+  });
+});
+
+test("an upgrade in place and a torn-tail repair are both written when the open succeeds", () => withRoot((root) => {
+  appendFileSync(legacyFile(root, PROJECT_FILES.journal), '{"digest":"torn');
+  const journal = readFileSync(legacyFile(root, PROJECT_FILES.journal));
+  legacyInCurrentDirectory(root);
+  const store = open(root);
+  assert.equal(store.recovery.migratedFrom, 1);
+  assert.equal(store.recovery.tornTailBytes, 15);
+  assert.equal(store.revision, 5);
+  store.close();
+  assert.equal(readFileSync(currentFile(root, PROJECT_FILES.manifest), "utf8"), MIGRATED_MANIFEST);
+  assert.deepEqual(readFileSync(currentFile(root, PROJECT_FILES.journal)), journal.subarray(0, journal.length - 15));
+  const again = open(root);
+  assert.deepEqual([again.recovery.migratedFrom, again.recovery.tornTailBytes], [null, 0]);
+  again.close();
+}));
+
+test("only a real legacy directory counts as a legacy project", (context) => {
+  const empty = () => realpathSync(mkdtempSync(join(tmpdir(), "ninerr-legacy-")));
+  const document = createDocument({ id: "doc-new", nodes: [] });
+  const file = empty();
+  try {
+    writeFileSync(join(file, LEGACY_PROJECT_DIRECTORY), "not a project");
+    assert.throws(() => open(file), (error) => error instanceof PersistenceValidationError && /no Ninerr project exists/.test(error.message));
+    createProject(file, { projectId: "new", document, createdAt: GOLDEN_AT });
+    assert.equal(readFileSync(join(file, LEGACY_PROJECT_DIRECTORY), "utf8"), "not a project");
+  } finally {
+    rmSync(file, { recursive: true, force: true });
+  }
+  const link = empty();
+  try {
+    try {
+      symlinkSync(fileURLToPath(new URL("./fixtures/projects/v1-basic/.lilac", import.meta.url)), join(link, LEGACY_PROJECT_DIRECTORY), "dir");
+    } catch (error) {
+      if (error.code === "EPERM") return context.skip("creating symbolic links needs privileges here");
+      throw error;
+    }
+    assert.throws(() => open(link), (error) => error instanceof PersistenceValidationError && /no Ninerr project exists/.test(error.message), "a linked legacy directory is not followed");
+  } finally {
+    rmSync(link, { recursive: true, force: true });
+  }
 });
 
 test("a refused open leaves a legacy-schema project as it found it, even when the migration and a repair were due", () => withRoot((root) => {
@@ -257,7 +318,9 @@ test("a refused open leaves a legacy-schema project as it found it, even when th
   assert.deepEqual(tree(root), before);
 }));
 
-test("the frozen legacy corpus is unchanged", () => {
+test("the frozen legacy corpus is unchanged, byte for byte", () => {
+  const digest = createHash("sha256").update(JSON.stringify(tree(LEGACY))).digest("hex");
+  assert.equal(digest, LEGACY_CORPUS_SHA256, "tests/fixtures/projects/v1-basic is frozen; never regenerate it");
   assert.deepEqual(Object.keys(tree(LEGACY)), [
     ".lilac/journal.log",
     ".lilac/objects/ee/d19d67df2a78916b14b192f3d1c1e94beec32fb42f2778894acb030ceb54fb",
