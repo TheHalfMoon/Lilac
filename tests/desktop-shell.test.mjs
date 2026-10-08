@@ -109,7 +109,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     // The editor works: a project, a box, an edit committed through the host.
     await window.locator("#new-project-name").fill("desk");
     step = "editor session (create)";
-    await window.locator("#dialog[open] button.primary", { hasText: "Create project" }).click();
+    await window.keyboard.press("Enter");
     await waitRevision(window, 0);
     step = "editor session (edit)";
     await window.locator("#action-insert-box").click();
