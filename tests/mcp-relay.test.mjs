@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { assertLoopbackUrl, discoverMcpUrl, startStudioHost } from "../packages/studio-host/src/index.ts";
 
-// PC5 (#146, #82): the stdio MCP relay. A stdio MCP client runs scripts/lilac-mcp.mjs, which
+// PC5 (#146, #82): the stdio MCP relay. A stdio MCP client runs scripts/ninerr-mcp.mjs, which
 // finds the running host through its discovery file and forwards each line to the host's
 // MCP endpoint with the agent's credential, on loopback only.
 
@@ -15,7 +15,7 @@ let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 7, 12, 0, 0) + clock++ * 1000).toISOString();
 
 async function withStudio(callback) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-relay-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-relay-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const owner = (method, path, body) => fetch(`${host.url}${path}`, {
     method,
@@ -39,7 +39,7 @@ test("the stdio relay forwards a stdio MCP client to the running host, and only 
     assert.equal(discoverMcpUrl(root), host.mcpUrl, "the discovery file names the running host");
     const { token } = (await owner("POST", "/api/agents/create", { name: "Relay agent" })).json;
     await owner("POST", "/api/projects/create", { name: "relay" });
-    const child = spawn(process.execPath, ["scripts/lilac-mcp.mjs", "--projects", root], { env: { ...process.env, LILAC_MCP_TOKEN: token }, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, ["scripts/ninerr-mcp.mjs", "--projects", root], { env: { ...process.env, NINERR_MCP_TOKEN: token }, stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
     child.stdout.on("data", (chunk) => {
       out += chunk;
@@ -57,22 +57,22 @@ test("the stdio relay forwards a stdio MCP client to the running host, and only 
     const answers = out.trim().split("\n").map((line) => JSON.parse(line));
     assert.equal(answers.length, 3, "two answers and a parse error; the notification has none");
     const byId = Object.fromEntries(answers.filter((answer) => answer.id !== null).map((answer) => [answer.id, answer]));
-    assert.equal(byId[1].result.serverInfo.name, "lilac");
+    assert.equal(byId[1].result.serverInfo.name, "ninerr");
     assert.equal(byId[2].result.structuredContent.revision, 1);
     assert.equal(answers.find((answer) => answer.id === null).error.code, -32700);
     // Without a credential, the relay refuses to start.
-    const bare = spawn(process.execPath, ["scripts/lilac-mcp.mjs", "--projects", root], { env: { ...process.env, LILAC_MCP_TOKEN: "" } });
+    const bare = spawn(process.execPath, ["scripts/ninerr-mcp.mjs", "--projects", root], { env: { ...process.env, NINERR_MCP_TOKEN: "" } });
     let err = "";
     bare.stderr.on("data", (chunk) => {
       err += chunk;
     });
     assert.equal(await new Promise((resolve) => bare.on("close", resolve)), 2);
-    assert.match(err, /LILAC_MCP_TOKEN/u);
+    assert.match(err, /NINERR_MCP_TOKEN/u);
   });
 });
 
-test("a discovery file left by a Lilac that is no longer running is not followed", () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-relay-stale-")));
+test("a discovery file left by a Ninerr that is no longer running is not followed", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-relay-stale-")));
   try {
     assert.throws(() => discoverMcpUrl(root), /not running/u, "no file");
     writeFileSync(join(root, ".ninerr-studio.json"), JSON.stringify({ version: 1, url: "http://127.0.0.1:9", mcpUrl: "http://127.0.0.1:9/mcp", pid: 2 ** 22 + 4321, nonce: "x" }), { mode: 0o600 });

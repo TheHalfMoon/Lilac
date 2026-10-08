@@ -12,7 +12,7 @@ import { desktopTestOptions, display, launchDesktop } from "./support/desktop.mj
 import { layerCount, waitRevision } from "./support/editor.mjs";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
-// PC9 (#174): the desktop bridge. The Lilac desktop app is a thin Electron shell around the
+// PC9 (#174): the desktop bridge. The Ninerr desktop app is a thin Electron shell around the
 // same studio host local web mode runs: a context-isolated, sandboxed window with no Node
 // and a minimal preload, which may not navigate away, open windows, attach webviews,
 // request anything but the host, or be granted a permission. Closes PC gate 5.
@@ -48,7 +48,7 @@ test("the desktop window's rules: only the host's origin, and no Node in the pag
 });
 
 test("the desktop app runs the editor in an isolated, sandboxed window that reaches only its host", { ...desktopTestOptions(), timeout: 120_000 }, async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-desktop-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-desktop-")));
   const projects = join(root, "projects");
   const screen = await display();
   // Another server on this computer, which the window must not reach either.
@@ -60,7 +60,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
   await new Promise((resolve) => other.listen(0, "127.0.0.1", resolve));
   const otherUrl = `http://127.0.0.1:${other.address().port}`;
   // Every connection the app makes off this computer goes through this proxy, which
-  // records it and refuses it. Lilac must make none, not even from the browser process.
+  // records it and refuses it. Ninerr must make none, not even from the browser process.
   const egress = [];
   const proxy = createServer((request, response) => {
     egress.push(request.url);
@@ -197,7 +197,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     assert.deepEqual(hits, [], "nothing the window did reached the other server");
 
     step = "single instance";
-    // One Lilac per user: a second start hands over to this one and exits.
+    // One Ninerr per user: a second start hands over to this one and exits.
     const second = spawn(findElectron(), ["packages/desktop"], { env: { ...process.env, ...env }, stdio: "ignore" });
     const code = await new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -213,13 +213,13 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1);
 
     step = "close window";
-    // Closing the window quits Lilac and stops the host: the project is closed and its
+    // Closing the window quits Ninerr and stops the host: the project is closed and its
     // lock released.
     assert.ok(existsSync(join(projects, "desk", PROJECT_FILES.directory, "lock")));
     assert.ok(existsSync(join(projects, ".ninerr-studio.json")));
     const exited = new Promise((resolve) => app.process().once("exit", (code) => resolve(code)));
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
-    assert.equal(await exited, 0, "Lilac quit when its window closed");
+    assert.equal(await exited, 0, "Ninerr quit when its window closed");
     assert.equal(existsSync(join(projects, "desk", PROJECT_FILES.directory, "lock")), false, "the lock is released");
     assert.equal(existsSync(join(projects, ".ninerr-studio.json")), false, "the discovery file is removed");
     assert.deepEqual(desktop.errors.filter((message) => !/violates the (?:following|document's) Content Security Policy|Not allowed to load local resource: file:/u.test(message)), [], "only the refused requests are logged");
@@ -235,7 +235,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     assert.deepEqual(egress, [], "nothing left this computer, from any process of the app");
   } catch (error) {
     const editor = await desktop?.window.evaluate(() => `status=${JSON.stringify(document.getElementById("status")?.textContent)} ${document.getElementById("revision")?.textContent} dialog=${JSON.stringify(document.querySelector("#dialog[open]")?.textContent?.slice(0, 160) ?? null)} name=${JSON.stringify(document.getElementById("new-project-name")?.value ?? null)} focus=${document.hasFocus()} active=${document.activeElement?.id ?? document.activeElement?.tagName}`).catch(() => "unreadable");
-    throw new Error(`${step}: ${String(error?.message ?? error).split("\n")[0]}; editor: ${editor}; console: ${JSON.stringify(desktop?.errors ?? []).slice(0, 300)}; app: ${JSON.stringify((desktop?.output() ?? "").split("\n").filter((line) => line.startsWith("lilac:") || /ERROR|FATAL/u.test(line)).slice(-6).join(" | ").slice(0, 600))}`, { cause: error });
+    throw new Error(`${step}: ${String(error?.message ?? error).split("\n")[0]}; editor: ${editor}; console: ${JSON.stringify(desktop?.errors ?? []).slice(0, 300)}; app: ${JSON.stringify((desktop?.output() ?? "").split("\n").filter((line) => line.startsWith("ninerr:") || /ERROR|FATAL/u.test(line)).slice(-6).join(" | ").slice(0, 600))}`, { cause: error });
   } finally {
     await desktop?.app.close().catch(() => {});
     await new Promise((resolve) => other.close(resolve));

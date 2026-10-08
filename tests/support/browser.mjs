@@ -1,5 +1,5 @@
 // Launch a local Chromium through playwright-core for browser end-to-end tests (PC phase).
-// The executable comes from LILAC_TEST_BROWSER, a system Chrome or Chromium, or the
+// The executable comes from NINERR_TEST_BROWSER, a system Chrome or Chromium, or the
 // Playwright browser cache. Locally a missing browser skips the test; in CI (CI=true) it fails.
 import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -8,11 +8,11 @@ import { extname, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-export const TEST_ORIGIN = "http://lilac.test";
+export const TEST_ORIGIN = "http://ninerr.test";
 
 export function findBrowser() {
   // The Chromium build matched to playwright-core comes first; a system Chrome is the fallback.
-  const candidates = [process.env.LILAC_TEST_BROWSER];
+  const candidates = [process.env.NINERR_TEST_BROWSER];
   for (const cache of [process.env.PLAYWRIGHT_BROWSERS_PATH, "/opt/pw-browsers", join(homedir(), ".cache", "ms-playwright")]) {
     if (typeof cache !== "string" || !existsSync(cache)) continue;
     const builds = readdirSync(cache).filter((entry) => /^chromium-\d+$/u.test(entry)).sort((a, b) => Number(b.slice(9)) - Number(a.slice(9)));
@@ -25,7 +25,7 @@ export function findBrowser() {
 /** Options for node:test: skip locally when no browser exists; never skip in CI. */
 export function browserTestOptions() {
   const found = findBrowser();
-  if (found === null && process.env.CI !== "true") return { skip: "no Chromium found (set LILAC_TEST_BROWSER)" };
+  if (found === null && process.env.CI !== "true") return { skip: "no Chromium found (set NINERR_TEST_BROWSER)" };
   return {};
 }
 
@@ -37,7 +37,7 @@ const TYPES = { ".mjs": "text/javascript", ".js": "text/javascript", ".html": "t
  */
 export async function launchPage({ extraRoutes = {} } = {}) {
   const executablePath = findBrowser();
-  if (executablePath === null) throw new Error("no Chromium found for the browser test (set LILAC_TEST_BROWSER)");
+  if (executablePath === null) throw new Error("no Chromium found for the browser test (set NINERR_TEST_BROWSER)");
   const { chromium } = await import("playwright-core");
   const browser = await chromium.launch({ executablePath, headless: true, args: ["--no-sandbox"] });
   const context = await browser.newContext();

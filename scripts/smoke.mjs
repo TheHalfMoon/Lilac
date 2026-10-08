@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Reproducible release smoke test (P07, #139). From a clean checkout with `npm ci`, run
-// `npm run smoke`: it drives Lilac's offline core workflow end to end in a temporary
+// `npm run smoke`: it drives Ninerr's offline core workflow end to end in a temporary
 // directory, with every network and process-spawning primitive trapped, and prints a JSON
 // report whose digests depend only on the inputs below. Two runs on any machine must print
 // identical reports, equal to tests/fixtures/smoke/expected-report.json; tests/smoke.test.mjs

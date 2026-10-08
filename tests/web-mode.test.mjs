@@ -7,12 +7,12 @@ import { join } from "node:path";
 
 import { browserTestOptions } from "./support/browser.mjs";
 import { layerCount, rendered, waitRevision } from "./support/editor.mjs";
-import { attemptsIn, browse, openTab, run, startLilac } from "./support/lilac-process.mjs";
+import { attemptsIn, browse, openTab, run, startNinerr } from "./support/ninerr-process.mjs";
 
 // PC7 (#146): local web mode and the offline, local-first smoke flow, through the product.
-// One command (npm start, scripts/lilac.mjs) runs Lilac; it and the MCP relay run under a
+// One command (npm start, scripts/ninerr.mjs) runs Ninerr; it and the MCP relay run under a
 // preload that refuses every connection off this computer, every DNS lookup and every
-// helper process, and the browser refuses every request outside Lilac's origin. Closes PC
+// helper process, and the browser refuses every request outside Ninerr's origin. Closes PC
 // gates 6 and 16.
 
 // A tab whose page may not reach "ready" (a used link); its requests are still recorded.
@@ -54,14 +54,14 @@ test("the network trap refuses connections off this computer and allows loopback
   assert.ok(attemptsIn(probe.output.stderr).length >= 3, "every refused attempt is reported");
 });
 
-test("one command serves Lilac on this computer only, with single-use links, and stops cleanly", browserTestOptions(), async () => {
-  const projects = realpathSync(mkdtempSync(join(tmpdir(), "lilac-web-")));
-  const lilac = await startLilac(join(projects, "Ninerr Projects"));
+test("one command serves Ninerr on this computer only, with single-use links, and stops cleanly", browserTestOptions(), async () => {
+  const projects = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-web-")));
+  const ninerr = await startNinerr(join(projects, "Ninerr Projects"));
   const browser = await browse();
   try {
-    assert.match(lilac.output.stdout, /^Lilac is running on this computer only/mu);
-    assert.match(lilac.output.stdout, /^Projects folder: .*Ninerr Projects$/mu);
-    const url = new URL(lilac.first);
+    assert.match(ninerr.output.stdout, /^Ninerr is running on this computer only/mu);
+    assert.match(ninerr.output.stdout, /^Projects folder: .*Ninerr Projects$/mu);
+    const url = new URL(ninerr.first);
     assert.equal(url.hostname, "127.0.0.1");
     // Not reachable on any other address of this computer.
     const others = Object.values(networkInterfaces()).flat().filter((entry) => entry && !entry.internal && entry.family === "IPv4").map((entry) => entry.address);
@@ -78,43 +78,43 @@ test("one command serves Lilac on this computer only, with single-use links, and
       assert.equal(refused, true, `not reachable on ${address}`);
     }
     // The editor works from the link.
-    const tab = await openTab(browser, lilac.origin, lilac.first);
+    const tab = await openTab(browser, ninerr.origin, ninerr.first);
     await tab.page.locator("#new-project-name").fill("web");
     await tab.page.keyboard.press("Enter");
     await waitRevision(tab.page, 0);
     await tab.page.locator("#action-insert-box").click();
     await waitRevision(tab.page, 1);
     // A link works once; Enter prints a fresh one, which opens a second editor on the same project.
-    const reused = await openTabUnready(browser, lilac.origin, lilac.first);
-    await reused.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Open Lilac from its launcher");
-    const fresh = await openTab(browser, lilac.origin, await lilac.newLink());
+    const reused = await openTabUnready(browser, ninerr.origin, ninerr.first);
+    await reused.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Open Ninerr from its launcher");
+    const fresh = await openTab(browser, ninerr.origin, await ninerr.newLink());
     await waitRevision(fresh.page, 1);
     assert.equal(await layerCount(fresh.page), 2);
     assert.deepEqual([...tab.foreign, ...fresh.foreign, ...reused.foreign], []);
     assert.deepEqual([...tab.errors, ...fresh.errors], []);
   } finally {
     await browser.close();
-    assert.equal(await lilac.stop(), 0, "Ctrl+C or SIGTERM stops Lilac cleanly");
-    assert.match(lilac.output.stdout, /Stopping Lilac\./u);
+    assert.equal(await ninerr.stop(), 0, "Ctrl+C or SIGTERM stops Ninerr cleanly");
+    assert.match(ninerr.output.stdout, /Stopping Ninerr\./u);
     assert.equal(existsSync(join(projects, "Ninerr Projects", ".ninerr-studio.json")), false);
-    assert.deepEqual(attemptsIn(lilac.output.stderr), [], "Lilac never tried to reach the network");
+    assert.deepEqual(attemptsIn(ninerr.output.stderr), [], "Ninerr never tried to reach the network");
     rmSync(projects, { recursive: true, force: true });
   }
 });
 
 test("offline smoke: create, import, edit, code, an agent over stdio, save, restart and reopen, with no network", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-offline-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-offline-")));
   const projects = join(root, "projects");
   const page = join(root, "landing.html");
   writeFileSync(page, `<!doctype html><html><head><link rel="stylesheet" href="https://cdn.example.com/x.css">
     <script src="https://cdn.example.com/x.js"></script></head><body><main><h1 style="color: #335577">Landing</h1>
     <img src="https://images.example.com/hero.png" alt="Hero"><a href="https://example.com">Out</a></main></body></html>`);
-  let lilac = await startLilac(projects);
+  let ninerr = await startNinerr(projects);
   const browser = await browse();
   const attempts = [];
   const tabs = [];
   try {
-    let tab = await openTab(browser, lilac.origin, lilac.first);
+    let tab = await openTab(browser, ninerr.origin, ninerr.first);
     tabs.push(tab);
     let { page: editor } = tab;
     // Create a project and import a page that links to the network.
@@ -142,7 +142,7 @@ test("offline smoke: create, import, edit, code, an agent over stdio, save, rest
     await editor.keyboard.press("Enter");
     const token = await editor.locator("#agent-credential").inputValue();
     await editor.locator("#dialog[open] button.primary").click();
-    const relay = run(["scripts/lilac-mcp.mjs", "--projects", projects], { LILAC_MCP_TOKEN: token });
+    const relay = run(["scripts/ninerr-mcp.mjs", "--projects", projects], { NINERR_MCP_TOKEN: token });
     relay.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_artboard", arguments: { name: "From agent", width: 400, height: 300 } } })}\n`);
     relay.child.stdin.end();
     assert.equal(await relay.exited, 0);
@@ -153,11 +153,11 @@ test("offline smoke: create, import, edit, code, an agent over stdio, save, rest
     await editor.waitForFunction(() => document.getElementById("status").textContent.startsWith("Saved."));
     const layersBefore = await layerCount(editor);
     assert.deepEqual(tab.errors, []);
-    // Stop Lilac and start it again: everything is there.
-    assert.equal(await lilac.stop(), 0);
-    attempts.push(...attemptsIn(lilac.output.stderr));
-    lilac = await startLilac(projects);
-    tab = await openTab(browser, lilac.origin, lilac.first);
+    // Stop Ninerr and start it again: everything is there.
+    assert.equal(await ninerr.stop(), 0);
+    attempts.push(...attemptsIn(ninerr.output.stderr));
+    ninerr = await startNinerr(projects);
+    tab = await openTab(browser, ninerr.origin, ninerr.first);
     tabs.push(tab);
     editor = tab.page;
     await editor.locator("#dialog[open] [data-project=offline]").click();
@@ -172,16 +172,16 @@ test("offline smoke: create, import, edit, code, an agent over stdio, save, rest
     // Everything every tab requested, from opening until the browser closes.
     for (const opened of tabs) attempts.push(...opened.foreign);
     await browser.close();
-    await lilac.stop();
-    attempts.push(...attemptsIn(lilac.output.stderr));
+    await ninerr.stop();
+    attempts.push(...attemptsIn(ninerr.output.stderr));
     rmSync(root, { recursive: true, force: true });
   }
   assert.deepEqual(attempts, [], "no process and no page tried to reach anything off this computer");
 });
 
-test("stopping Lilac does not wait for open connections", { timeout: 10_000 }, async () => {
+test("stopping Ninerr does not wait for open connections", { timeout: 10_000 }, async () => {
   const { startStudioHost } = await import("../packages/studio-host/src/index.ts");
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-close-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-close-")));
   const host = await startStudioHost({ projectsRoot: root });
   try {
     // An open event stream and an idle keep-alive connection.
@@ -200,8 +200,8 @@ test("stopping Lilac does not wait for open connections", { timeout: 10_000 }, a
 
 test("the command refuses options it does not understand", async () => {
   for (const args of [["--projects", "--open"], ["--port"], ["--port", "70000"], ["--frobnicate"]]) {
-    const lilac = run(["scripts/lilac.mjs", ...args]);
-    assert.equal(await lilac.exited, 2, args.join(" "));
-    assert.match(lilac.output.stderr, /^lilac: /mu);
+    const ninerr = run(["scripts/ninerr.mjs", ...args]);
+    assert.equal(await ninerr.exited, 2, args.join(" "));
+    assert.match(ninerr.output.stderr, /^ninerr: /mu);
   }
 });

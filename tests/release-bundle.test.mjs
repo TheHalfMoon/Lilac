@@ -27,7 +27,7 @@ function tree(root) {
 }
 
 function withBundles(count, callback) {
-  const roots = Array.from({ length: count }, () => realpathSync(mkdtempSync(join(tmpdir(), "lilac-bundle-"))));
+  const roots = Array.from({ length: count }, () => realpathSync(mkdtempSync(join(tmpdir(), "ninerr-bundle-"))));
   try {
     return callback(roots.map((root) => join(root, "bundle")));
   } finally {
@@ -75,7 +75,7 @@ test("the bundle does not depend on which platform binary npm installed", () => 
   buildReleaseBundle(native, { sourceCommit: COMMIT });
   // A private copy of every external package, each copied from its real location, so no
   // link in it can lead back to a shared install; the copy is checked before it is changed.
-  const scratch = realpathSync(mkdtempSync(join(tmpdir(), "lilac-bundle-modules-")));
+  const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-bundle-modules-")));
   try {
     const modules = join(scratch, "node_modules");
     const source = fileURLToPath(new URL("../node_modules", import.meta.url));

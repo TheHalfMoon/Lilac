@@ -1,6 +1,6 @@
 name: Desktop
 
-# PC gates 15 and 17: package the Lilac desktop app on each supported platform's own
+# PC gates 15 and 17: package the Ninerr desktop app on each supported platform's own
 # runner, smoke-test the packaged app, and run the release-candidate journey through it
 # (scripts/package-desktop.mjs, scripts/smoke-desktop.mjs, scripts/journey-desktop.mjs).
 # The release workflow calls it too (P07d), so a release's archives are built and tested
@@ -46,7 +46,7 @@ jobs:
       - name: Cache the pinned Electron archive
         uses: actions/cache@v4
         with:
-          path: .lilac-cache/electron/downloads
+          path: .ninerr-cache/electron/downloads
           key: electron-${{ matrix.target }}-${{ hashFiles('scripts/desktop/electron.mjs') }}
       - name: Allow Chromium's sandbox (unprivileged user namespaces)
         if: runner.os == 'Linux'
@@ -65,7 +65,7 @@ jobs:
           set -uo pipefail
           # The step runs under bash -e: pick the archive by testing, not with a failing ls.
           archive=""
-          for candidate in dist/desktop/Lilac-${{ matrix.target }}.tar.gz dist/desktop/Lilac-${{ matrix.target }}.zip; do
+          for candidate in dist/desktop/Ninerr-${{ matrix.target }}.tar.gz dist/desktop/Ninerr-${{ matrix.target }}.zip; do
             if [ -f "$candidate" ]; then archive="$candidate"; fi
           done
           echo "archive: [$archive]" > smoke.err
@@ -77,7 +77,7 @@ jobs:
         run: |
           set -uo pipefail
           archive=""
-          for candidate in dist/desktop/Lilac-${{ matrix.target }}.tar.gz dist/desktop/Lilac-${{ matrix.target }}.zip; do
+          for candidate in dist/desktop/Ninerr-${{ matrix.target }}.tar.gz dist/desktop/Ninerr-${{ matrix.target }}.zip; do
             if [ -f "$candidate" ]; then archive="$candidate"; fi
           done
           node scripts/journey-desktop.mjs "$archive" 2>journey.err | tee journey.json
@@ -100,7 +100,7 @@ jobs:
               return null;
             }
           };
-          const manifest = read("dist/desktop/Lilac-${{ matrix.target }}.json");
+          const manifest = read("dist/desktop/Ninerr-${{ matrix.target }}.json");
           const smoke = read("smoke.json", true);
           const journey = read("journey.json", true);
           const fuses = manifest ? Object.entries(manifest.fuses).map(([name, on]) => `${name}=${on === "removed" ? "r" : on ? 1 : 0}`).join(",") : "none";
@@ -137,8 +137,8 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: lilac-desktop-${{ matrix.target }}-${{ github.event.pull_request.head.sha || github.sha }}
+          name: ninerr-desktop-${{ matrix.target }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            dist/desktop/Lilac-${{ matrix.target }}.*
+            dist/desktop/Ninerr-${{ matrix.target }}.*
           if-no-files-found: error
           retention-days: 7

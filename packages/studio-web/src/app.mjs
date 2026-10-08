@@ -258,7 +258,7 @@ function showAgentCredential({ agent, token, mcpUrl }) {
       el("p", { id: "agent-credential-note" }, "This credential is shown once. Give it to the agent's MCP client; anyone who has it can act as this agent until you disconnect it."),
       el("label", { for: "agent-credential" }, "Agent credential", credential),
       el("p", {}, "For an MCP client that runs a command (stdio), use:"),
-      el("pre", { class: "setup" }, "node scripts/lilac-mcp.mjs --projects <your Lilac projects folder>\nwith LILAC_MCP_TOKEN set to the credential"),
+      el("pre", { class: "setup" }, "node scripts/ninerr-mcp.mjs --projects <your Lilac projects folder>\nwith NINERR_MCP_TOKEN set to the credential"),
       el("p", {}, "For an MCP client that connects over HTTP, use this address, with the credential as a Bearer token (it changes each time Lilac starts):"),
       el("pre", { class: "setup" }, mcpUrl),
       el("div", { class: "actions" }, el("button", { type: "button", class: "primary", onclick: close }, "Done")),

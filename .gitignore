@@ -2,5 +2,5 @@ node_modules/
 npm-debug.log*
 .DS_Store
 graft/
-.lilac-cache/
+.ninerr-cache/
 dist/

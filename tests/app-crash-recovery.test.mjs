@@ -6,11 +6,11 @@ import { join } from "node:path";
 
 import { browserTestOptions } from "./support/browser.mjs";
 import { layerCount, waitRevision } from "./support/editor.mjs";
-import { attemptsIn, browse, openTab, startLilac } from "./support/lilac-process.mjs";
+import { attemptsIn, browse, openTab, startNinerr } from "./support/ninerr-process.mjs";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 // PC8 (#168): crash and recovery through the actual app. Lilac, started as a person starts
-// it (scripts/lilac.mjs), is killed outright (SIGKILL) while it has a project open with an
+// it (scripts/ninerr.mjs), is killed outright (SIGKILL) while it has a project open with an
 // editor attached, and once more in the middle of a burst of edits with a torn write left
 // at the end of the journal. Started again, the editor takes over the dead session's lock
 // with a reason, reports what recovery did, and every committed change is there. Closes PC
@@ -27,14 +27,14 @@ function assertOnlyLockedConflict(errors, { killed = false } = {}) {
 }
 
 test("Lilac killed mid-session recovers through the editor, with every committed change", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-crash-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-crash-")));
   const projects = join(root, "projects");
   const browser = await browse();
   const attempts = [];
-  let lilac = await startLilac(projects);
+  let ninerr = await startNinerr(projects);
   try {
     // A session with work in it.
-    let tab = await openTab(browser, lilac.origin, lilac.first);
+    let tab = await openTab(browser, ninerr.origin, ninerr.first);
     await tab.page.locator("#new-project-name").fill("work");
     await tab.page.keyboard.press("Enter");
     await waitRevision(tab.page, 0);
@@ -48,8 +48,8 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     const before = await layerCount(tab.page);
 
     // Crash 1: killed outright, with the project open and the editor attached.
-    assert.equal(await lilac.kill(), "SIGKILL");
-    attempts.push(...attemptsIn(lilac.output.stderr));
+    assert.equal(await ninerr.kill(), "SIGKILL");
+    attempts.push(...attemptsIn(ninerr.output.stderr));
     const lock = join(projects, "work", PROJECT_FILES.directory, "lock");
     assert.ok(existsSync(lock), "a crash leaves the project's lock behind");
     // The orphaned editor says Lilac cannot be reached, and loses nothing it showed.
@@ -62,8 +62,8 @@ test("Lilac killed mid-session recovers through the editor, with every committed
 
     // Started again: the editor opens the project, finds the dead session's lock, takes over
     // with a reason, and reports it. Everything committed before the crash is there.
-    lilac = await startLilac(projects);
-    tab = await openTab(browser, lilac.origin, lilac.first);
+    ninerr = await startNinerr(projects);
+    tab = await openTab(browser, ninerr.origin, ninerr.first);
     await tab.page.locator("#dialog[open] [data-project=work]").click();
     await tab.page.locator("#lock-reason").fill("Lilac crashed");
     await tab.page.keyboard.press("Enter");
@@ -78,7 +78,7 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     // Crash 2: killed in the middle of a burst of edits from another client, and the last,
     // interrupted write left torn at the end of the journal.
     const token = await tab.page.evaluate(() => sessionStorage.getItem("lilac.token"));
-    const call = (path, body) => fetch(`${lilac.origin}${path}`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+    const call = (path, body) => fetch(`${ninerr.origin}${path}`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
     let revision = 4;
     const burst = (async () => {
       for (let index = 0; index < 200; index += 1) {
@@ -88,9 +88,9 @@ test("Lilac killed mid-session recovers through the editor, with every committed
       }
     })();
     await new Promise((resolve) => setTimeout(resolve, 150));
-    assert.equal(await lilac.kill(), "SIGKILL");
+    assert.equal(await ninerr.kill(), "SIGKILL");
     await burst;
-    attempts.push(...attemptsIn(lilac.output.stderr), ...tab.foreign);
+    attempts.push(...attemptsIn(ninerr.output.stderr), ...tab.foreign);
     assertOnlyLockedConflict(tab.errors, { killed: true });
     await tab.page.context().close();
     const journal = join(projects, "work", PROJECT_FILES.directory, "journal.log");
@@ -98,8 +98,8 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     appendFileSync(journal, '{"seq":999,"entry":{"transaction":{"id":"torn');
     assert.ok(revision > 4, `some of the burst was committed (revision ${revision})`);
 
-    lilac = await startLilac(projects);
-    tab = await openTab(browser, lilac.origin, lilac.first);
+    ninerr = await startNinerr(projects);
+    tab = await openTab(browser, ninerr.origin, ninerr.first);
     await tab.page.locator("#dialog[open] [data-project=work]").click();
     await tab.page.locator("#lock-reason").fill("Lilac crashed again");
     await tab.page.keyboard.press("Enter");
@@ -122,8 +122,8 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     assertOnlyLockedConflict(tab.errors);
   } finally {
     await browser.close();
-    await lilac.stop();
-    attempts.push(...attemptsIn(lilac.output.stderr));
+    await ninerr.stop();
+    attempts.push(...attemptsIn(ninerr.output.stderr));
     rmSync(root, { recursive: true, force: true });
   }
   assert.deepEqual(attempts, [], "no process and no page reached off this computer");

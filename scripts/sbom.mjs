@@ -119,9 +119,9 @@ export function buildSbom(lockText, policy) {
   const addEdges = (ref, refs) => { const set = graph.get(ref) ?? new Set(); for (const target of refs) set.add(target); graph.set(ref, set); };
   addEdges(rootRef, [...edgesFrom("", root), ...workspaces.map((pkg) => `workspace:${pkg.name}`)]);
   for (const pkg of workspaces) {
-    // Lilac declares no license yet (a founder decision); an unknown license is recorded as
+    // Ninerr declares no license yet (a founder decision); an unknown license is recorded as
     // a property, because CycloneDX license expressions must be SPDX.
-    components.set(`workspace:${pkg.name}`, { type: "library", "bom-ref": `workspace:${pkg.name}`, name: pkg.name, version: pkg.version ?? "0.0.0", properties: [{ name: "lilac:first-party", value: "true" }, { name: "lilac:license", value: "NOASSERTION" }] });
+    components.set(`workspace:${pkg.name}`, { type: "library", "bom-ref": `workspace:${pkg.name}`, name: pkg.name, version: pkg.version ?? "0.0.0", properties: [{ name: "ninerr:first-party", value: "true" }, { name: "ninerr:license", value: "NOASSERTION" }] });
     addEdges(`workspace:${pkg.name}`, edgesFrom(pkg.path, packages[pkg.path]));
   }
   // The same name and version can be installed at several paths with different flags; the
@@ -150,7 +150,7 @@ export function buildSbom(lockText, policy) {
       ...(pkg.os ? [{ name: "npm:os", value: pkg.os.join(",") }] : []),
       ...(pkg.cpu ? [{ name: "npm:cpu", value: pkg.cpu.join(",") }] : []),
       ...(pkg.license !== undefined && pkg.license !== license ? [{ name: "npm:declaredLicense", value: String(pkg.license) }] : []),
-      ...(license === null ? [{ name: "lilac:license", value: "NOASSERTION" }] : []),
+      ...(license === null ? [{ name: "ninerr:license", value: "NOASSERTION" }] : []),
       ...(allBundled.get(ref) ? [{ name: "npm:inBundle", value: "true" }] : []),
     ];
     components.set(ref, {
@@ -183,7 +183,7 @@ export function buildSbom(lockText, policy) {
     // Electron's own code is MIT; the Chromium, Node and other components inside it carry
     // their own licenses (including LGPL-2.1+ Blink and FFmpeg, and MPL-2.0 files), all
     // listed in the LICENSES.chromium.html each package ships.
-    properties: [{ name: "lilac:runtime", value: "desktop" }, { name: "lilac:notices", value: "LICENSES.chromium.html (shipped unchanged)" }, { name: "lilac:bundledComponentLicenses", value: "Chromium components under their own licenses, including LGPL-2.1-or-later (Blink, FFmpeg) and MPL-2.0; see LICENSES.chromium.html" }],
+    properties: [{ name: "ninerr:runtime", value: "desktop" }, { name: "ninerr:notices", value: "LICENSES.chromium.html (shipped unchanged)" }, { name: "ninerr:bundledComponentLicenses", value: "Chromium components under their own licenses, including LGPL-2.1-or-later (Blink, FFmpeg) and MPL-2.0; see LICENSES.chromium.html" }],
   });
   if (components.has("workspace:@ninerr/desktop")) addEdges("workspace:@ninerr/desktop", [electronRef]);
   return {
@@ -194,10 +194,10 @@ export function buildSbom(lockText, policy) {
     metadata: {
       component: {
         type: "application", "bom-ref": rootRef, name: lock.name ?? root.name ?? "root", version: lock.version ?? root.version ?? "0.0.0",
-        ...(typeof root.license === "string" ? { licenses: [{ expression: root.license }] } : { properties: [{ name: "lilac:license", value: "NOASSERTION" }] }),
+        ...(typeof root.license === "string" ? { licenses: [{ expression: root.license }] } : { properties: [{ name: "ninerr:license", value: "NOASSERTION" }] }),
       },
-      tools: { components: [{ type: "application", name: "lilac-sbom", version: "1" }] },
-      properties: [{ name: "lilac:lockfileSha256", value: sha256(Buffer.from(lockText, "utf8")) }],
+      tools: { components: [{ type: "application", name: "ninerr-sbom", version: "1" }] },
+      properties: [{ name: "ninerr:lockfileSha256", value: sha256(Buffer.from(lockText, "utf8")) }],
     },
     components: [...components.values()].sort((a, b) => compare(a["bom-ref"], b["bom-ref"])),
     dependencies: [...graph.entries()].map(([ref, set]) => ({ ref, dependsOn: [...set].filter((target) => target !== ref).sort(compare) })).sort((a, b) => compare(a.ref, b.ref)),

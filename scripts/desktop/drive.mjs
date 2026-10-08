@@ -1,4 +1,4 @@
-// Run a packaged Lilac desktop app as a person does, for the packaged-app smoke test and
+// Run a packaged Ninerr desktop app as a person does, for the packaged-app smoke test and
 // the release-candidate journey: the archive unpacked into a temporary folder, a fresh
 // home and projects folder, a display on Linux, a local proxy that records every
 // connection the browser side makes off this computer, and each launch driven over
@@ -50,7 +50,7 @@ function freePort() {
  * removes the temporary folder).
  */
 export async function preparePackage(archive) {
-  const work = realpathSync(mkdtempSync(join(tmpdir(), "lilac-desktop-run-")));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-desktop-run-")));
   const screen = await display();
   const egress = [];
   const proxy = createServer((request, response) => {
@@ -72,7 +72,7 @@ export async function preparePackage(archive) {
   };
   try {
     const packaged = unpack(archive, work);
-    const manifest = JSON.parse(readFileSync(join(packaged, "lilac-package.json"), "utf8"));
+    const manifest = JSON.parse(readFileSync(join(packaged, "ninerr-package.json"), "utf8"));
     const executable = join(packaged, manifest.executable);
     const home = join(work, "home");
     const projects = join(work, "projects");
@@ -105,7 +105,7 @@ export async function preparePackage(archive) {
       let packagedRun = false;
       const record = (chunk) => {
         output = (output + chunk).slice(-4000);
-        if (String(chunk).includes("lilac: desktop app (packaged)")) packagedRun = true;
+        if (String(chunk).includes("ninerr: desktop app (packaged)")) packagedRun = true;
       };
       child.stdout.on("data", record);
       child.stderr.on("data", record);
@@ -132,7 +132,7 @@ export async function preparePackage(archive) {
         output: () => output,
         packaged: () => packagedRun,
         async quit() {
-          // As the person does: close the window (its page target); Lilac quits and closes
+          // As the person does: close the window (its page target); Ninerr quits and closes
           // its host.
           const pageSession = await page.context().newCDPSession(page);
           const { targetInfo } = await pageSession.send("Target.getTargetInfo");

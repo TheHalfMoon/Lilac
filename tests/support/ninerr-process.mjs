@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 import { findBrowser } from "./browser.mjs";
 
-// Run Lilac the way a person does (npm start, scripts/lilac.mjs), under the no-network
-// preload, and open its links in Chromium with every request outside Lilac recorded.
+// Run Ninerr the way a person does (npm start, scripts/ninerr.mjs), under the no-network
+// preload, and open its links in Chromium with every request outside Ninerr recorded.
 
-export const attemptsIn = (text) => text.split("\n").filter((line) => line.startsWith("LILAC-NETWORK-ATTEMPT"));
+export const attemptsIn = (text) => text.split("\n").filter((line) => line.startsWith("NINERR-NETWORK-ATTEMPT"));
 
 export function run(args, env = {}) {
   const child = spawn(process.execPath, ["--import", "./tests/support/no-network.mjs", ...args], { env: { ...process.env, ...env }, stdio: ["pipe", "pipe", "pipe"] });
@@ -19,39 +19,39 @@ export function run(args, env = {}) {
   return { child, output, exited };
 }
 
-export async function startLilac(projects) {
-  const lilac = run(["scripts/lilac.mjs", "--projects", projects, "--port", "0"], { LILAC_STDIN_LINKS: "1" });
+export async function startNinerr(projects) {
+  const ninerr = run(["scripts/ninerr.mjs", "--projects", projects, "--port", "0"], { NINERR_STDIN_LINKS: "1" });
   const links = [];
   const nextLink = async () => {
     const seen = links.length;
     for (let tries = 0; tries < 500; tries += 1) {
-      const all = [...lilac.output.stdout.matchAll(/^Open Lilac: (\S+)$/gmu)].map((match) => match[1]);
+      const all = [...ninerr.output.stdout.matchAll(/^Open Ninerr: (\S+)$/gmu)].map((match) => match[1]);
       if (all.length > seen) {
         links.push(...all.slice(seen));
         return all[seen];
       }
-      if (lilac.child.exitCode !== null) throw new Error(`lilac exited: ${lilac.output.stderr}`);
+      if (ninerr.child.exitCode !== null) throw new Error(`ninerr exited: ${ninerr.output.stderr}`);
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    throw new Error("lilac printed no link");
+    throw new Error("ninerr printed no link");
   };
   const first = await nextLink();
   return {
-    ...lilac,
+    ...ninerr,
     first,
     origin: new URL(first).origin,
     async newLink() {
-      lilac.child.stdin.write("\n");
+      ninerr.child.stdin.write("\n");
       return nextLink();
     },
     async stop() {
-      lilac.child.kill("SIGTERM");
-      return lilac.exited;
+      ninerr.child.kill("SIGTERM");
+      return ninerr.exited;
     },
     /** A crash: the process is killed outright, with no chance to clean up. */
     async kill() {
-      lilac.child.kill("SIGKILL");
-      return lilac.exited;
+      ninerr.child.kill("SIGKILL");
+      return ninerr.exited;
     },
   };
 }

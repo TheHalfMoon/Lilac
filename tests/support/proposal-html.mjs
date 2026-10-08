@@ -1,4 +1,4 @@
-// Reference serializer for import proposals, used only by tests (Lilac has no product
+// Reference serializer for import proposals, used only by tests (Ninerr has no product
 // HTML exporter yet). It writes a proposal back to HTML so that re-importing it can be
 // compared with the proposal it came from.
 

@@ -11,6 +11,8 @@ export const LEGACY_CODEBASE_LINKS_FILE = ".lilac-codebases.json";
 /** Credentials issued before the rename keep authenticating (only their sha256 is stored). */
 export const LEGACY_AGENT_TOKEN_PREFIX = "lilac_agent_";
 export const LEGACY_PROJECTS_ENV = "LILAC_PROJECTS";
+/** The variable MCP clients set the agent credential in before the rename. */
+export const LEGACY_MCP_TOKEN_ENV = "LILAC_MCP_TOKEN";
 export const legacyProjectsFolder = (): string => join(homedir(), "Lilac Projects");
 
 /** The path, when it exists as anything at all (links included). */

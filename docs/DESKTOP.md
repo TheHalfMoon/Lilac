@@ -10,8 +10,8 @@ node scripts/fetch-electron.mjs
 <runtime> packages/desktop
 ```
 
-- **The runtime.** `scripts/fetch-electron.mjs` downloads the pinned Electron runtime (44.7.0) for this computer. It checks the archive against its pinned SHA-256 before unpacking it into `.lilac-cache/`, and prints where the runtime is.
-- **On Linux,** the runtime is `.lilac-cache/electron/v44.7.0/linux-x64/electron`, and Chromium's sandbox needs unprivileged user namespaces (see below).
+- **The runtime.** `scripts/fetch-electron.mjs` downloads the pinned Electron runtime (44.7.0) for this computer. It checks the archive against its pinned SHA-256 before unpacking it into `.ninerr-cache/`, and prints where the runtime is.
+- **On Linux,** the runtime is `.ninerr-cache/electron/v44.7.0/linux-x64/electron`, and Chromium's sandbox needs unprivileged user namespaces (see below).
 
 ## Packages
 

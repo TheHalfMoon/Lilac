@@ -174,3 +174,11 @@ test("the studio host lists a legacy project and opens it by migrating it, leavi
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("the MCP relay reads the credential from the legacy variable, with a note", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const env = { ...process.env, NINERR_MCP_TOKEN: "", LILAC_MCP_TOKEN: "ninerr_agent_x" };
+  const result = spawnSync(process.execPath, ["scripts/ninerr-mcp.mjs", "--url", "http://127.0.0.1:9/mcp"], { env, input: "", encoding: "utf8", timeout: 15_000 });
+  assert.match(result.stderr, /LILAC_MCP_TOKEN is read because NINERR_MCP_TOKEN is not set/u);
+  assert.doesNotMatch(result.stderr, /set NINERR_MCP_TOKEN/u, "the legacy credential is used");
+});

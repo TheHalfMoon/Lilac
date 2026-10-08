@@ -62,7 +62,7 @@ test("the release is a draft for an existing tag, and every collected file is si
   for (const target of ["linux-x64", "darwin-arm64", "win32-x64"]) assert.ok(all.collect.includes(target), `collect checks the ${target} archive`);
   assert.match(all.collect, /if \[ "\$count" -ne 7 \]/, "collect refuses a set missing any file");
   // collect downloads each archive by the exact name the Desktop workflow uploads it under.
-  const upload = /name: (lilac-desktop-\$\{\{ matrix\.target \}\}-\$\{\{ [^}]+\}\})\n/.exec(read(".github/workflows/desktop.yml"))?.[1];
+  const upload = /name: (ninerr-desktop-\$\{\{ matrix\.target \}\}-\$\{\{ [^}]+\}\})\n/.exec(read(".github/workflows/desktop.yml"))?.[1];
   assert.ok(upload, "desktop.yml uploads each package under one name");
   for (const target of ["linux-x64", "darwin-arm64", "win32-x64"]) {
     assert.ok(all.collect.includes(`name: ${upload.replace("${{ matrix.target }}", target)}\n`), `collect downloads ${target} by its upload name`);

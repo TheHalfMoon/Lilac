@@ -2,15 +2,15 @@
 // are trapped: TCP sockets (and so net, tls, http, https, http2 and fetch, which all
 // connect through net.Socket), DNS, UDP, helper processes, worker threads, and the raw
 // bindings and native addons behind them. A connection to a loopback address is allowed (the editor and the MCP relay talk
-// to Lilac on 127.0.0.1); any other connection, any DNS lookup of a name other than
+// to Ninerr on 127.0.0.1); any other connection, any DNS lookup of a name other than
 // localhost, any UDP socket and any helper process is refused and reported on stderr as
-// "LILAC-NETWORK-ATTEMPT <what>", so a test can assert there were none.
+// "NINERR-NETWORK-ATTEMPT <what>", so a test can assert there were none.
 import { createRequire, syncBuiltinESMExports } from "node:module";
 
 const require = createRequire(import.meta.url);
 const net = require("node:net");
 const report = (label) => {
-  process.stderr.write(`LILAC-NETWORK-ATTEMPT ${label}\n`);
+  process.stderr.write(`NINERR-NETWORK-ATTEMPT ${label}\n`);
   return new Error(`network access attempted: ${label}`);
 };
 const loopback = (host) => {

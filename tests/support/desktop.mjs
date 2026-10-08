@@ -1,4 +1,4 @@
-// Run the Lilac desktop app (packages/desktop) in tests, through playwright-core's Electron
+// Run the Ninerr desktop app (packages/desktop) in tests, through playwright-core's Electron
 // driver, on the pinned Electron runtime (node scripts/fetch-electron.mjs). On Linux without
 // a display, a private Xvfb server is started. Electron's OS sandbox cannot run as root,
 // and the app never turns it off, so these tests run as an ordinary user: locally, as root
@@ -48,7 +48,7 @@ export async function launchDesktop({ env = {}, args = [] } = {}) {
     timeout: 30_000,
   });
   const errors = [];
-  // The app's own output (Electron's and Lilac's), for a launch that fails.
+  // The app's own output (Electron's and Ninerr's), for a launch that fails.
   let output = "";
   app.process().stderr?.on("data", (chunk) => {
     output = (output + chunk).slice(-4000);

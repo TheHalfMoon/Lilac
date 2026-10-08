@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fetch the pinned Electron runtime for this computer (or --target <platform-arch>), verify
-// it against its pinned SHA-256, and unpack it into .lilac-cache/electron. The desktop app's
+// it against its pinned SHA-256, and unpack it into .ninerr-cache/electron. The desktop app's
 // tests and packaging use it.
 //
 //   node scripts/fetch-electron.mjs [--target linux-x64|darwin-arm64|win32-x64]

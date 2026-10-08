@@ -53,7 +53,7 @@ function assertRoundTrips(doc, seed, roundTrip = designRoundTrip) {
   const problem = divergence(doc, roundTrip);
   if (problem === null) return;
   const minimal = shrinkDesign(doc, (candidate) => divergence(candidate, roundTrip) !== null);
-  const replay = typeof seed === "number" ? ` (replay with LILAC_PROPERTY_SEED=${seed})` : "";
+  const replay = typeof seed === "number" ? ` (replay with NINERR_PROPERTY_SEED=${seed})` : "";
   assert.fail(`seed ${seed}: design -> code -> design ${divergence(minimal, roundTrip)}; minimal input ${JSON.stringify(minimal)}${replay}`);
 }
 
@@ -215,7 +215,7 @@ test("the shrinker reports the minimal failing input", () => {
   assert.throws(() => assertRoundTrips(doc, 7, lossy), (error) => {
     assert.match(error.message, /seed 7: design -> code -> design diverged/u);
     assert.match(error.message, /minimal input \{"componentName":"Gen","root":\{"tag":"span","props":\{\},"text":"\{"\}\}/u);
-    assert.match(error.message, /LILAC_PROPERTY_SEED=7/u);
+    assert.match(error.message, /NINERR_PROPERTY_SEED=7/u);
     return true;
   });
 });

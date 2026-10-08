@@ -247,7 +247,7 @@ const SUBSYSTEMS = [
     title: "Studio host",
     owner: "@ninerr/studio-host",
     status: "stub",
-    boundary: "Single writer of an open project for the product surfaces: a loopback-only HTTP API (127.0.0.1, per-launch token, Host and Origin checks) over persistence, history and collaboration attribution, with undo/redo as committed inverse transactions, a server-sent change stream, and lock and recovery reporting (PC1); it serves the editor (PC4) and hosts the MCP endpoint and agent registry (PC5), and imports reviewed HTML offline through import-stack and intake (PC6). It links one local code folder per project and brings components in from it, writing reviewed edits back to their files (`/api/codebase/*`, person-only, PC11a). Local web mode (`npm start`, scripts/lilac.mjs, PC7) runs it directly, and the desktop app runs it in Electron's main process (PC9).",
+    boundary: "Single writer of an open project for the product surfaces: a loopback-only HTTP API (127.0.0.1, per-launch token, Host and Origin checks) over persistence, history and collaboration attribution, with undo/redo as committed inverse transactions, a server-sent change stream, and lock and recovery reporting (PC1); it serves the editor (PC4) and hosts the MCP endpoint and agent registry (PC5), and imports reviewed HTML offline through import-stack and intake (PC6). It links one local code folder per project and brings components in from it, writing reviewed edits back to their files (`/api/codebase/*`, person-only, PC11a). Local web mode (`npm start`, scripts/ninerr.mjs, PC7) runs it directly, and the desktop app runs it in Electron's main process (PC9).",
     dependsOn: ["persistence", "history", "collaboration", "network-policy", "import-export", "intake"],
   },
   {

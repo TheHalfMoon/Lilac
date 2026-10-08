@@ -273,16 +273,16 @@ test("metadata stays denied even when private-network scans are allowed", async 
 // The real engine launches whatever the runner names as its browser; a stand-in browser
 // records the argv it is started with and exits, so the scan itself fails.
 test("the runner starts the browser only through a wrapper that forces the proxy", { skip: process.platform === "win32" }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "lilac-browser-proxy-"));
+  const dir = await mkdtemp(join(tmpdir(), "ninerr-browser-proxy-"));
   try {
     const record = join(dir, "argv.txt");
     const fakeBrowser = join(dir, "fake-browser");
     await writeFile(fakeBrowser, `#!/bin/sh\nfor a do printf '%s\\n' "$a"; done > ${record}\nexit 3\n`);
     await chmod(fakeBrowser, 0o755);
     const runner = createImpeccableCliRunner({ browserExecutable: fakeBrowser, timeoutMs: 60_000 });
-    const before = readdirSync(tmpdir()).filter((name) => name.startsWith("lilac-browser-")).length;
+    const before = readdirSync(tmpdir()).filter((name) => name.startsWith("ninerr-browser-")).length;
     await assert.rejects(runner.scanTarget("http://site.test/", { proxyUrl: "http://127.0.0.1:9" }));
-    assert.equal(readdirSync(tmpdir()).filter((name) => name.startsWith("lilac-browser-")).length, before, "the wrapper is removed");
+    assert.equal(readdirSync(tmpdir()).filter((name) => name.startsWith("ninerr-browser-")).length, before, "the wrapper is removed");
     if (!existsSync(record)) return assert.fail("the engine did not start the configured browser");
     const argv = readFileSync(record, "utf8").trim().split("\n");
     assert.deepEqual(argv.slice(0, 5), [
@@ -300,7 +300,7 @@ test("the runner starts the browser only through a wrapper that forces the proxy
 });
 
 test("the wrapper drops proxy switches the launcher passes", { skip: process.platform === "win32" }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "lilac-browser-proxy-"));
+  const dir = await mkdtemp(join(tmpdir(), "ninerr-browser-proxy-"));
   try {
     const record = join(dir, "argv.txt");
     const fakeBrowser = join(dir, "fake-browser");
@@ -318,9 +318,9 @@ test("the wrapper drops proxy switches the launcher passes", { skip: process.pla
   }
 });
 
-// End to end with a real Chromium when one is available (LILAC_TEST_BROWSER, or the
+// End to end with a real Chromium when one is available (NINERR_TEST_BROWSER, or the
 // usual locations). --no-sandbox only because CI and containers may run as root.
-const realBrowser = [process.env.LILAC_TEST_BROWSER, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find((path) => typeof path === "string" && path !== "" && existsSync(path));
+const realBrowser = [process.env.NINERR_TEST_BROWSER, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find((path) => typeof path === "string" && path !== "" && existsSync(path));
 
 test("a real browser scan fails closed on a private subresource", { skip: realBrowser === undefined || process.platform === "win32" ? "no Chromium available" : false, timeout: 120_000 }, async () => {
   const page = '<html><body><h1>Scan me</h1><img src="http://169.254.169.254/latest/meta-data/x.png"></body></html>';
