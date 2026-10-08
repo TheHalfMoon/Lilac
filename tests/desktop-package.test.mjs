@@ -85,7 +85,8 @@ test("the package holds the packages the shell and the editor reach, and no othe
   const dir = scratch();
   try {
     writeFileSync(join(dir, "entry.mjs"), 'import "./side-effect.mjs";\nimport { x } from "../../outside.mjs";\n');
-    assert.throws(() => reachablePackages([join(dir, "entry.mjs")]), /outside packages/u);
+    // The bare import comes first, so it is the one named: bare imports are followed too.
+    assert.throws(() => reachablePackages([join(dir, "entry.mjs")]), /imports \.\/side-effect\.mjs, outside packages/u);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

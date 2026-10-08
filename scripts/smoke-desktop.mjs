@@ -112,8 +112,14 @@ async function main() {
       const child = spawn(executable, [`--remote-debugging-port=${port}`, `--proxy-server=http://127.0.0.1:${proxy.address().port}`, "--enable-logging=stderr"], { env, stdio: ["ignore", "pipe", "pipe"] });
       running.add(child);
       let output = "";
-      child.stdout.on("data", (chunk) => (output = (output + chunk).slice(-4000)));
-      child.stderr.on("data", (chunk) => (output = (output + chunk).slice(-4000)));
+      // Noted as it arrives, so Chromium's own logging cannot push it out of the buffer.
+      let packaged = false;
+      const record = (chunk) => {
+        output = (output + chunk).slice(-4000);
+        if (String(chunk).includes("lilac: desktop app (packaged)")) packaged = true;
+      };
+      child.stdout.on("data", record);
+      child.stderr.on("data", record);
       const exited = new Promise((resolveExit) => child.once("exit", (code) => {
         running.delete(child);
         resolveExit(code);
@@ -135,6 +141,7 @@ async function main() {
       return {
         page,
         output: () => output,
+        packaged: () => packaged,
         async quit() {
           // As the person does: close the window (its page target); Lilac quits and closes
           // its host.
@@ -154,7 +161,7 @@ async function main() {
     let { page } = lilac;
     check("the editor runs isolated, in the desktop app", await page.evaluate(() => typeof process === "undefined" && typeof require === "undefined" && window.lilacDesktop?.desktop === true));
     // A packaged run allows no developer tools (in the window, its requests and its menu).
-    const packagedRun = lilac.output().includes("lilac: desktop app (packaged)");
+    const packagedRun = lilac.packaged();
     check("it runs as a packaged app", packagedRun, packagedRun ? undefined : lilac.output().slice(-300));
     await page.locator("#new-project-name").fill("smoke");
     await page.locator("#dialog[open] button.primary", { hasText: "Create project" }).click();

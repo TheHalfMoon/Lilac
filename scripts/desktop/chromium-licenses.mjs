@@ -10,12 +10,12 @@ const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", apos: "'" 
 const unescape = (text) => text.replace(/&(amp|lt|gt|quot|#39|apos);/gu, (_match, name) => ENTITIES[name]).replace(/&#(\d+);/gu, (_match, code) => String.fromCodePoint(Number(code)));
 
 const FAMILIES = [
-  ["LGPL", /gnu (?:lesser|library) general public license|\blgpl-?\d/u],
-  ["GPL", /gnu general public license|(?<![al])gpl-?\d/u],
+  ["LGPL", /gnu (?:lesser|library) general public license|\blgpl-?v?\d/u],
+  ["GPL", /gnu general public license|(?<![al])gpl-?v?\d/u],
   ["MPL", /mozilla public license|\bmpl-?\d/u],
   ["EPL", /eclipse public license|\bepl-?\d/u],
   ["CDDL", /common development and distribution license|\bcddl-?\d/u],
-  ["AGPL", /gnu affero general public license|\bagpl-?\d/u],
+  ["AGPL", /gnu affero general public license|\bagpl-?v?\d/u],
   ["Apache", /apache license/u],
   ["MIT-style", /permission is hereby granted, free of charge/u],
   ["BSD-style", /redistribution and use in source and binary forms/u],
@@ -23,9 +23,17 @@ const FAMILIES = [
 const NOT_PERMISSIVE = new Set(["LGPL", "GPL", "MPL", "EPL", "CDDL", "AGPL"]);
 
 // Reviewed components whose license text names a non-permissive license, with why each
-// is acceptable for an Apache-2.0 Lilac that redistributes the runtime unmodified.
+// is acceptable for an Apache-2.0 Lilac that redistributes the runtime changed only in
+// Electron's fuse bytes.
 export const REVIEWED = Object.freeze({
   WebKit: "LGPL-2.0+/LGPL-2.1+ and BSD files in Blink (from WebKit and KHTML), statically linked into the Electron binary. Lilac changes the binary only in Electron's documented fuse bytes (recorded in lilac-package.json); its corresponding source is Electron v44.7.0, with Chromium at its pinned revision, plus those fuse settings. Lilac's own code is a separate program the runtime loads, not linked into it. The LGPL source offer for a binary release is part of the release audit (PC-L, #139)",
+  // Apache-2.0 WITH LLVM-exception: its text names GPLv2 only to permit combining with it.
+  "compiler-rt": "Apache-2.0 WITH LLVM-exception; GPLv2 is named only in the exception",
+  libcxx: "Apache-2.0 WITH LLVM-exception; GPLv2 is named only in the exception",
+  libcxxabi: "Apache-2.0 WITH LLVM-exception; GPLv2 is named only in the exception",
+  libunwind: "Apache-2.0 WITH LLVM-exception; GPLv2 is named only in the exception",
+  "llvm-libc": "Apache-2.0 WITH LLVM-exception; GPLv2 is named only in the exception",
+  dragonbox: "Apache-2.0 WITH LLVM-exception (or Boost-1.0); GPLv2 is named only in the exception",
   "v4l-utils": "LGPL-2.1 libv4l; loaded from the system where used, not shipped",
   ffmpeg: "LGPL-2.1+, built into the separately linked libffmpeg (replaceable); source is Chromium's third_party/ffmpeg at the release's Chromium revision",
   icu: "Unicode/ICU license; the GPL text is pkg-config's build macro, not in the binary",

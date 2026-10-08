@@ -51,15 +51,17 @@ It records eleven checks:
 
 ## Evidence
 
-All results are from CI on head `4631be4`. Each runner annotates its result as "Desktop package evidence".
+All results are from CI on head `cdaa854`. Each runner annotates its result as "Desktop package evidence". The app tree's SHA-256 depends only on what ships in the app, so a later commit that changes only this record keeps the same app digests.
 
 | Target | Runner | Archive SHA-256 | App tree SHA-256 | Signature | Smoke |
 |---|---|---|---|---|---|
-| linux-x64 | ubuntu-latest | `60c9983dea28a1125c529a8139a017d9bf40306e7dfd831b59fc9524af40c0d4` | `a13bcd39…` | unsigned | 10/10 |
-| darwin-arm64 | macos-latest | `e0028a8adf6a552db103bb1262d6393916f2f15c7aa7935fca0e4211e5777809` | `308318a0…` | ad-hoc | 10/10 |
-| win32-x64 | windows-latest | `a13cde3519cc43ac12e08bfad5866d8c5578440e85ec138329e46993f0796cbc` | `8a5f612f…` | unsigned | 10/10 |
+| linux-x64 | ubuntu-latest | `0c0795af2bae495906f3b8f4f45600205bc376527620ffd90919fd4b733cd7f8` | `2ee9c7e5…` | unsigned | 11/11 |
+| darwin-arm64 | macos-latest | `2bc0a7f6bcdb29fce7b555811d2ac43f08e8e95ea1a2ca8c9ecf7451af1b68be` | `e8746d73…` | ad-hoc | 11/11 |
+| win32-x64 | windows-latest | `4338df91e4295b5edac09f85442c7b11a98cecce7743c2dcd372d99ffd5e530c` | `d555e299…` | unsigned | 11/11 |
 
-**Locally,** in this container, the Linux package was built and smoke-tested as an unprivileged user: 10/10.
+The archives differ between builds of the same commit, because tar and zip record file times. The app tree's digest is reproducible: a local Linux build matched CI's.
+
+**Locally,** in this container, the Linux package was built and smoke-tested as an unprivileged user: 11/11.
 
 **One failure on Windows, now fixed.** The first Windows smoke run crashed the app at start (exit `0x80000003`). The smoke test had pointed `APPDATA` and `LOCALAPPDATA` at folders that did not exist. A person's account always has them, so the smoke test now creates them.
 
@@ -108,7 +110,7 @@ Packaging passed the review on all three runners, so the macOS and Windows notic
 - the written source offer that LGPL-2.1 asks of a binary release, for statically linked Blink and for FFmpeg;
 - whether Lilac's own attribution bundle should ship inside the desktop package. The release evidence bundle (`docs/RELEASE.md`) is published beside each release. The package carries the notices that redistribution needs: Electron's two files, `THIRD_PARTY_NOTICES.md`, and each dependency's own license text.
 
-**How the classifier matches.** It matches license names in full and SPDX-style ids (for example `LGPL-2.1`, `MPL-2.0`).
+**How the classifier matches.** It matches license names in full, SPDX-style ids (for example `LGPL-2.1`, `MPL-2.0`) and `GPLv2`-style names. The last of these brought in the LLVM runtime libraries (compiler-rt, libc++, libc++abi, libunwind, llvm-libc) and dragonbox. They are Apache-2.0 with the LLVM exception, which names GPLv2 only to permit combining with it, and they are reviewed as such.
 
 **What this review is not.** It is an engineering review of the notices Electron publishes, not legal advice. The founder's Apache-2.0 audit (PC-L) relies on it.
 
