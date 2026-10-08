@@ -8,7 +8,7 @@ import {
   type DecisionAdapter,
   type DecisionDimension,
   type DecisionRequestLedger,
-} from "@lilac/decision-router";
+} from "@ninerr/decision-router";
 import { assessCandidate } from "./checks.ts";
 import { DecisionAssuranceValidationError } from "./errors.ts";
 import {

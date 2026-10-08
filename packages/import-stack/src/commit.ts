@@ -61,7 +61,7 @@ export function commitImportProposal(
     operations,
     baseRevision: input.baseRevision,
     intent: proposal.intent,
-    tool: "@lilac/import-stack",
+    tool: "@ninerr/import-stack",
     timestamp: input.at,
     metadata: {
       import: {

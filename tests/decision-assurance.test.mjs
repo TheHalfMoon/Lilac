@@ -74,7 +74,7 @@ function ruleIds(record, candidateId) {
 test("provenance declares record-only posture and package has no external dependencies", () => {
   assert.match(DECISION_ASSURANCE_PROVENANCE.posture, /never mutates documents or applies candidates/);
   const manifest = JSON.parse(readFileSync(new URL("../packages/decision-assurance/package.json", import.meta.url), "utf8"));
-  assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["@lilac/decision-router", "@lilac/design-method"]);
+  assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["@ninerr/decision-router", "@ninerr/design-method"]);
 });
 
 test("built-in accessibility, layout, and design-system checks report evidence", async () => {

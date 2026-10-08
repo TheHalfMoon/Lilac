@@ -5,7 +5,7 @@ import {
   cloneJson,
   normalizeJson,
   type JsonValue,
-} from "@lilac/agent-runtime";
+} from "@ninerr/agent-runtime";
 import { AgentEventError, EventCorrelationError } from "./errors.ts";
 
 export const AGENT_EVENT_SCHEMA_VERSION = 1;

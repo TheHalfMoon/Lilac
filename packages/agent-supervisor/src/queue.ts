@@ -1,4 +1,4 @@
-import { canonicalStringify, cloneJson } from "@lilac/agent-runtime";
+import { canonicalStringify, cloneJson } from "@ninerr/agent-runtime";
 import { SupervisorQueueError } from "./errors.ts";
 import { MAX_QUEUE_ENTRIES, MAX_QUEUE_RECORD_BYTES, MAX_SUPERVISOR_ID_LENGTH, SUPERVISOR_SCHEMA_VERSION, type SupervisedTaskRecord, type SupervisorQueueEntry, type SupervisorQueueState } from "./types.ts";
 

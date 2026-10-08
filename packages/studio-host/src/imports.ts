@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { IMPORT_SCHEMA_VERSION, defaultImportPolicy, importHtmlSnapshot, validateImportProposal, type ImportProposal } from "@lilac/import-stack";
+import { IMPORT_SCHEMA_VERSION, defaultImportPolicy, importHtmlSnapshot, validateImportProposal, type ImportProposal } from "@ninerr/import-stack";
 import { inferSemantics, reviewImport } from "@lilac/intake";
 import { StudioError } from "./errors.ts";
 

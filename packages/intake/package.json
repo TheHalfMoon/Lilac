@@ -8,9 +8,9 @@
     "node": ">=22.18.0"
   },
   "dependencies": {
-    "@lilac/design-assurance": "0.0.0",
+    "@ninerr/design-assurance": "0.0.0",
     "@ninerr/history": "0.0.0",
-    "@lilac/import-stack": "0.0.0",
+    "@ninerr/import-stack": "0.0.0",
     "@ninerr/network-policy": "0.0.0",
     "@ninerr/persistence": "0.0.0"
   }

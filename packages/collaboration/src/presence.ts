@@ -1,4 +1,4 @@
-import { canonicalStringify } from "@lilac/agent-runtime";
+import { canonicalStringify } from "@ninerr/agent-runtime";
 import { CollaborationProtocolError } from "./errors.ts";
 import { assertAllowedKeys, assertBoundedString, assertPlainObject, assertTimestamp, normalizeActor, normalizeEditing, normalizePoint, normalizeStatus, normalizeViewport } from "./validation.ts";
 import { COLLABORATION_SCHEMA_VERSION, MAX_EPHEMERAL_MESSAGE_BYTES, type CollaborationViewport, type PresenceSession } from "./types.ts";

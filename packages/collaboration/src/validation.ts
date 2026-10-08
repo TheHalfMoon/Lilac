@@ -1,4 +1,4 @@
-import { normalizeJson } from "@lilac/agent-runtime";
+import { normalizeJson } from "@ninerr/agent-runtime";
 import { CollaborationValidationError } from "./errors.ts";
 import {
   COLLABORATION_SCHEMA_VERSION,

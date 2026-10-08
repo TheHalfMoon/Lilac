@@ -1,4 +1,4 @@
-import { canonicalStringify, cloneJson } from "@lilac/agent-runtime";
+import { canonicalStringify, cloneJson } from "@ninerr/agent-runtime";
 import { AgentEventError, EventCorrelationError } from "./errors.ts";
 import { type AgentEvent, type AgentEventKind, type PlanStep, validateAgentEvent } from "./events.ts";
 

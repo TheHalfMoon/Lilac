@@ -1,11 +1,11 @@
 {
-  "name": "@lilac/collaboration",
+  "name": "@ninerr/collaboration",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@lilac/agent-runtime": "0.0.0",
+    "@ninerr/agent-runtime": "0.0.0",
     "@ninerr/history": "0.0.0"
   }
 }

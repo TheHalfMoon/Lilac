@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { SupervisorOwnershipError, SupervisorRecordError, SupervisorRuntimeError, SupervisorWorktreeError } from "./errors.ts";
 import { deserializeTaskRecord, serializeTaskRecord } from "./records.ts";
 import { deserializeSupervisorQueue, serializeSupervisorQueue, type SupervisorQueueStore } from "./queue.ts";
-import { canonicalStringify, cloneJson } from "@lilac/agent-runtime";
+import { canonicalStringify, cloneJson } from "@ninerr/agent-runtime";
 import type { RecoveryJournalStore, RuntimeAdapter, SupervisorLockAdapter, TaskStore } from "./supervisor.ts";
 import type { LeaseLivenessEvidence, RecoveryJournal, RuntimeEndpointIdentity, RuntimeEvidence, SupervisedTaskRecord, SupervisorLease, SupervisorQueueState, WorktreeEvidence } from "./types.ts";
 

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, lstatSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { LocalCollaborationRoom, createAccessPolicy, createCollaborationState } from "@lilac/collaboration";
+import { LocalCollaborationRoom, createAccessPolicy, createCollaborationState } from "@ninerr/collaboration";
 import { createDocument } from "@ninerr/document-model";
 import { createHistoryState } from "@ninerr/history";
 import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, createProject, migrateLegacyProject, openProject, projectLayout, type ProjectStore, type RecoveryReport } from "@ninerr/persistence";

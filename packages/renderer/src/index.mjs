@@ -10,7 +10,7 @@
 //   attributes  { name: string } (allowlisted names, sanitized values)
 //   style       { css-property: string } (sanitized values)
 //   name        layer name for the editor; never rendered
-// Anything else in props is ignored by the renderer. Imported nodes (@lilac/import-stack)
+// Anything else in props is ignored by the renderer. Imported nodes (@ninerr/import-stack)
 // already use { tag, text, attributes, style }.
 
 export const RENDERER_SCHEMA_VERSION = 1;

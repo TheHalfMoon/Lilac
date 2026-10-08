@@ -1,5 +1,5 @@
-import { accessibilityTreeFromImportProposal, auditAccessibility } from "@lilac/design-assurance";
-import { validateImportProposal, type ImportProposal } from "@lilac/import-stack";
+import { accessibilityTreeFromImportProposal, auditAccessibility } from "@ninerr/design-assurance";
+import { validateImportProposal, type ImportProposal } from "@ninerr/import-stack";
 import { inferSemantics } from "./semantics.ts";
 import type { ImportReview, SemanticRole } from "./types.ts";
 
@@ -13,7 +13,7 @@ const SEVERITY_ORDER = { error: 0, warning: 1, info: 2 } as const;
  *
  * The review is advisory: diagnostics and the security summary are fields carried by the
  * proposal, so a tampered proposal can hide them. The integrity guarantee is that
- * `@lilac/import-stack` re-validates every node's content (tags, attributes, URLs, styles)
+ * `@ninerr/import-stack` re-validates every node's content (tags, attributes, URLs, styles)
  * when the proposal is committed.
  */
 export function reviewImport(proposalInput: ImportProposal): ImportReview {

@@ -1,4 +1,4 @@
-import { canonicalStringify } from "@lilac/agent-runtime";
+import { canonicalStringify } from "@ninerr/agent-runtime";
 import { CollaborationAuthorizationError, CollaborationNotFoundError, CollaborationValidationError } from "./errors.ts";
 import { assertAllowedKeys, assertBoundedString, assertPlainObject, assertTimestamp, normalizeActor } from "./validation.ts";
 import {

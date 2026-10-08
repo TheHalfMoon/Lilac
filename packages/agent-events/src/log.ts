@@ -1,4 +1,4 @@
-import { canonicalStringify, cloneJson } from "@lilac/agent-runtime";
+import { canonicalStringify, cloneJson } from "@ninerr/agent-runtime";
 import { AgentEventError, EventSequenceError } from "./errors.ts";
 import {
   AGENT_EVENT_KINDS,

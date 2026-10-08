@@ -1,4 +1,4 @@
-import { assertTimestamp, canonicalStringify, cloneJson, normalizeJson } from "@lilac/agent-runtime";
+import { assertTimestamp, canonicalStringify, cloneJson, normalizeJson } from "@ninerr/agent-runtime";
 import { SupervisorRecordError } from "./errors.ts";
 import {
   MAX_PATH_LENGTH,

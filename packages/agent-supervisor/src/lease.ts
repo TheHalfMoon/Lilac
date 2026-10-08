@@ -1,4 +1,4 @@
-import { cloneJson } from "@lilac/agent-runtime";
+import { cloneJson } from "@ninerr/agent-runtime";
 import { SupervisorLeaseError, SupervisorOwnershipError } from "./errors.ts";
 import type { LeaseLivenessEvidence, SupervisorLease } from "./types.ts";
 

@@ -1,5 +1,5 @@
 export const DESIGN_METHOD_PROVENANCE = {
-  package: "@lilac/design-method",
+  package: "@ninerr/design-method",
   guidanceDonors: [
     {
       donor: "Appllama/appllama-skills",

@@ -1,5 +1,5 @@
 export const DECISION_ROUTER_PROVENANCE = {
-  package: "@lilac/decision-router",
+  package: "@ninerr/decision-router",
   guidanceDonor: "mrmps/classifier-dev",
   donorRevision: "a17bf2b6353f6234af6e977a463da7cd1975b68e",
   donorLicense: "MIT",
