@@ -1,5 +1,5 @@
 import { cloneJson } from "@ninerr/agent-runtime";
-import type { AgentEventDataMap } from "@lilac/agent-events";
+import type { AgentEventDataMap } from "@ninerr/agent-events";
 import { SupervisorOwnershipError, SupervisorRecoveryError, SupervisorRuntimeError, SupervisorWorktreeError } from "./errors.ts";
 import { acquireLease, assertLeaseOwner, releaseLease } from "./lease.ts";
 import { assertReplacementAllowed, advanceRecoveryJournal, createRecoveryJournal } from "./recovery.ts";

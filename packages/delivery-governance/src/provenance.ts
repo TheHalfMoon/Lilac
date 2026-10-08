@@ -1,5 +1,5 @@
 export const DELIVERY_GOVERNANCE_PROVENANCE = {
-  package: "@lilac/delivery-governance",
+  package: "@ninerr/delivery-governance",
   guidanceDonor: "kunchenguid/no-mistakes",
   donorRevision: "0616eb4911845e2ba04faa17186ecd2686d7d579",
   donorLicense: "MIT",

@@ -58,7 +58,7 @@ function replaceNode(nodes, id, patch) {
 }
 
 test("provenance declares project-owned record-only posture", () => {
-  assert.equal(VISUAL_GIT_PROVENANCE.package, "@lilac/visual-git");
+  assert.equal(VISUAL_GIT_PROVENANCE.package, "@ninerr/visual-git");
   assert.match(VISUAL_GIT_PROVENANCE.posture, /never executes git, mutates documents, or merges branches/);
 });
 

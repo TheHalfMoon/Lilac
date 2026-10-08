@@ -8,9 +8,8 @@ import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 
 const APP_ROOT = new URL("../../../", import.meta.url);
-// The workspace scopes: @ninerr, and @lilac until every package has moved (N0-G3).
-const SCOPE = /^@(?:ninerr|lilac)\/([a-z][a-z0-9-]*)$/u;
-const IN_SCOPE = /^@(?:ninerr|lilac)\//u;
+const SCOPE = /^@ninerr\/([a-z][a-z0-9-]*)$/u;
+const IN_SCOPE = /^@ninerr\//u;
 
 function entryOf(name) {
   const manifest = JSON.parse(readFileSync(new URL(`packages/${name}/package.json`, APP_ROOT), "utf8"));

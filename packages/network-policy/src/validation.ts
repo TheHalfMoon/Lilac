@@ -2,7 +2,7 @@ import { types } from "node:util";
 import { NetworkPolicyValidationError } from "./errors.ts";
 import { NETWORK_LIMITS } from "./types.ts";
 
-// Shared hidden-text rule (same as @lilac/decision-assurance; a cross-package policy is
+// Shared hidden-text rule (same as @ninerr/decision-assurance; a cross-package policy is
 // tracked in #64): controls, format characters, separators, and blank fillers are refused.
 const HIDDEN_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{34f}\u{115f}\u{1160}\u{2800}\u{3164}\u{ffa0}]/u;
 

@@ -1,5 +1,5 @@
 {
-  "name": "@lilac/studio-host",
+  "name": "@ninerr/studio-host",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,8 +13,8 @@
     "@ninerr/document-model": "0.0.0",
     "@ninerr/history": "0.0.0",
     "@ninerr/import-stack": "0.0.0",
-    "@lilac/intake": "0.0.0",
-    "@lilac/mcp-protocol": "0.0.0",
+    "@ninerr/intake": "0.0.0",
+    "@ninerr/mcp-protocol": "0.0.0",
     "@ninerr/network-policy": "0.0.0",
     "@ninerr/persistence": "0.0.0",
     "@ninerr/renderer": "0.0.0"

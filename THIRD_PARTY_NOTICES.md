@@ -51,7 +51,7 @@ Impeccable's upstream `NOTICE.md` at the pinned revision is reproduced verbatim 
 - Bundled: Chromium, Node.js and their components, under the licenses listed in the runtime's `LICENSES.chromium.html`
 - Upstream project: https://github.com/electron/electron
 
-Lilac's desktop app (`@lilac/desktop`) runs on the Electron runtime. Lilac's own code is the shell around it, which is project-owned. Lilac's desktop packages (`scripts/package-desktop.mjs`) carry Electron's `LICENSE` and `LICENSES.chromium.html` unchanged. Packaging refuses a runtime whose notice names a component under a non-permissive license that Lilac has not reviewed (`scripts/desktop/chromium-licenses.mjs`). The MIT text is also kept at `docs/provenance/ELECTRON_LICENSE.txt` for the release bundle.
+Lilac's desktop app (`@ninerr/desktop`) runs on the Electron runtime. Lilac's own code is the shell around it, which is project-owned. Lilac's desktop packages (`scripts/package-desktop.mjs`) carry Electron's `LICENSE` and `LICENSES.chromium.html` unchanged. Packaging refuses a runtime whose notice names a component under a non-permissive license that Lilac has not reviewed (`scripts/desktop/chromium-licenses.mjs`). The MIT text is also kept at `docs/provenance/ELECTRON_LICENSE.txt` for the release bundle.
 
 ## Playwright (development only)
 
@@ -104,7 +104,7 @@ Lilac does not vendor the Unreal Agent Go harness, provider clients, remote runn
 - Copyright notices in studied source: 2025 Bytedance, Inc. and its affiliates
 - Upstream project: https://github.com/bytedance/UI-TARS-desktop
 
-Lilac's `@lilac/agent-events` package is a bounded adaptation of event-stream concepts studied from the pinned Tarko surfaces. The adapted concepts include typed event categories, streaming assistant/tool-call deltas, environment-input events, plan events, event subscribers, handler registries, and handler-failure isolation.
+Lilac's `@ninerr/agent-events` package is a bounded adaptation of event-stream concepts studied from the pinned Tarko surfaces. The adapted concepts include typed event categories, streaming assistant/tool-call deltas, environment-input events, plan events, event subscribers, handler registries, and handler-failure isolation.
 
 Lilac does not vendor the UI-TARS model runtime, desktop application, remote operator, browser-automation stack, provider bindings, branding, or telemetry. Lilac-specific sequence validation, caller-owned identity/timestamp rules, operation/transaction correlation, bounded reference-only environment inputs, deterministic replay, and closed-world validation are project-owned extensions. Any future direct redistribution of upstream UI-TARS source or object code must preserve the applicable Apache-2.0 license and notices.
 
@@ -116,7 +116,7 @@ Lilac does not vendor the UI-TARS model runtime, desktop application, remote ope
 - Copyright: Copyright (c) 2026 Kun Chen
 - Upstream project: https://github.com/kunchenguid/firstmate
 
-Lilac's `@lilac/agent-supervisor` package ports and adapts bounded supervision semantics. The full MIT notice is kept in `packages/agent-supervisor/NOTICE.md`, which also ships in the release bundle.
+Lilac's `@ninerr/agent-supervisor` package ports and adapts bounded supervision semantics. The full MIT notice is kept in `packages/agent-supervisor/NOTICE.md`, which also ships in the release bundle.
 
 ## Website-downloader
 
@@ -131,7 +131,7 @@ Lilac's `@lilac/agent-supervisor` package ports and adapts bounded supervision s
 These projects were studied for design guidance. No code, text, or assets were copied from them. Each is recorded in the named package's provenance.
 
 - `mrmps/classifier-dev` at `a17bf2b6353f6234af6e977a463da7cd1975b68e`, MIT: `@ninerr/decision-router`.
-- `kunchenguid/no-mistakes` at `0616eb4911845e2ba04faa17186ecd2686d7d579`, MIT: `@lilac/delivery-governance`.
+- `kunchenguid/no-mistakes` at `0616eb4911845e2ba04faa17186ecd2686d7d579`, MIT: `@ninerr/delivery-governance`.
 - `Appllama/appllama-skills` at `dd5caaec3d5d50ad7fc0324da238119c6b7c3707`, MIT: `@ninerr/design-method`.
 - `reinaldosimoes/design-resources` at `43fe2b5d801e34c21e22b5639711f7e250a798e5`, CC0-1.0: `@ninerr/design-method`.
 
@@ -156,7 +156,7 @@ These projects were studied only. No code from them is in Lilac, and none may be
 - License: proprietary.
 - Basis: the Lilac project owner attests full permission to use, copy and modify the Paper.design source for Lilac (`docs/provenance/PAPER_AUTHORIZATION.md`).
 
-No Paper source code is included in this repository. Lilac contains its own code that is compatible with Paper's public interfaces: the public names and classifications of Paper's MCP tools (`@lilac/mcp-protocol`), and behaviour compatibility in `@ninerr/collaboration` and `@ninerr/import-stack`.
+No Paper source code is included in this repository. Lilac contains its own code that is compatible with Paper's public interfaces: the public names and classifications of Paper's MCP tools (`@ninerr/mcp-protocol`), and behaviour compatibility in `@ninerr/collaboration` and `@ninerr/import-stack`.
 
 Paper, Paper.design and related names, logos and marks belong to their owner. They are not licensed by Lilac, and their use here identifies compatibility only.
 

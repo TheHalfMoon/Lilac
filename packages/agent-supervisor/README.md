@@ -1,4 +1,4 @@
-# @lilac/agent-supervisor
+# @ninerr/agent-supervisor
 
 Lilac Grain 4 is the local worker/worktree supervision boundary. It preserves durable task and source identity across runtime loss while keeping runtime process identity replaceable.
 

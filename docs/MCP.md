@@ -32,7 +32,7 @@ The workspace tools `open_file`, `create_file`, `list_resources` and `rename_res
 ## Authorizing a call
 
 ```js
-import { authorizeMCPToolCall, requireMCPToolCall, mcpArgumentsSha256 } from "@lilac/mcp-protocol";
+import { authorizeMCPToolCall, requireMCPToolCall, mcpArgumentsSha256 } from "@ninerr/mcp-protocol";
 
 const decision = authorizeMCPToolCall(policy, {
   actor,             // the identity the server authenticated for this session
