@@ -130,3 +130,11 @@ test("every workspace package is owned by a delivered catalog subsystem", () => 
 test("known package list matches the workspace exactly", () => {
   assert.deepEqual([...IMPLEMENTED_PACKAGES].sort(), workspacePackages());
 });
+
+test("a stub says what remains planned, so a delivered subsystem cannot stay a stub", () => {
+  // `stub` means a delivered slice with a planned remainder; its boundary names the remainder.
+  // A boundary that describes only delivered work belongs to an implemented subsystem (N0-G6).
+  for (const subsystem of NINERR_ARCHITECTURE_MAP.subsystems.filter((entry) => entry.status === "stub")) {
+    assert.match(subsystem.boundary, /\b(?:planned|later|not yet|remain|wait)\b/iu, `${subsystem.id} is a stub but its boundary states no planned remainder`);
+  }
+});
