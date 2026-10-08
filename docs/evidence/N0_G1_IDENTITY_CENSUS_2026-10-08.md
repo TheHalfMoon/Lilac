@@ -7,7 +7,7 @@ Issue: #190 (N0 umbrella). Baseline: `main` at `9020b1ebb20ede7611fdca65fe202760
 - `scripts/identity-census.mjs` scans every tracked file's path and text, case-insensitively, for the terms in `scripts/identity-policy.json`: Lilac, Paper, and each previously authorized donor project name.
 - Each finding is classified by the first matching rule in the policy. The categories are the nine N0.1 classes. Every rule carries a reason.
 - The output depends only on tracked content, so it is byte-identical across runs. The artifact excludes itself from the scan.
-- `--write` regenerates `docs/evidence/N0_IDENTITY_CENSUS.json`.
+- `--write` regenerates `docs/evidence/N0_IDENTITY_CENSUS.json`. That file is a summary: totals by category, term and rule, plus `censusSha256`, the SHA-256 of the full per-file census. Running `node scripts/identity-census.mjs` prints the full census for the same tree, and its digest must match. The full census is not committed: at 8,000+ lines it would dominate every diff, and it exceeded the exact-head Jev reviewer's context on this PR's first head.
 - The census does not scan its own four files: the script, the policy, the test and the artifact. They must name every term.
 - The policy is validated on load. Unknown keys are refused, every rule needs a reason, and only the last rule may be unconstrained, so a typo cannot become a silent exemption.
 - `--check` is the N0.9 independence gate. It exits non-zero on any finding in a gated category: active product or internal identity, public API, persisted data, test fixtures, and material to remove.

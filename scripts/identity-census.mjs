@@ -5,10 +5,11 @@
 // runs over the same tree produce identical bytes.
 //
 //   node scripts/identity-census.mjs            print the census JSON
-//   node scripts/identity-census.mjs --write    write docs/evidence/N0_IDENTITY_CENSUS.json
+//   node scripts/identity-census.mjs --write    write its summary to docs/evidence/N0_IDENTITY_CENSUS.json
 //   node scripts/identity-census.mjs --check    fail on any finding in a gated category
 //   --root <dir>                                scan another Git checkout instead of this one
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,6 +110,26 @@ export function serialize(record) {
   return `${JSON.stringify(record, null, 2)}\n`;
 }
 
+/**
+ * The committed artifact: totals by category, term and rule, plus the SHA-256 of the full
+ * census, so anyone can regenerate the per-file detail (`node scripts/identity-census.mjs`)
+ * and check it against what was recorded without the repository carrying every line.
+ */
+export function summarize(record) {
+  const byRule = {};
+  for (const file of record.files) for (const finding of file.findings) byRule[finding.rule] = (byRule[finding.rule] ?? 0) + finding.count;
+  return {
+    schema: "identity-census-summary/1",
+    filesScanned: record.filesScanned,
+    filesWithFindings: record.filesWithFindings,
+    gatedFindings: record.gatedFindings,
+    byCategory: record.byCategory,
+    byTerm: record.byTerm,
+    byRule: Object.fromEntries(Object.entries(byRule).sort(([a], [b]) => byCodeUnit(a, b))),
+    censusSha256: createHash("sha256").update(serialize(record), "utf8").digest("hex"),
+  };
+}
+
 function main(argv) {
   const policy = loadPolicy();
   const rootIndex = argv.indexOf("--root");
@@ -116,7 +137,7 @@ function main(argv) {
   if (root === undefined) throw new Error("--root needs a directory");
   const record = census(policy, root, trackedFiles(root));
   if (argv.includes("--write")) {
-    writeFileSync(join(root, CENSUS_PATH), serialize(record));
+    writeFileSync(join(root, CENSUS_PATH), serialize(summarize(record)));
     process.stdout.write(`wrote ${CENSUS_PATH}: ${record.filesWithFindings} files, ${record.gatedFindings} gated findings\n`);
     return 0;
   }

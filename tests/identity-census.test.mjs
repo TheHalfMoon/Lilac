@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { census, classify, loadPolicy, serialize } from "../scripts/identity-census.mjs";
+import { createHash } from "node:crypto";
+import { census, classify, loadPolicy, serialize, summarize } from "../scripts/identity-census.mjs";
 
 // N0.1/N0.9 (#190): the identity census classifies every finding by the reviewed policy, and
 // the gate fails on gated categories only.
@@ -69,6 +70,10 @@ test("the census is deterministic and the gate counts gated categories only", ()
   try {
     const first = census(policy, clean.root, clean.paths);
     assert.equal(serialize(first), serialize(census(policy, clean.root, clean.paths)));
+    const summary = summarize(first);
+    assert.equal(summary.censusSha256, createHash("sha256").update(serialize(first)).digest("hex"), "the summary pins the full census");
+    assert.equal(Object.values(summary.byRule).reduce((a, b) => a + b, 0), Object.values(first.byCategory).reduce((a, b) => a + b, 0), "every finding is counted under its rule");
+    assert.deepEqual(summary.byCategory, first.byCategory);
     assert.equal(first.gatedFindings, 0);
     assert.equal(first.byCategory.IMMUTABLE_HISTORICAL_FACT, 1);
     assert.equal(first.byCategory.LEGACY_COMPATIBILITY, 2, "one path and one line finding in the legacy fixture");
