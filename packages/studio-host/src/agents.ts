@@ -40,6 +40,8 @@ export class AgentRegistry {
   #agents: AgentRecord[];
 
   #problem: string | null;
+  /** Where to record the legacy import once the imported registry is saved; null when done. */
+  #importMarker: string | null = null;
 
   /** Why the registry could not be read (Ninerr started with no agents), until it is saved again. */
   get problem(): string | null {
@@ -89,11 +91,9 @@ export class AgentRegistry {
       }
     }
     if (source.legacy && problem === null) {
-      try {
-        writeFileSync(join(projectsRoot, IMPORTED_MARKER), "The agent registry from before the rename was imported into .ninerr-agents.json.\n", { mode: 0o600, flag: "wx" });
-      } catch {
-        // already there
-      }
+      // The marker is written together with the first save of the imported registry, so a
+      // failed save is retried on the next launch rather than dropping the agents.
+      this.#importMarker = join(projectsRoot, IMPORTED_MARKER);
       try {
         this.#save(agents);
       } catch {
@@ -146,6 +146,15 @@ export class AgentRegistry {
     this.#writeRegistry(next);
     this.#agents = next;
     this.#problem = null;
+    if (this.#importMarker !== null) {
+      try {
+        writeFileSync(this.#importMarker, "The agent registry from before the rename was imported into .ninerr-agents.json.\n", { mode: 0o600, flag: "wx" });
+        this.#importMarker = null;
+      } catch (error) {
+        // Already there is done; anything else is retried with the next save.
+        if ((error as NodeJS.ErrnoException)?.code === "EEXIST") this.#importMarker = null;
+      }
+    }
   }
 
   #writeRegistry(next: AgentRecord[]): void {

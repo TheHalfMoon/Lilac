@@ -65,3 +65,9 @@ The delta re-review found no must-fix. It pointed out that the residual above wa
 - A marker, `.ninerr-agents.imported`, now records the import. With it or a set-aside copy present, the legacy registry is never read again. Tested by deleting the Ninerr registry after a revocation.
 - A projects folder that cannot be listed also counts as imported, so it fails closed. Before, it stopped the host from starting.
 - What remains: re-import requires deleting the marker, the registry and every set-aside copy, all of them Ninerr's own files.
+
+## Review delta 3
+
+The delta re-review found no must-fix. Taken from it: the import marker is written with the first successful save of the imported registry, not before it.
+- A failed save is now retried on the next launch. Before, the marker blocked the retry and the agents were dropped silently.
+- Only an existing marker counts as done. Any other failure writing it is retried with the next save.
