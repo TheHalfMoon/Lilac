@@ -30,7 +30,7 @@ Issue: #190 (N0 umbrella). Baseline: `main` at `9020b1ebb20ede7611fdca65fe202760
 | PERSISTED_DATA | 27 | `.lilac` project directory, `lilac-project` manifest format, journal genesis domain, host registries and discovery file, `lilac_agent_` credential prefix, projects-folder default, history tool identifiers | N0-G2, N0-G3 |
 | LEGACY_COMPATIBILITY | 7 | the v1 golden project fixture | kept as migration corpus |
 
-By term: Lilac 1,641; Paper 476; Impeccable 164; Docling 123; the remaining donor names 9 to 29 each.
+By term: Lilac 1,641; Paper 476; Impeccable 165; Docling 124; the remaining donor names 9 to 29 each.
 
 Paper and donor attribution in `THIRD_PARTY_NOTICES.md` and the license register stays gated. Only Impeccable and Docling, which are independently licensed runtimes, are exempt there.
 
