@@ -56,9 +56,9 @@ The `Release Evidence` workflow (`.github/workflows/release.yml`) has five jobs.
   3. puts the bundle in one archive and writes `SHA256SUMS`;
   4. uploads the seven files as `lilac-release-<sha>`, kept for 90 days.
 - **`attest`** runs only for a pushed tag matching `v[0-9]*`. It downloads the bundle and the collected files and signs every file with `actions/attest-build-provenance`. These are keyless Sigstore attestations through GitHub OIDC, so no signing key is stored anywhere. It runs no repository or dependency code.
-- **`publish`** runs only for a pushed tag, after `attest`. It puts the collected files in a **draft** GitHub Release for that tag. It runs only `gh`. It cannot create a tag, because the release must name an existing one, and it leaves the draft unpublished: publishing it is the owner's decision.
+- **`publish`** runs only for a pushed tag, after `attest`. It puts the collected files in a **draft** GitHub Release for that tag. It runs only `gh`. It cannot create a tag, because the release must name an existing one, and it leaves the draft unpublished: publishing it is the owner's decision. Running `publish` again makes another draft, which the owner can delete.
 
-A manual dispatch, or a pull request that changes the release path, runs `build`, `desktop` and `collect` but never signs, even when it is started on a tag. That shows the whole pipeline working on a pull request's exact head before any tag. Only a pushed `v[0-9]*` tag is ever attested. The workflow never creates tags; pushing one is the release decision.
+A manual dispatch, or a pull request that changes the release path, runs `build`, `desktop` and `collect` but never signs; a manual dispatch never signs even when it is started on a tag. That shows the whole pipeline working on a pull request's exact head before any tag. Only a pushed `v[0-9]*` tag is ever attested. The workflow never creates tags; pushing one is the release decision.
 
 The attestations are stored with the repository and outlive the artifact. After 90 days, the bundle can be rebuilt from the tag, as in step 4 below, and checked against them.
 
@@ -72,6 +72,8 @@ gh attestation verify Lilac-linux-x64.tar.gz --repo TheHalfMoon/Lilac \
   --signer-workflow TheHalfMoon/Lilac/.github/workflows/release.yml
 sha256sum --check --ignore-missing SHA256SUMS
 ```
+
+On macOS, `grep Lilac-darwin-arm64.zip SHA256SUMS | shasum -a 256 --check` does the second step. On Windows, compare `(Get-FileHash Lilac-win32-x64.zip).Hash` with the file's line in `SHA256SUMS` (it prints in capitals).
 
 **The evidence bundle:**
 

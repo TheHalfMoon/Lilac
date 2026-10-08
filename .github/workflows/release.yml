@@ -35,6 +35,11 @@ jobs:
           node-version: 22
       - run: npm ci --ignore-scripts
       # The full gate includes the desktop shell's tests, set up exactly as in CI.
+      - name: Cache the pinned Electron archive
+        uses: actions/cache@v4
+        with:
+          path: .lilac-cache/electron/downloads
+          key: electron-${{ runner.os }}-${{ hashFiles('scripts/desktop/electron.mjs') }}
       - name: Fetch the pinned Electron runtime (SHA-256 verified)
         run: node scripts/fetch-electron.mjs
       - name: Allow Chromium's sandbox (unprivileged user namespaces)
@@ -79,11 +84,20 @@ jobs:
         with:
           name: lilac-release-evidence-${{ github.sha }}
           path: evidence
+      # Each archive by its exact name, as desktop.yml uploads it, so no other artifact of
+      # this run can stand in for one.
       - uses: actions/download-artifact@v4
         with:
-          pattern: lilac-desktop-*-${{ github.event.pull_request.head.sha || github.sha }}
+          name: lilac-desktop-linux-x64-${{ github.event.pull_request.head.sha || github.sha }}
           path: out
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: lilac-desktop-darwin-arm64-${{ github.event.pull_request.head.sha || github.sha }}
+          path: out
+      - uses: actions/download-artifact@v4
+        with:
+          name: lilac-desktop-win32-x64-${{ github.event.pull_request.head.sha || github.sha }}
+          path: out
       - name: Check the archives against their package manifests, and list every file
         shell: bash
         run: |
