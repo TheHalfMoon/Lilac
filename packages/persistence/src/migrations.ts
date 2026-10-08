@@ -26,7 +26,10 @@ export const PROJECT_MIGRATIONS: Readonly<Record<number, ManifestMigration>> = O
  * step for a version a built-in step owns is refused rather than silently ignored.
  */
 export function withBuiltInMigrations(extra: Readonly<Record<number, ManifestMigration>> | undefined): Readonly<Record<number, ManifestMigration>> {
-  for (const version of Object.keys(extra ?? {})) {
+  if (extra !== undefined && (extra === null || typeof extra !== "object" || Array.isArray(extra))) throw new PersistenceValidationError("migrations must be an object of steps keyed by schema version");
+  for (const [version, step] of Object.entries(extra ?? {})) {
+    if (!/^(?:0|[1-9]\d{0,8})$/u.test(version)) throw new PersistenceValidationError(`migration key ${JSON.stringify(version).slice(0, 40)} is not a schema version`);
+    if (typeof step !== "function") throw new PersistenceValidationError(`migration from project schema ${version} is not a function`);
     if (Object.hasOwn(PROJECT_MIGRATIONS, version)) throw new PersistenceValidationError(`migration from project schema ${version} is built in and cannot be replaced`);
   }
   return Object.freeze({ ...extra, ...PROJECT_MIGRATIONS });

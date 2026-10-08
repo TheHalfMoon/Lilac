@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { browserTestOptions } from "./support/browser.mjs";
 import { layerCount, waitRevision } from "./support/editor.mjs";
 import { attemptsIn, browse, openTab, startLilac } from "./support/lilac-process.mjs";
+import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 // PC8 (#168): crash and recovery through the actual app. Lilac, started as a person starts
 // it (scripts/lilac.mjs), is killed outright (SIGKILL) while it has a project open with an
@@ -49,7 +50,7 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     // Crash 1: killed outright, with the project open and the editor attached.
     assert.equal(await lilac.kill(), "SIGKILL");
     attempts.push(...attemptsIn(lilac.output.stderr));
-    const lock = join(projects, "work", ".ninerr", "lock");
+    const lock = join(projects, "work", PROJECT_FILES.directory, "lock");
     assert.ok(existsSync(lock), "a crash leaves the project's lock behind");
     // The orphaned editor says Lilac cannot be reached, and loses nothing it showed.
     await tab.page.locator("#action-insert-box").click();
@@ -92,7 +93,7 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     attempts.push(...attemptsIn(lilac.output.stderr), ...tab.foreign);
     assertOnlyLockedConflict(tab.errors, { killed: true });
     await tab.page.context().close();
-    const journal = join(projects, "work", ".ninerr", "journal.log");
+    const journal = join(projects, "work", PROJECT_FILES.directory, "journal.log");
     const committed = readFileSync(journal, "utf8").trim().split("\n").length;
     appendFileSync(journal, '{"seq":999,"entry":{"transaction":{"id":"torn');
     assert.ok(revision > 4, `some of the burst was committed (revision ${revision})`);
