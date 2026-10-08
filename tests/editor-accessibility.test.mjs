@@ -115,7 +115,7 @@ test("the lock and recovery dialogs audit clean", browserTestOptions(), async ()
   const setup = await startStudioHost({ projectsRoot: root, now });
   await fetch(`${setup.url}/api/projects/create`, { method: "POST", headers: { authorization: `Bearer ${setup.token}`, "content-type": "application/json" }, body: JSON.stringify({ name: "locked" }) });
   await setup.close();
-  writeFileSync(join(root, "locked", ".lilac", "lock"), JSON.stringify({ owner: "gone", pid: 2 ** 22 + 4321, at: "2026-10-07T11:00:00.000Z", nonce: "dead" }));
+  writeFileSync(join(root, "locked", ".ninerr", "lock"), JSON.stringify({ owner: "gone", pid: 2 ** 22 + 4321, at: "2026-10-07T11:00:00.000Z", nonce: "dead" }));
   const host = await startStudioHost({ projectsRoot: root, now });
   const editor = await openEditor(host);
   try {

@@ -227,20 +227,19 @@ test("mid-journal corruption, chain breaks, and bad objects or manifests fail cl
   corruptAndExpect((root) => writeFileSync(file(root, PROJECT_FILES.journal), Buffer.from([0xff, 0xfe, 0x0a])), /UTF-8/);
 });
 
-test("schema versions: newer is refused, older migrates through a registered step", () => withProject((root) => {
+// Upgrades from schema 1 are the legacy migration, covered in legacy-migration.test.mjs.
+test("schema versions: newer is refused, and older ones need a step that yields their real format", () => withProject((root) => {
   const manifestPath = file(root, PROJECT_FILES.manifest);
   const current = JSON.parse(readFileSync(manifestPath, "utf8"));
-  writeFileSync(manifestPath, JSON.stringify({ ...current, schemaVersion: 2 }));
+  writeFileSync(manifestPath, JSON.stringify({ ...current, schemaVersion: 3 }));
   assert.throws(() => open(root), PersistenceVersionError);
 
-  const { documentId, ...legacy } = current;
-  writeFileSync(manifestPath, JSON.stringify({ ...legacy, schemaVersion: 0, rootDocument: documentId }));
+  writeFileSync(manifestPath, JSON.stringify({ ...current, schemaVersion: 0 }));
   assert.throws(() => open(root), /no migration from project schema 0/);
-  const migrations = { 0: ({ rootDocument, ...rest }) => ({ ...rest, documentId: rootDocument }) };
-  const store = open(root, { migrations });
-  assert.equal(store.recovery.migratedFrom, 0);
-  store.close();
-  assert.deepEqual(JSON.parse(readFileSync(manifestPath, "utf8")), current);
+  // Schema 1 only ever had the legacy format; a schema-1 manifest in the Ninerr format is damage.
+  writeFileSync(manifestPath, JSON.stringify({ ...current, schemaVersion: 1 }));
+  assert.throws(() => open(root), (error) => error instanceof PersistenceCorruptionError && /legacy project format/.test(error.message));
+  writeFileSync(manifestPath, JSON.stringify(current));
   const plain = open(root);
   assert.equal(plain.recovery.migratedFrom, null);
   plain.close();
@@ -248,14 +247,14 @@ test("schema versions: newer is refused, older migrates through a registered ste
 
 test("project roots and layouts are confined", () => {
   assert.throws(() => createProject("relative/path", { projectId: "p", document: baseDocument(), createdAt: AT }), PersistenceValidationError);
-  assert.throws(() => openProject(join(tmpdir(), "lilac-does-not-exist-xyz"), { owner: "w", at: AT }), PersistenceValidationError);
+  assert.throws(() => openProject(join(tmpdir(), "ninerr-does-not-exist-xyz"), { owner: "w", at: AT }), PersistenceValidationError);
   withProject((root) => {
     assert.throws(() => createProject(root, { projectId: "proj-2", document: baseDocument(), createdAt: AT }), /already exists/);
     assert.deepEqual(readdirSync(root), [PROJECT_FILES.directory], "failed creation leaves no staging directory");
   });
   const empty = tempRoot();
   try {
-    assert.throws(() => openProject(empty, { owner: "w", at: AT }), /no Lilac project/);
+    assert.throws(() => openProject(empty, { owner: "w", at: AT }), /no Ninerr project/);
     assert.throws(() => createProject(empty, { projectId: "bad id", document: baseDocument(), createdAt: AT }), PersistenceValidationError);
     assert.throws(() => createProject(empty, { projectId: "p", document: { id: "x" }, createdAt: AT }), /document is invalid/);
     assert.throws(() => openProject(empty, { owner: "w", at: "yesterday" }), PersistenceValidationError);
@@ -445,7 +444,7 @@ test("memory equals replay in key order too: a later style shorthand still wins 
   reopened.close();
 }));
 
-test("an existing .lilac of any kind is never replaced by project creation", () => {
+test("an existing .ninerr of any kind is never replaced by project creation", () => {
   const root = tempRoot();
   try {
     writeFileSync(join(root, PROJECT_FILES.directory), "USER DATA");

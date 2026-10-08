@@ -182,7 +182,7 @@ test("agents read and edit through tools; every edit is an attributed transactio
       assert.ok(event.operations.length > 0, "events carry operations, so the canvas applies them");
     }
     assert.deepEqual(agentEvents.map((event) => event.tool), ["create_artboard", "set_text_content", "rename_nodes", "update_styles", "update_styles", "duplicate_nodes", "move_nodes"]);
-    const journal = readFileSync(join(root, "demo", ".lilac", "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
+    const journal = readFileSync(join(root, "demo", ".ninerr", "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
     const byAgent = journal.filter((tx) => tx.metadata.collaboration.actorKind === "agent");
     assert.equal(byAgent.length, 7);
     for (const tx of byAgent) {

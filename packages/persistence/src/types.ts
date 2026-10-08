@@ -1,5 +1,15 @@
-export const PROJECT_SCHEMA_VERSION = 1;
-export const PROJECT_FORMAT = "lilac-project";
+import { LEGACY_JOURNAL_GENESIS } from "./legacy.ts";
+
+export const PROJECT_SCHEMA_VERSION = 2;
+export const PROJECT_FORMAT = "ninerr-project";
+/** The genesis domain a project created by this release chains its journal from. */
+export const JOURNAL_GENESIS = "ninerr-journal-genesis";
+/**
+ * Genesis domains a manifest may record. A migrated project keeps the domain its journal was
+ * chained from, so every recorded digest still verifies; history is never re-chained.
+ */
+export const JOURNAL_GENESIS_DOMAINS = Object.freeze([JOURNAL_GENESIS, LEGACY_JOURNAL_GENESIS] as const);
+export type JournalGenesisDomain = (typeof JOURNAL_GENESIS_DOMAINS)[number];
 
 export const PERSISTENCE_LIMITS = {
   maxObjectBytes: 64 * 1024 * 1024,
@@ -9,9 +19,9 @@ export const PERSISTENCE_LIMITS = {
   maxManifestBytes: 64 * 1024,
 } as const;
 
-/** Fixed names inside `<root>/.lilac`. No path is ever derived from input. */
+/** Fixed names inside `<root>/.ninerr`. No path is ever derived from input. */
 export const PROJECT_FILES = {
-  directory: ".lilac",
+  directory: ".ninerr",
   manifest: "project.json",
   snapshot: "snapshot.json",
   journal: "journal.log",
@@ -25,6 +35,7 @@ export interface ProjectManifest {
   projectId: string;
   documentId: string;
   createdAt: string;
+  journalGenesis: JournalGenesisDomain;
 }
 
 export interface SnapshotRef {

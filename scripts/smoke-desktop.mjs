@@ -50,10 +50,10 @@ async function main() {
     await page.locator("#inspect-name").press("Tab");
     await waitForRevision(page, 2);
     check("an edit is committed", true);
-    check("the project is locked while open", existsSync(join(projects, "smoke", ".lilac", "lock")));
+    check("the project is locked while open", existsSync(join(projects, "smoke", ".ninerr", "lock")));
     const firstExit = await lilac.quit();
     check("closing Lilac quits it cleanly", firstExit === 0, firstExit === 0 ? undefined : { exit: firstExit, output: lilac.output().slice(-400) });
-    check("quitting releases the project", !existsSync(join(projects, "smoke", ".lilac", "lock")) && !existsSync(join(projects, ".lilac-studio.json")));
+    check("quitting releases the project", !existsSync(join(projects, "smoke", ".ninerr", "lock")) && !existsSync(join(projects, ".lilac-studio.json")));
 
     // Second run: the change is there.
     lilac = await launch();

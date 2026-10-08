@@ -24,9 +24,12 @@ import {
   removeStaleTemporaries,
 } from "./fsio.ts";
 import { assertJournalFormat, encodeJournalLine, genesisDigest, parseJournal, type ParsedJournal } from "./journal.ts";
-import { PROJECT_MIGRATIONS, migrateManifest, type ManifestMigration } from "./migrations.ts";
+import { LEGACY_PROJECT_DIRECTORY } from "./legacy.ts";
+import { PROJECT_MIGRATIONS, migrateManifest, withBuiltInMigrations, type ManifestMigration } from "./migrations.ts";
 import { getObject, putObject } from "./objects.ts";
 import {
+  JOURNAL_GENESIS,
+  JOURNAL_GENESIS_DOMAINS,
   PERSISTENCE_LIMITS,
   PROJECT_FILES,
   PROJECT_FORMAT,
@@ -86,11 +89,14 @@ function readJsonFile(path: string, label: string, maxBytes: number = PERSISTENC
 }
 
 function readManifest(record: Record<string, unknown>): ProjectManifest {
-  if (record.format !== PROJECT_FORMAT) throw new PersistenceCorruptionError("manifest is not a Lilac project manifest");
+  if (record.format !== PROJECT_FORMAT) throw new PersistenceCorruptionError("manifest is not a Ninerr project manifest");
   for (const key of Object.keys(record)) {
-    if (!["format", "schemaVersion", "projectId", "documentId", "createdAt"].includes(key)) {
+    if (!["format", "schemaVersion", "projectId", "documentId", "createdAt", "journalGenesis"].includes(key)) {
       throw new PersistenceCorruptionError(`manifest contains unsupported field ${JSON.stringify(key).slice(0, 80)}`);
     }
+  }
+  if (!(JOURNAL_GENESIS_DOMAINS as readonly unknown[]).includes(record.journalGenesis)) {
+    throw new PersistenceCorruptionError("manifest.journalGenesis is not a known journal genesis domain");
   }
   try {
     assertId(record.projectId, "manifest.projectId");
@@ -196,6 +202,11 @@ function withSortedKeys(value: unknown, depth = 0): unknown {
   return out;
 }
 
+/** Where a root's legacy project directory would be: next to its `.ninerr`. */
+function legacyDirectoryOf(projectDir: string): string {
+  return join(dirname(projectDir), LEGACY_PROJECT_DIRECTORY);
+}
+
 export interface CreateProjectOptions {
   projectId: string;
   document: unknown;
@@ -203,9 +214,10 @@ export interface CreateProjectOptions {
 }
 
 /**
- * Create `<root>/.lilac` atomically: it is assembled in a temporary sibling directory and
+ * Create `<root>/.ninerr` atomically: it is assembled in a temporary sibling directory and
  * renamed into place, so a crash never leaves a half-initialized project. Anything already
- * named `.lilac` (directory, file, or link) is refused.
+ * named `.ninerr` (directory, file, or link) is refused, and so is a root that holds a
+ * legacy project, which must be migrated rather than shadowed.
  */
 export function createProject(root: string, options: CreateProjectOptions): { projectDir: string } {
   const projectDir = projectDirectory(root);
@@ -219,27 +231,29 @@ export function createProject(root: string, options: CreateProjectOptions): { pr
     throw new PersistenceValidationError(`document is invalid: ${(error as Error).message.slice(0, 200)}`);
   }
   assertId(document.id, "document.id");
-  if (assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("a Lilac project already exists at this root");
+  if (assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("a Ninerr project already exists at this root");
+  if (assertNotSymlink(legacyDirectoryOf(projectDir), "legacy project directory")) throw new PersistenceValidationError("a legacy project exists at this root; migrate it instead");
   const staging = join(dirname(projectDir), `${PROJECT_FILES.directory}.tmp-${process.pid}-${randomUUID()}`);
   mkdirSync(staging, { mode: 0o700 });
   try {
     const files = paths(staging);
     const documentObject = putObject(staging, Buffer.from(canonicalJson(document), "utf8"));
     createExclusive(files.journal, "");
-    atomicWrite(files.snapshot, canonicalJson({ revision: document.revision, documentObject, journalSeq: 0, chainDigest: genesisDigest(options.projectId) }), "snapshot reference");
+    atomicWrite(files.snapshot, canonicalJson({ revision: document.revision, documentObject, journalSeq: 0, chainDigest: genesisDigest(options.projectId, JOURNAL_GENESIS) }), "snapshot reference");
     const manifest: ProjectManifest = {
       format: PROJECT_FORMAT,
       schemaVersion: PROJECT_SCHEMA_VERSION,
       projectId: options.projectId,
       documentId: document.id,
       createdAt: options.createdAt,
+      journalGenesis: JOURNAL_GENESIS,
     };
     atomicWrite(files.manifest, canonicalJson(manifest), "manifest");
     try {
       renameSync(staging, projectDir);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException)?.code;
-      if (code === "EEXIST" || code === "ENOTEMPTY") throw new PersistenceValidationError("a Lilac project already exists at this root");
+      if (code === "EEXIST" || code === "ENOTEMPTY") throw new PersistenceValidationError("a Ninerr project already exists at this root");
       throw error;
     }
     fsyncDirectory(dirname(projectDir));
@@ -376,8 +390,8 @@ interface VerifiedProject {
 
 /**
  * Read and verify a project directory without writing anything: manifest (migrated in
- * memory), snapshot, its document object, the whole journal chain, and replay of every
- * entry after the snapshot.
+ * memory), snapshot, its document object, the whole journal chain from the manifest's
+ * genesis domain, and replay of every entry after the snapshot.
  */
 function readVerifiedProject(projectDir: string, migrations: Readonly<Record<number, ManifestMigration>>): VerifiedProject {
   const files = paths(projectDir);
@@ -393,7 +407,7 @@ function readVerifiedProject(projectDir: string, migrations: Readonly<Record<num
 
   const journalBytes = readBounded(files.journal, PERSISTENCE_LIMITS.maxJournalBytes, "journal");
   if (journalBytes === null) throw new PersistenceCorruptionError("journal is missing");
-  const genesis = genesisDigest(manifest.projectId);
+  const genesis = genesisDigest(manifest.projectId, manifest.journalGenesis);
   const parsed = parseJournal(journalBytes, genesis);
   // Every entry must be journal format 1, including those the snapshot already covers.
   for (const { entry } of parsed.entries) assertJournalFormat(entry.transaction, `journal entry ${entry.seq}`, true);
@@ -423,7 +437,12 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   const projectDir = projectDirectory(root);
   assertId(options?.owner, "owner");
   assertTimestamp(options.at, "at");
-  if (!assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("no Lilac project exists at this root");
+  if (!assertNotSymlink(projectDir, "project directory")) {
+    if (assertNotSymlink(legacyDirectoryOf(projectDir), "legacy project directory")) {
+      throw new PersistenceVersionError("this root holds a legacy project from before Ninerr; it must be migrated before it can be opened");
+    }
+    throw new PersistenceValidationError("no Ninerr project exists at this root");
+  }
   // Pin the project directory before anything is read or written, and re-check it before
   // every write during open and once more before the store is handed out, so no write lands
   // in a swapped directory. Residual: a swap out and back between two reads can feed this
@@ -445,7 +464,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       // A lock override renames the stale lock aside before reading it; a crash in between
       // leaves that renamed copy behind. The previous holder is already in the override record.
       + removeStaleFiles(projectDir, (name) => LEFTOVER_LOCK.test(name));
-    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, replayed } = readVerifiedProject(projectDir, options.migrations ?? PROJECT_MIGRATIONS);
+    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, replayed } = readVerifiedProject(projectDir, withBuiltInMigrations(options.migrations));
     // Repairs are written only once every check has passed, so an open refused as newer or
     // corrupt leaves the project's files as it found them.
     if (migratedFrom !== null) {
@@ -530,7 +549,7 @@ export class ProjectStore {
     this.#assertOpen();
     if (this.#poisoned) throw new PersistenceValidationError("project store must be reopened after a failed journal write");
     // The project directory must still be the one opened: a renamed root with a symlink
-    // in its place, or a swapped .lilac, would otherwise receive this store's writes.
+    // in its place, or a swapped .ninerr, would otherwise receive this store's writes.
     // A swap between this check and the write remains possible (Node has no openat).
     if (!isSameDirectory(this.projectDir, this.#directory)) {
       throw new PersistenceValidationError("project directory changed since the store was opened");

@@ -76,11 +76,11 @@ test("writes are refused after the project root is swapped for a symlink", () =>
   assert.deepEqual(readdirSync(join(outside, PROJECT_FILES.directory, PROJECT_FILES.objects)), []);
 }));
 
-test("writes are refused after .lilac is replaced by a fresh directory", () => withRoot((root) => {
+test("writes are refused after .ninerr is replaced by a fresh directory", () => withRoot((root) => {
   const store = open(root);
-  renameSync(join(root, PROJECT_FILES.directory), join(root, ".lilac-old"));
+  renameSync(join(root, PROJECT_FILES.directory), join(root, ".ninerr-old"));
   mkdirSync(join(root, PROJECT_FILES.directory, PROJECT_FILES.objects), { recursive: true });
-  cpSync(join(root, ".lilac-old", PROJECT_FILES.lock), file(root, PROJECT_FILES.lock));
+  cpSync(join(root, ".ninerr-old", PROJECT_FILES.lock), file(root, PROJECT_FILES.lock));
   assert.throws(() => store.checkpoint(), /changed since/u);
   assert.equal(existsSync(file(root, PROJECT_FILES.snapshot)), false);
 }));
@@ -186,7 +186,7 @@ test("a root swapped while the project is being opened is refused", () => withRo
     const { openProject } = await import(${JSON.stringify(PERSISTENCE_URL)});
     try { openProject(root, { owner: "w", at: ${JSON.stringify(AT)} }); console.log("opened"); }
     catch (error) { console.log(error.name + ": " + error.message); }
-    console.log("outside lock kept:", fs.existsSync(parent + "/out/.lilac/lock"));`;
+    console.log("outside lock kept:", fs.existsSync(parent + "/out/.ninerr/lock"));`;
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", timeout: 15_000 });
   assert.match(result.stdout, /PersistenceValidationError: project directory changed while the project was being opened/u);
   assert.match(result.stdout, /outside lock kept: true/u, "a lock outside the pinned directory is not removed");

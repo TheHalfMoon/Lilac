@@ -214,12 +214,12 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     step = "close window";
     // Closing the window quits Lilac and stops the host: the project is closed and its
     // lock released.
-    assert.ok(existsSync(join(projects, "desk", ".lilac", "lock")));
+    assert.ok(existsSync(join(projects, "desk", ".ninerr", "lock")));
     assert.ok(existsSync(join(projects, ".lilac-studio.json")));
     const exited = new Promise((resolve) => app.process().once("exit", (code) => resolve(code)));
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
     assert.equal(await exited, 0, "Lilac quit when its window closed");
-    assert.equal(existsSync(join(projects, "desk", ".lilac", "lock")), false, "the lock is released");
+    assert.equal(existsSync(join(projects, "desk", ".ninerr", "lock")), false, "the lock is released");
     assert.equal(existsSync(join(projects, ".lilac-studio.json")), false, "the discovery file is removed");
     assert.deepEqual(desktop.errors.filter((message) => !/violates the (?:following|document's) Content Security Policy|Not allowed to load local resource: file:/u.test(message)), [], "only the refused requests are logged");
 

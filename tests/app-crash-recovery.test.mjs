@@ -49,7 +49,7 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     // Crash 1: killed outright, with the project open and the editor attached.
     assert.equal(await lilac.kill(), "SIGKILL");
     attempts.push(...attemptsIn(lilac.output.stderr));
-    const lock = join(projects, "work", ".lilac", "lock");
+    const lock = join(projects, "work", ".ninerr", "lock");
     assert.ok(existsSync(lock), "a crash leaves the project's lock behind");
     // The orphaned editor says Lilac cannot be reached, and loses nothing it showed.
     await tab.page.locator("#action-insert-box").click();
@@ -92,7 +92,7 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     attempts.push(...attemptsIn(lilac.output.stderr), ...tab.foreign);
     assertOnlyLockedConflict(tab.errors, { killed: true });
     await tab.page.context().close();
-    const journal = join(projects, "work", ".lilac", "journal.log");
+    const journal = join(projects, "work", ".ninerr", "journal.log");
     const committed = readFileSync(journal, "utf8").trim().split("\n").length;
     appendFileSync(journal, '{"seq":999,"entry":{"transaction":{"id":"torn');
     assert.ok(revision > 4, `some of the burst was committed (revision ${revision})`);

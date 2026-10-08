@@ -4,9 +4,10 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { createDocument } from "../packages/document-model/src/index.mjs";
-import { PROJECT_FILES, PersistenceCorruptionError, createProject, openProject } from "../packages/persistence/src/index.ts";
+import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, PersistenceCorruptionError, createProject, openProject } from "../packages/persistence/src/index.ts";
 import { isFilesystemError, removeStaleFiles } from "../packages/persistence/src/fsio.ts";
 
 // P06 gate 10 (#133): systematic crash-point injection. Every injected crash state either
@@ -19,6 +20,7 @@ const title = (revision) => (revision === 0 ? "start" : `rev ${revision} ${EURO}
 const setTitle = (revision) => ({ id: `tx-${revision}`, actor: "user-1", baseRevision: revision - 1, operations: [{ type: "set-props", nodeId: "node-1", set: { title: title(revision) } }] });
 const open = (root, extra = {}) => openProject(root, { owner: "writer-1", at: AT, ...extra });
 const lilac = (root, name) => join(root, PROJECT_FILES.directory, name);
+const LEGACY_CORPUS = fileURLToPath(new URL("./fixtures/projects/v1-basic/", import.meta.url));
 const temporaryName = (target) => `${target}.tmp-${4242}-${randomUUID()}`;
 
 function tempRoot(prefix = "lilac-crash-") {
@@ -234,21 +236,20 @@ test("a torn-tail repair interrupted mid-rewrite is redone on the next open", ()
   }
 });
 
-test("a migration interrupted before its manifest rename migrates again", () => {
-  const root = project(1);
+test("an in-place schema-1 upgrade interrupted before its manifest rename upgrades again", () => {
+  // A schema-1 project placed in the Ninerr directory: open upgrades its manifest by an
+  // atomic write. A crash after the temporary is written and before the rename leaves the
+  // old manifest plus an unreferenced temporary.
+  const root = tempRoot();
   try {
+    cpSync(join(LEGACY_CORPUS, LEGACY_PROJECT_DIRECTORY), join(root, PROJECT_FILES.directory), { recursive: true });
     withCopy(root, (copy) => {
-      const manifestPath = lilac(copy, PROJECT_FILES.manifest);
-      const current = JSON.parse(readFileSync(manifestPath, "utf8"));
-      const { documentId, ...legacy } = current;
-      writeFileSync(manifestPath, JSON.stringify({ ...legacy, schemaVersion: 0, rootDocument: documentId }));
-      writeFileSync(lilac(copy, temporaryName(PROJECT_FILES.manifest)), JSON.stringify(current));
+      writeFileSync(lilac(copy, temporaryName(PROJECT_FILES.manifest)), "{\"partial\":");
     }, (copy) => {
-      const migrations = { 0: ({ rootDocument, ...rest }) => ({ ...rest, documentId: rootDocument }) };
-      const store = open(copy, { migrations });
-      assert.equal(store.recovery.migratedFrom, 0);
+      const store = open(copy);
+      assert.equal(store.recovery.migratedFrom, 1);
       assert.equal(store.recovery.staleTemporaryFiles, 1);
-      assert.equal(store.revision, 1);
+      assert.equal(store.revision, 5);
       store.close();
       const again = open(copy);
       assert.equal(again.recovery.migratedFrom, null);

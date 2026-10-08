@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { DOCUMENT_SCHEMA_VERSION, createDocument } from "../packages/document-model/src/index.mjs";
 import { MCP_CONFIRMATION_WINDOW_MS, MCP_TRANSPORTS, PAPER_MCP_OBSERVED_AT, PAPER_MCP_TOOL_NAMES, authorizeMCPToolCall, classifyPaperTool, mcpArgumentsSha256 } from "../packages/mcp-protocol/src/index.mjs";
 import { createAccessPolicy } from "../packages/collaboration/src/index.ts";
-import { PROJECT_FILES, PROJECT_MIGRATIONS, PROJECT_SCHEMA_VERSION, createProject, openProject } from "../packages/persistence/src/index.ts";
+import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, PROJECT_MIGRATIONS, PROJECT_SCHEMA_VERSION, createProject, openProject } from "../packages/persistence/src/index.ts";
 
 // P07a (#140): the release documents must describe the code as it is. Every cited path
 // exists, and every number or example they state is checked against the implementation.
@@ -84,14 +84,14 @@ test("the migration documentation matches the version constants and layout", () 
   const doc = read("docs/MIGRATION.md");
   assert.match(doc, new RegExp(`\`PROJECT_SCHEMA_VERSION\` = ${PROJECT_SCHEMA_VERSION}\\b`));
   assert.match(doc, new RegExp(`\`DOCUMENT_SCHEMA_VERSION\` = ${DOCUMENT_SCHEMA_VERSION}\\b`));
-  assert.deepEqual(Object.keys(PROJECT_MIGRATIONS), [], "the doc states the built-in registry is empty");
-  assert.match(doc, /`PROJECT_MIGRATIONS` is empty/);
+  assert.deepEqual(Object.keys(PROJECT_MIGRATIONS), ["1"], "the doc states the one built-in step");
+  assert.match(doc, /`PROJECT_MIGRATIONS` has one built-in step, from schema 1 to 2/);
   for (const name of [PROJECT_FILES.manifest, PROJECT_FILES.snapshot, PROJECT_FILES.journal, PROJECT_FILES.lock, PROJECT_FILES.objects]) {
     assert.ok(doc.includes(`\`${name}`), `the layout table names ${name}`);
   }
   assert.ok(doc.includes(`\`<root>/${PROJECT_FILES.directory}\``));
   // The "exactly these fields" lists match what createProject writes.
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-layout-doc-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-layout-doc-")));
   try {
     createProject(root, { projectId: "layout", document: createDocument({ id: "doc-1" }), createdAt: "2026-10-07T12:00:00.000Z" });
     for (const [name, label] of [[PROJECT_FILES.manifest, "manifest"], [PROJECT_FILES.snapshot, "snapshot reference"]]) {
@@ -108,19 +108,18 @@ test("the migration documentation matches the version constants and layout", () 
 test("the migration example runs as written", () => {
   const doc = read("docs/MIGRATION.md");
   const example = /```js\n([\s\S]*?)```/.exec(doc)[1];
-  const step = /migrations: (\{ 0: .*\}),\n/.exec(example)[1];
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-migration-doc-")));
+  const lines = example.trim().split("\n");
+  // The example's call, run on a schema-1 project in the Ninerr directory, gives the stated result.
+  assert.equal(lines[2], 'const store = openProject(root, { owner: "my-app", at: new Date().toISOString() });');
+  assert.equal(lines[3], "store.recovery.migratedFrom; // 1");
+  assert.equal(lines[4], 'store.manifest.journalGenesis; // "lilac-journal-genesis"');
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-migration-doc-")));
   try {
-    createProject(root, { projectId: "doc-example", document: createDocument({ id: "doc-1" }), createdAt: "2026-10-07T12:00:00.000Z" });
-    const manifestPath = join(root, PROJECT_FILES.directory, PROJECT_FILES.manifest);
-    const current = JSON.parse(readFileSync(manifestPath, "utf8"));
-    const { documentId, ...legacy } = current;
-    writeFileSync(manifestPath, JSON.stringify({ ...legacy, schemaVersion: 0, legacyRoot: documentId }));
-    const migrations = new Function(`return (${step});`)();
-    const store = openProject(root, { owner: "my-app", at: new Date().toISOString(), migrations });
-    assert.equal(store.recovery.migratedFrom, 0, "the example's stated result");
+    cpSync(fileURLToPath(new URL(`./fixtures/projects/v1-basic/${LEGACY_PROJECT_DIRECTORY}/`, import.meta.url)), join(root, PROJECT_FILES.directory), { recursive: true });
+    const store = openProject(root, { owner: "my-app", at: new Date().toISOString() });
+    assert.equal(store.recovery.migratedFrom, 1, "the example's stated result");
+    assert.equal(store.manifest.journalGenesis, "lilac-journal-genesis");
     store.close();
-    assert.deepEqual(JSON.parse(readFileSync(manifestPath, "utf8")), current);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

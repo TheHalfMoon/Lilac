@@ -173,7 +173,7 @@ test("create, edit, undo and redo are attributed transactions streamed live and 
     assert.equal((await api(host, "POST", "/api/checkpoint")).status, 200);
 
     // The journal holds every change, including undo and redo, with collaboration attribution.
-    const journal = readFileSync(join(root, "demo", ".lilac", "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
+    const journal = readFileSync(join(root, "demo", ".ninerr", "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
     assert.deepEqual(journal.map((tx) => tx.tool), [null, null, "lilac:undo", "lilac:redo", "lilac:undo", "lilac:undo", "lilac:redo"]);
     assert.equal(journal[2].metadata.lilac.undoOf, journal[1].id);
     assert.equal(journal[3].metadata.lilac.redoOf, journal[1].id);
@@ -214,7 +214,7 @@ test("locks and recovery are reported, and a stale lock is replaced only with a 
     assert.equal((await api(first, "GET", "/api/session")).json.revision, 1, "the live holder keeps the project");
     // A lock left by a process that no longer exists is broken with a reason, and reported.
     await first.close();
-    const lockPath = join(root, "shared", ".lilac", "lock");
+    const lockPath = join(root, "shared", ".ninerr", "lock");
     writeFileSync(lockPath, JSON.stringify({ owner: "crashed-studio", pid: 2 ** 22 + 4321, at: "2026-10-07T11:00:00.000Z", nonce: "dead" }));
     const taken = await api(second, "POST", "/api/projects/open", { name: "shared", breakStaleLock: { reason: "the other studio crashed" } });
     assert.equal(taken.status, 200);
@@ -223,7 +223,7 @@ test("locks and recovery are reported, and a stale lock is replaced only with a 
     await api(second, "POST", "/api/projects/close");
 
     // A torn journal tail from a crash is repaired on open and reported.
-    appendFileSync(join(root, "shared", ".lilac", "journal.log"), '{"digest":"torn');
+    appendFileSync(join(root, "shared", ".ninerr", "journal.log"), '{"digest":"torn');
     const repaired = await api(second, "POST", "/api/projects/open", { name: "shared" });
     assert.equal(repaired.status, 200);
     assert.equal(repaired.json.recovery.tornTailBytes, '{"digest":"torn'.length);
@@ -251,7 +251,7 @@ test("a failed open or create keeps the current project, and failures have speci
   assert.equal((await api(host, "POST", "/api/projects/open", { name: "plain" })).json.error.code, "project-not-found", "a plain directory is not a project");
   await api(host, "POST", "/api/projects/create", { name: "broken" });
   await api(host, "POST", "/api/projects/open", { name: "keep" });
-  writeFileSync(join(root, "broken", ".lilac", "project.json"), "{not json");
+  writeFileSync(join(root, "broken", ".ninerr", "project.json"), "{not json");
   const unreadable = await api(host, "POST", "/api/projects/open", { name: "broken" });
   assert.equal(unreadable.status, 422);
   assert.equal(unreadable.json.error.code, "project-unreadable");
@@ -272,7 +272,7 @@ test("a failed open or create keeps the current project, and failures have speci
 test("a store that can no longer be written is reported as needing a reopen, without paths", () => withHost(async (host, root) => {
   await api(host, "POST", "/api/projects/create", { name: "p" });
   await api(host, "POST", "/api/edit", { baseRevision: 0, operations: [insertFrame("a")] });
-  appendFileSync(join(root, "p", ".lilac", "journal.log"), "tampered\n");
+  appendFileSync(join(root, "p", ".ninerr", "journal.log"), "tampered\n");
   const failed = await api(host, "POST", "/api/edit", { baseRevision: 1, operations: [insertFrame("b")] });
   assert.equal(failed.status, 409);
   assert.equal(failed.json.error.code, "project-needs-reopen");
