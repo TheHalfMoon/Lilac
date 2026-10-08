@@ -618,7 +618,7 @@ function buildCodebasePart({ codebase, codebaseError, selected, boundNode, close
           write.disabled = true;
           enqueue(async () => {
             try {
-              const result = await state.client.post("/api/codebase/write", { nodeId: selected, sha256: plan.sha256 });
+              const result = await state.client.post("/api/codebase/write", { nodeId: selected, token: plan.token });
               close();
               applyChange(result);
               setStatus(`Wrote ${result.written} change${result.written === 1 ? "" : "s"} to ${result.file}.`);
