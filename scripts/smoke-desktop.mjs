@@ -14,6 +14,7 @@ import { existsSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { preparePackage, sleep, waitForRevision } from "./desktop/drive.mjs";
 import { LILAC_FUSES, readFuses } from "./desktop/fuses.mjs";
+import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 const archive = process.argv[2] ? resolve(process.argv[2]) : null;
 if (archive === null || process.argv.length !== 3 || !existsSync(archive)) {
@@ -50,10 +51,10 @@ async function main() {
     await page.locator("#inspect-name").press("Tab");
     await waitForRevision(page, 2);
     check("an edit is committed", true);
-    check("the project is locked while open", existsSync(join(projects, "smoke", ".ninerr", "lock")));
+    check("the project is locked while open", existsSync(join(projects, "smoke", PROJECT_FILES.directory, "lock")));
     const firstExit = await lilac.quit();
     check("closing Lilac quits it cleanly", firstExit === 0, firstExit === 0 ? undefined : { exit: firstExit, output: lilac.output().slice(-400) });
-    check("quitting releases the project", !existsSync(join(projects, "smoke", ".ninerr", "lock")) && !existsSync(join(projects, ".ninerr-studio.json")));
+    check("quitting releases the project", !existsSync(join(projects, "smoke", PROJECT_FILES.directory, "lock")) && !existsSync(join(projects, ".ninerr-studio.json")));
 
     // Second run: the change is there.
     lilac = await launch();

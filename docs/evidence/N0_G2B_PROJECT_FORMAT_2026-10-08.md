@@ -69,3 +69,9 @@ The full ps-review panel (correctness, parsimony, product and security) found no
 The delta re-review found no must-fix. Taken from it:
 - **Host steps are checked before the lock is taken.** A host step for a built-in version is now refused before the lock is acquired, overridden or cleaned. A refused call therefore changes nothing on disk. Tested with a stale lock, `breakStaleLock` and a leftover temporary.
 - **`genesisDigest` checks its domain at run time.** Types are stripped, and JavaScript callers are not type-checked.
+
+## Review delta 3
+
+The delta re-review found no must-fix. It pointed out that only a host step colliding with a built-in one was refused before the lock was taken. A malformed `migrations` argument still failed later, after lock and cleanup work: a non-object, a key that is not a schema version, or a step that is not a function.
+- All of these are now refused before the lock is taken.
+- Tested with a stale lock, `breakStaleLock` and a leftover temporary: the tree is unchanged.
