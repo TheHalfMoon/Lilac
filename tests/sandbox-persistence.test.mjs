@@ -176,7 +176,7 @@ test("a root swapped while the project is being opened is refused", () => withRo
     const root = ${JSON.stringify(root)}; const parent = ${JSON.stringify(parent)};
     const original = fs.lstatSync; let swapped = false;
     fs.lstatSync = function (path, ...rest) {
-      if (!swapped && String(path).endsWith("journal.log")) {
+      if (!swapped && String(path).endsWith(${JSON.stringify(PROJECT_FILES.journal)})) {
         swapped = true;
         renameSync(root, parent + "/moved"); cpSync(parent + "/moved", parent + "/out", { recursive: true }); symlinkSync(parent + "/out", root);
       }
@@ -186,7 +186,7 @@ test("a root swapped while the project is being opened is refused", () => withRo
     const { openProject } = await import(${JSON.stringify(PERSISTENCE_URL)});
     try { openProject(root, { owner: "w", at: ${JSON.stringify(AT)} }); console.log("opened"); }
     catch (error) { console.log(error.name + ": " + error.message); }
-    console.log("outside lock kept:", fs.existsSync(parent + "/out/.lilac/lock"));`;
+    console.log("outside lock kept:", fs.existsSync(parent + ${JSON.stringify(`/out/${PROJECT_FILES.directory}/${PROJECT_FILES.lock}`)}));`;
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", timeout: 15_000 });
   assert.match(result.stdout, /PersistenceValidationError: project directory changed while the project was being opened/u);
   assert.match(result.stdout, /outside lock kept: true/u, "a lock outside the pinned directory is not removed");
