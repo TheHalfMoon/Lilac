@@ -58,3 +58,10 @@ Also taken from the panel:
 - Both `legacy.ts` modules are in the `npm run check` syntax list.
 
 The residual in the section above still holds. If the person deletes both the Ninerr registry and every set-aside copy, the legacy registry is imported again. That takes deliberate removal of Ninerr's own files.
+
+## Review delta 2
+
+The delta re-review found no must-fix. It pointed out that the residual above was understated: without any damage, deleting `.ninerr-agents.json` alone re-imported the legacy registry, revoked credentials included.
+- A marker, `.ninerr-agents.imported`, now records the import. With it or a set-aside copy present, the legacy registry is never read again. Tested by deleting the Ninerr registry after a revocation.
+- A projects folder that cannot be listed also counts as imported, so it fails closed. Before, it stopped the host from starting.
+- What remains: re-import requires deleting the marker, the registry and every set-aside copy, all of them Ninerr's own files.
