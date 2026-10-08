@@ -17,6 +17,7 @@ on:
       - .github/workflows/desktop.yml
       - scripts/release-bundle.mjs
       - scripts/package-desktop.mjs
+      - scripts/fetch-electron.mjs
 
 permissions:
   contents: read
@@ -33,7 +34,25 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
-      - run: npm run check
+      # The full gate includes the desktop shell's tests, set up exactly as in CI.
+      - name: Fetch the pinned Electron runtime (SHA-256 verified)
+        run: node scripts/fetch-electron.mjs
+      - name: Allow Chromium's sandbox (unprivileged user namespaces)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Run checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check 2>&1 | tee check.log
+      - name: Annotate test totals
+        if: always()
+        shell: bash
+        run: |
+          # Check-run annotations readable through the REST API.
+          totals=$(grep -E '^# (tests|pass|fail|cancelled|skipped|todo) [0-9]+$' check.log 2>/dev/null | sed 's/^# //' | paste -sd ' ' - || true)
+          echo "::notice title=Test totals::head=${{ github.event.pull_request.head.sha || github.sha }} tested=${{ github.sha }} ${totals:-no test summary found}"
+          failing=$(grep -E '^ *not ok [0-9]+ - ' check.log 2>/dev/null | sed -E 's/^ *not ok [0-9]+ - //' | cut -c1-200 | head -n 20 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | paste -sd ';' - || true)
+          if [ -n "$failing" ]; then echo "::warning title=Failing tests::head=${{ github.event.pull_request.head.sha || github.sha }} ${failing}"; fi
       - name: Build the release bundle
         run: node scripts/release-bundle.mjs dist/release --source-commit "$GITHUB_SHA"
       - name: Verify the bundle against its manifest

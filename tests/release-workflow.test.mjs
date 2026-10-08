@@ -28,6 +28,11 @@ test("the release workflow has its five jobs, in their order of trust", () => {
   assert.match(all.desktop, /^    uses: \.\/\.github\/workflows\/desktop\.yml$/m, "the release reuses the Desktop workflow");
   assert.match(read(".github/workflows/desktop.yml"), /^  workflow_call:$/m);
   assert.match(all.collect, /^    needs: \[build, desktop\]$/m);
+  // The build runs the full gate, so it sets up the desktop shell's tests exactly as CI does.
+  const ci = read(".github/workflows/ci.yml");
+  for (const step of ["run: node scripts/fetch-electron.mjs", "run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0", "npm run check 2>&1 | tee check.log"]) {
+    assert.ok(ci.includes(step) && all.build.includes(step), `build runs "${step}" as CI does`);
+  }
   assert.match(all.attest, /^    needs: collect$/m);
   assert.match(all.publish, /^    needs: attest$/m);
   assert.match(release, /^permissions:\n  contents: read\n/m, "every job reads only, unless it says otherwise");
@@ -61,7 +66,7 @@ test("the release is a draft for an existing tag, and every collected file is si
 test("a pull request that changes the release path runs the unsigned pipeline", () => {
   const on = release.slice(release.indexOf("\non:\n"), release.indexOf("\npermissions:"));
   assert.match(on, /^  pull_request:\n    paths:\n/m);
-  for (const path of [".github/workflows/release.yml", ".github/workflows/desktop.yml", "scripts/release-bundle.mjs", "scripts/package-desktop.mjs"]) {
+  for (const path of [".github/workflows/release.yml", ".github/workflows/desktop.yml", "scripts/release-bundle.mjs", "scripts/package-desktop.mjs", "scripts/fetch-electron.mjs"]) {
     assert.ok(on.includes(`      - ${path}\n`), `a change to ${path} runs the release workflow`);
   }
 });
