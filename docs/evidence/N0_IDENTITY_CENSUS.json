@@ -1,21 +1,21 @@
 {
   "schema": "identity-census-summary/1",
-  "filesScanned": 525,
-  "filesWithFindings": 210,
-  "gatedFindings": 1294,
+  "filesScanned": 526,
+  "filesWithFindings": 197,
+  "gatedFindings": 1131,
   "byCategory": {
-    "ACTIVE_PRODUCT_IDENTITY": 322,
+    "ACTIVE_PRODUCT_IDENTITY": 265,
     "ACTIVE_INTERNAL_IDENTITY": 324,
     "PUBLIC_API": 28,
-    "PERSISTED_DATA": 8,
+    "PERSISTED_DATA": 0,
     "LEGACY_COMPATIBILITY": 51,
-    "TEST_FIXTURE": 324,
+    "TEST_FIXTURE": 226,
     "THIRD_PARTY_INDEPENDENT_OBLIGATION": 198,
-    "IMMUTABLE_HISTORICAL_FACT": 430,
+    "IMMUTABLE_HISTORICAL_FACT": 439,
     "REMOVE_ENTIRELY": 288
   },
   "byTerm": {
-    "lilac": 967,
+    "lilac": 813,
     "paper": 477,
     "firstmate": 29,
     "no-mistakes": 21,
@@ -32,9 +32,9 @@
     "ui-tars": 28
   },
   "byRule": {
-    "dated-evidence": 430,
+    "dated-evidence": 439,
     "default-donor": 39,
-    "default-lilac": 272,
+    "default-lilac": 215,
     "default-paper": 50,
     "donor-provenance-records": 285,
     "independent-runtime-docling": 93,
@@ -43,11 +43,10 @@
     "legacy-project-fixture": 7,
     "paper-recovery-evidence": 191,
     "paper-recovery-workflows": 97,
-    "persisted-history-tools": 8,
     "public-env": 1,
     "public-mcp-catalog": 27,
-    "tests": 324,
+    "tests": 226,
     "third-party-notices": 23
   },
-  "censusSha256": "d4521835c2bfcaa9caefe2f9a809206c884d503ca2679194c288cf79a499d88f"
+  "censusSha256": "90f0f58ab93bb8892bb0cced2b5cdd85dc97e1912fbb01ef95d3471daa2af586"
 }

@@ -70,7 +70,7 @@ test("clicking selects through hit testing, with shift-extend and click-away cle
     let point = await page.evaluate(() => window.screenOf("title"));
     await page.mouse.click(point.x, point.y);
     assert.deepEqual(await page.evaluate(() => window.canvas.selection), ["title"], "the innermost rendered node is hit");
-    assert.equal(await page.evaluate(() => document.querySelectorAll("[data-lilac-selection]").length), 1, "the selection is drawn");
+    assert.equal(await page.evaluate(() => document.querySelectorAll("[data-ninerr-selection]").length), 1, "the selection is drawn");
     point = await page.evaluate(() => window.screenOf("badge"));
     await page.keyboard.down("Shift");
     await page.mouse.click(point.x, point.y);
@@ -132,7 +132,7 @@ test("drag-move, resize, nudge and delete commit operations that re-render incre
 
     // Resize from the handle by (40, 20).
     const handle = await page.evaluate(() => {
-      const rect = document.querySelector("[data-lilac-handle]").getBoundingClientRect();
+      const rect = document.querySelector("[data-ninerr-handle]").getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     });
     await page.mouse.move(handle.x, handle.y);
@@ -203,7 +203,7 @@ test("moves and resizes commit the geometry the user saw, for margins, padding a
     await page.evaluate(() => window.canvas.select(["padded"]));
     const padded = await rectOf(page, "padded");
     const handle = await page.evaluate(() => {
-      const rect = document.querySelector("[data-lilac-handle]").getBoundingClientRect();
+      const rect = document.querySelector("[data-ninerr-handle]").getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     });
     await page.mouse.move(handle.x, handle.y);
@@ -236,7 +236,7 @@ test("moves and resizes commit the geometry the user saw, for margins, padding a
     await page.evaluate(() => window.canvas.select(["inline"]));
     const inline = await rectOf(page, "inline");
     const inlineHandle = await page.evaluate(() => {
-      const rect = document.querySelector("[data-lilac-handle]").getBoundingClientRect();
+      const rect = document.querySelector("[data-ninerr-handle]").getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     });
     await page.mouse.move(inlineHandle.x, inlineHandle.y);
@@ -279,7 +279,7 @@ test("cancelled, abandoned and tiny drags never commit or leave a preview behind
     assert.equal(await page.evaluate(() => window.commits.length), 0, "a cancelled drag commits nothing");
     // A resize released outside the stage still ends, and commits, because the stage holds capture.
     const handle = await page.evaluate(() => {
-      const rect = document.querySelector("[data-lilac-handle]").getBoundingClientRect();
+      const rect = document.querySelector("[data-ninerr-handle]").getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     });
     await page.mouse.move(handle.x, handle.y);

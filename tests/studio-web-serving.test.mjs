@@ -84,7 +84,7 @@ test("the editor's routes: the user, the history log, and project-named changes 
 });
 
 test("a request body over the limit is answered, not left waiting", { timeout: 15_000 }, async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-too-large-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-too-large-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   try {
     const started = Date.now();

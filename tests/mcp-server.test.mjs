@@ -187,7 +187,7 @@ test("agents read and edit through tools; every edit is an attributed transactio
     const byAgent = journal.filter((tx) => tx.metadata.collaboration.actorKind === "agent");
     assert.equal(byAgent.length, 7);
     for (const tx of byAgent) {
-      assert.equal(tx.metadata.lilac.transport, "mcp");
+      assert.equal(tx.metadata.ninerr.transport, "mcp");
       assert.equal(tx.metadata.collaboration.ownerActorId, "local-user");
       assert.equal(tx.actor, agent.agentId);
     }

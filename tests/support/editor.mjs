@@ -28,7 +28,7 @@ export async function openEditor(host) {
 export const waitRevision = (page, revision) => page.waitForFunction((r) => document.getElementById("revision").textContent === `Revision ${r}`, revision);
 export const layerCount = (page) => page.locator("#layers [role=treeitem]").count();
 export const rendered = (page, id, read) => page.evaluate(({ nodeId, property }) => {
-  const element = document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`);
+  const element = document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${nodeId}"]`);
   if (element === null) return null;
   return property === "text" ? element.textContent : property === "tag" ? element.localName : element.style.getPropertyValue(property);
 }, { nodeId: id, property: read });

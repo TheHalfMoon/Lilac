@@ -48,16 +48,16 @@ test("renders web semantics with stable identity inside a script-free sandbox", 
     const result = await page.evaluate((doc) => {
       window.r.render(doc);
       const frameDoc = window.frame.contentDocument;
-      const root = frameDoc.querySelector("[data-lilac-root]");
+      const root = frameDoc.querySelector("[data-ninerr-root]");
       return {
         sandbox: window.frame.getAttribute("sandbox"),
         html: root.innerHTML,
         size: window.r.size,
         heading: frameDoc.querySelector("h1").textContent,
-        link: frameDoc.querySelector("a").getAttribute("data-lilac-href"),
+        link: frameDoc.querySelector("a").getAttribute("data-ninerr-href"),
         liveHref: frameDoc.querySelector("a").getAttribute("href"),
         onclick: frameDoc.querySelector("a").getAttribute("onclick"),
-        idsMatch: [...root.querySelectorAll("[data-lilac-id]")].every((el) => window.r.elementFor(el.getAttribute("data-lilac-id")) === el),
+        idsMatch: [...root.querySelectorAll("[data-ninerr-id]")].every((el) => window.r.elementFor(el.getAttribute("data-ninerr-id")) === el),
         hitTest: window.r.nodeIdFor(frameDoc.querySelector("h1").firstChild.parentElement),
         csp: frameDoc.querySelector('meta[http-equiv="Content-Security-Policy"]').getAttribute("content"),
         heroStyle: frameDoc.querySelector("section").style.padding,
@@ -73,7 +73,7 @@ test("renders web semantics with stable identity inside a script-free sandbox", 
     assert.equal(result.hitTest, "title");
     assert.match(result.csp, /^default-src 'none'/u);
     assert.equal(result.heroStyle, "16px");
-    assert.match(result.html, /^<main data-lilac-id="page" data-lilac-type="frame" style="[^"]*">/u);
+    assert.match(result.html, /^<main data-ninerr-id="page" data-ninerr-type="frame" style="[^"]*">/u);
 
     // Clicking or keyboard-activating a rendered link runs no script, makes no request, and
     // leaves the canvas document in place.
@@ -86,11 +86,11 @@ test("renders web semantics with stable identity inside a script-free sandbox", 
     await page.waitForTimeout(200);
     const after = await page.evaluate(() => ({
       hacked: window.hacked === true,
-      alive: window.frame.contentDocument?.querySelector("[data-lilac-root]") !== null && window.r.elementFor("title")?.isConnected === true,
+      alive: window.frame.contentDocument?.querySelector("[data-ninerr-root]") !== null && window.r.elementFor("title")?.isConnected === true,
       href: window.frame.contentDocument?.querySelector("a")?.getAttribute("href") ?? null,
     }));
     assert.deepEqual(after, { hacked: false, alive: true, href: null });
-    assert.equal(await page.evaluate(() => window.frame.contentDocument.querySelector("[data-lilac-root]").inert), true, "rendered controls are not interactive");
+    assert.equal(await page.evaluate(() => window.frame.contentDocument.querySelector("[data-ninerr-root]").inert), true, "rendered controls are not interactive");
     assert.equal(session.requests.filter((url) => url.includes("example.com")).length, 0, "the link target was never requested");
     assert.equal(new URL(page.url()).pathname, "/harness.html");
     assert.deepEqual(session.errors, []);
@@ -112,13 +112,13 @@ test("patches touch only the affected nodes and keep element identity", browserT
         const before = { ...window.r.stats };
         const keep = window.r.elementFor("title");
         window.r.patch(d, affected);
-        const root = window.frame.contentDocument.querySelector("[data-lilac-root]");
+        const root = window.frame.contentDocument.querySelector("[data-ninerr-root]");
         return {
           created: window.r.stats.created - before.created,
           removed: window.r.stats.removed - before.removed,
           sameTitle: window.r.elementFor("title") === keep,
           order: [...root.querySelectorAll("li")].map((li) => li.textContent),
-          ids: [...root.querySelectorAll("[data-lilac-id]")].map((el) => el.getAttribute("data-lilac-id")),
+          ids: [...root.querySelectorAll("[data-ninerr-id]")].map((el) => el.getAttribute("data-ninerr-id")),
           title: window.r.elementFor("title")?.textContent ?? null,
         };
       }, { d: doc, affected: result.affectedNodeIds });
@@ -141,7 +141,7 @@ test("patches touch only the affected nodes and keep element identity", browserT
     assert.equal(after.removed, 3, "list, a and c are forgotten");
     // A full re-render from the same document produces the same DOM as the patched one.
     const consistent = await page.evaluate((d) => {
-      const root = window.frame.contentDocument.querySelector("[data-lilac-root]");
+      const root = window.frame.contentDocument.querySelector("[data-ninerr-root]");
       const patched = root.innerHTML;
       window.r.render(d);
       return patched === root.innerHTML;
@@ -172,10 +172,10 @@ test("rendered content cannot fetch: remote images are dropped and the frame blo
       rogue.src = "http://lilac.test/rogue.png";
       frameDoc.body.appendChild(rogue);
       return new Promise((resolve) => setTimeout(() => resolve({
-        src: frameDoc.querySelector('[data-lilac-id="img"]').getAttribute("src"),
-        alt: frameDoc.querySelector('[data-lilac-id="img"]').getAttribute("alt"),
-        bg: frameDoc.querySelector('[data-lilac-id="bg"]').style.background,
-        okSrc: frameDoc.querySelector('[data-lilac-id="ok"]').getAttribute("src"),
+        src: frameDoc.querySelector('[data-ninerr-id="img"]').getAttribute("src"),
+        alt: frameDoc.querySelector('[data-ninerr-id="img"]').getAttribute("alt"),
+        bg: frameDoc.querySelector('[data-ninerr-id="bg"]').style.background,
+        okSrc: frameDoc.querySelector('[data-ninerr-id="ok"]').getAttribute("src"),
       }), 300));
     }, doc);
     assert.equal(result.src, null);
@@ -247,7 +247,7 @@ test("SVG keeps its required case, and a tag change patches like a fresh render"
     doc = result.document;
     const patched = await page.evaluate(({ d, affected }) => {
       window.r.patch(d, affected);
-      const root = window.frame.contentDocument.querySelector("[data-lilac-root]");
+      const root = window.frame.contentDocument.querySelector("[data-ninerr-root]");
       const html = root.innerHTML;
       const tag = window.r.elementFor("heading").localName;
       const innerKept = window.r.elementFor("inner")?.parentElement === window.r.elementFor("heading");
@@ -305,7 +305,7 @@ test("patching agrees with a fresh render over a seeded random edit sequence", b
       const same = await page.evaluate(({ d, affected }) => {
         window.r.patch(d, affected);
         window.reference.renderer.render(d);
-        const root = window.frame.contentDocument.querySelector("[data-lilac-root]");
+        const root = window.frame.contentDocument.querySelector("[data-ninerr-root]");
         return root.innerHTML === window.reference.host.innerHTML && window.r.size === window.reference.renderer.size && window.r.size === Object.keys(d.nodes).length;
       }, { d: doc, affected: result.affectedNodeIds });
       if (!same) mismatches += 1;

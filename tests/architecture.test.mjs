@@ -6,7 +6,7 @@ import {
   ARCHITECTURE_SCHEMA_VERSION,
   ArchitectureValidationError,
   IMPLEMENTED_PACKAGES,
-  LILAC_ARCHITECTURE_MAP,
+  NINERR_ARCHITECTURE_MAP,
   architectureDigest,
   canonicalArchitectureStringify,
   normalizeArchitectureMap,
@@ -53,7 +53,7 @@ function map(subsystems) {
 }
 
 test("canonical catalog covers every required subsystem exactly once", () => {
-  const normalized = normalizeArchitectureMap(LILAC_ARCHITECTURE_MAP);
+  const normalized = normalizeArchitectureMap(NINERR_ARCHITECTURE_MAP);
   const ids = normalized.subsystems.map((subsystem) => subsystem.id);
   for (const required of REQUIRED_IDS) {
     assert.ok(ids.includes(required), required);
@@ -77,7 +77,7 @@ test("canonical catalog covers every required subsystem exactly once", () => {
 });
 
 test("duplicate ownership and unknown references fail closed", () => {
-  const base = LILAC_ARCHITECTURE_MAP.subsystems;
+  const base = NINERR_ARCHITECTURE_MAP.subsystems;
   assert.throws(() => normalizeArchitectureMap(map([...base, entry({ id: "document-model" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([entry({ dependsOn: ["no-such-subsystem"] })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([entry({ id: "loop-a", dependsOn: ["loop-a"] })])), ArchitectureValidationError);
@@ -102,8 +102,8 @@ test("oversized catalogs fail closed", () => {
 });
 
 test("deterministic serialization for identical inputs", () => {
-  assert.equal(canonicalArchitectureStringify(LILAC_ARCHITECTURE_MAP), canonicalArchitectureStringify(JSON.parse(JSON.stringify(LILAC_ARCHITECTURE_MAP))));
-  assert.equal(architectureDigest(LILAC_ARCHITECTURE_MAP).length, 64);
+  assert.equal(canonicalArchitectureStringify(NINERR_ARCHITECTURE_MAP), canonicalArchitectureStringify(JSON.parse(JSON.stringify(NINERR_ARCHITECTURE_MAP))));
+  assert.equal(architectureDigest(NINERR_ARCHITECTURE_MAP).length, 64);
   assert.equal(sha256Text("lilac").length, 64);
 });
 
@@ -120,7 +120,7 @@ function workspacePackages() {
 test("every workspace package is owned by a delivered catalog subsystem", () => {
   const packages = workspacePackages();
   assert.ok(packages.length >= 17);
-  const delivered = normalizeArchitectureMap(LILAC_ARCHITECTURE_MAP).subsystems.filter((subsystem) => subsystem.status !== "planned");
+  const delivered = normalizeArchitectureMap(NINERR_ARCHITECTURE_MAP).subsystems.filter((subsystem) => subsystem.status !== "planned");
   for (const name of packages) {
     assert.ok(delivered.some((subsystem) => subsystem.owner === name), `${name} has no implemented or stub catalog entry`);
   }

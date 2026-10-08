@@ -743,7 +743,7 @@ async function resync() {
   state.canRedo = Boolean(session.canRedo);
   canvas.setDocument(next);
   state.selection = canvas.selection;
-  measure("lilac:render-project", started);
+  measure("ninerr:render-project", started);
 }
 
 class ProjectChanged extends Error {}
@@ -903,7 +903,7 @@ function commit(operations, intent, computedAt = state.document?.revision) {
       const event = await state.client.post("/api/edit", { baseRevision: state.revision, operations, intent });
       applyChange(event);
       // Only when this edit's change was applied here (not held for a refresh).
-      if (state.revision === event.revision) measure("lilac:edit", started);
+      if (state.revision === event.revision) measure("ninerr:edit", started);
       setStatus(intent ? `${intent}.` : "Changed.");
       return event;
     } catch (error) {
@@ -974,7 +974,7 @@ function listenForChanges({ refreshOnOpen = false } = {}) {
       const event = JSON.parse(message.data);
       const before = state.revision;
       applyChange(event);
-      if (state.revision === event.revision && before === event.revision - 1) measure("lilac:apply-change", received);
+      if (state.revision === event.revision && before === event.revision - 1) measure("ninerr:apply-change", received);
     } catch {
       requestResync();
     }
@@ -1364,7 +1364,7 @@ function renderHistory() {
     el("span", { class: "who" },
       actorLabel(entry),
       entry.actorKind === "agent" ? el("span", { class: "kind" }, " · agent") : null,
-      entry.tool && !entry.tool.startsWith("lilac:") ? ` · ${entry.tool}` : null,
+      entry.tool && !/^(?:ninerr|lilac):/u.test(entry.tool) ? ` · ${entry.tool}` : null,
       ` · revision ${entry.revision}`),
     entry.actorKind === "agent" ? el("button", { type: "button", class: "revert", "aria-label": `Revert ${entry.intent ?? "change"} by ${actorLabel(entry)}`, onclick: () => revert(entry) }, "Revert") : null)));
   if (state.history.length === 0) list.replaceChildren(el("li", {}, el("span", { class: "who" }, "No changes since this project was opened.")));

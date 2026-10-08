@@ -111,9 +111,9 @@ test("loopback grants in allowlist mode stay on loopback", () => {
 test("provider registries hold credential references only", () => {
   const ok = normalizeProviderRegistry(registry([
     { id: "rules", kind: "in-process", capabilities: ["inference.text"] },
-    { id: "hosted", kind: "remote-http", capabilities: ["inference.text"], endpoint: "https://api.example.com/v1", credentialRef: { store: "env", name: "LILAC_API_KEY" } },
+    { id: "hosted", kind: "remote-http", capabilities: ["inference.text"], endpoint: "https://api.example.com/v1", credentialRef: { store: "env", name: "NINERR_API_KEY" } },
   ]));
-  assert.equal(ok.providers[1].credentialRef.name, "LILAC_API_KEY");
+  assert.equal(ok.providers[1].credentialRef.name, "NINERR_API_KEY");
   const bad = [
     { id: "x", kind: "remote-http", capabilities: ["inference.text"], endpoint: "https://api.example.com", apiKey: "sk-live-123" },
     { id: "x", kind: "remote-http", capabilities: ["inference.text"], endpoint: "https://u:p@api.example.com" },
@@ -210,9 +210,9 @@ test("provider endpoints refuse secret-shaped paths and plaintext credentials", 
   const remote = (endpoint, credentialRef = null) => registry([{ id: "p", kind: "remote-http", capabilities: ["inference.text"], endpoint, credentialRef }]);
   assert.throws(() => normalizeProviderRegistry(remote("https://api.example.com/key/sk-ant-api03-SECRETsecret0123456")), /secret/);
   assert.doesNotThrow(() => normalizeProviderRegistry(remote("https://api.example.com/v1/AbCdEfGhIjKlMnOpQrStUvWxYz012345")), "generic opaque runs are not treated as secrets");
-  assert.throws(() => normalizeProviderRegistry(remote("http://api.example.com/v1", { store: "env", name: "LILAC_KEY" })), /https/);
+  assert.throws(() => normalizeProviderRegistry(remote("http://api.example.com/v1", { store: "env", name: "NINERR_KEY" })), /https/);
   assert.throws(() => normalizeProviderRegistry(remote("https://0.0.0.0/v1")), /unspecified/);
-  assert.doesNotThrow(() => normalizeProviderRegistry(remote("https://api.example.com/v1/chat/completions", { store: "env", name: "LILAC_KEY" })));
+  assert.doesNotThrow(() => normalizeProviderRegistry(remote("https://api.example.com/v1/chat/completions", { store: "env", name: "NINERR_KEY" })));
   assert.doesNotThrow(() => normalizeProviderRegistry(remote("http://api.example.com/v1")));
 });
 

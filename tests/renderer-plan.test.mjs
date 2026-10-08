@@ -36,7 +36,7 @@ function assertInert(plan, label) {
     assert.ok(!name.startsWith("on"), `${label}: no event handler (${name})`);
     assert.ok(!["style", "srcdoc", "formaction", "action", "id"].includes(name), `${label}: ${name} is never rendered`);
     assert.notEqual(name, "href", `${label}: links are rendered inert`);
-    if (name === "data-lilac-href" || name === "cite") assert.match(value, /^(https?:|mailto:|tel:|#)/iu, `${label}: ${name}`);
+    if (name === "data-ninerr-href" || name === "cite") assert.match(value, /^(https?:|mailto:|tel:|#)/iu, `${label}: ${name}`);
     if (name === "src") assert.match(value, /^data:image\/(png|jpeg|gif|webp|avif);base64,/iu, `${label}: src`);
     assert.doesNotMatch(value, /javascript:/iu, `${label}: ${name} value`);
   }
@@ -66,7 +66,7 @@ test("hand-built hostile props are reduced to the allowlists", () => {
     props: {
       tag: "SCRIPT",
       text: "hello",
-      attributes: { onclick: "alert(1)", ONLOAD: "x", href: "javascript:alert(1)", style: "color:red", id: "spoof", "data-lilac-id": "spoof", srcdoc: "<b>", class: "card", "aria-label": "Card", "data-test": "1" },
+      attributes: { onclick: "alert(1)", ONLOAD: "x", href: "javascript:alert(1)", style: "color:red", id: "spoof", "data-ninerr-id": "spoof", srcdoc: "<b>", class: "card", "aria-label": "Card", "data-test": "1" },
       style: { color: "red", background: "url(https://evil.example/x.png)", width: "expression(alert(1))", "font-family": "a\\62 c", "--brand": "#f00", "margin;x": "1px", padding: 4 },
     },
   });
@@ -76,7 +76,7 @@ test("hand-built hostile props are reduced to the allowlists", () => {
   assert.equal(plan.text, "hello");
   assert.ok(plan.dropped >= 9);
   const link = planElement({ id: "a", type: "element", props: { tag: "a", attributes: { href: " https://example.com/x ", target: "_top" } } });
-  assert.deepEqual(link.attributes, { "data-lilac-href": "https://example.com/x" }, "links are inert, and only _blank survives as a target");
+  assert.deepEqual(link.attributes, { "data-ninerr-href": "https://example.com/x" }, "links are inert, and only _blank survives as a target");
   const image = planElement({ id: "i", type: "image", props: { attributes: { src: "https://evil.example/p.png", alt: "Chart" } } });
   assert.deepEqual([image.tag, image.attributes], ["img", { alt: "Chart" }], "remote images are not rendered");
   assert.equal(planElement({ id: "i2", type: "image", props: { attributes: { src: "data:image/png;base64,iVBORw0KGgo=" } } }).attributes.src, "data:image/png;base64,iVBORw0KGgo=");

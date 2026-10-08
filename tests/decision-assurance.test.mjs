@@ -9,7 +9,7 @@ import {
   assureCandidates,
   serializeAssuranceRecord,
 } from "../packages/decision-assurance/src/index.ts";
-import { LILAC_MOBILE_METHOD_PACK } from "../packages/design-method/src/index.ts";
+import { NINERR_MOBILE_METHOD_PACK } from "../packages/design-method/src/index.ts";
 
 const AT = "2026-10-06T12:00:00.000Z";
 
@@ -108,9 +108,9 @@ test("built-in accessibility, layout, and design-system checks report evidence",
 
 test("rule-pack findings flow through with pack-qualified rule ids", async () => {
   const nodes = [{ id: "icon-btn", kind: "button", x: 16, y: 100, width: 48, height: 48, interactive: true, label: "Close" }, { id: "photo", kind: "image", x: 16, y: 200, width: 100, height: 100 }];
-  const record = await assureCandidates(input([candidate("p", nodes), candidate("q")], { rulePacks: [LILAC_MOBILE_METHOD_PACK] }));
+  const record = await assureCandidates(input([candidate("p", nodes), candidate("q")], { rulePacks: [NINERR_MOBILE_METHOD_PACK] }));
   const ids = ruleIds(record, "p");
-  assert.ok(ids.some((id) => id.startsWith("lilac-mobile-method/")), ids.join(","));
+  assert.ok(ids.some((id) => id.startsWith("ninerr-mobile-method/")), ids.join(","));
   const finding = record.candidates.find((entry) => entry.candidateId === "p").findings.find((entry) => entry.source === "rule-pack");
   assert.equal(finding.measured, null);
 });
@@ -262,7 +262,7 @@ test("adapter identity is read once and adapter text is bounded and scrubbed", a
 });
 
 test("worst-case valid inputs never produce a router request the router rejects", async () => {
-  const packs = Array.from({ length: ASSURANCE_HARD_LIMITS.maxRulePacks }, (_, index) => ({ ...LILAC_MOBILE_METHOD_PACK, id: `pack-${index}-${"p".repeat(110)}` }));
+  const packs = Array.from({ length: ASSURANCE_HARD_LIMITS.maxRulePacks }, (_, index) => ({ ...NINERR_MOBILE_METHOD_PACK, id: `pack-${index}-${"p".repeat(110)}` }));
   const nodes = [
     { id: "tiny", kind: "button", x: 1, y: 1, width: 10, height: 10, interactive: true },
     { id: "photo", kind: "image", x: 2, y: 2, width: 101, height: 101 },

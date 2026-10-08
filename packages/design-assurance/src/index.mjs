@@ -648,7 +648,7 @@ function normalizeUpstream(findings, options) {
 }
 
 function defaultRulePacks(rulePacks) {
-  if (rulePacks === undefined) return [LILAC_CORE_RULE_PACK];
+  if (rulePacks === undefined) return [NINERR_CORE_RULE_PACK];
   if (!Array.isArray(rulePacks)) throw new DesignAssuranceError("rulePacks must be an array");
   return rulePacks;
 }
@@ -863,7 +863,7 @@ function tokenRegistry(document) {
   return isPlainObject(tokens) ? tokens : "INVALID";
 }
 
-export const LILAC_CORE_RULE_PACK = createLilacRulePack({
+export const NINERR_CORE_RULE_PACK = createLilacRulePack({
   namespace: "lilac",
   rules: [
     {

@@ -165,7 +165,7 @@ test("offline smoke: create, import, edit, code, an agent over stdio, save, rest
     assert.equal(await layerCount(editor), layersBefore);
     const names = await editor.locator("#layers [role=treeitem] > .row .label").allTextContents();
     assert.ok(names.includes("Landing page") && names.includes("From agent") && names.includes("Badge"), names.join(", "));
-    const h1 = await editor.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("h1")?.getAttribute("data-lilac-id"));
+    const h1 = await editor.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("h1")?.getAttribute("data-ninerr-id"));
     assert.equal(await rendered(editor, h1, "color"), "rgb(51, 85, 119)");
     assert.deepEqual(tab.errors, []);
   } finally {

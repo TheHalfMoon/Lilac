@@ -1,0 +1,16 @@
+# N0-G3e: runtime identifiers carry the Ninerr name
+
+Issue: #190 (N0 umbrella). These are the identifiers shared between packages at run time. They move together, so every producer and consumer agrees.
+
+| Identifier | Before | Now | Data from before the rename |
+|---|---|---|---|
+| Renderer DOM attributes | `data-lilac-id`, `-root`, `-href`, `-type`, `-handle`, `-selection` | `data-ninerr-*`; the matching `dataset.ninerr*` keys and the `__ninerrText` marker | Ephemeral, never stored. The renderer still refuses document attributes in either prefix, so an imported document cannot impersonate its own. |
+| Desktop preload bridge | `window.lilacDesktop` | `window.ninerrDesktop` | Ephemeral. |
+| Editor credential key (per tab) | `sessionStorage["lilac.token"]` | `sessionStorage["ninerr.token"]` | Per tab only. An open tab asks for a fresh link once. |
+| History tool identifiers | `lilac:import`, `:code`, `:codebase`, `:undo`, `:redo`, `:revert` | `ninerr:*` | Journals keep the old values. The history view treats both prefixes as the editor's own tools. |
+| Transaction metadata key | `metadata.lilac` | `metadata.ninerr` | Journals keep `lilac`. Nothing reads it back for behaviour today; #179 (showing a reopened project's history) must read both. |
+| Editor performance marks | `lilac:render-project`, `:edit`, `:apply-change` | `ninerr:*` | Ephemeral. |
+| Method pack and rules | `lilac-mobile-method/*`, `LILAC_MOBILE_METHOD_PACK`, `LILAC_CORE_RULE_PACK`, `LILAC_ARCHITECTURE_MAP` | `ninerr-mobile-method/*` and `NINERR_*` | Rule IDs appear in review results, which are not persisted. |
+| Supervisor task-set lock | `__lilac_supervisor_task_set__` | `__ninerr_supervisor_task_set__` | It serializes worker creation inside one supervisor process and is not shared across releases. |
+
+The first local run of this change failed the canvas and editor browser tests. The canvas set its selection and resize-handle attributes through `dataset.lilac*`, which produces `data-lilac-*`, while the selectors had moved to `data-ninerr-*`. Both sides now use `ninerr`, and those tests pass locally with Edge as the test browser.

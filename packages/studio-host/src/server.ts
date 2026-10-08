@@ -102,7 +102,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   const settleWriteBacksOf = (current: StudioSession, folder: string): void => {
     const { operations, temporaries } = settleWriteBacks(current.document, folder);
     if (operations.length === 0) return;
-    current.edit(owner, { baseRevision: current.revision, operations, intent: "Settle earlier write-backs", tool: "lilac:codebase" }, "http", undefined, { undoable: false });
+    current.edit(owner, { baseRevision: current.revision, operations, intent: "Settle earlier write-backs", tool: "ninerr:codebase" }, "http", undefined, { undoable: false });
     for (const temporary of temporaries) removeTemporary(temporary);
   };
   // What the person has selected in the editor, for MCP's get_selection.
@@ -230,7 +230,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     "POST /api/import/commit": (body) => {
       const current = requireSession();
       const { operations, intent, frameId, provenance } = imports.change(body?.proposalId, current.document);
-      const event = current.edit(owner, { baseRevision: current.revision, operations, intent, tool: "lilac:import" }, "http", { import: provenance });
+      const event = current.edit(owner, { baseRevision: current.revision, operations, intent, tool: "ninerr:import" }, "http", { import: provenance });
       // Only a committed review is used up; a failed commit can be retried.
       imports.consume(body.proposalId);
       return { ...event, frameId };
@@ -240,7 +240,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       const current = requireSession();
       const { operations, frameId, componentName, layers } = importJsx(body?.code);
       const placed = operations.map((operation: any) => ({ ...operation, index: (current.document as any).rootIds.length }));
-      return { ...current.edit(owner, { baseRevision: current.revision, operations: placed, intent: `Bring in ${componentName}`, tool: "lilac:code" }), frameId, layers };
+      return { ...current.edit(owner, { baseRevision: current.revision, operations: placed, intent: `Bring in ${componentName}`, tool: "ninerr:code" }), frameId, layers };
     },
     // A connected codebase (PC11): only the person, through the editor's session, ever
     // connects one, brings a component in from it, or writes back to it.
@@ -265,7 +265,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       const folder = connectedFolder(current.name);
       const { operations, frameId, componentName, layers, file } = bringIn(folder, body?.file, body?.component);
       const placed = operations.map((operation: any) => ({ ...operation, index: (current.document as any).rootIds.length }));
-      return { ...current.edit(owner, { baseRevision: current.revision, operations: placed, intent: `Bring in ${componentName} from ${file}`, tool: "lilac:codebase" }), frameId, layers };
+      return { ...current.edit(owner, { baseRevision: current.revision, operations: placed, intent: `Bring in ${componentName} from ${file}`, tool: "ninerr:codebase" }), frameId, layers };
     },
     "POST /api/codebase/preview": (body) => {
       const current = requireSession();
@@ -288,7 +288,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       // Not undoable: undo cannot take back the file, so undoing these would make the
       // project disagree with it.
       const plan = writeBack(current.document, body?.nodeId, folder, body?.token, (operations, step, planned) => {
-        event = current.edit(owner, { baseRevision: current.revision, operations, intent: intents[step](planned), tool: "lilac:codebase" }, "http", undefined, { undoable: false });
+        event = current.edit(owner, { baseRevision: current.revision, operations, intent: intents[step](planned), tool: "ninerr:codebase" }, "http", undefined, { undoable: false });
       });
       return { ...event, file: plan.file, written: plan.changes.length };
     },

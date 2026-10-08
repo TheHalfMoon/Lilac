@@ -193,7 +193,7 @@ export class StudioSession {
   /** Commit an edit as `actor`. A stale `baseRevision` is refused rather than rebased. */
   /**
    * `provenance` (host-internal callers only, never from a request body) is kept in the
-   * transaction's `metadata.lilac`, for example what an import came from.
+   * transaction's `metadata.ninerr`, for example what an import came from.
    */
   edit(actor: StudioActor, input: EditInput, transport: "http" | "mcp" | "agent" = "http", provenance?: Record<string, unknown>, options: { undoable?: boolean } = {}): ChangeEvent {
     this.#assertUsable();
@@ -220,7 +220,7 @@ export class StudioSession {
     const stack = this.#undo.get(actor.actorId);
     const entry = stack?.at(-1);
     if (entry === undefined) throw new StudioError(409, "nothing-to-undo", "there is nothing to undo");
-    const { event } = this.#commit(actor, "http", { operations: entry.inverse, intent: entry.intent === null ? "Undo" : `Undo: ${entry.intent}`.slice(0, 500), tool: "lilac:undo", link: { undoOf: entry.transactionId } }, "undo-conflict");
+    const { event } = this.#commit(actor, "http", { operations: entry.inverse, intent: entry.intent === null ? "Undo" : `Undo: ${entry.intent}`.slice(0, 500), tool: "ninerr:undo", link: { undoOf: entry.transactionId } }, "undo-conflict");
     stack!.pop();
     this.#push(this.#redo, actor, entry);
     return event;
@@ -232,7 +232,7 @@ export class StudioSession {
     const stack = this.#redo.get(actor.actorId);
     const entry = stack?.at(-1);
     if (entry === undefined) throw new StudioError(409, "nothing-to-redo", "there is nothing to redo");
-    const { event, inverse } = this.#commit(actor, "http", { operations: entry.operations, intent: entry.intent, tool: "lilac:redo", link: { redoOf: entry.transactionId } }, "redo-conflict");
+    const { event, inverse } = this.#commit(actor, "http", { operations: entry.operations, intent: entry.intent, tool: "ninerr:redo", link: { redoOf: entry.transactionId } }, "redo-conflict");
     stack!.pop();
     this.#push(this.#undo, actor, { transactionId: event.transactionId, intent: entry.intent, operations: entry.operations, inverse });
     return event;
@@ -251,7 +251,7 @@ export class StudioSession {
       const entry = stack.at(-1);
       if (entry === undefined || entry.transactionId !== transactionId) continue;
       if (actorId === actor.actorId) return this.undo(actor);
-      const { event, inverse } = this.#commit(actor, "http", { operations: entry.inverse, intent: `Revert: ${entry.intent ?? "agent change"}`.slice(0, 500), tool: "lilac:revert", link: { revertOf: entry.transactionId } }, "revert-conflict");
+      const { event, inverse } = this.#commit(actor, "http", { operations: entry.inverse, intent: `Revert: ${entry.intent ?? "agent change"}`.slice(0, 500), tool: "ninerr:revert", link: { revertOf: entry.transactionId } }, "revert-conflict");
       stack.pop();
       this.#push(this.#undo, actor, { transactionId: event.transactionId, intent: event.intent, operations: entry.inverse, inverse });
       this.#redo.delete(actor.actorId);
@@ -309,7 +309,7 @@ export class StudioSession {
           tool: input.tool,
           timestamp: at,
           // How the change arrived (editor, MCP), with its undo/redo/revert link, kept durably.
-          metadata: { lilac: { transport, ...(input.link ?? {}), ...(input.provenance ? { provenance: input.provenance } : {}) } },
+          metadata: { ninerr: { transport, ...(input.link ?? {}), ...(input.provenance ? { provenance: input.provenance } : {}) } },
           operations: input.operations,
         },
       });

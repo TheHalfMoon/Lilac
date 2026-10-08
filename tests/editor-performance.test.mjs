@@ -54,9 +54,9 @@ test("a 10,000-node project renders, applies changes and edits within the gate-1
     await waitRevision(tab, created.revision);
     // For the record: the whole open, including the host reading the project from disk.
     const openWall = Date.now() - opening;
-    const rendered = await tab.evaluate(() => document.querySelector("iframe").contentDocument.querySelectorAll("[data-lilac-id]").length);
+    const rendered = await tab.evaluate(() => document.querySelector("iframe").contentDocument.querySelectorAll("[data-ninerr-id]").length);
     assert.equal(rendered, NODES);
-    const firstRender = await tab.evaluate(() => performance.getEntriesByName("lilac:render-project", "measure").at(-1).duration);
+    const firstRender = await tab.evaluate(() => performance.getEntriesByName("ninerr:render-project", "measure").at(-1).duration);
     assert.ok(firstRender <= 2000, `first render of ${NODES} nodes took ${firstRender.toFixed(0)} ms (budget 2000)`);
 
     // Changes from elsewhere (another client): applying each, from the event's arrival.
@@ -67,7 +67,7 @@ test("a 10,000-node project renders, applies changes and edits within the gate-1
       revision = event.revision;
       await waitRevision(tab, revision);
     }
-    const applied = await tab.evaluate(() => performance.getEntriesByName("lilac:apply-change", "measure").map((entry) => entry.duration));
+    const applied = await tab.evaluate(() => performance.getEntriesByName("ninerr:apply-change", "measure").map((entry) => entry.duration));
     // A change that lands while a refresh is in flight is replayed, not timed from arrival.
     assert.ok(applied.length >= 35, `${applied.length} changes measured`);
     const applyP95 = p95(applied);
@@ -75,14 +75,14 @@ test("a 10,000-node project renders, applies changes and edits within the gate-1
 
     // Structural changes from elsewhere: a card added, and a card removed.
     const structural = async (label, operationFor) => {
-      await tab.evaluate(() => performance.clearMeasures("lilac:apply-change"));
+      await tab.evaluate(() => performance.clearMeasures("ninerr:apply-change"));
       for (let index = 0; index < 30; index += 1) {
         const event = await call("/api/edit", { baseRevision: revision, intent: label, operations: [operationFor(index)] });
         assert.ok(Number.isInteger(event.revision), JSON.stringify(event).slice(0, 200));
         revision = event.revision;
         await waitRevision(tab, revision);
       }
-      const durations = await tab.evaluate(() => performance.getEntriesByName("lilac:apply-change", "measure").map((entry) => entry.duration));
+      const durations = await tab.evaluate(() => performance.getEntriesByName("ninerr:apply-change", "measure").map((entry) => entry.duration));
       assert.ok(durations.length >= 25, `${durations.length} ${label} changes measured`);
       const value = p95(durations);
       assert.ok(value <= 100, `applying ${label}: p95 ${value.toFixed(1)} ms (budget 100)`);
@@ -93,7 +93,7 @@ test("a 10,000-node project renders, applies changes and edits within the gate-1
     assert.equal(await treeRows(), NODES + 30, "each added card has its row in the tree");
     assert.equal(await tab.locator("#layers [role=treeitem][data-node-id=page] [role=treeitem]").nth(500).getAttribute("data-node-id"), "added0", "in its place");
     const removes = await structural("remove", (index) => ({ type: "remove-node", nodeId: `added${index}` }));
-    assert.equal(await tab.evaluate(() => document.querySelector("iframe").contentDocument.querySelectorAll("[data-lilac-id]").length), NODES);
+    assert.equal(await tab.evaluate(() => document.querySelector("iframe").contentDocument.querySelectorAll("[data-ninerr-id]").length), NODES);
     assert.equal(await treeRows(), NODES, "and each removed card's row is gone");
 
     // Edits made in the editor: Shift+Arrow on the canvas moves the selected card 10 px.
@@ -106,24 +106,24 @@ test("a 10,000-node project renders, applies changes and edits within the gate-1
       await tab.keyboard.press("Shift+ArrowRight");
       revision += 1;
       await waitRevision(tab, revision);
-      await waitMeasures(tab, "lilac:edit", index + 1);
+      await waitMeasures(tab, "ninerr:edit", index + 1);
     }
-    const edits = await tab.evaluate(() => performance.getEntriesByName("lilac:edit", "measure").map((entry) => entry.duration));
+    const edits = await tab.evaluate(() => performance.getEntriesByName("ninerr:edit", "measure").map((entry) => entry.duration));
     assert.equal(edits.length, 30);
     const editP95 = p95(edits);
     assert.ok(editP95 <= 750, `end-to-end edit: p95 ${editP95.toFixed(0)} ms (budget 750)`);
     assert.equal(host.session.document.nodes.n1.props.style.left, "300px", "the first recolour set left to 0px; 30 nudges of 10 px");
 
     // Layers deleted in the editor: select a card in the tree, press Delete.
-    await tab.evaluate(() => performance.clearMeasures("lilac:edit"));
+    await tab.evaluate(() => performance.clearMeasures("ninerr:edit"));
     for (let index = 0; index < 20; index += 1) {
       await tab.locator(`#layers [role=treeitem][data-node-id=n${200 + index}] > .row`).click();
       await tab.keyboard.press("Delete");
       revision += 1;
       await waitRevision(tab, revision);
-      await waitMeasures(tab, "lilac:edit", index + 1);
+      await waitMeasures(tab, "ninerr:edit", index + 1);
     }
-    const deletes = await tab.evaluate(() => performance.getEntriesByName("lilac:edit", "measure").map((entry) => entry.duration));
+    const deletes = await tab.evaluate(() => performance.getEntriesByName("ninerr:edit", "measure").map((entry) => entry.duration));
     assert.equal(deletes.length, 20);
     const deleteP95 = p95(deletes);
     assert.ok(deleteP95 <= 750, `deleting a layer in the editor: p95 ${deleteP95.toFixed(0)} ms (budget 750)`);

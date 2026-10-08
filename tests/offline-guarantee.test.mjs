@@ -90,7 +90,7 @@ test("the core workflow completes with all network access disabled and makes zer
     const { LocalCollaborationRoom, createCollaborationState } = await import("../packages/collaboration/src/index.ts");
     const { createProject, openProject } = await import("../packages/persistence/src/index.ts");
     const { assureCandidates } = await import("../packages/decision-assurance/src/index.ts");
-    const { LILAC_MOBILE_METHOD_PACK, evaluateSnapshot } = await import("../packages/design-method/src/index.ts");
+    const { NINERR_MOBILE_METHOD_PACK, evaluateSnapshot } = await import("../packages/design-method/src/index.ts");
     const { IMPORT_SCHEMA_VERSION, defaultImportPolicy, importHtmlSnapshot } = await import("../packages/import-stack/src/index.ts");
     const { CORE_FEATURES, defaultNetworkPolicy, evaluateOfflineReadiness, evaluateUrl } = await import("../packages/network-policy/src/index.ts");
     const { commitIntake, reviewImport } = await import("../packages/intake/src/index.ts");
@@ -148,7 +148,7 @@ test("the core workflow completes with all network access disabled and makes zer
 
     // design.method-review and decision.assurance with no adapter.
     const button = (id, size) => ({ id, kind: "button", x: 16, y: 760, width: size, height: size === 20 ? 20 : 48, label: "Pay", interactive: true });
-    assert.ok(Array.isArray(evaluateSnapshot(screen("s1", [button("a-pay", 356)]), LILAC_MOBILE_METHOD_PACK)));
+    assert.ok(Array.isArray(evaluateSnapshot(screen("s1", [button("a-pay", 356)]), NINERR_MOBILE_METHOD_PACK)));
     exercised.add("design.method-review");
     const record = await assureCandidates({
       schemaVersion: 1, decisionId: "offline-choice", actorId: "offline-user", intent: "Pick a layout", at: AT,
@@ -156,7 +156,7 @@ test("the core workflow completes with all network access disabled and makes zer
         { candidateId: "a", rationale: "Primary", snapshot: screen("snap-a", [button("a-pay", 356)]) },
         { candidateId: "b", rationale: "Small target", snapshot: screen("snap-b", [button("b-pay", 20)]) },
       ],
-      rulePacks: [LILAC_MOBILE_METHOD_PACK],
+      rulePacks: [NINERR_MOBILE_METHOD_PACK],
     });
     assert.deepEqual(record.outcome, { kind: "selected", candidateId: "a" });
     exercised.add("decision.assurance");

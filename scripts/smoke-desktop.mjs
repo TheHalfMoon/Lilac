@@ -39,7 +39,7 @@ async function main() {
     // First run: a project, a layer, a rename.
     let ninerr = await launch();
     let { page } = ninerr;
-    check("the editor runs isolated, in the desktop app", await page.evaluate(() => typeof process === "undefined" && typeof require === "undefined" && window.lilacDesktop?.desktop === true));
+    check("the editor runs isolated, in the desktop app", await page.evaluate(() => typeof process === "undefined" && typeof require === "undefined" && window.ninerrDesktop?.desktop === true));
     // A packaged run allows no developer tools (in the window, its requests and its menu).
     check("it runs as a packaged app", ninerr.packaged(), ninerr.packaged() ? undefined : ninerr.output().slice(-300));
     await page.locator("#new-project-name").fill("smoke");

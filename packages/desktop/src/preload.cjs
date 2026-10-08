@@ -3,4 +3,4 @@
 // talks to the studio host over HTTP exactly as it does in a browser; there is no IPC.
 const { contextBridge } = require("electron");
 
-contextBridge.exposeInMainWorld("lilacDesktop", Object.freeze({ desktop: true, platform: process.platform }));
+contextBridge.exposeInMainWorld("ninerrDesktop", Object.freeze({ desktop: true, platform: process.platform }));

@@ -100,9 +100,9 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
       process: typeof process,
       module: typeof module,
       buffer: typeof Buffer,
-      bridge: Object.keys(window.lilacDesktop ?? {}),
-      frozen: Object.isFrozen(window.lilacDesktop),
-      desktop: window.lilacDesktop?.desktop,
+      bridge: Object.keys(window.ninerrDesktop ?? {}),
+      frozen: Object.isFrozen(window.ninerrDesktop),
+      desktop: window.ninerrDesktop?.desktop,
     }));
     assert.deepEqual(page, { require: "undefined", process: "undefined", module: "undefined", buffer: "undefined", bridge: ["desktop", "platform"], frozen: true, desktop: true });
 
