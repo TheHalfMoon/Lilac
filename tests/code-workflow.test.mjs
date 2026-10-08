@@ -104,7 +104,7 @@ test("JSX comes into the design as layers, and refused code is reported, not gue
 });
 
 test("design and code through the editor: export the selection, bring code in, undo", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-code-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-code-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const editor = await openEditor(host);
   try {
@@ -161,7 +161,7 @@ test("design and code through the editor: export the selection, bring code in, u
 });
 
 test("agents read a layer as JSX through MCP get_jsx", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-code-mcp-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-code-mcp-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   try {
     const call = (path, body) => fetch(`${host.url}${path}`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify(body) }).then((response) => response.json());

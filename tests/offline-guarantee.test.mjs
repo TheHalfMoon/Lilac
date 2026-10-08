@@ -82,7 +82,7 @@ test("the network trap really intercepts network and process primitives", async 
 
 test("the core workflow completes with all network access disabled and makes zero network attempts", async () => {
   const trapped = trapNetwork();
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-offline-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-offline-")));
   try {
     // Every workflow module is loaded only after the trap, so none can hold a pre-trap reference.
     const { createDocument } = await import("../packages/document-model/src/index.mjs");

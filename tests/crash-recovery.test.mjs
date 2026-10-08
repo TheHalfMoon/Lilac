@@ -19,11 +19,11 @@ const EURO = String.fromCharCode(0x20ac);
 const title = (revision) => (revision === 0 ? "start" : `rev ${revision} ${EURO}`);
 const setTitle = (revision) => ({ id: `tx-${revision}`, actor: "user-1", baseRevision: revision - 1, operations: [{ type: "set-props", nodeId: "node-1", set: { title: title(revision) } }] });
 const open = (root, extra = {}) => openProject(root, { owner: "writer-1", at: AT, ...extra });
-const lilac = (root, name) => join(root, PROJECT_FILES.directory, name);
+const ninerr = (root, name) => join(root, PROJECT_FILES.directory, name);
 const LEGACY_CORPUS = fileURLToPath(new URL("./fixtures/projects/v1-basic/", import.meta.url));
 const temporaryName = (target) => `${target}.tmp-${4242}-${randomUUID()}`;
 
-function tempRoot(prefix = "lilac-crash-") {
+function tempRoot(prefix = "ninerr-crash-") {
   return realpathSync(mkdtempSync(join(tmpdir(), prefix)));
 }
 
@@ -41,7 +41,7 @@ function project(commits, checkpointAt = null) {
 }
 
 function withCopy(root, mutate, check) {
-  const copy = tempRoot("lilac-crash-copy-");
+  const copy = tempRoot("ninerr-crash-copy-");
   try {
     cpSync(root, copy, { recursive: true });
     mutate(copy);
@@ -68,13 +68,13 @@ function outcome(root) {
 test("truncating the journal at every byte offset of its last entries recovers the last complete entry", () => {
   const root = project(6);
   try {
-    const bytes = readFileSync(lilac(root, PROJECT_FILES.journal));
+    const bytes = readFileSync(ninerr(root, PROJECT_FILES.journal));
     const ends = lineEnds(bytes);
     assert.equal(ends.length, 6);
     let cases = 0;
     for (let offset = ends[2]; offset <= bytes.length; offset += 1) {
       const complete = ends.filter((end) => end <= offset);
-      withCopy(root, (copy) => truncateSync(lilac(copy, PROJECT_FILES.journal), offset), (copy) => {
+      withCopy(root, (copy) => truncateSync(ninerr(copy, PROJECT_FILES.journal), offset), (copy) => {
         const first = outcome(copy);
         assert.equal(first.error, undefined, `offset ${offset}: ${first.error}`);
         assert.equal(first.revision, complete.length, `offset ${offset}`);
@@ -98,11 +98,11 @@ test("truncating the journal at every byte offset of its last entries recovers t
 test("losing journal bytes below a checkpoint fails closed; above it recovers", () => {
   const root = project(6, 4);
   try {
-    const bytes = readFileSync(lilac(root, PROJECT_FILES.journal));
+    const bytes = readFileSync(ninerr(root, PROJECT_FILES.journal));
     const ends = lineEnds(bytes);
     for (let offset = ends[1]; offset <= bytes.length; offset += 1) {
       const complete = ends.filter((end) => end <= offset).length;
-      withCopy(root, (copy) => truncateSync(lilac(copy, PROJECT_FILES.journal), offset), (copy) => {
+      withCopy(root, (copy) => truncateSync(ninerr(copy, PROJECT_FILES.journal), offset), (copy) => {
         const result = outcome(copy);
         if (complete < 4) {
           assert.ok(result.error instanceof PersistenceCorruptionError, `offset ${offset}: ${result.error ?? result.revision}`);
@@ -121,7 +121,7 @@ test("losing journal bytes below a checkpoint fails closed; above it recovers", 
 test("a flipped byte in the last entry fails closed or, if only its terminator is lost, recovers the previous revision", () => {
   const root = project(4);
   try {
-    const bytes = readFileSync(lilac(root, PROJECT_FILES.journal));
+    const bytes = readFileSync(ninerr(root, PROJECT_FILES.journal));
     const ends = lineEnds(bytes);
     let failedClosed = 0;
     let terminatorRecovered = false;
@@ -129,7 +129,7 @@ test("a flipped byte in the last entry fails closed or, if only its terminator i
       withCopy(root, (copy) => {
         const flipped = Buffer.from(bytes);
         flipped[index] ^= 0x20;
-        writeFileSync(lilac(copy, PROJECT_FILES.journal), flipped);
+        writeFileSync(ninerr(copy, PROJECT_FILES.journal), flipped);
       }, (copy) => {
         const result = outcome(copy);
         if (result.error !== undefined) {
@@ -166,9 +166,9 @@ test("an interrupted atomic write of the manifest, snapshot or journal recovers 
     for (const target of [PROJECT_FILES.manifest, PROJECT_FILES.snapshot, PROJECT_FILES.journal]) {
       for (const [state, make] of Object.entries(TEMPORARY_STATES)) {
         withCopy(root, (copy) => {
-          const current = readFileSync(lilac(copy, target), "utf8");
+          const current = readFileSync(ninerr(copy, target), "utf8");
           // A complete temporary holds what the write would have committed: a later state.
-          writeFileSync(lilac(copy, temporaryName(target)), make(current.replace(/"revision":\d+/u, "\"revision\":99")));
+          writeFileSync(ninerr(copy, temporaryName(target)), make(current.replace(/"revision":\d+/u, "\"revision\":99")));
         }, (copy) => {
           const result = outcome(copy);
           assert.equal(result.error, undefined, `${target} ${state}: ${result.error}`);
@@ -191,14 +191,14 @@ test("a checkpoint interrupted before its snapshot reference moved, and an inter
     withCopy(root, (copy) => {
       // The checkpoint wrote its document object, then crashed before the snapshot
       // reference was replaced: restore the old reference, so the new object is an orphan.
-      const snapshotPath = lilac(copy, PROJECT_FILES.snapshot);
+      const snapshotPath = ninerr(copy, PROJECT_FILES.snapshot);
       const before = readFileSync(snapshotPath);
       const store = open(copy);
       store.checkpoint();
       store.close();
       writeFileSync(snapshotPath, before);
       // An object write that crashed leaves a temporary in its fan-out directory.
-      const objects = lilac(copy, PROJECT_FILES.objects);
+      const objects = ninerr(copy, PROJECT_FILES.objects);
       const fanOut = readdirSync(objects).find((name) => /^[0-9a-f]{2}$/u.test(name));
       writeFileSync(join(objects, fanOut, temporaryName(readdirSync(join(objects, fanOut))[0])), "half an object");
     }, (copy) => {
@@ -207,7 +207,7 @@ test("a checkpoint interrupted before its snapshot reference moved, and an inter
       assert.equal(result.title, title(3));
       assert.equal(result.recovery.replayedEntries, 3, "the previous snapshot is used and the journal replayed");
       assert.equal(result.recovery.staleTemporaryFiles, 1);
-      const objectCount = readdirSync(lilac(copy, PROJECT_FILES.objects)).flatMap((dir) => readdirSync(join(lilac(copy, PROJECT_FILES.objects), dir))).length;
+      const objectCount = readdirSync(ninerr(copy, PROJECT_FILES.objects)).flatMap((dir) => readdirSync(join(ninerr(copy, PROJECT_FILES.objects), dir))).length;
       assert.equal(objectCount, 2, "the orphaned object is kept: it may be referenced later");
     });
   } finally {
@@ -219,11 +219,11 @@ test("a torn-tail repair interrupted mid-rewrite is redone on the next open", ()
   const root = project(3);
   try {
     withCopy(root, (copy) => {
-      const journal = lilac(copy, PROJECT_FILES.journal);
+      const journal = ninerr(copy, PROJECT_FILES.journal);
       const intact = readFileSync(journal);
       writeFileSync(journal, Buffer.concat([intact, Buffer.from("{\"seq\":4,\"rev", "utf8")]));
       // The repair's own atomic write was interrupted: its temporary holds the intact bytes.
-      writeFileSync(lilac(copy, temporaryName(PROJECT_FILES.journal)), intact);
+      writeFileSync(ninerr(copy, temporaryName(PROJECT_FILES.journal)), intact);
     }, (copy) => {
       const result = outcome(copy);
       assert.equal(result.revision, 3);
@@ -244,7 +244,7 @@ test("an in-place schema-1 upgrade interrupted before its manifest rename upgrad
   try {
     cpSync(join(LEGACY_CORPUS, LEGACY_PROJECT_DIRECTORY), join(root, PROJECT_FILES.directory), { recursive: true });
     withCopy(root, (copy) => {
-      writeFileSync(lilac(copy, temporaryName(PROJECT_FILES.manifest)), "{\"partial\":");
+      writeFileSync(ninerr(copy, temporaryName(PROJECT_FILES.manifest)), "{\"partial\":");
     }, (copy) => {
       const store = open(copy);
       assert.equal(store.recovery.migratedFrom, 1);
@@ -319,7 +319,7 @@ test("a lock file left empty or partial by a crash fails closed until explicitly
   const root = project(1);
   try {
     for (const content of ["", "{\"owner\":\"writer-1\",\"pi"]) {
-      withCopy(root, (copy) => writeFileSync(lilac(copy, PROJECT_FILES.lock), content), (copy) => {
+      withCopy(root, (copy) => writeFileSync(ninerr(copy, PROJECT_FILES.lock), content), (copy) => {
         const refused = outcome(copy);
         assert.equal(refused.error?.name, "PersistenceLockError", JSON.stringify(content));
         const store = open(copy, { breakStaleLock: { reason: "the writer crashed while creating its lock" } });
@@ -337,7 +337,7 @@ test("a lock file left empty or partial by a crash fails closed until explicitly
 test("a lock override interrupted after renaming the stale lock aside leaves nothing behind", () => {
   const root = project(1);
   try {
-    withCopy(root, (copy) => writeFileSync(lilac(copy, `${PROJECT_FILES.lock}.broken-${randomUUID()}`), "{\"owner\":\"writer-0\"}"), (copy) => {
+    withCopy(root, (copy) => writeFileSync(ninerr(copy, `${PROJECT_FILES.lock}.broken-${randomUUID()}`), "{\"owner\":\"writer-0\"}"), (copy) => {
       const result = outcome(copy);
       assert.equal(result.revision, 1);
       assert.equal(result.recovery.staleTemporaryFiles, 1);
@@ -355,5 +355,5 @@ test("cleanup absorbs only operating-system errors, never a bug", () => {
   assert.equal(argumentError.code, "ERR_INVALID_ARG_TYPE");
   assert.equal(isFilesystemError(argumentError), false, "Node's argument errors are bugs");
   assert.throws(() => removeStaleFiles(undefined, () => true), TypeError);
-  assert.equal(removeStaleFiles(join(tmpdir(), `lilac-missing-${randomUUID()}`), () => true), 0, "a missing directory is nothing to clean");
+  assert.equal(removeStaleFiles(join(tmpdir(), `ninerr-missing-${randomUUID()}`), () => true), 0, "a missing directory is nothing to clean");
 });

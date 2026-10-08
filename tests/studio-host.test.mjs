@@ -16,7 +16,7 @@ let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 7, 12, 0, 0) + clock++ * 1000).toISOString();
 
 async function withHost(callback, extra = {}) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-studio-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-studio-")));
   const host = await startStudioHost({ projectsRoot: root, now, ...extra });
   try {
     return await callback(host, root);
@@ -198,7 +198,7 @@ test("create, edit, undo and redo are attributed transactions streamed live and 
 }));
 
 test("locks and recovery are reported, and a stale lock is replaced only with a reason", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-studio-lock-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-studio-lock-")));
   const first = await startStudioHost({ projectsRoot: root, now });
   const second = await startStudioHost({ projectsRoot: root, now, owner: { actorId: "other-user", kind: "user", accessClass: "member", displayName: "Other" } });
   try {
@@ -237,7 +237,7 @@ test("locks and recovery are reported, and a stale lock is replaced only with a 
 });
 
 test("the host refuses a projects root that is not a directory", async () => {
-  await assert.rejects(() => startStudioHost({ projectsRoot: join(tmpdir(), "lilac-missing-root-for-test") }), /projectsRoot/u);
+  await assert.rejects(() => startStudioHost({ projectsRoot: join(tmpdir(), "ninerr-missing-root-for-test") }), /projectsRoot/u);
 });
 
 test("a failed open or create keeps the current project, and failures have specific codes", () => withHost(async (host, root) => {
@@ -257,7 +257,7 @@ test("a failed open or create keeps the current project, and failures have speci
   assert.equal(unreadable.status, 422);
   assert.equal(unreadable.json.error.code, "project-unreadable");
   // A project directory that is a link to somewhere outside the root is refused.
-  const outside = realpathSync(mkdtempSync(join(tmpdir(), "lilac-outside-")));
+  const outside = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-outside-")));
   try {
     renameSync(join(root, "broken"), join(outside, "victim"));
     symlinkSync(join(outside, "victim"), join(root, "link"));
@@ -331,7 +331,7 @@ test("undo and redo restore every operation type exactly, across reopen", async 
 });
 
 test("every commit uses a fresh collaboration room, so no fact log accumulates in a session", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-many-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-many-")));
   const owner = { actorId: "local-user", kind: "user", accessClass: "member", displayName: "You" };
   const session = StudioSession.open({ projectsRoot: root, name: "p", owner, now, create: {} });
   const original = LocalCollaborationRoom.prototype.commitTransaction;

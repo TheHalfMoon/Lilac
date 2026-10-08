@@ -38,7 +38,7 @@ import {
 const AT = "2026-10-06T12:00:00.000Z";
 
 function tempRoot() {
-  return realpathSync(mkdtempSync(join(tmpdir(), "lilac-persist-")));
+  return realpathSync(mkdtempSync(join(tmpdir(), "ninerr-persist-")));
 }
 
 function baseDocument() {
@@ -525,7 +525,7 @@ test("appendDurable refuses a same-size, same-inode journal whose content differ
   // appendDurable is internal (not exported from the package index); this unit test pins its content check directly.
   const { appendDurable, fileIdentity } = await import("../packages/persistence/src/fsio.ts");
   const { createHash } = await import("node:crypto");
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "lilac-append-")));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-append-")));
   try {
     const path = join(dir, "journal.log");
     writeFileSync(path, "line-A\n");

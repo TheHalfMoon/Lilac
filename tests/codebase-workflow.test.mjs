@@ -26,7 +26,7 @@ const CARD = `export function PriceCard() {
 `;
 
 test("connect a folder, bring a component in, edit it and write the edit back to its file", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-codebase-editor-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-codebase-editor-")));
   const projects = join(root, "projects");
   const code = join(root, "app", "src");
   mkdirSync(projects);

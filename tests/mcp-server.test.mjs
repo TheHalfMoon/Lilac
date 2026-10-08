@@ -8,7 +8,7 @@ import { PAPER_MCP_TOOL_NAMES, classifyPaperTool, validateMCPServerConfig, valid
 import { mcpToolDefinitions, startStudioHost } from "../packages/studio-host/src/index.ts";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
-// PC5 (#146, #82): Lilac's MCP server in the studio host. Agents connected by the person,
+// PC5 (#146, #82): Ninerr's MCP server in the studio host. Agents connected by the person,
 // the MCP protocol over loopback HTTP, authorization of every call
 // through requireMCPToolCall, attribution of every agent edit, and the person's
 // confirmation for consequential tools. Closes PC gate 7 with gate 8's live canvas test.
@@ -17,7 +17,7 @@ let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 7, 12, 0, 0) + clock++ * 1000).toISOString();
 
 async function withStudio(callback, options = {}) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-mcp-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-mcp-")));
   const host = await startStudioHost({ projectsRoot: root, now, ...options });
   const owner = (method, path, body) => fetch(`${host.url}${path}`, {
     method,
@@ -215,7 +215,7 @@ test("every call is authorized: unknown, workspace and unimplemented tools; payl
     assert.equal((await tool(later, "get_basic_info", {})).isError, undefined);
     assert.match(text(await tool(token, "open_file", { path: "/etc/passwd" })), /Not allowed: open_file acts on the workspace/u);
     assert.match(text(await tool(token, "create_file", {})), /Not allowed/u);
-    assert.match(text(await tool(token, "get_screenshot", {})), /does not implement get_screenshot/u, "a Paper tool Lilac lacks is authorized, then reported");
+    assert.match(text(await tool(token, "get_screenshot", {})), /does not implement get_screenshot/u, "a Paper tool Ninerr lacks is authorized, then reported");
     assert.match(text(await tool(token, "get_basic_info", "nope")), /Invalid call/u);
     // A client cannot claim to be someone else, or bring its own confirmation.
     const board = (await tool(token, "create_artboard", { width: 10, height: 10, actor: { actorId: "local-user", kind: "user" } }));
@@ -342,8 +342,8 @@ test("approvals: one serves every identical waiting call; caps, revocation and r
   }, { confirmationWaitMs: 5_000 });
 });
 
-test("a damaged registry fails closed without stopping Lilac; the discovery file goes on close", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-mcp-files-")));
+test("a damaged registry fails closed without stopping Ninerr; the discovery file goes on close", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-mcp-files-")));
   try {
     writeFileSync(join(root, ".ninerr-agents.json"), "{ not json", { mode: 0o600 });
     const host = await startStudioHost({ projectsRoot: root, now });

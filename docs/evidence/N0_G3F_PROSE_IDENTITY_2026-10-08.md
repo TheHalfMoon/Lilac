@@ -8,8 +8,9 @@ Issue: #190 (N0 umbrella). The product name `Lilac` becomes `Ninerr` throughout:
 A few renamed literals reach runtime output. None is persisted, compared by product code, or part of a stored format:
 - the browser wrapper's and design-assurance scanner's temporary-folder prefixes (`ninerr-browser-`, `ninerr-design-assurance-`);
 - the rule pack's local provenance `source` (`ninerr-rule-pack`);
-- the import stack's User-Agent (`NinerrImportStack/1`);
-- the operation type that one authority test uses as sample data (`ninerr.document.request`).
+- the import stack's User-Agent (`NinerrImportStack/1`).
+
+The agent-runtime tests' sample operation types (`ninerr.test`, `ninerr.changed`, `ninerr.document.request`) are renamed too; they are test data, not runtime output.
 
 ## Not renamed
 - **Deliberate legacy references.**
@@ -33,8 +34,10 @@ The whole change exceeded the exact-head reviewer's context, so it lands in two 
   - the browser wrapper's temporary-folder prefix;
   - the codebase link messages;
   - the serving and accessibility checks;
-  - the authority tests' sample operation type;
+  - the agent-runtime tests' sample operation types;
   - the license register's source scan.
 
-  The first split missed `codebase` and `app-crash-recovery`, because on Windows both already fail for unrelated reasons (#192). The review panel caught them. The check now also scans every test outside this half for renamed product text. Those tests move together with the product text they check.
-- **N0-G3f2** renames the remaining test titles, comments and helper prose, and the scripts' prose. None of it changes what a test checks.
+  The first split missed `codebase` and `app-crash-recovery`, because on Windows both already fail for unrelated reasons (#192). The review panel caught them. Before the merge, a manual review step also checked every literal removed from `packages/` against the tests and scripts outside this half. It was a review step, not an automated check. Those tests move together with the product text they check.
+- **N0-G3f2** renames the remaining test titles, comments, helper prose and test-created folder prefixes. None of it changes what a test checks. The scripts needed no prose change: their remaining old-name text is the Paper recovery script (removed in N0-G5), the census policy and the `@lilac/` refusal.
+
+The N0-G3f2 PR also corrects the two wording points above, which the N0-G3f1 delta review raised.

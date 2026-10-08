@@ -24,7 +24,7 @@ const p95 = (values) => [...values].sort((a, b) => a - b)[Math.ceil(values.lengt
 const waitMeasures = (tab, name, count) => tab.waitForFunction(([measureName, expected]) => performance.getEntriesByName(measureName, "measure").length >= expected, [name, count]);
 
 test("a 10,000-node project renders, applies changes and edits within the gate-13 budgets", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-perf-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-perf-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const call = (path, body) => fetch(`${host.url}${path}`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify(body) }).then((response) => response.json());
   // A page of 9,999 absolutely positioned cards: 10,000 nodes in one transaction.

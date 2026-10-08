@@ -105,7 +105,7 @@ test("oversized catalogs fail closed", () => {
 test("deterministic serialization for identical inputs", () => {
   assert.equal(canonicalArchitectureStringify(NINERR_ARCHITECTURE_MAP), canonicalArchitectureStringify(JSON.parse(JSON.stringify(NINERR_ARCHITECTURE_MAP))));
   assert.equal(architectureDigest(NINERR_ARCHITECTURE_MAP).length, 64);
-  assert.equal(sha256Text("lilac").length, 64);
+  assert.equal(sha256Text("ninerr").length, 64);
 });
 
 function workspacePackages() {

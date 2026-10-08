@@ -177,7 +177,7 @@ test("oversized packs, snapshots, and registries fail closed", () => {
 test("deterministic serialization for identical inputs", () => {
   const pack = NINERR_MOBILE_METHOD_PACK;
   assert.equal(canonicalMethodStringify(pack), canonicalMethodStringify(JSON.parse(JSON.stringify(pack))));
-  assert.equal(sha256Text("lilac").length, 64);
+  assert.equal(sha256Text("ninerr").length, 64);
 });
 
 test("provenance pins both donors with licenses", () => {

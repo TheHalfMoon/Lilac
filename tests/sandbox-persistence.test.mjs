@@ -19,7 +19,7 @@ const open = (root, extra = {}) => openProject(root, { owner: "writer-1", at: AT
 const file = (root, name) => join(root, PROJECT_FILES.directory, name);
 
 function withRoot(callback) {
-  const parent = mkdtempSync(join(tmpdir(), "lilac-sandbox-"));
+  const parent = mkdtempSync(join(tmpdir(), "ninerr-sandbox-"));
   const root = join(parent, "root");
   mkdirSync(root);
   createProject(root, { projectId: "proj-1", document: document(), createdAt: AT });

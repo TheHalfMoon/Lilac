@@ -79,7 +79,7 @@ test("local file task store performs deterministic compare-and-swap without iden
   }
 });
 
-test("Git worktree inspector reports the current Lilac worktree as its own immutable root", async () => {
+test("Git worktree inspector reports the current Ninerr worktree as its own immutable root", async () => {
   const evidence = await new GitWorktreeInspector().inspect(process.cwd());
   assert.equal(evidence.exists, true);
   assert.equal(evidence.isGitWorktree, true);
@@ -146,7 +146,7 @@ test("relaunch preserves real worktree HEAD, status, tracked edits, and untracke
   const repo = join(root, "repo");
   try {
     await execFileAsync("git", ["init", "-b", "impl/preserve", repo], { windowsHide: true });
-    await execFileAsync("git", ["-C", repo, "config", "user.name", "Lilac Test"], { windowsHide: true });
+    await execFileAsync("git", ["-C", repo, "config", "user.name", "Ninerr Test"], { windowsHide: true });
     await execFileAsync("git", ["-C", repo, "config", "user.email", "ninerr-test@example.invalid"], { windowsHide: true });
     const trackedPath = join(repo, "tracked.txt");
     const untrackedPath = join(repo, "untracked.bin");
@@ -456,7 +456,7 @@ test("task-set lock and durable task registry prevent different task ids from sh
   const state = join(root, "state");
   try {
     await execFileAsync("git", ["init", "-b", "impl/shared", root], { windowsHide: true });
-    await execFileAsync("git", ["-C", root, "config", "user.name", "Lilac Test"], { windowsHide: true });
+    await execFileAsync("git", ["-C", root, "config", "user.name", "Ninerr Test"], { windowsHide: true });
     await execFileAsync("git", ["-C", root, "config", "user.email", "ninerr-test@example.invalid"], { windowsHide: true });
     await writeFile(join(root, "base.txt"), "base\n", "utf8");
     await execFileAsync("git", ["-C", root, "add", "base.txt"], { windowsHide: true });

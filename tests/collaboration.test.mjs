@@ -230,7 +230,7 @@ test("plain comments create no agent work while explicit mention linkage carries
   assert.equal(deriveActivity(r.exportState().log).some((item) => item.kind === "agent-work" && item.operationId === "op-99"), true);
 });
 
-test("all document-affecting collaboration writes commit through Lilac history with exact attribution", () => {
+test("all document-affecting collaboration writes commit through Ninerr history with exact attribution", () => {
   const r = room();
   const document = createDocument({ id: "doc-1", nodes: [{ id: "node-1", type: "frame", props: { title: "Before" } }] });
   const history = createHistoryState(document);
@@ -305,7 +305,7 @@ test("connection outcomes distinguish not-found, auth expiry, revocation, and up
 });
 
 test("local file persistence recovers durable comments, activity, and cursor but never mouse presence", async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "lilac-collab-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ninerr-collab-"));
   try {
     const store = new LocalCollaborationFileStore(dir);
     const server = new LocalCollaborationServer(store);
@@ -330,7 +330,7 @@ test("local file persistence recovers durable comments, activity, and cursor but
 });
 
 test("local server missing document is terminal not-found", async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "lilac-collab-missing-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ninerr-collab-missing-"));
   try {
     const server = new LocalCollaborationServer(new LocalCollaborationFileStore(dir));
     await assert.rejects(() => server.open("missing-doc"), CollaborationNotFoundError);

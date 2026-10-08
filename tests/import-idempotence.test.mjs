@@ -12,7 +12,7 @@ import { proposalToHtml, proposalView } from "./support/proposal-html.mjs";
 import { shrinkString } from "./support/shrink-string.mjs";
 
 // P06 gate 7 (#126): sanitized import is a fixpoint. Writing a proposal back to HTML
-// (with the test-only reference serializer; Lilac has no product exporter yet) and
+// (with the test-only reference serializer; Ninerr has no product exporter yet) and
 // importing it again removes nothing more and yields the same structure.
 
 const request = (withBase = true) => ({

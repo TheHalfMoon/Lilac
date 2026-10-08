@@ -24,7 +24,7 @@ const PAGE = `<!doctype html><html><head><title>Pricing</title><style>.lead { co
 <img src="https://example.com/hero.png" alt="Hero"></main></body></html>`;
 
 async function withHost(callback) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-import-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-import-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const call = (method, path, body) => fetch(`${host.url}${path}`, {
     method,

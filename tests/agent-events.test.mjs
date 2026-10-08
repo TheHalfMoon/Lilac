@@ -198,7 +198,7 @@ test("run completion rejects unsettled assistant, tool, and plan state", () => {
   );
 });
 
-test("an operation cannot be correlated to two Lilac transactions", () => {
+test("an operation cannot be correlated to two Ninerr transactions", () => {
   let log = runningLog();
   log = appendAgentEvent(log, event(3, "assistant_message_start", {}, assistant));
   log = appendAgentEvent(log, event(4, "tool_call_start", { name: "first" }, tool));

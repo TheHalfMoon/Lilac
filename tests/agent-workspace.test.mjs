@@ -158,7 +158,7 @@ test("deterministic serialization for identical inputs", () => {
   const first = assignedStore();
   const second = assignedStore();
   assert.equal(canonicalWorkspaceStringify(first), canonicalWorkspaceStringify(second));
-  assert.equal(sha256Text("lilac").length, 64);
+  assert.equal(sha256Text("ninerr").length, 64);
 });
 
 test("provenance marks the package as project-owned", () => {

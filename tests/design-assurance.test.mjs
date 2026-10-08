@@ -112,7 +112,7 @@ test("local rule evidence must be JSON-serializable", async () => {
   );
 });
 
-test("normalizes upstream findings into the Lilac contract", () => {
+test("normalizes upstream findings into the Ninerr contract", () => {
   const finding = normalizeImpeccableFinding(upstreamFinding({ severity: "advisory" }), {
     surface: "source",
     virtualPath: "src/App.tsx",
@@ -265,7 +265,7 @@ test("browser adapter uses the shared report contract and protects private targe
   );
 });
 
-test("browser snapshot seam normalizes upstream and Lilac rule-pack findings", async () => {
+test("browser snapshot seam normalizes upstream and Ninerr rule-pack findings", async () => {
   const snapshotPack = createRulePack({
     namespace: "snapshot-test",
     rules: [{

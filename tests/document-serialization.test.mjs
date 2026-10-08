@@ -119,7 +119,7 @@ test("node key order and bytes are identical under every process locale", () => 
 });
 
 test("persistence stores exactly the model serialization", () => {
-  const root = mkdtempSync(join(tmpdir(), "lilac-serialization-"));
+  const root = mkdtempSync(join(tmpdir(), "ninerr-serialization-"));
   try {
     const document = createDocument(randomDocumentInput(createPrng(0x5eed)));
     createProject(root, { projectId: "proj-1", document, createdAt: "2026-10-07T09:00:00.000Z" });

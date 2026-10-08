@@ -70,7 +70,7 @@ function request(overrides = {}) {
 }
 
 async function withTemp(fn) {
-  const dir = await mkdtemp(join(tmpdir(), "lilac-import-stack-"));
+  const dir = await mkdtemp(join(tmpdir(), "ninerr-import-stack-"));
   try { return await fn(dir); }
   finally { await rm(dir, { recursive: true, force: true }); }
 }
@@ -373,7 +373,7 @@ test("Playwright adapter uses isolated bounded context and sanitizes captured HT
               url: () => url,
               isNavigationRequest: () => true,
               method: () => "GET",
-              allHeaders: async () => ({ "user-agent": "LilacTest", cookie: "must-not-forward" }),
+              allHeaders: async () => ({ "user-agent": "NinerrTest", cookie: "must-not-forward" }),
             }),
             fulfill: async () => {},
             abort: async () => {},
