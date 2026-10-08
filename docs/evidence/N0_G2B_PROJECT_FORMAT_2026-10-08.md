@@ -49,3 +49,17 @@ These used the `.lilac` path directly and now take it from `PROJECT_FILES`:
 - **`tests/release-docs.test.mjs`:** `docs/MIGRATION.md` states the current constants and the one built-in step, and its example runs as written on the legacy corpus.
 
 Local run (Windows 11, Node 24.19.0): 735 tests, 675 pass, 26 fail, 34 skipped. Every failure is in the pre-existing Windows set recorded on #192, and none is new.
+
+Until N0-G2c lands, a projects-folder entry that holds only a legacy project is not listed. Opening it by name is refused as a version mismatch.
+
+## Review delta 1
+
+The full ps-review panel (correctness, parsimony, product and security) found no must-fix. Taken from its worth-considering items:
+
+- **A schema-1 manifest that already records a `journalGenesis`** is corruption and is refused; the step never overwrites it.
+- **A host step for a version a built-in step owns** is refused with a `PersistenceValidationError`. Before, it was silently ignored.
+- **`genesisDigest(projectId, domain)` requires the domain.** A default could verify a migrated journal from the wrong domain.
+- **Only a real `.lilac` directory counts as a legacy project.** A file or a link of that name is not one (tested; the link case is skipped where symlinks need privileges).
+- **New tests:**
+  - an in-place upgrade and a torn-tail repair are both written when the open succeeds;
+  - the frozen corpus is pinned by a SHA-256 of all its bytes, not only its file names.

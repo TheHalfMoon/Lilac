@@ -1,7 +1,7 @@
 import { NODE_FIELDS } from "@lilac/document-model";
 import { canonicalJson, sha256Hex } from "./canonical.ts";
 import { PersistenceCorruptionError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
-import { JOURNAL_GENESIS, PERSISTENCE_LIMITS, type JournalEntry, type JournalGenesisDomain } from "./types.ts";
+import { PERSISTENCE_LIMITS, type JournalEntry, type JournalGenesisDomain } from "./types.ts";
 
 // Journal format 1, the format project schema 1 writes: exactly these fields on a
 // transaction, an operation of each type, and a node record. History drops fields it does
@@ -50,9 +50,10 @@ export function assertJournalFormat(transaction: Record<string, unknown>, label:
 
 /**
  * Chain origin, bound to the project so journals cannot be swapped between projects. The
- * domain is the one the project's manifest records (a migrated project keeps its original).
+ * domain is the one the project's manifest records (a migrated project keeps its original);
+ * it is required, so no caller can verify a migrated journal from the wrong domain.
  */
-export function genesisDigest(projectId: string, domain: JournalGenesisDomain = JOURNAL_GENESIS): string {
+export function genesisDigest(projectId: string, domain: JournalGenesisDomain): string {
   return sha256Hex(`${domain}:${projectId}`);
 }
 
