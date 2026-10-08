@@ -5,9 +5,9 @@ import {
   MCPAuthorizationError,
   MCPContractError,
   MCP_CONFIRMATION_WINDOW_MS,
-  PAPER_MCP_TOOL_NAMES,
+  MCP_TOOL_NAMES,
   authorizeMCPToolCall,
-  classifyPaperTool,
+  classifyTool,
   mcpArgumentsSha256,
   requireMCPToolCall,
 } from "../packages/mcp-protocol/src/index.mjs";
@@ -24,24 +24,18 @@ const CAPABILITIES = ["read", "presence", "document-write", "comments", "admin",
 const policyFor = (capabilities, actor = user) => createAccessPolicy("doc-1", capabilities.length === 0 ? [] : [{ principalKind: "actor", principalId: actor.actorId, capabilities }]);
 const call = (toolName, extra = {}) => ({ actor: user, toolName, arguments: { nodeIds: ["n1"] }, at: AT, ...extra });
 const confirmation = (toolName, args = { nodeIds: ["n1"] }, overrides = {}) => ({ documentId: "doc-1", toolName, argumentsSha256: mcpArgumentsSha256(args), actorId: user.actorId, confirmedAt: "2026-10-07T11:59:00.000Z", ...overrides });
-const WORKSPACE_TOOLS = new Set(["open_file", "create_file", "list_resources", "rename_resource"]);
 
 const subsets = (items) => items.reduce((all, item) => all.concat(all.map((set) => [...set, item])), [[]]);
-const required = (tool) => (classifyPaperTool(tool) === "read" ? "read" : tool === "set_comment_thread_status" ? "comments" : "document-write");
+const required = (tool) => (classifyTool(tool) === "read" ? "read" : "document-write");
 
-test("every Paper tool over every capability set: allowed exactly when its capability is granted", () => {
+test("every tool over every capability set: allowed exactly when its capability is granted", () => {
   for (const capabilities of subsets(CAPABILITIES)) {
     const policy = policyFor(capabilities);
-    for (const tool of PAPER_MCP_TOOL_NAMES) {
-      const toolClass = classifyPaperTool(tool);
+    for (const tool of MCP_TOOL_NAMES) {
+      const toolClass = classifyTool(tool);
       const withConfirmation = toolClass === "consequential" ? { confirmation: confirmation(tool) } : {};
       const decision = authorizeMCPToolCall(policy, call(tool, withConfirmation));
       assert.equal(decision.toolClass, toolClass);
-      if (WORKSPACE_TOOLS.has(tool)) {
-        assert.equal(decision.outcome, "denied", `${tool} is workspace-scoped`);
-        assert.match(decision.reason, /workspace/u);
-        continue;
-      }
       assert.equal(decision.capability, required(tool));
       assert.equal(decision.documentId, "doc-1");
       assert.equal(decision.outcome, capabilities.includes(required(tool)) ? "allowed" : "denied", `${tool} with [${capabilities}]`);
@@ -52,7 +46,7 @@ test("every Paper tool over every capability set: allowed exactly when its capab
 test("read grants cannot write", () => {
   for (const capabilities of [["read"], ["read", "presence"], ["read", "presence", "comments"]]) {
     const policy = policyFor(capabilities);
-    for (const tool of PAPER_MCP_TOOL_NAMES.filter((name) => classifyPaperTool(name) !== "read" && name !== "set_comment_thread_status")) {
+    for (const tool of MCP_TOOL_NAMES.filter((name) => classifyTool(name) !== "read")) {
       const decision = authorizeMCPToolCall(policy, call(tool, { confirmation: confirmation(tool) }));
       assert.equal(decision.outcome, "denied", tool);
       assert.throws(() => requireMCPToolCall(policy, call(tool, { confirmation: confirmation(tool) })), MCPAuthorizationError);
@@ -63,7 +57,7 @@ test("read grants cannot write", () => {
 test("consequential tools require a confirmation bound to this exact call", () => {
   const policy = policyFor(["read", "document-write"]);
   const tool = "delete_nodes";
-  assert.equal(classifyPaperTool(tool), "consequential");
+  assert.equal(classifyTool(tool), "consequential");
   const refused = (extra, reason) => {
     const decision = authorizeMCPToolCall(policy, call(tool, extra));
     assert.equal(decision.outcome, "confirmation-required", reason);

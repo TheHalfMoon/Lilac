@@ -1,6 +1,6 @@
-import { MCPContractError, MCP_TRANSPORTS, PAPER_MCP_TOOL_NAMES, TOOL_NAME_SET, assertNonEmptyString, assertPlainObject } from "./paper-tools.mjs";
+import { MCPContractError, MCP_TOOL_NAMES, MCP_TRANSPORTS, TOOL_NAME_SET, assertNonEmptyString, assertPlainObject } from "./tools.mjs";
 
-export { MCPContractError, MCP_TRANSPORTS, PAPER_MCP_OBSERVED_AT, PAPER_MCP_PUBLIC_VERSION, PAPER_MCP_TOOL_NAMES, classifyPaperTool } from "./paper-tools.mjs";
+export { MCPContractError, MCP_TOOL_NAMES, MCP_TRANSPORTS, classifyTool } from "./tools.mjs";
 export { MCP_CONFIRMATION_WINDOW_MS, MCPAuthorizationError, authorizeMCPToolCall, mcpArgumentsSha256, requireMCPToolCall } from "./authorization.mjs";
 
 export function validateMCPClientInfo(client, { requireTransport = false } = {}) {
@@ -47,21 +47,23 @@ export function validateMCPServerConfig(config) {
   return true;
 }
 
-export function diffPaperMCPTools(toolNames) {
+/** The catalog tools a server's tool names lack, and the names it offers outside the catalog. */
+export function diffMCPTools(toolNames) {
   if (!Array.isArray(toolNames)) {
     throw new MCPContractError("toolNames must be an array");
   }
   const actual = new Set(toolNames);
   return {
-    missing: PAPER_MCP_TOOL_NAMES.filter((name) => !actual.has(name)),
+    missing: MCP_TOOL_NAMES.filter((name) => !actual.has(name)),
     extra: [...actual].filter((name) => !TOOL_NAME_SET.has(name)).sort(),
   };
 }
-export function assertPaperMCPCompatibility(config) {
+/** A server config valid in itself whose tools are exactly the catalog. */
+export function assertMCPToolSurface(config) {
   validateMCPServerConfig(config);
-  const drift = diffPaperMCPTools(config.tools.map((tool) => tool.name));
+  const drift = diffMCPTools(config.tools.map((tool) => tool.name));
   if (drift.missing.length || drift.extra.length) {
-    throw new MCPContractError("Paper MCP tool surface drift detected");
+    throw new MCPContractError(`MCP tool surface differs from the catalog: missing [${drift.missing.join(", ")}], extra [${drift.extra.join(", ")}]`);
   }
   return true;
 }

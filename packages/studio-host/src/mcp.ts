@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { MCPAuthorizationError, MCPContractError, PAPER_MCP_TOOL_NAMES, classifyPaperTool, mcpArgumentsSha256, requireMCPToolCall, validateMCPServerConfig } from "@ninerr/mcp-protocol";
+import { MCPAuthorizationError, MCPContractError, assertMCPToolSurface, classifyTool, mcpArgumentsSha256, requireMCPToolCall } from "@ninerr/mcp-protocol";
 import { exportJsx } from "./code.ts";
 import { StudioError } from "./errors.ts";
 import type { StudioActor, StudioSession } from "./session.ts";
@@ -351,16 +351,13 @@ const TOOLS: Tool[] = [
 ];
 
 const TOOL_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
-// The definitions the server announces must satisfy Ninerr's own MCP contract validators and
-// be Paper-compatible names with the classification the tools behave by.
-validateMCPServerConfig({ tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
-for (const tool of TOOLS) {
-  if (!PAPER_MCP_TOOL_NAMES.includes(tool.name)) throw new Error(`${tool.name} is not a Paper-compatible MCP tool name`);
-}
+// The definitions the server announces must satisfy the MCP contract validators and be exactly
+// the tools of Ninerr's catalog, which carries the classification each tool is authorized by.
+assertMCPToolSurface({ tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
 
 export function mcpToolDefinitions() {
   return TOOLS.map(({ name, title, description, inputSchema }) => {
-    const toolClass = classifyPaperTool(name);
+    const toolClass = classifyTool(name);
     return { name, title, description, inputSchema, annotations: { readOnlyHint: toolClass === "read", destructiveHint: toolClass === "consequential", idempotentHint: toolClass === "read", openWorldHint: false } };
   });
 }
@@ -555,7 +552,8 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
     }
   }
   const tool = TOOL_BY_NAME.get(toolName);
-  if (tool === undefined) return toolResult(`Ninerr does not implement ${toolName} yet.`, true);
+  // Unreachable while the server's tools are exactly the catalog (checked at load); fail closed.
+  if (tool === undefined) return toolResult(`Ninerr has no tool ${toolName}.`, true);
   if (context.session() !== session) return toolResult("The open project changed while the call was waiting.", true);
   try {
     const value = await tool.run({
