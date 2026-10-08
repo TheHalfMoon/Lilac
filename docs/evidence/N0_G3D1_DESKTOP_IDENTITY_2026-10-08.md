@@ -20,3 +20,8 @@ Issue: #190 (N0 umbrella). This is the first half of N0-G3d, split so each half 
 
 ## Effect on existing installs
 The desktop app's user-data directory follows the product name, so it is new. It holds no project data, which lives in the projects folder.
+
+The single-instance lock lives in that directory too. A build from before the rename and a Ninerr build therefore do not exclude each other at launch. The per-project locks still keep both from writing the same project. No release was ever tagged, so only development machines can have both builds.
+
+## Docs
+`docs/DESKTOP.md` and `docs/RELEASE.md` now give the new file, cache and artifact names. Their prose and the repository URL follow in N0-G8 and N0-G10.
