@@ -11,28 +11,28 @@
     "LEGACY_COMPATIBILITY": 52,
     "TEST_FIXTURE": 51,
     "THIRD_PARTY_INDEPENDENT_OBLIGATION": 198,
-    "IMMUTABLE_HISTORICAL_FACT": 483,
+    "IMMUTABLE_HISTORICAL_FACT": 492,
     "REMOVE_ENTIRELY": 0
   },
   "byTerm": {
     "lilac": 567,
-    "paper": 200,
-    "firstmate": 31,
-    "no-mistakes": 21,
-    "doop": 28,
-    "classifier-dev": 15,
+    "paper": 201,
+    "firstmate": 30,
+    "no-mistakes": 22,
+    "doop": 29,
+    "classifier-dev": 16,
     "jev-search": 9,
     "unreal-agent": 27,
-    "website-downloader": 15,
+    "website-downloader": 16,
     "appllama": 26,
-    "docling": 124,
-    "design-resources": 16,
-    "firecrawl": 29,
-    "impeccable": 165,
+    "docling": 126,
+    "design-resources": 17,
+    "firecrawl": 30,
+    "impeccable": 166,
     "ui-tars": 29
   },
   "byRule": {
-    "dated-evidence": 483,
+    "dated-evidence": 492,
     "default-donor": 39,
     "default-lilac": 127,
     "default-paper": 48,
@@ -45,5 +45,5 @@
     "tests": 51,
     "third-party-notices": 23
   },
-  "censusSha256": "a91dd0af80c1750a326c8565e045f6492a52054e5b8b7a6e970098ba1238d5de"
+  "censusSha256": "322ea60203c73221e8783c9783dcf3f99d01d5b2ed807261fdfcbaeb0f880266"
 }
