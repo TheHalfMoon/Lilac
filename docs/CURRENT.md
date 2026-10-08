@@ -52,7 +52,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (721/721 test
 | 11 | File migration/version compatibility | G11 #136 → #137 `c73c48e` (615/615) | `docs/evidence/P06_G11_VERSION_COMPATIBILITY_2026-10-07.md` |
 
 - Tooling during P06: CI surfaces Jev, OCR, and test-total evidence as check-run annotations (PR #99, merge `550baae`) and the names of failing tests (T1, PR #124, merge `0acf81c`), so exact-head evidence can be read from check-run annotations.
-- P07 Release (umbrella #139): **ACTIVE**. Every required artifact in `docs/MASTER_PLAN.md` is delivered; the release waits only on the owner's prerequisites below.
+- P07 Release (umbrella #139): **ACTIVE**. Every required artifact in `docs/MASTER_PLAN.md` is delivered. The release waits on the owner's decisions below, and on the repository grains that two of them unlock.
 
 | # | P07 artifact | State | Evidence |
 |---|---|---|---|
@@ -65,11 +65,11 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (721/721 test
 | 7 | Signed release evidence | DELIVERED | #144 → #145 (`e702f58`); P07d (`df894bc`) signs the desktop archives too and makes a draft release. It signs on the first pushed `v*` tag |
 | 8 | Reproducible smoke test | DELIVERED | #142 → #143 (`285df27`, 625/625), `npm run smoke` |
 
-  Owner prerequisites before the v1 tag (none can be met by a repository change):
-  1. **License.** Confirm that the Paper authorization permits public distribution and sublicensing of Lilac's Paper-compatible interfaces and behaviour, or say what must be isolated (#148). Then PC-L2 declares Apache-2.0 and the SBOM, bundle and notices follow.
-  2. **Private vulnerability reporting.** Enable it in the repository's security settings (`SECURITY.md` names it as the channel).
+  Owner prerequisites before the v1 tag (each needs an owner decision or credential; items 1 and 4 then need a repository grain before the tag):
+  1. **License.** Confirm that the Paper authorization permits public distribution and sublicensing of Lilac's Paper-compatible interfaces and behaviour, or say what must be isolated (#148). Then the PC-L2 grain declares Apache-2.0, regenerates the SBOM, bundle and notices, and brings `SECURITY.md`'s supported-versions section up to the release.
+  2. **Private vulnerability reporting.** Enable it in the repository's security settings (`SECURITY.md` names it as the preferred channel, with a fallback until then).
   3. **Publisher signing.** An Apple Developer ID with notarization credentials and a Windows code-signing certificate, as Actions secrets (#139).
-  4. **LGPL corresponding source.** The archives redistribute Electron's LGPL-2.1 components (FFmpeg as `libffmpeg`, and Blink). Choose how each release provides their corresponding source: mirrored with the release from Chromium's sources at Electron's revision, or a written offer.
+  4. **LGPL corresponding source.** The archives redistribute Electron's LGPL-2.1 components (FFmpeg as `libffmpeg`, and Blink). Their corresponding source is Electron v44.7.0's own source, with its patches applied to Chromium at the pinned revision (plus Lilac's fuse settings), not plain Chromium. Choose how each release provides it: mirrored with the release, or a written offer. A repository grain then implements the choice in the release workflow and the notices.
   5. **The tag.** Pushing `v1.0.0` is the release decision; the workflow then signs every file and makes a draft release, which the owner publishes.
 - Founder decisions (2026-10-07, recorded on #146):
   - **Scope.** Lilac ships as a usable product. Desktop builds and local web mode are required, so the PC Product Completion phase was added before P07 closes.
