@@ -462,7 +462,7 @@ async function openCodeDialog() {
   })();
   showDialog("Design and code", (close) => {
     const error = el("p", { class: "error", role: "alert" });
-    const codebasePart = buildCodebasePart({ codebase, codebaseError, selected, boundNode, close, error });
+    const codebasePart = buildCodebasePart({ codebase, codebaseError, boundNode, close, error });
     const output = exported === null ? null : el("textarea", { id: "code-export", rows: 10, readonly: true, spellcheck: "false", "aria-describedby": "code-export-note" });
     if (output) output.value = exported.code;
     const source = el("textarea", { id: "code-import", rows: 8, spellcheck: "false", placeholder: "export function Card() {\n  return <section>…</section>;\n}" });
@@ -517,7 +517,7 @@ async function openCodeDialog() {
 
 // The Code dialog's codebase section: connect a local folder, bring its components in,
 // and write a component's edits back to its file after previewing them (PC11).
-function buildCodebasePart({ codebase, codebaseError, selected, boundNode, close, error }) {
+function buildCodebasePart({ codebase, codebaseError, boundNode, close, error }) {
   const section = el("section", { id: "codebase", "aria-labelledby": "codebase-title" }, el("h3", { id: "codebase-title" }, "Codebase"));
   const busy = (button, task) => async () => {
     error.textContent = "";
@@ -588,20 +588,23 @@ function buildCodebasePart({ codebase, codebaseError, selected, boundNode, close
             setStatus(`${result.intent}: ${result.layers} layers added.`);
           } catch (failure) {
             bring.disabled = false;
-            if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
+            if (failure instanceof HostError && failure.code === "project-needs-reopen") {
+              close();
+              handleEditError(failure);
+            } else if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
           }
         });
       });
       return el("li", { class: "codebase-row" }, el("span", {}, el("strong", {}, component), ` ${file}`), bring);
     })));
-    if (codebase.truncated) section.append(el("p", {}, `Only the first ${codebase.files} source files were read.`));
   }
+  if (codebase.truncated) section.append(el("p", {}, `Only the first ${codebase.files} source files were read.`));
   if (boundNode !== null) {
     const file = boundNode.props.codeSource.file;
-    const preview = el("div", { id: "codebase-preview" });
+    const preview = el("div", { id: "codebase-preview", "aria-live": "polite" });
     const review = el("button", { type: "button", id: "codebase-review" }, `Write changes back to ${file}`);
     review.addEventListener("click", busy(review, async () => {
-      const plan = await state.client.post("/api/codebase/preview", { nodeId: selected });
+      const plan = await state.client.post("/api/codebase/preview", { nodeId: boundNode.id });
       const items = (entries, render) => (entries.length === 0 ? [] : [el("ul", {}, entries.map((entry) => el("li", {}, render(entry))))]);
       preview.replaceChildren(
         plan.changes.length === 0 ? el("p", {}, "There is nothing to write back: the file already has these values.") : el("p", {}, `${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} to ${plan.file}:`),
@@ -618,13 +621,16 @@ function buildCodebasePart({ codebase, codebaseError, selected, boundNode, close
           write.disabled = true;
           enqueue(async () => {
             try {
-              const result = await state.client.post("/api/codebase/write", { nodeId: selected, token: plan.token });
+              const result = await state.client.post("/api/codebase/write", { nodeId: boundNode.id, token: plan.token });
               close();
               applyChange(result);
               setStatus(`Wrote ${result.written} change${result.written === 1 ? "" : "s"} to ${result.file}.`);
             } catch (failure) {
               write.disabled = false;
-              if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
+              if (failure instanceof HostError && failure.code === "project-needs-reopen") {
+                close();
+                handleEditError(failure);
+              } else if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
             }
           });
         });

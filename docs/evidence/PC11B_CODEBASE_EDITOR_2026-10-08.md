@@ -16,7 +16,7 @@ The Code dialog has a Codebase section.
   - what changed both here and in the file, which is not written;
   - what is not written back.
 
-  "Write to file" appears only when there is something to write. It writes exactly the previewed file, or is refused if the file has changed since the preview.
+  "Write to file" appears only when there is something to write. It writes exactly the previewed file, or is refused if the file or the layers have changed since the preview.
 - **A folder that can no longer be read** is reported, with "Disconnect".
 
 ## Tests

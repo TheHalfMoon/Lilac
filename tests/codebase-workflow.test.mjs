@@ -56,6 +56,14 @@ test("connect a folder, bring a component in, edit it and write the edit back to
     const heading = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("h2").getAttribute("data-lilac-id"));
     assert.match(await page.locator("#status").textContent(), /^Bring in PriceCard from PriceCard\.jsx: \d+ layers added\.$/u);
 
+    // Reviewed from the selection Bring in leaves (the frame around the component), it plans
+    // for the component itself: nothing to write and nothing spurious listed.
+    await page.locator("#action-code").click();
+    await page.locator("#codebase-review").click();
+    await page.locator("#codebase-preview p").first().waitFor();
+    assert.equal(await page.locator("#codebase-preview").textContent(), "There is nothing to write back: the file already has these values.");
+    await page.locator("#dialog[open] button", { hasText: "Close" }).last().click();
+
     // Edit its heading and fill on the canvas, as anyone would.
     await page.locator(`[role=treeitem][data-node-id="${heading}"] > .row`).click();
     await page.locator("#inspect-text").fill("Pro & Team");
