@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { classifyChromiumLicenses } from "../scripts/desktop/chromium-licenses.mjs";
 import { electronDirectory } from "../scripts/desktop/electron.mjs";
-import { FUSES, LILAC_FUSES, readFuses, writeFuses } from "../scripts/desktop/fuses.mjs";
+import { FUSES, NINERR_FUSES, readFuses, writeFuses } from "../scripts/desktop/fuses.mjs";
 import { reachablePackages } from "../scripts/package-desktop.mjs";
 
 // PC9 (#174): the pieces of the desktop packaging (PC gate 15) that can be checked without
@@ -16,9 +16,9 @@ import { reachablePackages } from "../scripts/package-desktop.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const SENTINEL = "dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX";
-const scratch = () => mkdtempSync(join(tmpdir(), "lilac-desktop-package-"));
+const scratch = () => mkdtempSync(join(tmpdir(), "ninerr-desktop-package-"));
 
-test("fuses are read and set in place, and only in a block Lilac understands", () => {
+test("fuses are read and set in place, and only in a block Ninerr understands", () => {
   const dir = scratch();
   try {
     const binary = join(dir, "electron");
@@ -27,7 +27,7 @@ test("fuses are read and set in place, and only in a block Lilac understands", (
     const before = readFuses(binary);
     assert.equal(before.RunAsNode, true);
     assert.equal(before.EnableNodeCliInspectArguments, true);
-    assert.deepEqual(writeFuses(binary), LILAC_FUSES);
+    assert.deepEqual(writeFuses(binary), NINERR_FUSES);
     const bytes = readFileSync(binary);
     assert.equal(bytes.length, 64 + SENTINEL.length + 2 + FUSES.length + 64, "nothing else changes size");
     assert.equal(bytes.subarray(SENTINEL.length + 66, SENTINEL.length + 66 + 9).toString("latin1"), "000000001");

@@ -24,7 +24,7 @@ jobs:
       - name: Cache the pinned Electron archive
         uses: actions/cache@v4
         with:
-          path: .lilac-cache/electron/downloads
+          path: .ninerr-cache/electron/downloads
           key: electron-${{ runner.os }}-${{ hashFiles('scripts/desktop/electron.mjs') }}
       - name: Fetch the pinned Electron runtime (SHA-256 verified)
         run: node scripts/fetch-electron.mjs

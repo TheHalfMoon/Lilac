@@ -62,8 +62,8 @@ test("the SBOM has the CycloneDX 1.5 shape, correct purls, hashes, scopes and gr
   assert.equal(purlFor("parse5", "8.0.1"), "pkg:npm/parse5@8.0.1");
   const parse5 = sbom.dependencies.find((item) => item.ref === "pkg:npm/parse5@8.0.1");
   assert.deepEqual(parse5.dependsOn, ["pkg:npm/entities@8.0.0"]);
-  // Lilac's own license is not asserted until the project chooses one.
-  assert.deepEqual(sbom.metadata.component.properties, [{ name: "lilac:license", value: "NOASSERTION" }]);
+  // Ninerr's own license is not asserted until the project chooses one.
+  assert.deepEqual(sbom.metadata.component.properties, [{ name: "ninerr:license", value: "NOASSERTION" }]);
 });
 
 // Synthetic lockfiles for each failure mode.
@@ -88,7 +88,7 @@ test("each policy violation is reported", () => {
 });
 
 test("an override is checked against the installed license file", () => {
-  const dir = mkdtempSync(join(tmpdir(), "lilac-sbom-"));
+  const dir = mkdtempSync(join(tmpdir(), "ninerr-sbom-"));
   try {
     mkdirSync(join(dir, "seelic"));
     writeFileSync(join(dir, "seelic", "package.json"), JSON.stringify({ name: "seelic", version: "1.0.0" }));
@@ -107,7 +107,7 @@ test("an override is checked against the installed license file", () => {
 });
 
 test("the --check command exits non-zero on a violation", () => {
-  const dir = mkdtempSync(join(tmpdir(), "lilac-sbom-cli-"));
+  const dir = mkdtempSync(join(tmpdir(), "ninerr-sbom-cli-"));
   try {
     mkdirSync(join(dir, "scripts"));
     writeFileSync(join(dir, "scripts", "sbom.mjs"), readFileSync(SCRIPT));
