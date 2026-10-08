@@ -58,7 +58,9 @@ test("each PC gate has exactly one closing grain in the plan", () => {
   const current = read("docs/CURRENT.md");
   assert.match(current, /\| PC Product completion \(17 gates\) \| CLOSED_CANONICAL \|/);
   assert.match(current, /- PC Product Completion: \*\*CLOSED_CANONICAL\*\*/);
-  const plan = current.slice(current.indexOf("Grain plan."), current.indexOf(". PC-L:"));
+  assert.match(current, /\| P07 Release \| ACTIVE \|/);
+  const start = current.indexOf("Grain plan.");
+  const plan = current.slice(start, current.indexOf(". PC-L:", start));
   const closers = new Map();
   for (const [, grain, list] of plan.matchAll(/(PC\d+): .*\(closes ([\d, ]+)[;)]/g)) {
     for (const gate of list.split(",").map((value) => Number(value.trim()))) {
