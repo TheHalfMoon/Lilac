@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, lstatSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { LocalCollaborationRoom, createAccessPolicy, createCollaborationState } from "@lilac/collaboration";
 import { createDocument } from "@lilac/document-model";
 import { createHistoryState } from "@lilac/history";
-import { createProject, openProject, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
+import { PROJECT_FILES, createProject, openProject, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
 import { StudioError } from "./errors.ts";
 
 /** Who is acting. People act through the editor; agents act through MCP (PC5). */
@@ -379,7 +380,7 @@ export class StudioSession {
 
 /** Refuse to break a lock whose holder is a process still running on this machine. */
 function assertLockHolderGone(root: string): void {
-  const lockPath = `${root}/.lilac/lock`;
+  const lockPath = join(root, PROJECT_FILES.directory, PROJECT_FILES.lock);
   let pid: unknown;
   try {
     // Only a small regular file is read; links, FIFOs and anything odd are left to
