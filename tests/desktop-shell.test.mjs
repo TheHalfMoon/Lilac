@@ -108,8 +108,10 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     step = "editor session";
     // The editor works: a project, a box, an edit committed through the host.
     await window.locator("#new-project-name").fill("desk");
-    await window.keyboard.press("Enter");
+    step = "editor session (create)";
+    await window.locator("#dialog[open] button.primary", { hasText: "Create project" }).click();
     await waitRevision(window, 0);
+    step = "editor session (edit)";
     await window.locator("#action-insert-box").click();
     await waitRevision(window, 1);
     await window.locator("#inspect-name").fill("From the desktop");
@@ -231,7 +233,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     await desktop.app.close();
     assert.deepEqual(egress, [], "nothing left this computer, from any process of the app");
   } catch (error) {
-    const editor = await desktop?.window.evaluate(() => `status=${JSON.stringify(document.getElementById("status")?.textContent)} ${document.getElementById("revision")?.textContent} dialog=${JSON.stringify(document.querySelector("#dialog[open]")?.textContent?.slice(0, 160) ?? null)}`).catch(() => "unreadable");
+    const editor = await desktop?.window.evaluate(() => `status=${JSON.stringify(document.getElementById("status")?.textContent)} ${document.getElementById("revision")?.textContent} dialog=${JSON.stringify(document.querySelector("#dialog[open]")?.textContent?.slice(0, 160) ?? null)} name=${JSON.stringify(document.getElementById("new-project-name")?.value ?? null)} focus=${document.hasFocus()} active=${document.activeElement?.id ?? document.activeElement?.tagName}`).catch(() => "unreadable");
     throw new Error(`${step}: ${String(error?.message ?? error).split("\n")[0]}; editor: ${editor}; console: ${JSON.stringify(desktop?.errors ?? []).slice(0, 300)}; app: ${JSON.stringify((desktop?.output() ?? "").split("\n").filter((line) => line.startsWith("lilac:") || /ERROR|FATAL/u.test(line)).slice(-6).join(" | ").slice(0, 600))}`, { cause: error });
   } finally {
     await desktop?.app.close().catch(() => {});
