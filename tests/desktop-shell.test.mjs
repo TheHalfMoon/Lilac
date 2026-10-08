@@ -75,12 +75,15 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
   mkdirSync(join(home, "Downloads"), { recursive: true });
   const env = { ...screen.env, HOME: home, XDG_CONFIG_HOME: join(root, "config"), XDG_DOWNLOAD_DIR: join(home, "Downloads"), LILAC_PROJECTS: projects, HTTPS_PROXY: "", HTTP_PROXY: "", https_proxy: "", http_proxy: "" };
   let desktop = null;
+  // The step under way, named in a failure (CI annotates only its first line).
+  let step = "launch";
   try {
     desktop = await launchDesktop({ env, args });
     const { app, window } = desktop;
     const origin = new URL(window.url()).origin;
     assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/u);
 
+    step = "web preferences";
     // The window, as the main process configured it.
     const preferences = await app.evaluate(({ BrowserWindow }) => {
       const [only, ...more] = BrowserWindow.getAllWindows();
@@ -89,6 +92,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     });
     assert.deepEqual(preferences, { windows: 1, contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: false });
 
+    step = "isolation";
     // The page has no Node, and the preload gives it only that it is the desktop app.
     const page = await window.evaluate(() => ({
       require: typeof require,
@@ -101,6 +105,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     }));
     assert.deepEqual(page, { require: "undefined", process: "undefined", module: "undefined", buffer: "undefined", bridge: ["desktop", "platform"], frozen: true, desktop: true });
 
+    step = "editor session";
     // The editor works: a project, a box, an edit committed through the host.
     await window.locator("#new-project-name").fill("desk");
     await window.keyboard.press("Enter");
@@ -111,6 +116,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     await window.keyboard.press("Tab");
     await waitRevision(window, 2);
 
+    step = "navigation";
     // No other window, no navigation away, no webview.
     assert.equal(await window.evaluate(() => window.open("https://example.com/")), null);
     assert.equal(await window.evaluate((url) => window.open(url), otherUrl), null);
@@ -128,6 +134,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     }
     await window.waitForFunction(() => document.documentElement.dataset.ready === "true");
 
+    step = "requests";
     // Requests: only the host. Another local server and the network are both refused.
     const requests = await window.evaluate(async (url) => {
       const attempt = (target) => fetch(target).then(() => "reached", () => "refused");
@@ -158,6 +165,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     }, `${otherUrl}/probe`);
     assert.equal(shellRefusal, "ERR_BLOCKED_BY_CLIENT");
 
+    step = "permissions";
     // No permission is granted.
     const permissions = await window.evaluate(async () => ({
       notification: await Notification.requestPermission(),
@@ -173,6 +181,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     assert.notEqual(permissions.camera, "granted");
     assert.notEqual(permissions.clipboard, "granted");
     assert.equal(permissions.screen, "NotAllowedError");
+    step = "downloads";
     // No download is saved, wherever it comes from.
     const refused = await app.evaluate(({ BrowserWindow, session }, url) => new Promise((resolve) => {
       // Registered after the app's own handler, so it sees whether that handler refused it.
@@ -184,6 +193,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     assert.deepEqual(readdirSync(join(home, "Downloads")), [], "nothing was downloaded");
     assert.deepEqual(hits, [], "nothing the window did reached the other server");
 
+    step = "single instance";
     // One Lilac per user: a second start hands over to this one and exits.
     const second = spawn(findElectron(), ["packages/desktop"], { env: { ...process.env, ...env }, stdio: "ignore" });
     const code = await new Promise((resolve) => {
@@ -199,6 +209,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     assert.equal(code, 0, "the second start exits");
     assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1);
 
+    step = "close window";
     // Closing the window quits Lilac and stops the host: the project is closed and its
     // lock released.
     assert.ok(existsSync(join(projects, "desk", ".lilac", "lock")));
@@ -210,6 +221,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     assert.equal(existsSync(join(projects, ".lilac-studio.json")), false, "the discovery file is removed");
     assert.deepEqual(desktop.errors.filter((message) => !/violates the (?:following|document's) Content Security Policy|Not allowed to load local resource: file:/u.test(message)), [], "only the refused requests are logged");
 
+    step = "relaunch";
     // Started again: the project is there, as it was.
     desktop = await launchDesktop({ env, args });
     await desktop.window.locator("#dialog[open] [data-project=desk]").click();
@@ -218,6 +230,8 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     assert.ok((await desktop.window.locator("#layers [role=treeitem] .label").allTextContents()).includes("From the desktop"));
     await desktop.app.close();
     assert.deepEqual(egress, [], "nothing left this computer, from any process of the app");
+  } catch (error) {
+    throw new Error(`${step}: ${String(error?.message ?? error).split("\n")[0]}`, { cause: error });
   } finally {
     await desktop?.app.close().catch(() => {});
     await new Promise((resolve) => other.close(resolve));
