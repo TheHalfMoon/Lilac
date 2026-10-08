@@ -1,12 +1,12 @@
 # Lilac — Canonical Program State
 
-Last updated: 2026-10-07
+Last updated: 2026-10-08
 
 ## Program
 
 **LILAC-P00 — Foundation, authorized-source intake, and staged product implementation**
 
-Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–9 are `CLOSED_CANONICAL`; P03 architecture ownership and P04 parity disposition are complete; repository-side Graft context policy is canonical; P05 differentiators D1–D7 have delivered slices; all 11 P06 Product Hardening gates are `CLOSED_CANONICAL` (umbrella #100, closed); the scope-independent P07 artifacts have landed; the program is in the PC Product Completion phase, after which P07 Release closes.
+Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–9 are `CLOSED_CANONICAL`; P03 architecture ownership and P04 parity disposition are complete; repository-side Graft context policy is canonical; P05 differentiators D1–D7 have delivered slices; all 11 P06 Product Hardening gates are `CLOSED_CANONICAL` (umbrella #100, closed); the scope-independent P07 artifacts have landed; all 17 PC Product Completion gates are `CLOSED_CANONICAL` and the phase is closed (umbrella #146); the program is in P07 Release.
 
 ## Canonical main
 
@@ -61,7 +61,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (709/709 test
   - **License.** The target is Apache-2.0, applied only after an evidence-based compatibility audit.
   - **Vulnerability reporting.** Enabling GitHub private vulnerability reporting is a required repository-administration action before release.
   - **Tag.** No v1 tag until the product is usable and every release gate is green.
-- PC Product Completion: **ACTIVE** (umbrella #146). Its 17 acceptance gates are in `docs/MASTER_PLAN.md`; the grain plan is below.
+- PC Product Completion: **CLOSED_CANONICAL** (umbrella #146, closed 2026-10-08 on main `8b5a74f`, post-merge 721/721 and the release-candidate journey 18/18 on Linux x64, macOS arm64 and Windows x64). Its 17 acceptance gates are in `docs/MASTER_PLAN.md`; the grain plan is below.
 
 | # | PC gate | State |
 |---:|---|---|
@@ -92,8 +92,8 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (709/709 test
   - Evidence for each is in `docs/evidence/` (PC4_*, PC5_*, PC6A_*, PC6B_*, PC7_*, PC8A_*, PC8B_*, PC8C_*).
   - PC9 (#174): PC9a #175 (`7732a1a`), gate 5, the desktop bridge; PC9b #177, gate 15, desktop packaging for Linux x64, macOS arm64 and Windows x64 with a packaged-app smoke test on each runner. Evidence: `docs/evidence/PC9A_DESKTOP_BRIDGE_2026-10-08.md`, `docs/evidence/PC9B_DESKTOP_PACKAGING_2026-10-08.md`.
   - PC10 (#178): the release-candidate journey through the packaged desktop app on Linux x64, macOS arm64 and Windows x64, gate 17. Since PC11 (#182), "connect a codebase" is a connected local folder: the person brings components in with their source and writes edits back to their files after reviewing a diff. Evidence: `docs/evidence/PC10_RELEASE_JOURNEY_2026-10-08.md`.
-  - PC11 (#182): a connected codebase. PC11a is the host (a folder link, a bounded and confined scan, bring-in with source binding, and a three-way, previewed, atomic write-back). PC11b is the editor's Codebase section and the journey's steps 4a and 4b. Evidence: `docs/evidence/PC11A_CODEBASE_HOST_2026-10-08.md` and `docs/evidence/PC11B_CODEBASE_EDITOR_2026-10-08.md`.
-  - All 17 PC gates are closed; the phase closes on #146.
+  - PC11 (#182, for #181): a connected codebase. PC11a #183 (`a66b67e`) is the host (a folder link, a bounded and confined scan, bring-in with source binding, and a three-way, previewed, atomic write-back). PC11b #184 (`8b5a74f`) is the editor's Codebase section and the journey's steps 4a and 4b. Evidence: `docs/evidence/PC11A_CODEBASE_HOST_2026-10-08.md` and `docs/evidence/PC11B_CODEBASE_EDITOR_2026-10-08.md`.
+  - All 17 PC gates are closed, the catalog records each delivered surface, and the "Definition of genuinely complete" journey runs through the packaged app (install from the archive, create and edit, use an agent, connect a codebase, round-trip a component, export, all local). The phase is closed on #146.
 
   Grain plan. A grain may advance a gate, but only the grain named as closing it may set it `CLOSED_CANONICAL`, after end-to-end evidence through the product surface:
   1. PC1: studio host, loopback project API and change stream (advances 4)
@@ -106,8 +106,9 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (709/709 test
   8. PC8: accessibility, performance and crash/recovery qualification (closes 12, 13, 14)
   9. PC9: desktop shell and packaging (closes 5, 15)
   10. PC10: release-candidate end-to-end (closes 17)
-  11. PC-L: Apache-2.0 license and provenance audit, then adoption (P07 prerequisite)
-- Open, non-blocking: #64 (review-panel hardening follow-ups, including a shared hidden-text and input-hygiene policy across packages), #78, #79, #82, #89, #94, #108, #132, #135, #2. Issue #121 ("cirq.quantum") is unrelated to the program.
+  11. PC11: a connected codebase, through the host, the editor and the journey (advances 17)
+  12. PC-L: Apache-2.0 license and provenance audit, then adoption (P07 prerequisite)
+- Open, non-blocking: #64 (review-panel hardening follow-ups, including a shared hidden-text and input-hygiene policy across packages), #78, #79, #89, #94, #108, #132, #135, #154, #172, #176, #179, #185, #2. Issue #121 ("cirq.quantum") is unrelated to the program.
 
 ## Canonical implementation chain
 
@@ -165,8 +166,8 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (709/709 test
 | I08 Delivery Governance | PROVEN |
 | I09 Design Method and Resources | PROVEN |
 | P06 Product hardening (11 gates) | CLOSED_CANONICAL |
-| PC Product completion (17 gates) | ACTIVE |
-| P07 Release | ACTIVE (closes after PC) |
+| PC Product completion (17 gates) | CLOSED_CANONICAL |
+| P07 Release | ACTIVE |
 
 ## Grain 6 — closed canonical
 

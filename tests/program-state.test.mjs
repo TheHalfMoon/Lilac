@@ -50,14 +50,15 @@ test("the PC record mirrors every master-plan Product Completion gate in order",
   assert.deepEqual(rows.map((row) => row.number), gates.map((gate) => gate.number));
   for (const [index, row] of rows.entries()) {
     assert.ok(gates[index].text.toLowerCase().startsWith(row.gate.toLowerCase()), `PC gate ${row.number} "${row.gate}" names the plan gate "${gates[index].text.slice(0, 60)}"`);
-    assert.ok(["OPEN", "CLOSED_CANONICAL"].includes(row.state), `PC gate ${row.number} has a known state`);
+    assert.equal(row.state, "CLOSED_CANONICAL", `PC gate ${row.number} is closed, as the phase is`);
   }
 });
 
 test("each PC gate has exactly one closing grain in the plan", () => {
   const current = read("docs/CURRENT.md");
-  assert.match(current, /\| PC Product completion \(17 gates\) \| ACTIVE \|/);
-  const plan = current.slice(current.indexOf("Grain plan."), current.indexOf("11. PC-L:"));
+  assert.match(current, /\| PC Product completion \(17 gates\) \| CLOSED_CANONICAL \|/);
+  assert.match(current, /- PC Product Completion: \*\*CLOSED_CANONICAL\*\*/);
+  const plan = current.slice(current.indexOf("Grain plan."), current.indexOf(". PC-L:"));
   const closers = new Map();
   for (const [, grain, list] of plan.matchAll(/(PC\d+): .*\(closes ([\d, ]+)[;)]/g)) {
     for (const gate of list.split(",").map((value) => Number(value.trim()))) {
