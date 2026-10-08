@@ -18,8 +18,14 @@ app.enableSandbox();
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  start();
+  start().catch((error) => {
+    dialog.showErrorBox("Lilac could not start", error instanceof Error ? error.message : String(error));
+    app.exit(1);
+  });
 }
+
+// A quit that waits on the host gives up after this long, rather than hang.
+const CLOSE_TIMEOUT_MS = 10_000;
 
 let host = null;
 let window = null;
@@ -27,6 +33,11 @@ let quitting = false;
 
 function harden(origin) {
   const defaults = session.defaultSession;
+  // Chromium's browser process fetches spell-check dictionaries from Google, outside any
+  // page (so webRequest never sees it): spell checking is off, and the dictionary source
+  // is an address that is never contacted.
+  defaults.setSpellCheckerEnabled(false);
+  defaults.setSpellCheckerDictionaryDownloadURL("http://127.0.0.1:9/");
   // No permission is ever granted: camera, microphone, location, notifications, MIDI,
   // clipboard reads, devices, screen capture.
   defaults.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -34,7 +45,8 @@ function harden(origin) {
   defaults.setDevicePermissionHandler(() => false);
   defaults.setDisplayMediaRequestHandler((_request, callback) => callback({}));
   // The page reaches only the host, whatever it tries.
-  defaults.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !mayRequest(origin, details.url) }));
+  const devtools = !app.isPackaged;
+  defaults.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !mayRequest(origin, details.url, { devtools }) }));
   // Downloads are refused (exports are copied, not downloaded).
   defaults.on("will-download", (event) => event.preventDefault());
 
@@ -73,7 +85,12 @@ function openWindow() {
     title: "Lilac",
     show: false,
     backgroundColor: "#16141f",
-    webPreferences: windowPreferences(PRELOAD),
+    webPreferences: windowPreferences(PRELOAD, { devTools: !app.isPackaged }),
+  });
+  // A renderer that crashed is replaced, with a fresh link: nothing is lost, as every
+  // change was committed by the host.
+  window.webContents.on("render-process-gone", (_event, details) => {
+    if (window !== null && !quitting && details.reason !== "clean-exit") window.loadURL(host.launchUrl());
   });
   window.once("ready-to-show", () => window.show());
   window.on("closed", () => {
@@ -96,11 +113,14 @@ async function start() {
     // Stop the host first, so its projects are closed and their locks released.
     event.preventDefault();
     quitting = true;
-    host.close().finally(() => app.exit(0));
+    const timeout = new Promise((_resolve, reject) => setTimeout(() => reject(new Error("the host did not close in time")), CLOSE_TIMEOUT_MS).unref());
+    Promise.race([host.close(), timeout]).then(() => app.exit(0), () => app.exit(1));
   });
+  // Ctrl+C or a termination signal quits as the menu does.
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => app.quit());
 
   await app.whenReady();
-  const projectsRoot = projectsFolder(process.env.LILAC_PROJECTS);
+  const projectsRoot = projectsFolder();
   try {
     prepareProjectsFolder(projectsRoot);
     host = await startStudioHost({ projectsRoot, port: 0 });

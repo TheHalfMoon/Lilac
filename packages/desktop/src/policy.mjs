@@ -21,11 +21,14 @@ export function mayNavigate(origin, target) {
 
 // Schemes a page can reach without the network, which Chromium still reports: the
 // renderer's sandboxed frame (about:srcdoc), images a design holds inline (data:), and the
-// editor's own object URLs (blob:). Developer tools, when opened, use devtools:.
-const LOCAL_SCHEMES = new Set(["data:", "blob:", "about:", "devtools:"]);
+// editor's own object URLs (blob:).
+const LOCAL_SCHEMES = new Set(["data:", "blob:", "about:"]);
 
-/** May the page request `target`? Only the editor's origin and local schemes. */
-export function mayRequest(origin, target) {
+/**
+ * May the page request `target`? Only the editor's origin and local schemes, and
+ * developer tools' own devtools: pages when they are allowed (never in a packaged app).
+ */
+export function mayRequest(origin, target, { devtools = false } = {}) {
   let url;
   try {
     url = new URL(target);
@@ -33,13 +36,15 @@ export function mayRequest(origin, target) {
     return false;
   }
   if (LOCAL_SCHEMES.has(url.protocol)) return true;
+  if (url.protocol === "devtools:") return devtools;
   return url.origin === origin;
 }
 
 /** The web preferences every Lilac window gets: no Node, isolated and sandboxed. */
-export function windowPreferences(preload) {
+export function windowPreferences(preload, { devTools = false } = {}) {
   return {
     preload,
+    devTools,
     contextIsolation: true,
     sandbox: true,
     nodeIntegration: false,

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,9 +26,14 @@ test("the desktop window's rules: only the host's origin, and no Node in the pag
   for (const target of ["http://127.0.0.1:41235/", "http://localhost:41234/", "https://example.com/", "file:///etc/passwd", "javascript:alert(1)", "not a url"]) {
     assert.equal(mayNavigate(origin, target), false, target);
   }
-  for (const target of ["http://127.0.0.1:41234/api/document", "data:image/png;base64,AA==", "blob:http://127.0.0.1:41234/x", "about:srcdoc", "devtools://devtools/bundled/inspector.html"]) {
+  for (const target of ["http://127.0.0.1:41234/api/document", "data:image/png;base64,AA==", "blob:http://127.0.0.1:41234/x", "about:srcdoc"]) {
     assert.equal(mayRequest(origin, target), true, target);
   }
+  // Developer tools' own pages only when developer tools are allowed (never when packaged).
+  assert.equal(mayRequest(origin, "devtools://devtools/bundled/inspector.html"), false);
+  assert.equal(mayRequest(origin, "devtools://devtools/bundled/inspector.html", { devtools: true }), true);
+  assert.equal(windowPreferences("/x/preload.cjs").devTools, false);
+  assert.equal(windowPreferences("/x/preload.cjs", { devTools: true }).devTools, true);
   for (const target of ["http://127.0.0.1:41235/", "https://example.com/x.png", "ws://127.0.0.1:41234/", "file:///etc/passwd", "ftp://example.com/"]) {
     assert.equal(mayRequest(origin, target), false, target);
   }
@@ -53,10 +58,25 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
   });
   await new Promise((resolve) => other.listen(0, "127.0.0.1", resolve));
   const otherUrl = `http://127.0.0.1:${other.address().port}`;
-  const env = { ...screen.env, HOME: join(root, "home"), XDG_CONFIG_HOME: join(root, "config"), LILAC_PROJECTS: projects };
+  // Every connection the app makes off this computer goes through this proxy, which
+  // records it and refuses it. Lilac must make none, not even from the browser process.
+  const egress = [];
+  const proxy = createServer((request, response) => {
+    egress.push(request.url);
+    response.writeHead(403).end();
+  });
+  proxy.on("connect", (request, socket) => {
+    egress.push(`CONNECT ${request.url}`);
+    socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+  });
+  await new Promise((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+  const args = [`--proxy-server=http://127.0.0.1:${proxy.address().port}`];
+  const home = join(root, "home");
+  mkdirSync(join(home, "Downloads"), { recursive: true });
+  const env = { ...screen.env, HOME: home, XDG_CONFIG_HOME: join(root, "config"), XDG_DOWNLOAD_DIR: join(home, "Downloads"), LILAC_PROJECTS: projects, HTTPS_PROXY: "", HTTP_PROXY: "", https_proxy: "", http_proxy: "" };
   let desktop = null;
   try {
-    desktop = await launchDesktop({ env });
+    desktop = await launchDesktop({ env, args });
     const { app, window } = desktop;
     const origin = new URL(window.url()).origin;
     assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/u);
@@ -144,6 +164,7 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
       camera: await navigator.mediaDevices.getUserMedia({ video: true }).then(() => "granted", (error) => error.name),
       geolocation: await new Promise((resolve) => navigator.geolocation.getCurrentPosition(() => resolve("granted"), (error) => resolve(error.code === error.PERMISSION_DENIED ? "denied" : `error ${error.code}`))),
       clipboard: await navigator.clipboard.readText().then(() => "granted", (error) => error.name),
+      screen: await navigator.mediaDevices.getDisplayMedia({ video: true }).then(() => "granted", (error) => error.name),
       query: (await navigator.permissions.query({ name: "geolocation" })).state,
     }));
     assert.equal(permissions.notification, "denied");
@@ -151,6 +172,16 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     assert.equal(permissions.query, "denied");
     assert.notEqual(permissions.camera, "granted");
     assert.notEqual(permissions.clipboard, "granted");
+    assert.equal(permissions.screen, "NotAllowedError");
+    // No download is saved, wherever it comes from.
+    const refused = await app.evaluate(({ BrowserWindow, session }, url) => new Promise((resolve) => {
+      // Registered after the app's own handler, so it sees whether that handler refused it.
+      session.defaultSession.once("will-download", (event) => resolve(event.defaultPrevented));
+      BrowserWindow.getAllWindows()[0].webContents.downloadURL(url);
+    }), `${origin}/packages/studio-web/src/index.html`);
+    assert.equal(refused, true, "the app refused the download");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.deepEqual(readdirSync(join(home, "Downloads")), [], "nothing was downloaded");
     assert.deepEqual(hits, [], "nothing the window did reached the other server");
 
     // One Lilac per user: a second start hands over to this one and exits.
@@ -168,23 +199,29 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     assert.equal(code, 0, "the second start exits");
     assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1);
 
-    // Quitting stops the host: the project is closed and its lock released.
+    // Closing the window quits Lilac and stops the host: the project is closed and its
+    // lock released.
     assert.ok(existsSync(join(projects, "desk", ".lilac", "lock")));
     assert.ok(existsSync(join(projects, ".lilac-studio.json")));
-    await app.close();
+    const exited = new Promise((resolve) => app.process().once("exit", (code) => resolve(code)));
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    assert.equal(await exited, 0, "Lilac quit when its window closed");
     assert.equal(existsSync(join(projects, "desk", ".lilac", "lock")), false, "the lock is released");
     assert.equal(existsSync(join(projects, ".lilac-studio.json")), false, "the discovery file is removed");
     assert.deepEqual(desktop.errors.filter((message) => !/violates the (?:following|document's) Content Security Policy|Not allowed to load local resource: file:/u.test(message)), [], "only the refused requests are logged");
 
     // Started again: the project is there, as it was.
-    desktop = await launchDesktop({ env });
+    desktop = await launchDesktop({ env, args });
     await desktop.window.locator("#dialog[open] [data-project=desk]").click();
     await waitRevision(desktop.window, 2);
     assert.equal(await layerCount(desktop.window), 2);
     assert.ok((await desktop.window.locator("#layers [role=treeitem] .label").allTextContents()).includes("From the desktop"));
+    await desktop.app.close();
+    assert.deepEqual(egress, [], "nothing left this computer, from any process of the app");
   } finally {
     await desktop?.app.close().catch(() => {});
     await new Promise((resolve) => other.close(resolve));
+    await new Promise((resolve) => proxy.close(resolve));
     await screen.stop();
     rmSync(root, { recursive: true, force: true });
   }

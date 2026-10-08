@@ -24,12 +24,16 @@ PC9a closes PC gate 5: "Desktop bridge: a context-isolated shell with a minimal 
   - every permission request and check (`setPermissionRequestHandler`, `setPermissionCheckHandler`);
   - device permissions;
   - display capture.
-- **Requests** to anything but the host's origin and local schemes (`data:`, `blob:`, `about:`, `devtools:`), through `webRequest`. This sits on top of the editor page's own Content-Security-Policy, so it holds for any page.
+- **Requests** to anything but the host's origin and local schemes (`data:`, `blob:`, `about:`, plus `devtools:` in an unpackaged run only), through `webRequest`. This sits on top of the editor page's own Content-Security-Policy, so it holds for any page.
+- **Chromium's own requests.** Chromium's browser process fetches spell-check dictionaries from Google (`redirector.gvt1.com`), outside any page, so `webRequest` never sees the request and `spellcheck: false` does not stop it. Spell checking is turned off, and the dictionary source points at a loopback address that is never contacted.
 
 **Lifecycle:**
 - **One instance per user:** a second start focuses the first and exits.
 - **Closing:** closing the window quits on every platform, and quitting closes the host first, which closes projects, releases their locks and removes the discovery file.
-- **Developer tools** are in the menu only when unpackaged.
+- **Developer tools** are allowed only when unpackaged: in the window (`devTools`), in the request filter, and in the menu.
+- **Bounded quit.** A quit waits at most 10 s for the host to close, then exits with 1. A host that fails to close also exits with 1.
+- **Signals.** `SIGINT` and `SIGTERM` quit as the menu does.
+- **Renderer crash.** A crashed renderer is reloaded with a fresh link. Nothing is lost, because every change was committed by the host.
 
 ## The runtime
 
@@ -50,17 +54,23 @@ PC9a closes PC gate 5: "Desktop bridge: a context-isolated shell with a minimal 
   2. **The editor works:** create a project, insert a box, rename it, all committed through the host.
   3. **No escape.** `window.open` returns null; a webview is inert. Navigation to a remote site, to another loopback port and to `file:` leaves the window on the editor.
   4. **Requests.** `fetch` and image loads to another local server and to the network are refused by the page's CSP. They are also refused by the shell itself: a hidden window that the main process points at the other server fails with `ERR_BLOCKED_BY_CLIENT`. The other server records no hit at all.
-  5. **Permissions.** Notifications, camera, geolocation and clipboard reads are denied, and so are permission queries.
-  6. **One instance.** A second start exits with 0 and leaves one window.
-  7. **Quit.** The project's lock and the discovery file are gone. The console shows only the refused requests.
-  8. **Relaunch.** The project reopens with its revision, layers and the renamed layer.
+  5. **Permissions.** Notifications, camera, geolocation, clipboard reads and screen capture (`NotAllowedError`) are denied, and so are permission queries.
+  6. **Downloads.** A download started from the main process is refused by the app's handler, which a listener registered after it observes, and nothing lands in the downloads folder.
+  7. **One instance.** A second start exits with 0 and leaves one window.
+  8. **Closing the window** quits Lilac with exit code 0, and the project's lock and the discovery file are gone. The console shows only the refused requests.
+  9. **Relaunch.** The project reopens with its revision, layers and the renamed layer.
+  10. **Egress.** The app runs with `--proxy-server` set to a local proxy that records every connection off this computer. The proxy records none, from any process of the app, over both launches.
 
 **Mutation checks.** Each was run against the real shell, and each made the test fail:
 - removing the request filter;
 - removing the navigation guard;
 - removing the permission handler;
 - removing the window-open handler;
-- disabling the single-instance lock. This one is now bounded at 15 s, so it fails rather than hangs.
+- disabling the single-instance lock. This one is now bounded at 15 s, so it fails rather than hangs;
+- removing the spell-check settings: the proxy then records `CONNECT redirector.gvt1.com:443`;
+- removing the download handler.
+
+**One handler is a second layer that cannot be shown on its own.** The display-media handler is backed by the permission request handler, which denies screen capture too. Without the dedicated handler, screen capture is still denied, so no test can single it out.
 
 **Running as an ordinary user.** Electron's OS sandbox cannot run as root, and the app never turns it off. The desktop tests therefore run as an ordinary user: locally they skip as root or without the runtime, and in CI (`CI=true`) they fail.
 - **In this container,** they ran as an unprivileged user, together with the whole gate.

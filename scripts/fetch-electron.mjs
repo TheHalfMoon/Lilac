@@ -8,7 +8,7 @@ import { currentTarget, fetchElectron } from "./desktop/electron.mjs";
 
 const args = process.argv.slice(2);
 const at = args.indexOf("--target");
-if (args.some((arg, index) => arg !== "--target" && index !== at + 1)) {
+if (args.some((arg, index) => arg !== "--target" && index !== at + 1) || (at >= 0 && (args[at + 1] === undefined || args[at + 1].startsWith("--")))) {
   process.stderr.write("usage: node scripts/fetch-electron.mjs [--target <platform-arch>]\n");
   process.exit(2);
 }
