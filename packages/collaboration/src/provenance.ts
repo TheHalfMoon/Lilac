@@ -1,9 +1,13 @@
 export const COLLABORATION_PROVENANCE = Object.freeze({
-  paperEvidence: Object.freeze([
-    "docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-02.md",
-    "docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-03.md",
-    "docs/evidence/PAPER_LOCAL_RUNTIME_RECOVERY_2026-10-02.md",
-  ]),
+  // Behaviour evidence retired from the tree in N0-G5; the record pins each file in Git history.
+  paperEvidence: Object.freeze({
+    retired: "docs/provenance/RETIRED_PAPER_RECORDS.md",
+    paths: Object.freeze([
+      "docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-02.md",
+      "docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-03.md",
+      "docs/evidence/PAPER_LOCAL_RUNTIME_RECOVERY_2026-10-02.md",
+    ]),
+  }),
   doop: Object.freeze({
     repository: "kgoedecke/doop",
     revision: "d99c8b157d5afd4192b356f89a2b19adc28c75a5",

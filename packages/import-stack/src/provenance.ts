@@ -1,11 +1,15 @@
 export const IMPORT_STACK_PROVENANCE = Object.freeze({
   paper: Object.freeze({
     posture: "authorized-behavior-evidence",
-    evidence: Object.freeze([
-      "docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-02.md",
-      "docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-03.md",
-      "docs/evidence/PAPER_LOCAL_RUNTIME_RECOVERY_2026-10-02.md",
-    ]),
+    // Retired from the tree in N0-G5; the record pins each file in Git history.
+    evidence: Object.freeze({
+      retired: "docs/provenance/RETIRED_PAPER_RECORDS.md",
+      paths: Object.freeze([
+        "docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-02.md",
+        "docs/evidence/PAPER_LIVE_RUNTIME_RECOVERY_2026-10-03.md",
+        "docs/evidence/PAPER_LOCAL_RUNTIME_RECOVERY_2026-10-02.md",
+      ]),
+    }),
   }),
   docling: Object.freeze({
     repository: "docling-project/docling",

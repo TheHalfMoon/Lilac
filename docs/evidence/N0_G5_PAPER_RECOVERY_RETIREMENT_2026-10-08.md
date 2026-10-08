@@ -26,3 +26,11 @@ The deletions exceed the exact-head reviewer's context, so N0-G5 lands in three 
 - **N0-G5c:** the remaining eight evidence records, and `docs/DONORS.md`, which cites two of them.
 
 The retired record lists all eighteen files from the start. Each one's blob is pinned at `ac204c2`, whichever part removes it.
+
+## N0-G5b
+This part removes the three behaviour-evidence records:
+- `PAPER_LIVE_RUNTIME_RECOVERY_2026-10-02.md`;
+- `PAPER_LIVE_RUNTIME_RECOVERY_2026-10-03.md`;
+- `PAPER_LOCAL_RUNTIME_RECOVERY_2026-10-02.md`.
+
+In the same change, the provenance of `@ninerr/collaboration` and `@ninerr/import-stack` cites them through the retired record. The tests check, for each cited path, that the record pins a blob for it and that it is no longer in the tree.
