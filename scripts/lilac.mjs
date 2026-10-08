@@ -5,13 +5,13 @@
 //   npm start -- [--projects <folder>] [--port <number>] [--open]
 //
 // Lilac listens on 127.0.0.1 only and needs no network: projects stay in the projects
-// folder (default: "Lilac Projects" in your home folder, or LILAC_PROJECTS). Each link
+// folder (default: "Ninerr Projects" in your home folder, or NINERR_PROJECTS). Each link
 // works once, for two minutes; press Enter for a new one. Ctrl+C stops Lilac.
 import { spawn } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { prepareProjectsFolder, projectsFolder, startStudioHost } from "../packages/studio-host/src/index.ts";
+import { prepareProjectsFolder, resolveProjectsFolder, startStudioHost } from "../packages/studio-host/src/index.ts";
 
 const args = process.argv.slice(2);
 function fail(message) {
@@ -31,13 +31,13 @@ const option = (name) => {
   return at >= 0 ? args[at + 1] : undefined;
 };
 
-const projectsRoot = projectsFolder(option("--projects"));
+const { path: projectsRoot, note: folderNote } = resolveProjectsFolder(option("--projects"));
 const portText = option("--port") ?? "0";
 const port = Number(portText);
 if (!Number.isInteger(port) || port < 0 || port > 65535) fail("--port must be a number from 0 to 65535");
 try {
   const { note } = prepareProjectsFolder(projectsRoot);
-  if (note !== null) process.stderr.write(`lilac: note: ${note}\n`);
+  for (const line of [folderNote, note]) if (line !== null) process.stderr.write(`lilac: note: ${line}\n`);
 } catch (error) {
   fail(`cannot use the projects folder: ${error instanceof Error ? error.message : String(error)}`);
 }
@@ -59,7 +59,7 @@ if (args.includes("--open")) {
   // Only when asked: hand the system's browser opener a private file that forwards to a
   // fresh link, so the link (a ticket) never appears in the process list. The file is
   // removed once the ticket has expired.
-  const file = join(projectsRoot, `.lilac-open-${process.pid}.html`);
+  const file = join(projectsRoot, `.ninerr-open-${process.pid}.html`);
   const url = host.launchUrl();
   writeFileSync(file, `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${url}"><title>Opening Lilac</title>`, { mode: 0o600 });
   setTimeout(() => rmSync(file, { force: true }), 130_000).unref();

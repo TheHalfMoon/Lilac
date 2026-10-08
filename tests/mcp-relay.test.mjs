@@ -75,9 +75,9 @@ test("a discovery file left by a Lilac that is no longer running is not followed
   const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-relay-stale-")));
   try {
     assert.throws(() => discoverMcpUrl(root), /not running/u, "no file");
-    writeFileSync(join(root, ".lilac-studio.json"), JSON.stringify({ version: 1, url: "http://127.0.0.1:9", mcpUrl: "http://127.0.0.1:9/mcp", pid: 2 ** 22 + 4321, nonce: "x" }), { mode: 0o600 });
+    writeFileSync(join(root, ".ninerr-studio.json"), JSON.stringify({ version: 1, url: "http://127.0.0.1:9", mcpUrl: "http://127.0.0.1:9/mcp", pid: 2 ** 22 + 4321, nonce: "x" }), { mode: 0o600 });
     assert.throws(() => discoverMcpUrl(root), /not running/u, "a dead pid");
-    writeFileSync(join(root, ".lilac-studio.json"), JSON.stringify({ version: 1, url: "http://10.0.0.1:9", mcpUrl: "http://10.0.0.1:9/mcp", pid: process.pid, nonce: "x" }), { mode: 0o600 });
+    writeFileSync(join(root, ".ninerr-studio.json"), JSON.stringify({ version: 1, url: "http://10.0.0.1:9", mcpUrl: "http://10.0.0.1:9/mcp", pid: process.pid, nonce: "x" }), { mode: 0o600 });
     assert.throws(() => discoverMcpUrl(root), /only connects/u, "a non-loopback address");
   } finally {
     rmSync(root, { recursive: true, force: true });

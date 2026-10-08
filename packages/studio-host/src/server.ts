@@ -411,7 +411,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   port = address.port;
   // Tell local MCP relays where this host is: a small owner-only file in the projects root,
   // removed when the host closes. It holds no credential.
-  const discovery = join(projectsRoot, ".lilac-studio.json");
+  const discovery = join(projectsRoot, ".ninerr-studio.json");
   const discoveryNonce = randomBytes(8).toString("hex");
   try {
     const temporary = `${discovery}.${discoveryNonce}.tmp`;

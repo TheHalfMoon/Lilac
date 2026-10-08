@@ -3,6 +3,7 @@ import { chmodSync, closeSync, fchmodSync, fsyncSync, lstatSync, openSync, readF
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { applyPatch, buildCodeIr } from "@lilac/code-ir";
 import { StudioError } from "./errors.ts";
+import { LEGACY_CODEBASE_LINKS_FILE, registrySource } from "./legacy.ts";
 import { type CodeSource, importJsx } from "./code.ts";
 import { styleProperties } from "./imports.ts";
 
@@ -34,8 +35,10 @@ export class CodebaseLinks {
   #links: Record<string, string>;
 
   constructor(projectsRoot: string) {
-    this.#path = join(projectsRoot, ".lilac-codebases.json");
-    this.#links = readLinks(this.#path);
+    this.#path = join(projectsRoot, ".ninerr-codebases.json");
+    // The links file from before the rename (legacy.ts) is read when there is no Ninerr
+    // file yet, and left as it was; the next change saves the Ninerr file.
+    this.#links = readLinks(registrySource(projectsRoot, ".ninerr-codebases.json", LEGACY_CODEBASE_LINKS_FILE).path);
   }
 
   get(project: string): string | null {
@@ -537,7 +540,7 @@ export function writeBack(document: any, nodeId: unknown, folder: string, token:
   if (plan.changes.length === 0) throw new StudioError(409, "nothing-to-write", "there are no changes to write back");
   const { absolute } = readSourceFile(folder, plan.file);
   const mode = statSync(absolute).mode & 0o777;
-  const temporary = join(dirname(absolute), `.${randomUUID()}.lilac-tmp`);
+  const temporary = join(dirname(absolute), `.${randomUUID()}.ninerr-tmp`);
   try {
     const fd = openSync(temporary, "wx", 0o600);
     try {

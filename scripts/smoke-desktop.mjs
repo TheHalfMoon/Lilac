@@ -54,7 +54,7 @@ async function main() {
     check("the project is locked while open", existsSync(join(projects, "smoke", PROJECT_FILES.directory, "lock")));
     const firstExit = await lilac.quit();
     check("closing Lilac quits it cleanly", firstExit === 0, firstExit === 0 ? undefined : { exit: firstExit, output: lilac.output().slice(-400) });
-    check("quitting releases the project", !existsSync(join(projects, "smoke", PROJECT_FILES.directory, "lock")) && !existsSync(join(projects, ".lilac-studio.json")));
+    check("quitting releases the project", !existsSync(join(projects, "smoke", PROJECT_FILES.directory, "lock")) && !existsSync(join(projects, ".ninerr-studio.json")));
 
     // Second run: the change is there.
     lilac = await launch();

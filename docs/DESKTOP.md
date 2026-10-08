@@ -1,6 +1,6 @@
 # The Lilac desktop app
 
-The desktop app is Lilac in its own window. It runs the same studio host as local web mode (`npm start`) and shows the same editor, with the same projects folder: "Lilac Projects" in your home folder, or `LILAC_PROJECTS`. Projects are files on your computer, and Lilac needs no network.
+The desktop app is Lilac in its own window. It runs the same studio host as local web mode (`npm start`) and shows the same editor, with the same projects folder: "Ninerr Projects" in your home folder, or `NINERR_PROJECTS`. A setup from before the rename keeps working: `LILAC_PROJECTS` is read when `NINERR_PROJECTS` is not set, an existing "Lilac Projects" folder is used while there is no "Ninerr Projects", and a project from before the rename is copied into the Ninerr format the first time it is opened, with the original left unchanged. Projects are files on your computer, and Lilac needs no network.
 
 ## Running it from a checkout
 

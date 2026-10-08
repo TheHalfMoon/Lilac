@@ -122,7 +122,7 @@ async function main() {
     await page.locator("#dialog[open] .agent-row").first().waitFor();
     const shownAgain = await page.locator("#agent-credential").count();
     await page.keyboard.press("Escape");
-    step("3a the editor shows the agent's credential and Lilac's MCP URL once", shownAgain === 0 && /^lilac_agent_/u.test(token) && /^http:\/\/127\.0\.0\.1:\d+\/mcp$/u.test(mcpUrl ?? ""), mcpUrl);
+    step("3a the editor shows the agent's credential and Lilac's MCP URL once", shownAgain === 0 && /^ninerr_agent_/u.test(token) && /^http:\/\/127\.0\.0\.1:\d+\/mcp$/u.test(mcpUrl ?? ""), mcpUrl);
     let id = 0;
     const rpc = async (method, params) => {
       const response = await fetch(mcpUrl, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) });
