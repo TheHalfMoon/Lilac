@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,28 @@ import { startStudioHost } from "../packages/studio-host/src/index.ts";
 const LEGACY_PROJECT = fileURLToPath(new URL("./fixtures/projects/v1-basic/", import.meta.url));
 const AT = "2026-10-08T12:00:00.000Z";
 const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), "ninerr-legacy-host-")));
+
+test("a legacy project still locked by the earlier release is not taken over, and the person is told what to do", async () => {
+  const root = scratch();
+  cpSync(LEGACY_PROJECT, join(root, "old"), { recursive: true });
+  writeFileSync(join(root, "old", ".lilac", "lock"), JSON.stringify({ owner: "lilac-app", pid: 2 ** 22 + 4321, at: AT, nonce: "n" }));
+  const host = await startStudioHost({ projectsRoot: root, now: () => AT });
+  try {
+    for (const body of [{ name: "old" }, { name: "old", breakStaleLock: { reason: "it crashed" } }]) {
+      const response = await fetch(`${host.url}/api/projects/open`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+      const json = await response.json();
+      assert.equal(response.status, 409);
+      assert.equal(json.error.code, "legacy-project-locked", "not the takeover dialog's code");
+      assert.match(json.error.message, /open in the earlier release. Close it there/u);
+      assert.match(json.error.message, /remove old\/\.lilac\/lock/u);
+    }
+    assert.equal(existsSync(join(root, "old", ".ninerr")), false, "nothing is created");
+    assert.ok(existsSync(join(root, "old", ".lilac", "lock")), "the legacy lock is left in place");
+  } finally {
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("the studio host lists a legacy project and opens it by migrating it, leaving the original unchanged", async () => {
   const root = scratch();

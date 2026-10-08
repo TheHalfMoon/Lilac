@@ -560,6 +560,17 @@ export function migrateLegacyProject(root: string, options: MigrateLegacyProject
     staging = join(dirname(projectDir), `${PROJECT_FILES.directory}.tmp-${process.pid}-${randomUUID()}`);
     mkdirSync(staging, { mode: 0o700 });
     let objectsCopied = 0;
+    // Every two-hex entry under objects/ must be a real directory: one that is a link or a
+    // file would otherwise be skipped, and its objects silently left behind.
+    const objectsRoot = join(legacyDir, PROJECT_FILES.objects);
+    if (assertNotSymlink(objectsRoot, "object store")) {
+      if (!lstatSync(objectsRoot).isDirectory()) throw new PersistenceCorruptionError("the legacy object store is not a directory");
+      for (const name of readdirSync(objectsRoot)) {
+        if (/^[0-9a-f]{2}$/u.test(name) && !lstatSync(join(objectsRoot, name)).isDirectory()) {
+          throw new PersistenceCorruptionError(`legacy object fan-out ${name} is not a directory`);
+        }
+      }
+    }
     for (const fanOut of objectFanOutDirectories(legacyDir)) {
       const prefix = basename(fanOut);
       for (const name of readdirSync(fanOut).sort()) {
@@ -574,12 +585,15 @@ export function migrateLegacyProject(root: string, options: MigrateLegacyProject
     atomicWrite(files.journal, verified.journalBytes, "journal");
     atomicWrite(files.snapshot, canonicalJson(verified.snapshot), "snapshot reference");
     atomicWrite(files.manifest, canonicalJson(verified.manifest), "manifest");
+    // The copy is verified as a project in its own right before it becomes one.
+    readVerifiedProject(staging, PROJECT_MIGRATIONS);
     if (!isSameDirectory(legacyDir, directory)) throw new PersistenceValidationError("legacy project directory changed while it was being migrated");
     try {
       renameSync(staging, projectDir);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException)?.code;
-      if (code === "EEXIST" || code === "ENOTEMPTY") throw new PersistenceValidationError("a Ninerr project already exists at this root");
+      // Windows reports a rename onto an existing directory as EPERM.
+      if (code === "EEXIST" || code === "ENOTEMPTY" || assertNotSymlink(projectDir, "project directory")) throw new PersistenceValidationError("a Ninerr project already exists at this root");
       throw error;
     }
     staging = null;

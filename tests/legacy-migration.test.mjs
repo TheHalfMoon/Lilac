@@ -177,6 +177,9 @@ test("refused migrations create nothing and leave the legacy project as it was",
       writeFileSync(join(objects, fanOut, name), "damaged");
     }, PersistenceCorruptionError, /does not match its content hash/],
     ["a newer journal format", (root) => rewriteLegacyJournal(root, (entries) => { entries[3].transaction.signature = "abc"; }), PersistenceVersionError, /journal entry 4 uses transaction field "signature"/],
+    ["an object fan-out that is a file", (root) => {
+      writeFileSync(join(legacyFile(root, PROJECT_FILES.objects), "ab"), "not a directory");
+    }, PersistenceCorruptionError, /legacy object fan-out ab is not a directory/],
   ];
   for (const [label, damage, ErrorType, pattern] of cases) {
     withRoot((root) => {
