@@ -1,15 +1,10 @@
 # Ninerr MCP Protocol
 
-This package is Ninerr's independent MCP compatibility boundary.
+This package defines Ninerr's MCP tool surface and the rules every call to it is judged by.
 
-It is **not** recovered Paper private source. The current Paper-facing snapshot is reconstructed from:
+- `MCP_TOOL_NAMES` is the catalog: the 16 tools Ninerr's MCP server offers. `classifyTool(name)` gives each one's class (read, write or consequential); any other name is unknown.
+- `diffMCPTools` and `assertMCPToolSurface` check that a server's tool list is exactly the catalog. The studio host checks its own definitions with them when it loads.
+- Runtime validators cover client identity, transports, tool definitions, server configuration, tool results and duplicate definitions.
+- `authorizeMCPToolCall` and `requireMCPToolCall` decide each call through the collaboration access oracle. A consequential call also needs the person's confirmation of that exact call.
 
-- Paper's public Desktop MCP configuration.
-- User-authorized live renderer contract inspection.
-- Exact shipped Paper Desktop call sites and bridge behavior already recorded in Ninerr evidence.
-
-The snapshot is intentionally explicit so upstream contract drift is detectable rather than silently accepted.
-
-`PAPER_MCP_TOOL_NAMES` records the 36-tool public surface observed on 2026-10-03. Runtime validators cover client identity, transports, tool definitions, server configuration, tool results, duplicate definitions, and exact tool-name drift.
-
-Tool read/write/consequential classification mirrors the public MCP annotations observed at that baseline. Ninerr may apply stricter policy above this compatibility layer.
+The server itself lives in `packages/studio-host/src/mcp.ts`. See [docs/MCP.md](../../docs/MCP.md).

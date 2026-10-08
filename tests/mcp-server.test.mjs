@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { PAPER_MCP_TOOL_NAMES, classifyPaperTool, validateMCPServerConfig, validateMCPToolDefinition } from "../packages/mcp-protocol/src/index.mjs";
+import { MCP_TOOL_NAMES, assertMCPToolSurface, classifyTool, validateMCPToolDefinition } from "../packages/mcp-protocol/src/index.mjs";
 import { mcpToolDefinitions, startStudioHost } from "../packages/studio-host/src/index.ts";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
@@ -93,11 +93,11 @@ test("the MCP protocol: initialize, tools/list, notifications and errors", async
     assert.equal((await mcp(token, "notifications/initialized", undefined, { notification: true })).status, 202);
     const { tools } = (await mcp(token, "tools/list")).json.result;
     assert.equal(tools.length, 16);
-    validateMCPServerConfig({ tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
+    assertMCPToolSurface({ tools: tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
+    assert.deepEqual(tools.map((tool) => tool.name), [...MCP_TOOL_NAMES], "the server lists the catalog, in its order");
     for (const tool of tools) {
       validateMCPToolDefinition(tool);
-      assert.ok(PAPER_MCP_TOOL_NAMES.includes(tool.name), `${tool.name} is a Paper-compatible name`);
-      const toolClass = classifyPaperTool(tool.name);
+      const toolClass = classifyTool(tool.name);
       assert.equal(tool.annotations.readOnlyHint, toolClass === "read", tool.name);
       assert.equal(tool.annotations.destructiveHint, toolClass === "consequential", tool.name);
     }
@@ -205,7 +205,7 @@ test("agents read and edit through tools; every edit is an attributed transactio
   });
 });
 
-test("every call is authorized: unknown, workspace and unimplemented tools; payload identity is ignored", async () => {
+test("every call is authorized: names outside the catalog are unknown; payload identity is ignored", async () => {
   await withStudio(async ({ owner, tool, host }) => {
     const { token } = (await owner("POST", "/api/agents/create", { name: "Agent" })).json;
     await owner("POST", "/api/projects/create", { name: "p" });
@@ -213,9 +213,10 @@ test("every call is authorized: unknown, workspace and unimplemented tools; payl
     // An agent connected while the project is open may use it at once.
     const { token: later } = (await owner("POST", "/api/agents/create", { name: "Later" })).json;
     assert.equal((await tool(later, "get_basic_info", {})).isError, undefined);
-    assert.match(text(await tool(token, "open_file", { path: "/etc/passwd" })), /Not allowed: open_file acts on the workspace/u);
-    assert.match(text(await tool(token, "create_file", {})), /Not allowed/u);
-    assert.match(text(await tool(token, "get_screenshot", {})), /does not implement get_screenshot/u, "a Paper tool Ninerr lacks is authorized, then reported");
+    // A name outside Ninerr's catalog is unknown, whatever another product calls its tools.
+    for (const name of ["open_file", "get_screenshot", "list_resources", "toString"]) {
+      assert.match(text(await tool(token, name, {})), /Not allowed: unknown tool/u, name);
+    }
     assert.match(text(await tool(token, "get_basic_info", "nope")), /Invalid call/u);
     // A client cannot claim to be someone else, or bring its own confirmation.
     const board = (await tool(token, "create_artboard", { width: 10, height: 10, actor: { actorId: "local-user", kind: "user" } }));
