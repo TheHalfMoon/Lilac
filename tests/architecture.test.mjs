@@ -111,7 +111,8 @@ function workspacePackages() {
   const root = new URL("../packages/", import.meta.url);
   return readdirSync(root, { withFileTypes: true })
     .filter((dirent) => dirent.isDirectory())
-    .filter((dirent) => ["index.ts", "index.mjs"].some((file) => existsSync(new URL(`${dirent.name}/src/${file}`, root))))
+    // Every workspace package, whatever its entry is called (the desktop shell's is policy.mjs).
+    .filter((dirent) => existsSync(new URL(`${dirent.name}/package.json`, root)))
     .map((dirent) => JSON.parse(readFileSync(new URL(`${dirent.name}/package.json`, root), "utf8")).name)
     .sort();
 }
