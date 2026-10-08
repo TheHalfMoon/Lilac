@@ -162,6 +162,6 @@ test("deterministic serialization for identical inputs", () => {
 });
 
 test("provenance marks the package as project-owned", () => {
-  assert.equal(AGENT_WORKSPACE_PROVENANCE.package, "@lilac/agent-workspace");
+  assert.equal(AGENT_WORKSPACE_PROVENANCE.package, "@ninerr/agent-workspace");
   assert.equal(AGENT_WORKSPACE_SCHEMA_VERSION, 1);
 });

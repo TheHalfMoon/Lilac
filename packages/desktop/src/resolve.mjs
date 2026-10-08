@@ -4,10 +4,11 @@
 // root, so the rules can be tested without Electron.
 import { readFileSync } from "node:fs";
 
-// The workspace scopes: @ninerr, and @lilac until every package has moved (N0-G3).
-const SCOPE = /^@(?:ninerr|lilac)\/([a-z][a-z0-9-]*)$/u;
-// Matched without regard to case: on a case-insensitive filesystem (Windows, macOS), another
-// spelling of the scope could otherwise reach a workspace link outside the app.
+// The workspace scope.
+const SCOPE = /^@ninerr\/([a-z][a-z0-9-]*)$/u;
+// Refused unless mapped above, matched without regard to case (on a case-insensitive
+// filesystem, another spelling could reach a link outside the app): the workspace scope,
+// and the scope the packages had before the rename, which a stale checkout may still link.
 const IN_SCOPE = /^@(?:ninerr|lilac)\//iu;
 
 /**

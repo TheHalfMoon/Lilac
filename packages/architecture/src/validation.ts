@@ -12,29 +12,29 @@ export const IMPLEMENTED_PACKAGES = [
   "@ninerr/design-assurance",
   "@ninerr/document-model",
   "@ninerr/history",
-  "@lilac/mcp-protocol",
+  "@ninerr/mcp-protocol",
   "@ninerr/agent-runtime",
-  "@lilac/agent-events",
-  "@lilac/agent-supervisor",
+  "@ninerr/agent-events",
+  "@ninerr/agent-supervisor",
   "@ninerr/collaboration",
   "@ninerr/import-stack",
   "@ninerr/decision-router",
-  "@lilac/delivery-governance",
+  "@ninerr/delivery-governance",
   "@ninerr/design-method",
-  "@lilac/architecture",
+  "@ninerr/architecture",
   "@ninerr/code-ir",
-  "@lilac/design-components",
-  "@lilac/agent-workspace",
-  "@lilac/visual-git",
-  "@lilac/decision-assurance",
+  "@ninerr/design-components",
+  "@ninerr/agent-workspace",
+  "@ninerr/visual-git",
+  "@ninerr/decision-assurance",
   "@ninerr/persistence",
   "@ninerr/network-policy",
-  "@lilac/intake",
-  "@lilac/studio-host",
-  "@lilac/studio-web",
+  "@ninerr/intake",
+  "@ninerr/studio-host",
+  "@ninerr/studio-web",
   "@ninerr/renderer",
   "@ninerr/canvas",
-  "@lilac/desktop",
+  "@ninerr/desktop",
 ] as const;
 
 export function sha256Text(value: string): string {
@@ -89,8 +89,7 @@ export function normalizeSubsystem(value: unknown, index: number): SubsystemReco
   if (typeof value.title !== "string" || value.title.trim() === "" || value.title.length > 256) {
     throw new ArchitectureValidationError(`${label}.title must be a bounded non-empty string`);
   }
-  // @ninerr, and @lilac until every workspace package has moved (N0-G3).
-  if (typeof value.owner !== "string" || !/^@(?:ninerr|lilac)\/[a-z][a-z0-9-]*$/u.test(value.owner)) {
+  if (typeof value.owner !== "string" || !/^@ninerr\/[a-z][a-z0-9-]*$/u.test(value.owner)) {
     throw new ArchitectureValidationError(`${label}.owner must be a workspace package name`);
   }
   if (!SUBSYSTEM_STATUSES.includes(value.status as (typeof SUBSYSTEM_STATUSES)[number])) {

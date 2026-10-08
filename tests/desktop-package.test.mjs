@@ -87,6 +87,10 @@ test("the package holds the packages the shell and the editor reach, and no othe
     writeFileSync(join(dir, "entry.mjs"), 'import "./side-effect.mjs";\nimport { x } from "../../outside.mjs";\n');
     // The bare import comes first, so it is the one named: bare imports are followed too.
     assert.throws(() => reachablePackages([join(dir, "entry.mjs")]), /imports \.\/side-effect\.mjs, outside packages/u);
+    for (const specifier of ["@lilac/history", "@Ninerr/history"]) {
+      writeFileSync(join(dir, "stale.mjs"), `import { x } from "${specifier}";\n`);
+      assert.throws(() => reachablePackages([join(dir, "stale.mjs")]), /not a workspace package name/u, specifier);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -101,5 +105,5 @@ test("the packaged app resolves a workspace package to its own entry, and refuse
   for (const specifier of ["@ninerr/history/src/index.mjs", "@ninerr/", "@ninerr/../x", "@Ninerr/history", "@NINERR/history", "@lilac/a/b", "@Lilac/history"]) {
     assert.throws(() => resolveWorkspaceEntry(specifier, appRoot), /is not a packaged workspace package entry/u, specifier);
   }
-  assert.throws(() => resolveWorkspaceEntry("@lilac/history", appRoot), /is not the name of packages\/history/u, "a stale name is refused, not quietly mapped");
+  assert.throws(() => resolveWorkspaceEntry("@lilac/history", appRoot), /is not a packaged workspace package entry/u, "the scope from before the rename is refused");
 });

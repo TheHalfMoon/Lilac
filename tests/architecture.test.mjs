@@ -40,7 +40,7 @@ function entry(overrides = {}) {
   return {
     id: "test-subsystem",
     title: "Test subsystem",
-    owner: "@lilac/test-owner",
+    owner: "@ninerr/test-owner",
     status: "planned",
     boundary: "A bounded test boundary.",
     dependsOn: [],
@@ -65,11 +65,11 @@ test("canonical catalog covers every required subsystem exactly once", () => {
   assert.equal(owners["collaboration"], "@ninerr/collaboration");
   assert.equal(owners["import-export"], "@ninerr/import-stack");
   assert.equal(owners["agent-runtime"], "@ninerr/agent-runtime");
-  assert.equal(owners["mcp-surface"], "@lilac/mcp-protocol");
+  assert.equal(owners["mcp-surface"], "@ninerr/mcp-protocol");
   assert.equal(owners["canvas-viewport"], "@ninerr/canvas");
-  assert.equal(owners["components"], "@lilac/design-components");
-  assert.equal(owners["agent-workspace"], "@lilac/agent-workspace");
-  assert.equal(owners["visual-git"], "@lilac/visual-git");
+  assert.equal(owners["components"], "@ninerr/design-components");
+  assert.equal(owners["agent-workspace"], "@ninerr/agent-workspace");
+  assert.equal(owners["visual-git"], "@ninerr/visual-git");
   const planned = normalized.subsystems.filter((subsystem) => subsystem.status === "planned");
   assert.ok(planned.length > 0);
   const implemented = normalized.subsystems.filter((subsystem) => subsystem.status === "implemented");
@@ -85,9 +85,10 @@ test("duplicate ownership and unknown references fail closed", () => {
     entry({ id: "cycle-a", dependsOn: ["cycle-b"] }),
     entry({ id: "cycle-b", dependsOn: ["cycle-a"] }),
   ])), ArchitectureValidationError);
-  assert.throws(() => normalizeArchitectureMap(map([entry({ status: "implemented", owner: "@lilac/does-not-exist" })])), ArchitectureValidationError);
-  assert.throws(() => normalizeArchitectureMap(map([entry({ status: "stub", owner: "@lilac/does-not-exist" })])), ArchitectureValidationError);
+  assert.throws(() => normalizeArchitectureMap(map([entry({ status: "implemented", owner: "@ninerr/does-not-exist" })])), ArchitectureValidationError);
+  assert.throws(() => normalizeArchitectureMap(map([entry({ status: "stub", owner: "@ninerr/does-not-exist" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([entry({ owner: "not-a-package" })])), ArchitectureValidationError);
+  assert.throws(() => normalizeArchitectureMap(map([entry({ owner: "@lilac/test-owner" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([entry({ id: "Bad_Id" })])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap(map([])), ArchitectureValidationError);
   assert.throws(() => normalizeArchitectureMap({ schemaVersion: 999, subsystems: [entry()] }), ArchitectureValidationError);

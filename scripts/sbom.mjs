@@ -185,7 +185,7 @@ export function buildSbom(lockText, policy) {
     // listed in the LICENSES.chromium.html each package ships.
     properties: [{ name: "lilac:runtime", value: "desktop" }, { name: "lilac:notices", value: "LICENSES.chromium.html (shipped unchanged)" }, { name: "lilac:bundledComponentLicenses", value: "Chromium components under their own licenses, including LGPL-2.1-or-later (Blink, FFmpeg) and MPL-2.0; see LICENSES.chromium.html" }],
   });
-  if (components.has("workspace:@lilac/desktop")) addEdges("workspace:@lilac/desktop", [electronRef]);
+  if (components.has("workspace:@ninerr/desktop")) addEdges("workspace:@ninerr/desktop", [electronRef]);
   return {
     bomFormat: "CycloneDX",
     specVersion: "1.5",

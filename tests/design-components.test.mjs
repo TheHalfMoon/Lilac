@@ -182,5 +182,5 @@ test("deterministic serialization for identical inputs", () => {
 });
 
 test("provenance marks the package as project-owned", () => {
-  assert.equal(DESIGN_COMPONENTS_PROVENANCE.package, "@lilac/design-components");
+  assert.equal(DESIGN_COMPONENTS_PROVENANCE.package, "@ninerr/design-components");
 });

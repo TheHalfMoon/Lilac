@@ -47,7 +47,7 @@ export function reachablePackages(entries) {
     const text = readFileSync(path, "utf8");
     // from "x", import("x") and a bare import "x".
     for (const [, specifier] of text.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s+)["']([^"']+)["']/gmu)) {
-      const scoped = /^@(?:ninerr|lilac)\/([a-z][a-z0-9-]*)/u.exec(specifier);
+      const scoped = /^@ninerr\/([a-z][a-z0-9-]*)/u.exec(specifier);
       if (scoped !== null) {
         if (!found.has(scoped[1])) {
           found.add(scoped[1]);
@@ -63,6 +63,9 @@ export function reachablePackages(entries) {
           queue.push(join(ROOT, "packages", name, "src"));
         }
         if (existsSync(next) && statSync(next).isFile()) queue.push(next);
+      } else if (/^@(?:ninerr|lilac)\//iu.test(specifier)) {
+        // A stale or miscased workspace name would be refused at runtime: fail packaging now.
+        throw new Error(`${relative(ROOT, path)} imports ${specifier}, not a workspace package name`);
       }
     }
   }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { IMPORT_SCHEMA_VERSION, defaultImportPolicy, importHtmlSnapshot, validateImportProposal, type ImportProposal } from "@ninerr/import-stack";
-import { inferSemantics, reviewImport } from "@lilac/intake";
+import { inferSemantics, reviewImport } from "@ninerr/intake";
 import { StudioError } from "./errors.ts";
 
 // Importing HTML into the open project (PC6, gate 10). The import stack parses and

@@ -37,7 +37,7 @@ const SUBSYSTEMS = [
   {
     id: "layout-css",
     title: "Layout and CSS semantics",
-    owner: "@lilac/layout",
+    owner: "@ninerr/layout",
     status: "planned",
     boundary: "CSS-oriented layout semantics, constraints during parent resize, and flexbox spacing rules.",
     dependsOn: ["document-model", "tokens-themes"],
@@ -45,7 +45,7 @@ const SUBSYSTEMS = [
   {
     id: "text",
     title: "Text",
-    owner: "@lilac/text",
+    owner: "@ninerr/text",
     status: "planned",
     boundary: "Text runs, platform type ramps, and text editing semantics over document nodes.",
     dependsOn: ["document-model"],
@@ -53,7 +53,7 @@ const SUBSYSTEMS = [
   {
     id: "vector",
     title: "Vector",
-    owner: "@lilac/vector",
+    owner: "@ninerr/vector",
     status: "planned",
     boundary: "Vector paths, shapes, booleans, and SVG export semantics over document nodes.",
     dependsOn: ["document-model"],
@@ -61,7 +61,7 @@ const SUBSYSTEMS = [
   {
     id: "images-media",
     title: "Images and media",
-    owner: "@lilac/media",
+    owner: "@ninerr/media",
     status: "planned",
     boundary: "Image and media nodes, asset references, and export semantics. Intake provenance comes from import-export.",
     dependsOn: ["document-model", "import-export"],
@@ -69,7 +69,7 @@ const SUBSYSTEMS = [
   {
     id: "components",
     title: "Components, variants, and slots",
-    owner: "@lilac/design-components",
+    owner: "@ninerr/design-components",
     status: "stub",
     boundary: "Code-linked component contracts with typed props, slots, states, and variants bound to code-ir symbols, verified-patch variants, drift detection, and source-linked previews (P05 D2 vertical slice). Canvas instances, overrides, and responsive variants are planned. Never flattened screenshots.",
     dependsOn: ["document-model", "code-ir", "tokens-themes"],
@@ -77,7 +77,7 @@ const SUBSYSTEMS = [
   {
     id: "tokens-themes",
     title: "Tokens and themes",
-    owner: "@lilac/tokens",
+    owner: "@ninerr/tokens",
     status: "planned",
     boundary: "CSS-variable-oriented design tokens, themes, and modes consumed by layout, components, and the renderer.",
     dependsOn: ["document-model"],
@@ -141,7 +141,7 @@ const SUBSYSTEMS = [
   {
     id: "agent-events",
     title: "Agent event protocol",
-    owner: "@lilac/agent-events",
+    owner: "@ninerr/agent-events",
     status: "implemented",
     boundary: "Typed event, replay, sequencing, correlation, and handler isolation protocol for agent activity.",
     dependsOn: ["agent-runtime"],
@@ -149,7 +149,7 @@ const SUBSYSTEMS = [
   {
     id: "agent-supervisor",
     title: "Agent supervisor",
-    owner: "@lilac/agent-supervisor",
+    owner: "@ninerr/agent-supervisor",
     status: "implemented",
     boundary: "Local process and worktree supervision, leases, restart reconciliation, and one-owner mutation authority.",
     dependsOn: ["agent-runtime", "agent-events"],
@@ -157,7 +157,7 @@ const SUBSYSTEMS = [
   {
     id: "mcp-surface",
     title: "Agent runtime MCP surface",
-    owner: "@lilac/mcp-protocol",
+    owner: "@ninerr/mcp-protocol",
     status: "stub",
     boundary: "MCP contract validation (client, tool, server-config, and Paper tool-set compatibility) and tool-call authorization through the collaboration access oracle. The local MCP endpoint runs in the studio host (PC5, #82): Streamable HTTP on loopback plus a stdio relay, agents connected by the person with their own credentials, every call through requireMCPToolCall, agent edits as attributed history transactions, and the person's confirmation in the editor for consequential tools. 16 of Paper's 36 tools are implemented (get_jsx joined in PC6); workspace tools stay denied, and screenshots, tokens, comments and write_html are later grains.",
     dependsOn: ["agent-runtime", "document-model", "history", "collaboration", "studio-host"],
@@ -181,7 +181,7 @@ const SUBSYSTEMS = [
   {
     id: "decision-assurance",
     title: "Decision assurance",
-    owner: "@lilac/decision-assurance",
+    owner: "@ninerr/decision-assurance",
     status: "stub",
     boundary: "Assures sets of agent-generated alternatives: deterministic rule-pack, accessibility, layout, and design-system (type scale, spacing grid) checks decide eligibility first; optional decision-router ranking orders eligible candidates; explicit abstention with preserved rationale and evidence. Color-contrast and token-conformance checks are planned until snapshots carry color and token data. Records and recommends only; never mutates documents or applies candidates.",
     dependsOn: ["decision-router", "design-method"],
@@ -189,7 +189,7 @@ const SUBSYSTEMS = [
   {
     id: "delivery-governance",
     title: "Delivery governance",
-    owner: "@lilac/delivery-governance",
+    owner: "@ninerr/delivery-governance",
     status: "implemented",
     boundary: "Exact-head qualification records, invalidation on mutation, repair ancestry, and ask-user gates for source delivery.",
     dependsOn: ["agent-supervisor"],
@@ -205,7 +205,7 @@ const SUBSYSTEMS = [
   {
     id: "agent-workspace",
     title: "Multi-agent workspace",
-    owner: "@lilac/agent-workspace",
+    owner: "@ninerr/agent-workspace",
     status: "implemented",
     boundary: "Program role registry with capability scopes, role assignment, out-of-scope rejection, and an append-only attributed action ledger with cancellation and reversal marking. Records and gates agent work only; never mutates documents, executes tools, or reverses history.",
     dependsOn: ["agent-runtime", "agent-events", "agent-supervisor", "collaboration"],
@@ -213,7 +213,7 @@ const SUBSYSTEMS = [
   {
     id: "visual-git",
     title: "Visual Git",
-    owner: "@lilac/visual-git",
+    owner: "@ninerr/visual-git",
     status: "implemented",
     boundary: "Design snapshots bound to source commits, structural diffs, anchored review comments, design/code links, three-way conflict reports, and exact-head acceptance gates. Records, compares, and gates only; never executes git, mutates documents, or produces merged snapshots.",
     dependsOn: ["document-model", "code-ir"],
@@ -221,7 +221,7 @@ const SUBSYSTEMS = [
   {
     id: "architecture-ownership",
     title: "Architecture ownership map",
-    owner: "@lilac/architecture",
+    owner: "@ninerr/architecture",
     status: "implemented",
     boundary: "Machine-checked subsystem ownership catalog and its validation. Declarative only; owns no runtime behavior.",
     dependsOn: [],
@@ -237,7 +237,7 @@ const SUBSYSTEMS = [
   {
     id: "intake",
     title: "Website and app intake product layer",
-    owner: "@lilac/intake",
+    owner: "@ninerr/intake",
     status: "implemented",
     boundary: "Review-before-commit summaries of import proposals, web semantics derived only from markup (OBSERVED evidence), commit of reviewed imports into persisted projects through the import-stack history transaction, network imports gated by import.fetch policy decisions, and an advisory accessibility summary of each proposal from design-assurance. Composes import-stack, network-policy, persistence, and design-assurance; creates no second document authority.",
     dependsOn: ["import-export", "network-policy", "persistence", "history", "design-assurance"],
@@ -245,7 +245,7 @@ const SUBSYSTEMS = [
   {
     id: "studio-host",
     title: "Studio host",
-    owner: "@lilac/studio-host",
+    owner: "@ninerr/studio-host",
     status: "stub",
     boundary: "Single writer of an open project for the product surfaces: a loopback-only HTTP API (127.0.0.1, per-launch token, Host and Origin checks) over persistence, history and collaboration attribution, with undo/redo as committed inverse transactions, a server-sent change stream, and lock and recovery reporting (PC1); it serves the editor (PC4) and hosts the MCP endpoint and agent registry (PC5), and imports reviewed HTML offline through import-stack and intake (PC6). It links one local code folder per project and brings components in from it, writing reviewed edits back to their files (`/api/codebase/*`, person-only, PC11a). Local web mode (`npm start`, scripts/lilac.mjs, PC7) runs it directly, and the desktop app runs it in Electron's main process (PC9).",
     dependsOn: ["persistence", "history", "collaboration", "network-policy", "import-export", "intake"],
@@ -253,7 +253,7 @@ const SUBSYSTEMS = [
   {
     id: "editor-shell",
     title: "Editor application shell",
-    owner: "@lilac/studio-web",
+    owner: "@ninerr/studio-web",
     status: "stub",
     boundary: "The browser editor the studio host serves: project open and create, layers tree, inspector, live history with attribution, undo/redo, lock takeover and recovery dialogs, and keyboard operation, over the canvas (PC4); the import and Code dialogs, including the Codebase section that connects a folder, brings components in and writes previewed edits back (PC6, PC11b). Every edit is a history transaction committed by the host; the editor's document copy advances only by the host's change events.",
     dependsOn: ["studio-host", "canvas-viewport", "selection-transform", "history"],
@@ -261,7 +261,7 @@ const SUBSYSTEMS = [
   {
     id: "desktop-bridge",
     title: "Desktop bridge",
-    owner: "@lilac/desktop",
+    owner: "@ninerr/desktop",
     status: "implemented",
     boundary: "The desktop app: a thin Electron shell that runs the studio host in its main process and shows the editor in one context-isolated, sandboxed window with no Node and a minimal preload, denied navigation, windows, webviews, downloads, permissions and every request but the host's (PC9a). Packages for Linux x64, macOS arm64 and Windows x64 are a Lilac-owned assembly of the pinned, SHA-256-verified Electron runtime with its fuses set (no RunAsNode, NODE_OPTIONS or inspector), smoke-tested and journey-tested per platform (PC9b, PC10). Publisher signing and notarization are planned (#139).",
     dependsOn: ["studio-host", "mcp-surface", "persistence"],
@@ -277,7 +277,7 @@ const SUBSYSTEMS = [
   {
     id: "plugin-surface",
     title: "Plugin surface",
-    owner: "@lilac/plugins",
+    owner: "@ninerr/plugins",
     status: "planned",
     boundary: "Capability-scoped plugin and connector surface for optional providers. No implicit authority.",
     dependsOn: ["mcp-surface", "sandbox-security"],

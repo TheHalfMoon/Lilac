@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { MCPAuthorizationError, MCPContractError, PAPER_MCP_TOOL_NAMES, classifyPaperTool, mcpArgumentsSha256, requireMCPToolCall, validateMCPServerConfig } from "@lilac/mcp-protocol";
+import { MCPAuthorizationError, MCPContractError, PAPER_MCP_TOOL_NAMES, classifyPaperTool, mcpArgumentsSha256, requireMCPToolCall, validateMCPServerConfig } from "@ninerr/mcp-protocol";
 import { exportJsx } from "./code.ts";
 import { StudioError } from "./errors.ts";
 import type { StudioActor, StudioSession } from "./session.ts";
