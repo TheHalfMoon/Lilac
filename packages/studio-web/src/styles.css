@@ -71,6 +71,8 @@ dialog .project-list { list-style: none; margin: 0; padding: 0; display: grid; g
 dialog .project-list button { width: 100%; text-align: left; }
 dialog .error { color: var(--danger); margin: 0; }
 dialog ul.report { margin: 0; padding-left: 20px; }
+dialog pre.diff { margin: 0; padding: 8px; background: #f1eff8; border-radius: 4px; white-space: pre; overflow-x: auto; max-height: 240px; font-size: 12px; }
+dialog .codebase-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 dialog pre.setup { margin: 0; padding: 8px; background: #f1eff8; border-radius: 4px; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
 dialog .request { font-weight: 600; padding: 8px; border-left: 3px solid var(--agent); background: #eef7f4; }
 dialog .agent-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

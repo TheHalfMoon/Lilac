@@ -11,7 +11,7 @@
 // off this computer, driven over Chromium's remote-debugging protocol. The agent is an MCP
 // client speaking to Lilac's own endpoint on 127.0.0.1 with the credential the editor
 // showed. The result is printed as one JSON line; the exit code is 0 only if every step held.
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { preparePackage, waitForRevision } from "./desktop/drive.mjs";
@@ -22,7 +22,7 @@ if (archive === null || process.argv.length !== 3 || !existsSync(archive)) {
   process.exit(2);
 }
 // Every step below, so a run that stops early reports how far it got out of all of them.
-const TOTAL_STEPS = 17;
+const TOTAL_STEPS = 18;
 const steps = [];
 const step = (name, ok, detail) => {
   steps.push({ name, ok: Boolean(ok), ...(ok || detail === undefined ? {} : { detail }) });
@@ -49,6 +49,11 @@ async function main() {
     const { projects, egress, launch } = run;
     const pagePath = join(files, "launch.html");
     writeFileSync(pagePath, PAGE);
+    // The person's codebase: a folder of components, outside Lilac's projects folder.
+    const codebase = join(files, "app", "src");
+    mkdirSync(codebase, { recursive: true });
+    const cardFile = join(codebase, "PriceCard.jsx");
+    writeFileSync(cardFile, COMPONENT);
 
     // 1. Install and start: a fresh home, and the editor asks for a project.
     let lilac = await launch();
@@ -141,15 +146,37 @@ async function main() {
     await waitForRevision(page, 12);
     step("3d a consequential call waits for the person's approval", waiting.revision === "Revision 11" && waiting.artboard === 1 && deleted.isError === undefined && (await page.locator(`[role=treeitem][data-node-id="${artboard}"]`).count()) === 0, waiting);
 
-    // 4. Connect a codebase: a component comes into the design as code.
+    // 4. Connect a codebase: a folder of components, one brought in with its source, edited
+    // on the canvas, and the edit reviewed and written back to its file.
     await page.locator("[role=application]").focus();
     await page.keyboard.press("Escape");
     await page.locator("#action-code").click();
-    await page.locator("#code-import").fill(COMPONENT);
-    await page.locator("#dialog[open] button.primary", { hasText: "Add to design" }).click();
+    await page.locator("#codebase-folder").fill(codebase);
+    await page.locator("#dialog[open] button.primary", { hasText: "Connect folder" }).click();
+    await page.locator("#codebase-components").waitFor();
+    const listed = await page.locator("#codebase-components li").allTextContents();
+    await page.locator("#codebase-components button", { hasText: "Bring in" }).click();
     await waitForRevision(page, 13);
     const cardId = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("section.card")?.getAttribute("data-lilac-id"));
-    step("4 a JSX component becomes layers", cardId !== null && (await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"] h2`)?.textContent, cardId)) === "Pro");
+    const cardHeading = await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"] h2`)?.getAttribute("data-lilac-id"), cardId);
+    step("4a a codebase folder is connected and its component brought in", listed.length === 1 && listed[0].startsWith("PriceCard PriceCard.jsx") && cardHeading !== undefined && (await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`)?.textContent, cardHeading)) === "Pro", listed);
+    await page.locator(`[role=treeitem][data-node-id="${cardHeading}"] > .row`).click();
+    await page.locator("#inspect-text").fill("Team");
+    await page.locator("#inspect-text").press("Tab");
+    await waitForRevision(page, 14);
+    await page.locator(`[role=treeitem][data-node-id="${cardId}"] > .row`).click();
+    await page.locator("#inspect-style-background").fill("#ffe4e6");
+    await page.locator("#inspect-style-background").press("Tab");
+    await waitForRevision(page, 15);
+    await page.locator("#action-code").click();
+    await page.locator("#codebase-review").click();
+    await page.locator("#codebase-diff").waitFor();
+    const diff = (await page.locator("#codebase-diff").textContent()) ?? "";
+    const untouched = readFileSync(cardFile, "utf8") === COMPONENT;
+    await page.locator("#codebase-write").click();
+    await waitForRevision(page, 16);
+    const writtenBack = readFileSync(cardFile, "utf8");
+    step("4b the edit is reviewed as a diff, then written back to its file", untouched && /\+      <h2>Team<\/h2>/u.test(diff) && writtenBack === COMPONENT.replace("<h2>Pro</h2>", "<h2>Team</h2>").replace("background: #f4f0ff", "background: #ffe4e6"), { diff: diff.slice(0, 400), writtenBack: writtenBack.slice(0, 300) });
 
     // 5. Round-trip the component: export it, bring the export in, export that copy.
     const exportOf = async (nodeId) => {
@@ -162,11 +189,11 @@ async function main() {
     const exported = await exportOf(cardId);
     await page.locator("#code-import").fill(exported);
     await page.locator("#dialog[open] button.primary", { hasText: "Add to design" }).click();
-    await waitForRevision(page, 14);
+    await waitForRevision(page, 17);
     const cards = await page.evaluate(() => [...document.querySelector("iframe").contentDocument.querySelectorAll("section.card")].map((element) => element.getAttribute("data-lilac-id")));
     const reExported = await exportOf(cards.find((nodeId) => nodeId !== cardId));
     await page.keyboard.press("Escape");
-    step("5 the component round-trips: the copy exports the same code", cards.length === 2 && reExported === exported && /<section className="card" style="[^"]*padding: 16px/u.test(exported) && /<section className="card" style="[^"]*background: #f4f0ff/u.test(exported) && /<h2>Pro<\/h2>/u.test(exported) && /<p>Everything in Free, and more\.<\/p>/u.test(exported), { exported: exported.slice(0, 200), reExported: reExported.slice(0, 200) });
+    step("5 the component round-trips: the copy exports the same code", cards.length === 2 && reExported === exported && /<section className="card" style="[^"]*padding: 16px/u.test(exported) && /<section className="card" style="[^"]*background: #ffe4e6/u.test(exported) && /<h2>Team<\/h2>/u.test(exported) && /<p>Everything in Free, and more\.<\/p>/u.test(exported), { exported: exported.slice(0, 200), reExported: reExported.slice(0, 200) });
 
     // 6. Export: the imported page as code, which reads back as code.
     const pageFrame = await page.evaluate(() => [...document.querySelectorAll("#layers > [role=treeitem]")].find((item) => item.querySelector(".label")?.textContent === "Launch page")?.dataset.nodeId);
@@ -174,7 +201,7 @@ async function main() {
     // It reads back as code: bringing the export in adds the page's layers.
     await page.locator("#code-import").fill(pageCode);
     await page.locator("#dialog[open] button.primary", { hasText: "Add to design" }).click();
-    await waitForRevision(page, 15);
+    await waitForRevision(page, 18);
     const status = await page.locator("#status").textContent();
     step("6 the page exports as JSX code, which reads back", /^export function LaunchPage\(\) \{/u.test(pageCode) && /<h1>Launch week<\/h1>/u.test(pageCode) && /Bring in LaunchPage: \d+ layers added/u.test(status ?? ""), { code: pageCode.slice(0, 200), status });
 
@@ -199,7 +226,7 @@ async function main() {
     lilac = await launch();
     page = lilac.page;
     await page.locator("#dialog[open] [data-project=journey]").click();
-    await waitForRevision(page, 15);
+    await waitForRevision(page, 18);
     const after = await snapshot();
     // (The history panel lists the changes made since the project was opened; who made
     // each earlier change is kept in the project's journal, not shown after a reopen, #179.)

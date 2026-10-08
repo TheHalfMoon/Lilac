@@ -10,7 +10,7 @@ The journey is MASTER_PLAN's definition of genuinely complete: a fresh user can 
 - **A person's run.** The packaged app runs as a person runs it (`scripts/desktop/drive.mjs`, shared with the smoke test). It starts with a fresh home and projects folder, behind a local proxy that records every connection the browser side makes off the computer, and is driven over Chromium's remote-debugging protocol.
 - **The agent** is an MCP client. It talks to Lilac's own endpoint on 127.0.0.1, using the credential the editor showed.
 
-Its 17 steps:
+Its 18 steps (step 4 became two in PC11, #182):
 
 | Step | What a person does | What must hold |
 |---|---|---|
@@ -23,8 +23,9 @@ Its 17 steps:
 | 3b | The agent: `initialize`, `tools/list` | Lilac's tools are listed, including `create_artboard` and `delete_nodes` |
 | 3c | The agent: `create_artboard`, `update_styles` | The artboard appears live in the tree, and the history attributes the change to "Journey agent · agent · update_styles" |
 | 3d | The agent: `delete_nodes` | While the approval dialog waits, nothing is deleted: still revision 11, artboard present. After the person approves, the artboard is gone |
-| 4 | Brings a JSX component in through the Code dialog | It becomes layers: a `section.card` with its heading |
-| 5 | Exports the component, brings the export in, exports the copy | The copy's code is the same as the original's, with its styles, heading and paragraph |
+| 4a | Connects a folder of their code in the Code dialog, and brings its component in | The folder's one component (`PriceCard`, `PriceCard.jsx`) is listed. It comes in as layers with its heading, bound to its source |
+| 4b | Edits the component's heading and fill on the canvas, reviews the change, and writes it back | The diff shows the new heading. Reviewing writes nothing. The file then has exactly the two changes |
+| 5 | Exports the component, brings the export in, exports the copy | The copy's code is the same as the original's, with the edited heading and fill, and the paragraph |
 | 6 | Exports the imported page, and brings that export in | It is JSX (`export function LaunchPage()`) with the edited heading, and it reads back as layers |
 | 7a | Saves and closes the window | Lilac quits with 0 and releases the project |
 | 7b | Starts Lilac again and opens the project | The same revision. The same layers, in tree order and at the same levels. The page and the component export the same code as before. The box keeps its fill |
@@ -36,11 +37,9 @@ Its 17 steps:
 
 ## How the journey reads "connect a codebase" and "export"
 
-The frozen spec (#178) reads these two words narrowly, and so does this test:
-- **"Connect a codebase"** is shown as bringing a component's JSX source into the design through the Code dialog, which is what the product does today (PC6b). There is no repository or folder binding: Lilac does not open a source folder, watch files or link a layer to its file. MASTER_PLAN D2's "bind real repository components" asks for more. That is tracked on #181.
-- **"Export"** is the component or page as JSX in the Code dialog, for the person to copy. No file is written, and the desktop app refuses downloads.
-
-Whether the release needs the wider reading is a scope decision for the founder (#181).
+- **"Connect a codebase"** was first shown as pasting a component's JSX into the Code dialog. Since PC11 (#182, closing #181), the person connects a local folder of their code instead. They bring a component in from it with its source, edit it on the canvas, review the change as a diff, and write it back to the file. Step 4 does exactly that.
+- **What a write-back can change:** text and literal string props, in three-way per-field fashion. Structural edits are listed and not written.
+- **"Export"** is the component or page as JSX in the Code dialog for the person to copy (steps 5 and 6), or a written-back file (step 4b). The desktop app refuses downloads.
 
 ## Where the test differs from the frozen spec
 

@@ -438,8 +438,31 @@ async function openCodeDialog() {
       exportError = describeError(error);
     }
   }
+  // The connected codebase (PC11): its folder and components, if one is connected.
+  let codebase = null;
+  let codebaseError = null;
+  try {
+    codebase = await state.client.get("/api/codebase");
+  } catch (error) {
+    if (handleSessionEnded(error)) return;
+    codebaseError = describeError(error);
+  }
+  // The selected layer's source in the codebase, if it came from there.
+  const boundNode = (() => {
+    if (selected === null) return null;
+    const doc = state.document;
+    const stack = [selected];
+    while (stack.length > 0) {
+      const node = doc.nodes[stack.pop()];
+      if (!node) continue;
+      if (node.props?.codeSource && typeof node.props.codeSource.file === "string") return node;
+      stack.push(...node.children);
+    }
+    return null;
+  })();
   showDialog("Design and code", (close) => {
     const error = el("p", { class: "error", role: "alert" });
+    const codebasePart = buildCodebasePart({ codebase, codebaseError, selected, boundNode, close, error });
     const output = exported === null ? null : el("textarea", { id: "code-export", rows: 10, readonly: true, spellcheck: "false", "aria-describedby": "code-export-note" });
     if (output) output.value = exported.code;
     const source = el("textarea", { id: "code-import", rows: 8, spellcheck: "false", placeholder: "export function Card() {\n  return <section>…</section>;\n}" });
@@ -488,8 +511,129 @@ async function openCodeDialog() {
     el("h3", {}, "Bring code into the design"),
     el("label", { for: "code-import" }, "A JSX function component (elements, text, literal props, className and a style string)", source),
     el("div", { class: "actions" }, el("button", { type: "submit", class: "primary" }, "Add to design")));
-    return [el("h3", {}, "Selected layer as code"), exportPart, importForm, error, el("div", { class: "actions" }, el("button", { type: "button", onclick: close }, "Close"))];
+    return [el("h3", {}, "Selected layer as code"), exportPart, importForm, codebasePart, error, el("div", { class: "actions" }, el("button", { type: "button", onclick: close }, "Close"))];
   });
+}
+
+// The Code dialog's codebase section: connect a local folder, bring its components in,
+// and write a component's edits back to its file after previewing them (PC11).
+function buildCodebasePart({ codebase, codebaseError, selected, boundNode, close, error }) {
+  const section = el("section", { id: "codebase", "aria-labelledby": "codebase-title" }, el("h3", { id: "codebase-title" }, "Codebase"));
+  const busy = (button, task) => async () => {
+    error.textContent = "";
+    button.disabled = true;
+    try {
+      await task();
+    } catch (failure) {
+      if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
+    } finally {
+      button.disabled = false;
+    }
+  };
+  const connectForm = () => {
+    const folder = el("input", { id: "codebase-folder", name: "folder", autocomplete: "off", spellcheck: "false", placeholder: "/home/you/my-app/src" });
+    const connect = el("button", { type: "submit", class: "primary" }, "Connect folder");
+    return el("form", {
+      novalidate: true,
+      onsubmit: (event) => {
+        event.preventDefault();
+        busy(connect, async () => {
+          const result = await state.client.post("/api/codebase/connect", { folder: folder.value.trim() });
+          close();
+          setStatus(`Connected ${result.folder}: ${result.components.length} component${result.components.length === 1 ? "" : "s"} found.`);
+          openCodeDialog();
+        })();
+      },
+    },
+    el("label", { for: "codebase-folder" }, "A folder with your JSX or TSX components (its full path)", folder),
+    el("div", { class: "actions" }, connect));
+  };
+  if (codebaseError !== null) {
+    section.append(el("p", {}, `The connected folder cannot be read: ${codebaseError}`));
+    const disconnect = el("button", { type: "button" }, "Disconnect");
+    disconnect.addEventListener("click", busy(disconnect, async () => {
+      await state.client.post("/api/codebase/disconnect", {});
+      close();
+      openCodeDialog();
+    }));
+    section.append(el("div", { class: "actions" }, disconnect));
+    return section;
+  }
+  if (codebase === null || codebase.folder === null) {
+    section.append(el("p", {}, "Connect a folder of your code to bring its components into the design, and write your edits back to their files."), connectForm());
+    return section;
+  }
+  const disconnect = el("button", { type: "button" }, "Disconnect");
+  disconnect.addEventListener("click", busy(disconnect, async () => {
+    await state.client.post("/api/codebase/disconnect", {});
+    close();
+    setStatus("The codebase is disconnected.");
+  }));
+  section.append(el("p", {}, "Connected: ", el("code", { id: "codebase-path" }, codebase.folder)), el("div", { class: "actions" }, disconnect));
+  if (codebase.components.length === 0) section.append(el("p", {}, "No exported function components were found in its .jsx and .tsx files."));
+  else {
+    section.append(el("ul", { class: "project-list", id: "codebase-components", "aria-label": "Components in the codebase" }, codebase.components.map(({ file, component }) => {
+      const bring = el("button", { type: "button", "data-file": file, "data-component": component, "aria-label": `Bring in ${component} from ${file}` }, "Bring in");
+      bring.addEventListener("click", () => {
+        error.textContent = "";
+        bring.disabled = true;
+        enqueue(async () => {
+          try {
+            const result = await state.client.post("/api/codebase/import", { file, component });
+            close();
+            applyChange(result);
+            selectLayers([result.frameId]);
+            canvas.fit();
+            renderToolbar();
+            setStatus(`${result.intent}: ${result.layers} layers added.`);
+          } catch (failure) {
+            bring.disabled = false;
+            if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
+          }
+        });
+      });
+      return el("li", { class: "codebase-row" }, el("span", {}, el("strong", {}, component), ` ${file}`), bring);
+    })));
+    if (codebase.truncated) section.append(el("p", {}, `Only the first ${codebase.files} source files were read.`));
+  }
+  if (boundNode !== null) {
+    const file = boundNode.props.codeSource.file;
+    const preview = el("div", { id: "codebase-preview" });
+    const review = el("button", { type: "button", id: "codebase-review" }, `Write changes back to ${file}`);
+    review.addEventListener("click", busy(review, async () => {
+      const plan = await state.client.post("/api/codebase/preview", { nodeId: selected });
+      const items = (entries, render) => (entries.length === 0 ? [] : [el("ul", {}, entries.map((entry) => el("li", {}, render(entry))))]);
+      preview.replaceChildren(
+        plan.changes.length === 0 ? el("p", {}, "There is nothing to write back: the file already has these values.") : el("p", {}, `${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} to ${plan.file}:`),
+        ...(plan.diff === "" ? [] : [el("pre", { class: "diff", id: "codebase-diff", tabindex: "0", "aria-label": `Changes to ${plan.file}` }, plan.diff)]),
+        ...(plan.conflicts.length === 0 ? [] : [el("p", {}, "Changed both here and in the file, so not written:")]),
+        ...items(plan.conflicts, (conflict) => `${conflict.field}: ${conflict.reason}`),
+        ...(plan.notWritten.length === 0 ? [] : [el("p", {}, "Not written back:")]),
+        ...items(plan.notWritten, (entry) => entry.reason),
+      );
+      if (plan.changes.length > 0) {
+        const write = el("button", { type: "button", class: "primary", id: "codebase-write" }, "Write to file");
+        write.addEventListener("click", () => {
+          error.textContent = "";
+          write.disabled = true;
+          enqueue(async () => {
+            try {
+              const result = await state.client.post("/api/codebase/write", { nodeId: selected, sha256: plan.sha256 });
+              close();
+              applyChange(result);
+              setStatus(`Wrote ${result.written} change${result.written === 1 ? "" : "s"} to ${result.file}.`);
+            } catch (failure) {
+              write.disabled = false;
+              if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
+            }
+          });
+        });
+        preview.append(el("div", { class: "actions" }, write));
+      }
+    }));
+    section.append(el("div", { class: "actions" }, review), preview);
+  }
+  return section;
 }
 
 // ---------- loading and applying changes ----------

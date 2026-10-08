@@ -91,8 +91,9 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (709/709 test
   - PC8 (#168): PC8a #169 (`5f05fa4`), gate 12; PC8b #170 (`ff08a1f`), gate 13; PC8c #171 (`7123c0e`), gate 14.
   - Evidence for each is in `docs/evidence/` (PC4_*, PC5_*, PC6A_*, PC6B_*, PC7_*, PC8A_*, PC8B_*, PC8C_*).
   - PC9 (#174): PC9a #175 (`7732a1a`), gate 5, the desktop bridge; PC9b #177, gate 15, desktop packaging for Linux x64, macOS arm64 and Windows x64 with a packaged-app smoke test on each runner. Evidence: `docs/evidence/PC9A_DESKTOP_BRIDGE_2026-10-08.md`, `docs/evidence/PC9B_DESKTOP_PACKAGING_2026-10-08.md`.
-  - PC10 (#178): the release-candidate journey through the packaged desktop app on Linux x64, macOS arm64 and Windows x64, gate 17. "Connect a codebase" is shown as bringing JSX in through the Code dialog, and "export" as JSX for copying. Repository or folder binding is #181, a release-scope question for the founder. Evidence: `docs/evidence/PC10_RELEASE_JOURNEY_2026-10-08.md`.
-  - All 17 PC gates are closed; the phase closes on #146 after PC10's post-merge CI.
+  - PC10 (#178): the release-candidate journey through the packaged desktop app on Linux x64, macOS arm64 and Windows x64, gate 17. Since PC11 (#182), "connect a codebase" is a connected local folder: the person brings components in with their source and writes edits back to their files after reviewing a diff. Evidence: `docs/evidence/PC10_RELEASE_JOURNEY_2026-10-08.md`.
+  - PC11 (#182): a connected codebase. PC11a is the host (a folder link, a bounded and confined scan, bring-in with source binding, and a three-way, previewed, atomic write-back). PC11b is the editor's Codebase section and the journey's steps 4a and 4b. Evidence: `docs/evidence/PC11A_CODEBASE_HOST_2026-10-08.md` and `docs/evidence/PC11B_CODEBASE_EDITOR_2026-10-08.md`.
+  - All 17 PC gates are closed; the phase closes on #146.
 
   Grain plan. A grain may advance a gate, but only the grain named as closing it may set it `CLOSED_CANONICAL`, after end-to-end evidence through the product surface:
   1. PC1: studio host, loopback project API and change stream (advances 4)
