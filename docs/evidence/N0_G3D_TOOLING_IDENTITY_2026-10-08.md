@@ -1,6 +1,6 @@
-# N0-G3d: the product name in tooling, the desktop app and MCP
+# N0-G3d2: the local web mode and MCP entry points, environment and MCP name
 
-Issue: #190 (N0 umbrella). Follows the scope batches N0-G3a to N0-G3c.
+Issue: #190 (N0 umbrella). The second half of N0-G3d; the desktop app, packaging and CI are N0-G3d1 (`N0_G3D1_DESKTOP_IDENTITY_2026-10-08.md`). The list below covers both halves.
 
 ## Renamed
 
