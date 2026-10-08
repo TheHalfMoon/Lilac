@@ -12,7 +12,7 @@ import { TEST_ORIGIN, browserTestOptions, launchPage } from "./support/browser.m
 const HARNESS = `<!doctype html><html><head><meta charset="utf-8"></head><body><div id="canvas"></div>
 <script type="module">
   import * as renderer from "/packages/renderer/src/index.mjs";
-  window.lilacRenderer = renderer;
+  window.ninerrRenderer = renderer;
   window.ready = true;
 </script></body></html>`;
 
@@ -21,7 +21,7 @@ async function harness() {
   await session.page.goto(`${TEST_ORIGIN}/harness.html`);
   await session.page.waitForFunction(() => window.ready === true);
   await session.page.evaluate(async () => {
-    const mounted = await window.lilacRenderer.mountSandboxedRenderer(document.getElementById("canvas"));
+    const mounted = await window.ninerrRenderer.mountSandboxedRenderer(document.getElementById("canvas"));
     window.frame = mounted.frame;
     window.r = mounted.renderer;
   });
@@ -169,7 +169,7 @@ test("rendered content cannot fetch: remote images are dropped and the frame blo
       const frameDoc = window.frame.contentDocument;
       // Even an image inserted behind the renderer's back is blocked by the frame's CSP.
       const rogue = frameDoc.createElement("img");
-      rogue.src = "http://lilac.test/rogue.png";
+      rogue.src = "http://ninerr.test/rogue.png";
       frameDoc.body.appendChild(rogue);
       return new Promise((resolve) => setTimeout(() => resolve({
         src: frameDoc.querySelector('[data-ninerr-id="img"]').getAttribute("src"),
@@ -274,7 +274,7 @@ test("patching agrees with a fresh render over a seeded random edit sequence", b
     await page.evaluate((d) => {
       const host = window.frame.contentDocument.createElement("div");
       window.frame.contentDocument.body.appendChild(host);
-      window.reference = { host, renderer: window.lilacRenderer.createRenderer(host) };
+      window.reference = { host, renderer: window.ninerrRenderer.createRenderer(host) };
       window.r.render(d);
     }, doc);
     let applied = 0;

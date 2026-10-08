@@ -4,7 +4,7 @@ import { exportJsx } from "./code.ts";
 import { StudioError } from "./errors.ts";
 import type { StudioActor, StudioSession } from "./session.ts";
 
-// Lilac's MCP server. It runs inside the studio host, so agent edits go through the same
+// Ninerr's MCP server. It runs inside the studio host, so agent edits go through the same
 // single writer as the editor's, and every one is a history transaction attributed to the
 // agent. The transport is MCP's Streamable HTTP in its plain request/response form
 // (POST /mcp, one JSON-RPC message, one JSON answer) on the host's loopback listener; the
@@ -164,7 +164,7 @@ const TOOLS: Tool[] = [
   {
     name: "get_selection",
     title: "Selection",
-    description: "The layers selected in the Lilac editor right now.",
+    description: "The layers selected in the Ninerr editor right now.",
     inputSchema: object({}),
     run: ({ session, selection }) => {
       const document = session.document as any;
@@ -186,15 +186,15 @@ const TOOLS: Tool[] = [
   },
   {
     name: "get_guide",
-    title: "How to work with Lilac",
-    description: "How Lilac documents, layers and edits work for an agent.",
+    title: "How to work with Ninerr",
+    description: "How Ninerr documents, layers and edits work for an agent.",
     inputSchema: object({}),
     run: () => ({
       guide: [
-        "A Lilac document is a tree of layers. Each layer has an id, a type (frame, element, text, ...) and props: tag (an HTML element), text, name (the layer name), attributes and style (CSS properties).",
+        "A Ninerr document is a tree of layers. Each layer has an id, a type (frame, element, text, ...) and props: tag (an HTML element), text, name (the layer name), attributes and style (CSS properties).",
         "Every edit you make is one history transaction attributed to you; the person sees it live on the canvas and can undo it.",
         "Read with get_basic_info, get_tree_summary, get_children, get_node_info, find_nodes and get_selection.",
-        "Edit with create_artboard, set_text_content, rename_nodes, update_styles, move_nodes and duplicate_nodes. delete_nodes needs the person to approve it in Lilac.",
+        "Edit with create_artboard, set_text_content, rename_nodes, update_styles, move_nodes and duplicate_nodes. delete_nodes needs the person to approve it in Ninerr.",
         "Style values are CSS strings (\"24px\", \"#336699\"); null removes a property.",
       ].join("\n"),
     }),
@@ -202,7 +202,7 @@ const TOOLS: Tool[] = [
   {
     name: "finish_working_on_nodes",
     title: "Finish working",
-    description: "Tell Lilac you have finished with these layers. Changes nothing.",
+    description: "Tell Ninerr you have finished with these layers. Changes nothing.",
     inputSchema: object({ nodeIds: idList }),
     run: () => ({ ok: true }),
   },
@@ -334,7 +334,7 @@ const TOOLS: Tool[] = [
   {
     name: "delete_nodes",
     title: "Delete layers",
-    description: "Delete layers and everything inside them. The person must approve this in Lilac; the call waits for their answer.",
+    description: "Delete layers and everything inside them. The person must approve this in Ninerr; the call waits for their answer.",
     inputSchema: object({ nodeIds: idList }, ["nodeIds"]),
     run: ({ session, edit }, args) => {
       const ids = strings(args.nodeIds, "nodeIds").map((id) => nodeOf(session, id).id);
@@ -351,7 +351,7 @@ const TOOLS: Tool[] = [
 ];
 
 const TOOL_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
-// The definitions the server announces must satisfy Lilac's own MCP contract validators and
+// The definitions the server announces must satisfy Ninerr's own MCP contract validators and
 // be Paper-compatible names with the classification the tools behave by.
 validateMCPServerConfig({ tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
 for (const tool of TOOLS) {
@@ -537,8 +537,8 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
   const args = params?.arguments === undefined ? {} : params.arguments;
   if (typeof toolName !== "string" || toolName === "") return toolResult("tools/call needs a tool name", true);
   const session = context.session();
-  if (session === null) return toolResult("No project is open in Lilac. Ask the person to open one.", true);
-  if (session.failure !== null) return toolResult("The project must be reopened in Lilac before it can be used.", true);
+  if (session === null) return toolResult("No project is open in Ninerr. Ask the person to open one.", true);
+  if (session.failure !== null) return toolResult("The project must be reopened in Ninerr before it can be used.", true);
   const at = context.now();
   const call = { actor, toolName, arguments: args, at };
   // Authorize before anything else, including before a consequential call asks the person.
@@ -555,7 +555,7 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
     }
   }
   const tool = TOOL_BY_NAME.get(toolName);
-  if (tool === undefined) return toolResult(`Lilac does not implement ${toolName} yet.`, true);
+  if (tool === undefined) return toolResult(`Ninerr does not implement ${toolName} yet.`, true);
   if (context.session() !== session) return toolResult("The open project changed while the call was waiting.", true);
   try {
     const value = await tool.run({
@@ -573,14 +573,14 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
   } catch (error) {
     if (error instanceof ToolError) return toolResult(error.message, true);
     if (error instanceof StudioError) return toolResult(error.message, true);
-    return toolResult("Lilac could not complete the call.", true);
+    return toolResult("Ninerr could not complete the call.", true);
   }
 }
 
 function refusal(error: unknown) {
   if (error instanceof MCPAuthorizationError) return toolResult(`Not allowed: ${error.decision.reason}.`, true);
   if (error instanceof MCPContractError) return toolResult(`Invalid call: ${error.message}`, true);
-  return toolResult("Lilac could not authorize the call.", true);
+  return toolResult("Ninerr could not authorize the call.", true);
 }
 
 /** The person's confirmation for this exact call, or the message to return instead. */
@@ -610,6 +610,6 @@ async function confirm(context: McpContext, session: StudioSession, actor: Studi
   const decision = await context.confirmations.request({ ...key, agentName: actor.displayName, summary }, at, context.confirmationWaitMs ?? CONFIRMATION_WAIT_MS);
   if (decision.outcome === "denied") return "The person declined this change.";
   if (decision.outcome === "busy") return "Too many changes are already waiting for the person's approval. Wait for them to decide, then call again.";
-  if (decision.outcome === "timeout") return "Waiting for the person to approve this in Lilac. Call again with the same arguments once they have.";
+  if (decision.outcome === "timeout") return "Waiting for the person to approve this in Ninerr. Call again with the same arguments once they have.";
   return { documentId: session.documentId, toolName, argumentsSha256, actorId: actor.ownerActorId!, confirmedAt: decision.confirmedAt };
 }

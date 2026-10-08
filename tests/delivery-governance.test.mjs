@@ -146,7 +146,7 @@ test("ask-user creation and explicit resolution round-trip", () => {
 });
 
 test("evidence store pins one root outside disposable worktrees", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "lilac-delivery-outside-"));
+  const dir = await mkdtemp(join(tmpdir(), "ninerr-delivery-outside-"));
   try {
     const bundle = {
       qualificationId: "delivery-qualification:test01",
@@ -163,9 +163,9 @@ test("evidence store pins one root outside disposable worktrees", async () => {
     await assert.rejects(createEvidenceStore({ evidenceRoot: join("/tmp/disposable-wt", "sub"), disposableRoots: ["/tmp/disposable-wt"] }), DeliveryValidationError);
     await assert.rejects(createEvidenceStore({ evidenceRoot: "/tmp/disposable-wt", disposableRoots: ["/tmp/disposable-wt"] }), DeliveryValidationError);
     await assert.rejects(createEvidenceStore({ evidenceRoot: "" }), DeliveryValidationError);
-    const aliasedRoot = await mkdtemp(join(tmpdir(), "lilac-delivery-root-"));
+    const aliasedRoot = await mkdtemp(join(tmpdir(), "ninerr-delivery-root-"));
     try {
-      const alias = join(tmpdir(), `lilac-delivery-alias-${Date.now()}`);
+      const alias = join(tmpdir(), `ninerr-delivery-alias-${Date.now()}`);
       await symlink(aliasedRoot, alias, "junction");
       try {
         await assert.rejects(createEvidenceStore({ evidenceRoot: join(alias, "sub"), disposableRoots: [aliasedRoot] }), DeliveryValidationError);
@@ -182,7 +182,7 @@ test("evidence store pins one root outside disposable worktrees", async () => {
 });
 
 test("evidence store rejects malformed bundles with typed errors", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "lilac-delivery-malformed-"));
+  const dir = await mkdtemp(join(tmpdir(), "ninerr-delivery-malformed-"));
   try {
     const store = await createEvidenceStore({ evidenceRoot: dir });
     await assert.rejects(store.writeBundle(null), DeliveryValidationError);

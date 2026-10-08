@@ -8,7 +8,7 @@ import {
   DESIGN_ASSURANCE_SCHEMA_VERSION,
   DesignAssuranceError,
   IMPECCABLE_PIN,
-  createLilacRulePack,
+  createNinerrRulePack,
   normalizeImpeccableFinding,
   scanBrowserSnapshot,
   scanBrowserUrl,
@@ -96,7 +96,7 @@ test("installed Impeccable runtime matches the recorded package and engine pin",
 });
 
 test("local rule evidence must be JSON-serializable", async () => {
-  const badPack = createLilacRulePack({
+  const badPack = createNinerrRulePack({
     namespace: "bad-evidence",
     rules: [{
       id: "bigint",
@@ -112,7 +112,7 @@ test("local rule evidence must be JSON-serializable", async () => {
   );
 });
 
-test("normalizes upstream findings into the Lilac contract", () => {
+test("normalizes upstream findings into the Ninerr contract", () => {
   const finding = normalizeImpeccableFinding(upstreamFinding({ severity: "advisory" }), {
     surface: "source",
     virtualPath: "src/App.tsx",
@@ -134,11 +134,11 @@ test("rule packs reserve the upstream namespace and reject duplicate ids", () =>
     check: () => [],
   };
   assert.throws(
-    () => createLilacRulePack({ namespace: "impeccable", rules: [rule] }),
+    () => createNinerrRulePack({ namespace: "impeccable", rules: [rule] }),
     DesignAssuranceError,
   );
   assert.throws(
-    () => createLilacRulePack({ namespace: "demo", rules: [rule, rule] }),
+    () => createNinerrRulePack({ namespace: "demo", rules: [rule, rule] }),
     /duplicate rule id/,
   );
 });
@@ -265,8 +265,8 @@ test("browser adapter uses the shared report contract and protects private targe
   );
 });
 
-test("browser snapshot seam normalizes upstream and Lilac rule-pack findings", async () => {
-  const snapshotPack = createLilacRulePack({
+test("browser snapshot seam normalizes upstream and Ninerr rule-pack findings", async () => {
+  const snapshotPack = createNinerrRulePack({
     namespace: "snapshot-test",
     rules: [{
       id: "empty-page",
@@ -313,10 +313,10 @@ test("document rules catch source-binding and token-registry drift deterministic
   assert.deepEqual(
     report.findings.map((finding) => finding.ruleId),
     [
-      "lilac/source-binding-range",
-      "lilac/source-binding-source-id",
-      "lilac/source-binding-target",
-      "lilac/token-reference-resolution",
+      "ninerr/source-binding-range",
+      "ninerr/source-binding-source-id",
+      "ninerr/source-binding-target",
+      "ninerr/token-reference-resolution",
     ],
   );
   assert.equal(report.summary.active, 4);
@@ -332,7 +332,7 @@ test("document token-registry shape is an explicit invariant", () => {
   });
   const report = scanDocument({ document });
   assert.equal(report.findings.length, 1);
-  assert.equal(report.findings[0].ruleId, "lilac/design-token-registry");
+  assert.equal(report.findings[0].ruleId, "ninerr/design-token-registry");
 });
 
 test("policy cannot silently disable or downgrade structural invariants", () => {
@@ -340,21 +340,21 @@ test("policy cannot silently disable or downgrade structural invariants", () => 
   assert.throws(
     () => scanDocument({
       document,
-      policy: { disabledRules: ["lilac/source-binding-target"] },
+      policy: { disabledRules: ["ninerr/source-binding-target"] },
     }),
     /cannot be disabled/,
   );
   assert.throws(
     () => scanDocument({
       document,
-      policy: { severityOverrides: { "lilac/source-binding-target": "warning" } },
+      policy: { severityOverrides: { "ninerr/source-binding-target": "warning" } },
     }),
     /cannot be severity-downgraded/,
   );
   assert.throws(
     () => scanDocument({
       document,
-      policy: { waivers: [{ ruleId: "lilac/source-binding-target", reason: "migration" }] },
+      policy: { waivers: [{ ruleId: "ninerr/source-binding-target", reason: "migration" }] },
     }),
     /acknowledgeInvariant/,
   );
@@ -365,13 +365,13 @@ test("explicit invariant waivers remain visible in the report", () => {
     document: documentWithBrokenBindings(),
     policy: {
       waivers: [{
-        ruleId: "lilac/source-binding-target",
+        ruleId: "ninerr/source-binding-target",
         reason: "known migration fixture",
         acknowledgeInvariant: true,
       }],
     },
   });
-  const finding = report.findings.find((item) => item.ruleId === "lilac/source-binding-target");
+  const finding = report.findings.find((item) => item.ruleId === "ninerr/source-binding-target");
   assert.equal(finding.policy.waived, true);
   assert.equal(finding.policy.waiverReason, "known migration fixture");
   assert.equal(report.summary.waived, 1);

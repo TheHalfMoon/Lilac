@@ -9,7 +9,7 @@ import { layerCount, waitRevision } from "./support/editor.mjs";
 import { attemptsIn, browse, openTab, startNinerr } from "./support/ninerr-process.mjs";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
-// PC8 (#168): crash and recovery through the actual app. Lilac, started as a person starts
+// PC8 (#168): crash and recovery through the actual app. Ninerr, started as a person starts
 // it (scripts/ninerr.mjs), is killed outright (SIGKILL) while it has a project open with an
 // editor attached, and once more in the middle of a burst of edits with a torn write left
 // at the end of the journal. Started again, the editor takes over the dead session's lock
@@ -17,7 +17,7 @@ import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 // gate 14.
 
 // A restarted editor's one console error: the 409 when it first opens the locked project
-// (and, once Lilac is killed under it, the connections it could no longer make).
+// (and, once Ninerr is killed under it, the connections it could no longer make).
 const LOST_CONNECTION = /ERR_CONNECTION_REFUSED|ERR_INCOMPLETE_CHUNKED_ENCODING/u;
 function assertOnlyLockedConflict(errors, { killed = false } = {}) {
   if (killed) errors = errors.filter((message) => !LOST_CONNECTION.test(message));
@@ -26,7 +26,7 @@ function assertOnlyLockedConflict(errors, { killed = false } = {}) {
   assert.deepEqual(errors.filter((message) => !conflicts.includes(message)), [], "only the expected 409 (project locked) is logged");
 }
 
-test("Lilac killed mid-session recovers through the editor, with every committed change", browserTestOptions(), async () => {
+test("Ninerr killed mid-session recovers through the editor, with every committed change", browserTestOptions(), async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-crash-")));
   const projects = join(root, "projects");
   const browser = await browse();
@@ -52,11 +52,11 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     attempts.push(...attemptsIn(ninerr.output.stderr));
     const lock = join(projects, "work", PROJECT_FILES.directory, "lock");
     assert.ok(existsSync(lock), "a crash leaves the project's lock behind");
-    // The orphaned editor says Lilac cannot be reached, and loses nothing it showed.
+    // The orphaned editor says Ninerr cannot be reached, and loses nothing it showed.
     await tab.page.locator("#action-insert-box").click();
     await tab.page.waitForFunction(() => /could not be reached\. If it has stopped, start it again/u.test(document.getElementById("status").textContent));
     attempts.push(...tab.foreign);
-    // Its only console errors are the connections it could not make once Lilac was gone.
+    // Its only console errors are the connections it could not make once Ninerr was gone.
     assert.deepEqual(tab.errors.filter((message) => !LOST_CONNECTION.test(message)), [], "the orphaned editor logs only the lost connection");
     await tab.page.context().close();
 
@@ -65,11 +65,11 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     ninerr = await startNinerr(projects);
     tab = await openTab(browser, ninerr.origin, ninerr.first);
     await tab.page.locator("#dialog[open] [data-project=work]").click();
-    await tab.page.locator("#lock-reason").fill("Lilac crashed");
+    await tab.page.locator("#lock-reason").fill("Ninerr crashed");
     await tab.page.keyboard.press("Enter");
-    await tab.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Lilac recovered this project");
+    await tab.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Ninerr recovered this project");
     const report = await tab.page.locator("#dialog[open] ul.report li").allTextContents();
-    assert.ok(report.some((line) => /stale lock .* was taken over: Lilac crashed/u.test(line)), report.join(" | "));
+    assert.ok(report.some((line) => /stale lock .* was taken over: Ninerr crashed/u.test(line)), report.join(" | "));
     await tab.page.locator("#dialog[open] button.primary").click();
     await waitRevision(tab.page, 4);
     assert.equal(await layerCount(tab.page), before);
@@ -101,12 +101,12 @@ test("Lilac killed mid-session recovers through the editor, with every committed
     ninerr = await startNinerr(projects);
     tab = await openTab(browser, ninerr.origin, ninerr.first);
     await tab.page.locator("#dialog[open] [data-project=work]").click();
-    await tab.page.locator("#lock-reason").fill("Lilac crashed again");
+    await tab.page.locator("#lock-reason").fill("Ninerr crashed again");
     await tab.page.keyboard.press("Enter");
-    await tab.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Lilac recovered this project");
+    await tab.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Ninerr recovered this project");
     const second = await tab.page.locator("#dialog[open] ul.report li").allTextContents();
     assert.ok(second.some((line) => /unfinished write .* was discarded/u.test(line)), second.join(" | "));
-    assert.ok(second.some((line) => /taken over: Lilac crashed again/u.test(line)), second.join(" | "));
+    assert.ok(second.some((line) => /taken over: Ninerr crashed again/u.test(line)), second.join(" | "));
     await tab.page.locator("#dialog[open] button.primary").click();
     await waitRevision(tab.page, committed);
     // Every change the host confirmed before the kill is there, and nothing half-written is.

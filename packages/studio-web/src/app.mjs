@@ -1,4 +1,4 @@
-// The Lilac editor. It holds a read-only copy of the open project's document and never
+// The Ninerr editor. It holds a read-only copy of the open project's document and never
 // changes it on its own: every edit goes to the studio host as one history transaction, and
 // the copy advances only by applying the host's committed change events (from the edit's
 // response or the event stream, whichever arrives first), in revision order. A gap or a
@@ -53,7 +53,7 @@ function setStatus(message) {
 }
 
 function describeError(error) {
-  return error instanceof HostError ? error.message : "Lilac could not be reached. If it has stopped, start it again and open the new link it gives you.";
+  return error instanceof HostError ? error.message : "Ninerr could not be reached. If it has stopped, start it again and open the new link it gives you.";
 }
 
 /** Show a modal dialog; `build(close)` returns its content. Focus returns where it was. */
@@ -143,7 +143,7 @@ function showLockDialog(name) {
     const error = el("p", { class: "error", role: "alert" });
     const reason = el("input", { id: "lock-reason", name: "reason", required: true, autocomplete: "off" });
     return [
-      el("p", {}, `“${name}” is locked by another Lilac session. If that session has crashed or its computer is gone, you can take over the project. The takeover and your reason are recorded with the project.`),
+      el("p", {}, `“${name}” is locked by another Ninerr session. If that session has crashed or its computer is gone, you can take over the project. The takeover and your reason are recorded with the project.`),
       el("form", {
         novalidate: true,
         onsubmit: async (event) => {
@@ -179,7 +179,7 @@ function recoveryNotes(recovery) {
 function showRecovery(recovery) {
   const notes = recoveryNotes(recovery);
   if (notes.length === 0) return;
-  showDialog("Lilac recovered this project", (close) => [
+  showDialog("Ninerr recovered this project", (close) => [
     el("ul", { class: "report" }, notes.map((note) => el("li", {}, note))),
     el("div", { class: "actions" }, el("button", { type: "button", class: "primary", onclick: close }, "Continue")),
   ]);
@@ -189,7 +189,7 @@ function showReopen(message) {
   showDialog("Reopen the project", (close) => {
     const error = el("p", { class: "error", role: "alert" });
     return [
-      el("p", {}, message ?? "The project's files changed outside Lilac or could not be written. Reopen it to continue; every change that was saved is kept."),
+      el("p", {}, message ?? "The project's files changed outside Ninerr or could not be written. Reopen it to continue; every change that was saved is kept."),
       error,
       el("div", { class: "actions" },
         el("button", { type: "button", onclick: () => { close(); openProjectsDialog(); } }, "Projects"),
@@ -258,8 +258,8 @@ function showAgentCredential({ agent, token, mcpUrl }) {
       el("p", { id: "agent-credential-note" }, "This credential is shown once. Give it to the agent's MCP client; anyone who has it can act as this agent until you disconnect it."),
       el("label", { for: "agent-credential" }, "Agent credential", credential),
       el("p", {}, "For an MCP client that runs a command (stdio), use:"),
-      el("pre", { class: "setup" }, "node scripts/ninerr-mcp.mjs --projects <your Lilac projects folder>\nwith NINERR_MCP_TOKEN set to the credential"),
-      el("p", {}, "For an MCP client that connects over HTTP, use this address, with the credential as a Bearer token (it changes each time Lilac starts):"),
+      el("pre", { class: "setup" }, "node scripts/ninerr-mcp.mjs --projects <your Ninerr projects folder>\nwith NINERR_MCP_TOKEN set to the credential"),
+      el("p", {}, "For an MCP client that connects over HTTP, use this address, with the credential as a Bearer token (it changes each time Ninerr starts):"),
       el("pre", { class: "setup" }, mcpUrl),
       el("div", { class: "actions" }, el("button", { type: "button", class: "primary", onclick: close }, "Done")),
     ];
@@ -355,7 +355,7 @@ function openImportDialog() {
         const chosen = file.files?.[0];
         if (chosen) {
           if (chosen.size > MAX_IMPORT_BYTES) {
-            error.textContent = "That file is larger than 2 MiB, the most Lilac imports at once.";
+            error.textContent = "That file is larger than 2 MiB, the most Ninerr imports at once.";
             return;
           }
           html = await chosen.text();
@@ -374,7 +374,7 @@ function openImportDialog() {
         }
       },
     },
-    el("p", {}, "Lilac reads the HTML on this computer and removes scripts, event handlers and unsafe links. Nothing it links to is fetched. You review the result before anything is added."),
+    el("p", {}, "Ninerr reads the HTML on this computer and removes scripts, event handlers and unsafe links. Nothing it links to is fetched. You review the result before anything is added."),
     el("label", { for: "import-file" }, "HTML file", file),
     el("label", { for: "import-html" }, "Or paste HTML", pasted),
     el("div", { class: "actions" }, el("button", { type: "button", onclick: close }, "Cancel"), el("button", { type: "submit", class: "primary" }, "Review import")));
@@ -852,7 +852,7 @@ function enqueue(task) {
   return run;
 }
 
-/** A 401 means this page's session is over (Lilac restarted); say so once. */
+/** A 401 means this page's session is over (Ninerr restarted); say so once. */
 let ended = false;
 function handleSessionEnded(error) {
   if (!(error instanceof HostError) || error.status !== 401) return false;
@@ -860,7 +860,7 @@ function handleSessionEnded(error) {
     ended = true;
     forgetToken(window);
     state.events?.close();
-    showDialog("This Lilac session has ended", () => [el("p", {}, "Lilac was restarted or the link expired. Open Lilac again from its launcher.")], { dismissable: false });
+    showDialog("This Ninerr session has ended", () => [el("p", {}, "Ninerr was restarted or the link expired. Open Ninerr again from its launcher.")], { dismissable: false });
   }
   return true;
 }
@@ -1383,7 +1383,7 @@ function renderToolbar() {
   $("action-code").disabled = !open;
   $("zoom-level").textContent = `${Math.round(canvas.viewport.zoom * 100)}%`;
   $("revision").textContent = open ? `Revision ${state.revision}` : "";
-  document.title = state.project ? `${state.project} — Lilac` : "Lilac";
+  document.title = state.project ? `${state.project} — Ninerr` : "Ninerr";
 }
 
 function renderChrome() {
@@ -1464,7 +1464,7 @@ async function main() {
 
   state.client = await connect(window);
   if (state.client === null) {
-    showDialog("Open Lilac from its launcher", () => [el("p", {}, "This page needs the link Lilac prints or opens when it starts. Start Lilac again to get a new one.")], { dismissable: false });
+    showDialog("Open Ninerr from its launcher", () => [el("p", {}, "This page needs the link Ninerr prints or opens when it starts. Start Ninerr again to get a new one.")], { dismissable: false });
     return;
   }
   let session;
@@ -1473,7 +1473,7 @@ async function main() {
   } catch (error) {
     if (error instanceof HostError && error.status === 401) {
       forgetToken(window);
-      showDialog("This Lilac session has ended", () => [el("p", {}, "Lilac was restarted or the link expired. Open Lilac again from its launcher.")], { dismissable: false });
+      showDialog("This Ninerr session has ended", () => [el("p", {}, "Ninerr was restarted or the link expired. Open Ninerr again from its launcher.")], { dismissable: false });
       return;
     }
     setStatus(describeError(error));
@@ -1486,4 +1486,4 @@ async function main() {
   document.documentElement.dataset.ready = "true";
 }
 
-main().catch((error) => setStatus(`Lilac could not start: ${error?.message ?? error}`));
+main().catch((error) => setStatus(`Ninerr could not start: ${error?.message ?? error}`));

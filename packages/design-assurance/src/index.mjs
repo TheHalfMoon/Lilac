@@ -142,7 +142,7 @@ function upstreamProvenance() {
 
 function localProvenance(namespace) {
   return {
-    source: "lilac-rule-pack",
+    source: "ninerr-rule-pack",
     namespace,
     schemaVersion: DESIGN_ASSURANCE_SCHEMA_VERSION,
   };
@@ -218,7 +218,7 @@ function validateRule(rule, namespace) {
   }
 }
 
-export function createLilacRulePack({ namespace, rules }) {
+export function createNinerrRulePack({ namespace, rules }) {
   assertNonEmptyString(namespace, "rule pack namespace");
   if (!/^[a-z][a-z0-9-]*$/.test(namespace)) {
     throw new DesignAssuranceError("rule pack namespace must be lowercase kebab-case");
@@ -284,7 +284,7 @@ function runRulePacks(context, rulePacks) {
   const orderedPacks = [...rulePacks].sort((a, b) => compareCodeUnits(String(a?.namespace), String(b?.namespace)));
   for (const pack of orderedPacks) {
     if (!isPlainObject(pack) || !Array.isArray(pack.rules)) {
-      throw new DesignAssuranceError("Invalid Lilac rule pack");
+      throw new DesignAssuranceError("Invalid Ninerr rule pack");
     }
     assertNonEmptyString(pack.namespace, "rule pack namespace");
     if (!/^[a-z][a-z0-9-]*$/.test(pack.namespace) || pack.namespace === "impeccable") {
@@ -515,7 +515,7 @@ const OVERRIDABLE = ["--proxy-server", "--proxy-bypass-list", "--proxy-pac-url",
 
 async function writeBrowserWrapper(browserExecutable, proxyUrl, extraFlags = []) {
   if (process.platform === "win32") throw new DesignAssuranceError("policy-enforced browser scans are not supported on Windows");
-  const directory = await mkdtemp(join(tmpdir(), "lilac-browser-"));
+  const directory = await mkdtemp(join(tmpdir(), "ninerr-browser-"));
   const path = join(directory, "browser");
   const flags = [...browserProxyFlags(proxyUrl), ...extraFlags].map(shellQuote).join(" ");
   // Chromium also accepts single-dash switches on POSIX.
@@ -630,7 +630,7 @@ function sourceExtension(filePath) {
 }
 
 async function withTempInput(content, extension, callback) {
-  const directory = await mkdtemp(join(tmpdir(), "lilac-design-assurance-"));
+  const directory = await mkdtemp(join(tmpdir(), "ninerr-design-assurance-"));
   const target = join(directory, `input${extension}`);
   try {
     await writeFile(target, content, { encoding: "utf8", mode: 0o600 });
@@ -863,8 +863,8 @@ function tokenRegistry(document) {
   return isPlainObject(tokens) ? tokens : "INVALID";
 }
 
-export const NINERR_CORE_RULE_PACK = createLilacRulePack({
-  namespace: "lilac",
+export const NINERR_CORE_RULE_PACK = createNinerrRulePack({
+  namespace: "ninerr",
   rules: [
     {
       id: "source-binding-source-id",

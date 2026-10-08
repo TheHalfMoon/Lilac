@@ -11,5 +11,5 @@ export const DELIVERY_GOVERNANCE_PROVENANCE = {
     "internal/evidence",
     ".no-mistakes.yaml",
   ],
-  posture: "Governance semantics only. Lilac reimplements exact-head proof, create-only evidence, conflict-fails-closed anchors, parked human decisions, and forward-only delivery as project-owned code. No donor daemon, proxy, hooks, database, billing, or forge machinery is imported.",
+  posture: "Governance semantics only. Ninerr reimplements exact-head proof, create-only evidence, conflict-fails-closed anchors, parked human decisions, and forward-only delivery as project-owned code. No donor daemon, proxy, hooks, database, billing, or forge machinery is imported.",
 } as const;

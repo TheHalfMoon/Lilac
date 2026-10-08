@@ -37,7 +37,7 @@ for (const [name, stringify] of Object.entries(SERIALIZERS)) {
 }
 
 test("delivery evidence bundles written to disk parse as JSON", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "lilac-canonical-json-"));
+  const dir = await mkdtemp(join(tmpdir(), "ninerr-canonical-json-"));
   try {
     const store = await createEvidenceStore({ evidenceRoot: dir });
     const { path } = await store.writeBundle({

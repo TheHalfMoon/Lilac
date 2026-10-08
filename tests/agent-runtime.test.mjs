@@ -54,7 +54,7 @@ function authority(overrides = {}) {
 function operation(id = "op-1", overrides = {}) {
   return createOperation({
     id,
-    type: "lilac.test",
+    type: "ninerr.test",
     version: 1,
     status: "ready",
     state: { phase: "queued" },
@@ -95,7 +95,7 @@ function sessionWithOperation(op = operation()) {
   return session;
 }
 
-test("pins the Unreal Agent donor revision and Lilac schema", () => {
+test("pins the Unreal Agent donor revision and Ninerr schema", () => {
   assert.equal(AGENT_RUNTIME_SCHEMA_VERSION, 1);
   assert.deepEqual(UNREAL_AGENT_PROVENANCE, {
     repository: "unreallabsai/unreal-agent",
@@ -205,7 +205,7 @@ test("operation type and version are immutable", () => {
   assert.throws(
     () => saveOperation(
       session,
-      { ...current, type: "lilac.changed" },
+      { ...current, type: "ninerr.changed" },
       { recordedAt: T4 },
     ),
     /type and version are immutable/,
@@ -332,7 +332,7 @@ test("tool translation is synchronous, pure at the API boundary, and operation-I
       assert.equal(call.name, "set_text");
       context.submit({
         id: "op-translate",
-        type: "lilac.document.request",
+        type: "ninerr.document.request",
         state: { action: "set-text" },
         idempotency: { callId: "call-translate" },
         authority: authority({ documentAffecting: true }),
@@ -350,14 +350,14 @@ test("tool translation is synchronous, pure at the API boundary, and operation-I
   );
 });
 
-test("document-affecting operations can mutate only through Lilac history transactions", () => {
+test("document-affecting operations can mutate only through Ninerr history transactions", () => {
   const document = createDocument({
     id: "doc-1",
     nodes: [createNode({ id: "node-1", type: "text", props: { text: "Before" } })],
   });
   const history = createHistoryState(document);
   const docOperation = operation("op-doc", {
-    type: "lilac.document.request",
+    type: "ninerr.document.request",
     authority: authority({
       documentAffecting: true,
       actorId: "agent:writer",

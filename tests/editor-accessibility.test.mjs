@@ -62,7 +62,7 @@ async function audit(page, state) {
 }
 
 test("every editor state audits clean, with the colours actually painted", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-a11y-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-a11y-")));
   const host = await startStudioHost({ projectsRoot: root, now, confirmationWaitMs: 20_000 });
   const editor = await openEditor(host);
   try {
@@ -112,7 +112,7 @@ test("every editor state audits clean, with the colours actually painted", brows
 });
 
 test("the lock and recovery dialogs audit clean", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-a11y-lock-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-a11y-lock-")));
   const setup = await startStudioHost({ projectsRoot: root, now });
   await fetch(`${setup.url}/api/projects/create`, { method: "POST", headers: { authorization: `Bearer ${setup.token}`, "content-type": "application/json" }, body: JSON.stringify({ name: "locked" }) });
   await setup.close();
@@ -126,7 +126,7 @@ test("the lock and recovery dialogs audit clean", browserTestOptions(), async ()
     await audit(page, "the lock dialog");
     await page.locator("#lock-reason").fill("crashed");
     await page.keyboard.press("Enter");
-    await page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Lilac recovered this project");
+    await page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Ninerr recovered this project");
     await audit(page, "the recovery report");
   } finally {
     await editor.close();
@@ -136,7 +136,7 @@ test("the lock and recovery dialogs audit clean", browserTestOptions(), async ()
 });
 
 test("every editor action works from the keyboard, with visible focus", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-a11y-keys-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-a11y-keys-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const editor = await openEditor(host);
   try {
@@ -252,7 +252,7 @@ test("every editor action works from the keyboard, with visible focus", browserT
 });
 
 test("the editor reflows at 320 px and every target is at least 24 by 24 px", browserTestOptions(), async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-a11y-reflow-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-a11y-reflow-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const editor = await openEditor(host);
   try {

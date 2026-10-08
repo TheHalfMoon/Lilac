@@ -31,7 +31,7 @@ const AT = "2026-10-07T09:00:00.000Z";
 const HEAD = "9e25bd787b2e874120f6183beea1dfe07b1afba4";
 
 async function withTemp(fn) {
-  const dir = await mkdtemp(join(tmpdir(), "lilac-sandbox-surfaces-"));
+  const dir = await mkdtemp(join(tmpdir(), "ninerr-sandbox-surfaces-"));
   try { return await fn(dir); }
   finally { await rm(dir, { recursive: true, force: true }); }
 }

@@ -99,7 +99,7 @@ function skipWhitespace(state: ParserState): void {
   }
 }
 
-// JSX text and attribute strings carry HTML entities, not JS escapes. The entities Lilac
+// JSX text and attribute strings carry HTML entities, not JS escapes. The entities Ninerr
 // emits, and numeric references, are decoded; any other named entity is refused, because
 // JSX would decode it to a character this parser cannot know.
 const NAMED_ENTITIES: Readonly<Record<string, string>> = Object.freeze({ amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: "\u00a0" });

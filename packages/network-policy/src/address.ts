@@ -1,7 +1,7 @@
 import { isIP } from "node:net";
 
 // Moved from @ninerr/import-stack (Grain 6, qualified in PR #35) so that one package owns
-// address classification for every network decision in Lilac. P05 D6b additionally forbids
+// address classification for every network decision in Ninerr. P05 D6b additionally forbids
 // site-local fec0::/10 and IPv4-compatible ::/96 (strictly safer than Grain 6).
 
 function ipv4(address: string): number[] | null {

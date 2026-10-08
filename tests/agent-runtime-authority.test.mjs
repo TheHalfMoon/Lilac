@@ -26,14 +26,14 @@ function authority(overrides = {}) {
   };
 }
 
-test("new operations cannot spoof a pre-bound Lilac transaction", () => {
+test("new operations cannot spoof a pre-bound Ninerr transaction", () => {
   assert.throws(
     () => createOperation({
       id: "op-prebound",
-      type: "lilac.document.request",
+      type: "ninerr.document.request",
       authority: authority({ transactionId: "tx-spoofed" }),
     }),
-    /cannot start bound to a Lilac transaction/,
+    /cannot start bound to a Ninerr transaction/,
   );
 });
 

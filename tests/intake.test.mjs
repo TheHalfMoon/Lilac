@@ -39,7 +39,7 @@ function byTag(prop, tag, predicate = () => true) {
 }
 
 function withProject(callback) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-intake-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-intake-")));
   try {
     createProject(root, { projectId: "intake-proj", document: createDocument({ id: "doc-1", nodes: [] }), createdAt: AT });
     return callback(root);

@@ -2,14 +2,14 @@ import type { RulePack } from "./types.ts";
 import { normalizeRulePack } from "./validation.ts";
 
 /**
- * Lilac-authored mobile/native method rules. The method is guided by the
+ * Ninerr-authored mobile/native method rules. The method is guided by the
  * studied Appllama skill (native fidelity and navigation laws) but every
  * statement below is project-owned, explainable, and deterministically
  * checkable. No donor screens, assets, or text are reproduced.
  */
 const PACK = {
   id: "ninerr-mobile-method",
-  title: "Lilac mobile and native method",
+  title: "Ninerr mobile and native method",
   platform: "universal",
   category: "method",
   version: "1",

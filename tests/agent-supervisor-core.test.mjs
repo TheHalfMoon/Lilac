@@ -64,7 +64,7 @@ function taskRecord() {
   };
 }
 
-test("pins Firstmate revision, MIT notice identity, and Lilac supervisor schema", () => {
+test("pins Firstmate revision, MIT notice identity, and Ninerr supervisor schema", () => {
   assert.equal(SUPERVISOR_SCHEMA_VERSION, 1);
   assert.deepEqual(FIRSTMATE_SUPERVISION_PROVENANCE, {
     repository: "kunchenguid/firstmate",

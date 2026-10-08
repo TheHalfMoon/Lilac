@@ -12,7 +12,7 @@ import { CodebaseLinks, MAX_SCAN_FILES, MAX_SOURCE_BYTES, assertFolder, readSour
 
 let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 8, 12, 0, 0) + clock++ * 1000).toISOString();
-const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), "lilac-codebase-")));
+const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), "ninerr-codebase-")));
 const CARD = `export function PriceCard() {
   return (
     <section className="card" style="padding: 16px; background: #f4f0ff">
@@ -55,9 +55,9 @@ test("a codebase folder is an existing directory outside the projects folder, an
     assert.throws(() => assertFolder("code", projects), /full path/u);
     assert.throws(() => assertFolder(join(root, "nope"), projects), /does not exist/u);
     assert.throws(() => assertFolder(join(code, "src", "Card.jsx"), projects), /a file, not a folder/u);
-    assert.throws(() => assertFolder(projects, projects), /outside Lilac's projects folder/u);
-    assert.throws(() => assertFolder(join(projects, "site"), projects), /outside Lilac's projects folder/u);
-    assert.throws(() => assertFolder(root, projects), /outside Lilac's projects folder/u, "nor a folder that holds it");
+    assert.throws(() => assertFolder(projects, projects), /outside Ninerr's projects folder/u);
+    assert.throws(() => assertFolder(join(projects, "site"), projects), /outside Ninerr's projects folder/u);
+    assert.throws(() => assertFolder(root, projects), /outside Ninerr's projects folder/u, "nor a folder that holds it");
     assert.throws(() => assertFolder("/", projects), /not the whole disk|outside/u);
 
     assert.equal(readSourceFile(code, "src/Card.jsx").content, CARD);

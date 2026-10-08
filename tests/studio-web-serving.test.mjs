@@ -16,13 +16,13 @@ let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 7, 12, 0, 0) + clock++ * 1000).toISOString();
 
 test("the host serves only the editor's files, and the launch ticket works once", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-static-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-editor-static-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   try {
     const page = await fetch(`${host.url}/`);
     assert.equal(page.status, 200);
     assert.match(page.headers.get("content-security-policy"), /default-src 'none'; script-src 'self'/u);
-    assert.match(await page.text(), /<title>Lilac<\/title>/u);
+    assert.match(await page.text(), /<title>Ninerr<\/title>/u);
     assert.equal((await fetch(`${host.url}/packages/canvas/src/index.mjs`)).headers.get("content-type"), "text/javascript; charset=utf-8");
     for (const path of ["/packages/persistence/src/store.ts", "/packages/studio-host/src/server.ts", "/packages/canvas/package.json", "/packages/canvas/src/../../../package.json", "/packages/canvas/src/%2e%2e/package.json", "/package.json", "/.git/config", "/packages/studio-web/src/"]) {
       assert.equal((await fetch(`${host.url}${path}`)).status, 404, path);
@@ -58,7 +58,7 @@ test("the host serves only the editor's files, and the launch ticket works once"
 });
 
 test("the editor's routes: the user, the history log, and project-named changes and documents", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-editor-routes-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-editor-routes-")));
   const host = await startStudioHost({ projectsRoot: root, now });
   const call = (method, path, body) => fetch(`${host.url}${path}`, {
     method,

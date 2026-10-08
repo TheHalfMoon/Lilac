@@ -1,6 +1,6 @@
 # Firstmate-derived supervision notice
 
-Lilac Grain 4 ports and adapts bounded supervision semantics from:
+Ninerr Grain 4 ports and adapts bounded supervision semantics from:
 
 - Repository: `kunchenguid/firstmate`
 - Revision: `1f3e769616fdf9f31f85f4c3e6a9f71606634238`

@@ -40,7 +40,7 @@ function request(mode, source, networkPolicy) {
 }
 
 async function mirror(req, url) {
-  const dir = await mkdtemp(join(tmpdir(), "lilac-netpol-"));
+  const dir = await mkdtemp(join(tmpdir(), "ninerr-netpol-"));
   let resolves = 0;
   let fetches = 0;
   try {
@@ -60,7 +60,7 @@ async function mirror(req, url) {
 const REMOTE_SOURCE = { kind: "remote-url", uri: "https://example.com/a.html" };
 
 test("a mirror redirect to a port outside the grant is refused before it is followed", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "lilac-netpol-redirect-"));
+  const dir = await mkdtemp(join(tmpdir(), "ninerr-netpol-redirect-"));
   const fetched = [];
   try {
     const result = await mirrorStaticSite(
@@ -96,7 +96,7 @@ test("a network policy is never inherited from the prototype chain", async () =>
 });
 
 test("cross-origin references in mirrored CSS are skipped, not fatal, and never contacted", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "lilac-netpol-css-"));
+  const dir = await mkdtemp(join(tmpdir(), "ninerr-netpol-css-"));
   const fetched = [];
   const bodies = {
     "https://example.com/a.html": ["text/html", '<link rel="stylesheet" href="/site.css"><main>ok</main>'],

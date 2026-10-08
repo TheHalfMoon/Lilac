@@ -55,9 +55,9 @@ test("drift detector reports missing and extra tools deterministically", () => {
   assert.throws(() => assertPaperMCPCompatibility(makeConfig(changed)), MCPContractError);
 });
 test("client validation requires a supported transport when requested", () => {
-  assert.equal(validateMCPClientInfo({ name: "Lilac", transport: "stdio" }, { requireTransport: true }), true);
+  assert.equal(validateMCPClientInfo({ name: "Ninerr", transport: "stdio" }, { requireTransport: true }), true);
   assert.throws(
-    () => validateMCPClientInfo({ name: "Lilac", transport: "socket" }, { requireTransport: true }),
+    () => validateMCPClientInfo({ name: "Ninerr", transport: "socket" }, { requireTransport: true }),
     MCPContractError,
   );
 });

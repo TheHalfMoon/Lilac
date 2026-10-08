@@ -20,7 +20,7 @@ const byId = new Map(register.entries.map((entry) => [entry.id, entry]));
 // CC0 (public-domain dedication) and OFL (fonts). Anything else must stay reference-only.
 const policy = JSON.parse(read("scripts/license-policy.json"));
 const PERMISSIVE = new Set([...policy.allowed, "CC0-1.0", "OFL-1.1"]);
-// Optional runtime components are never distributed with Lilac. They may be compatible under
+// Optional runtime components are never distributed with Ninerr. They may be compatible under
 // a permissive license or when explicitly marked NOT-DISTRIBUTED, and under nothing else.
 const NOT_DISTRIBUTED = new Set(["optional-runtime"]);
 const distributedOrPermissive = (entry) => PERMISSIVE.has(entry.license) || (NOT_DISTRIBUTED.has(entry.kind) && entry.license.startsWith("NOT-DISTRIBUTED"));
@@ -28,9 +28,9 @@ const distributedOrPermissive = (entry) => PERMISSIVE.has(entry.license) || (NOT
 // not incorporated at all (the upstream of an upstream; an optional local dev tool).
 const URL_ALIASES = { "inikulin/parse5": "parse5", "fb55/entities": "entities", "microsoft/playwright": "playwright-core" };
 const URL_NOT_INCORPORATED = new Set(["ehmo/platform-design-skills", "trailhq/Graft", "owner/repo", "TheHalfMoon/Lilac"]); // owner/repo: the placeholder in docs; TheHalfMoon/Lilac: this repository (its clone URL in docs/RELEASE.md)
-// owner/name literals that are not upstream projects: rule ids, MIME types, Lilac paths, and
+// owner/name literals that are not upstream projects: rule ids, MIME types, Ninerr paths, and
 // MCP JSON-RPC method names (tools/list).
-const NOT_DONORS = /^(a11y|ninerr-mobile-method|application|text|packages|internal|LilacImportStack|tools|notifications|resources|prompts|completion|logging|sampling|roots)\//u;
+const NOT_DONORS = /^(a11y|ninerr-mobile-method|application|text|packages|internal|NinerrImportStack|tools|notifications|resources|prompts|completion|logging|sampling|roots)\//u;
 const PATH_LIKE = /\.(ts|mts|mjs|js|cjs|json|md|ya?ml|tsx|jsx|css|html?|txt|svg|png|go|py|rs|toml|lock|sh)$/iu;
 
 test("every entry is well formed and ids are unique", () => {

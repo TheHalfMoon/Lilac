@@ -1,4 +1,4 @@
-// @ninerr/canvas: viewport, hit testing, selection and transforms over the Lilac renderer.
+// @ninerr/canvas: viewport, hit testing, selection and transforms over the Ninerr renderer.
 //
 // The canvas reads the document and never mutates it: every interaction ends in a list of
 // history operations handed to `onCommit`, which the editor sends to the studio host as one

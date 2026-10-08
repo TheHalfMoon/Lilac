@@ -82,7 +82,7 @@ test("model and history operations on 50k nodes stay within budget and scale lin
 });
 
 test("persisted commits and reopen with replay on 10k nodes stay within budget", () => {
-  const root = mkdtempSync(join(tmpdir(), "lilac-budget-"));
+  const root = mkdtempSync(join(tmpdir(), "ninerr-budget-"));
   try {
     const document = largeDocument(10_000);
     createProject(root, { projectId: "budget", document, createdAt: AT });
