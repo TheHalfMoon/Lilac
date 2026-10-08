@@ -195,7 +195,7 @@ export class StudioSession {
    * `provenance` (host-internal callers only, never from a request body) is kept in the
    * transaction's `metadata.lilac`, for example what an import came from.
    */
-  edit(actor: StudioActor, input: EditInput, transport: "http" | "mcp" | "agent" = "http", provenance?: Record<string, unknown>): ChangeEvent {
+  edit(actor: StudioActor, input: EditInput, transport: "http" | "mcp" | "agent" = "http", provenance?: Record<string, unknown>, options: { undoable?: boolean } = {}): ChangeEvent {
     this.#assertUsable();
     if (input === null || typeof input !== "object" || !Number.isSafeInteger(input.baseRevision)) throw new StudioError(400, "invalid-edit", "baseRevision must be an integer");
     if (input.baseRevision !== this.#store.revision) {
@@ -206,6 +206,9 @@ export class StudioSession {
     const intent = typeof input.intent === "string" ? input.intent.slice(0, 500) : null;
     const tool = typeof input.tool === "string" ? input.tool.slice(0, 200) : null;
     const { event, inverse } = this.#commit(actor, transport, { operations: input.operations, intent, tool, ...(provenance ? { provenance } : {}) });
+    // Bookkeeping that follows something outside the project (a written source file) is not
+    // undoable: undoing it would make the project disagree with that file (#185).
+    if (options.undoable === false) return event;
     this.#push(this.#undo, actor, { transactionId: event.transactionId, intent, operations: input.operations, inverse });
     this.#redo.delete(actor.actorId);
     return event;
@@ -362,7 +365,9 @@ export class StudioSession {
   #storeFailure(error: unknown): StudioError {
     const name = error instanceof Error ? error.name : "";
     const message = error instanceof Error ? error.message : "";
-    const storeBroken = /reopen|changed outside|modified outside|replaced|changed since|no longer holds|changed while|lock/iu.test(message);
+    // A failed journal write poisons the store whatever its message says (#185): the project
+    // must be reopened, never reported as the client's invalid edit.
+    const storeBroken = this.#store.needsReopen || /reopen|changed outside|modified outside|replaced|changed since|no longer holds|changed while|lock/iu.test(message);
     if ((name === "PersistenceValidationError" || name === "PersistenceCorruptionError") && !storeBroken) {
       return new StudioError(400, "invalid-edit", message.slice(0, 300));
     }

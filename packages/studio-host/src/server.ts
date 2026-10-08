@@ -8,7 +8,7 @@ import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES } from "@lilac/persistence";
 import { AgentRegistry } from "./agents.ts";
 import { StudioError } from "./errors.ts";
 import { exportJsx, importJsx } from "./code.ts";
-import { CodebaseLinks, assertFolder, bringIn, planWriteBack, scanComponents, writeBack } from "./codebase.ts";
+import { CodebaseLinks, assertFolder, bringIn, planWriteBack, removeTemporary, scanComponents, settleWriteBacks, writeBack, type WriteBackPlan } from "./codebase.ts";
 import { ImportDesk, MAX_IMPORT_HTML_BYTES } from "./imports.ts";
 import { ConfirmationBroker, handleMcpMessage } from "./mcp.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
@@ -96,6 +96,15 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   };
   const agents = new AgentRegistry(projectsRoot, owner);
   const codebases = new CodebaseLinks(projectsRoot);
+  // Write-backs whose outcome their files now show are settled before anything is planned
+  // from them, and when a project opens (#185). Not undoable: they follow the files. A
+  // leftover temporary is removed only once its record's withdrawal is committed.
+  const settleWriteBacksOf = (current: StudioSession, folder: string): void => {
+    const { operations, temporaries } = settleWriteBacks(current.document, folder);
+    if (operations.length === 0) return;
+    current.edit(owner, { baseRevision: current.revision, operations, intent: "Settle earlier write-backs", tool: "lilac:codebase" }, "http", undefined, { undoable: false });
+    for (const temporary of temporaries) removeTemporary(temporary);
+  };
   // What the person has selected in the editor, for MCP's get_selection.
   let selection: string[] = [];
   let session: StudioSession | null = null;
@@ -187,6 +196,16 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
         throw new StudioError(400, "invalid-lock-override", "breakStaleLock needs a non-empty reason");
       }
       switchTo(name, () => StudioSession.open({ projectsRoot, name, owner, now, ...(breakStaleLock ? { breakStaleLock: { reason: breakStaleLock.reason.slice(0, 500) } } : {}) }));
+      const linked = codebases.get(name);
+      if (linked !== null) {
+        try {
+          settleWriteBacksOf(requireSession(), assertFolder(linked, projectsRoot));
+        } catch (error) {
+          // A folder that cannot be read now is settled when it is next planned from; a project
+          // whose store failed must be reopened, and says so.
+          if (error instanceof StudioError && error.code === "project-needs-reopen") throw error;
+        }
+      }
       return describe();
     },
     "POST /api/projects/close": () => {
@@ -250,14 +269,27 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     },
     "POST /api/codebase/preview": (body) => {
       const current = requireSession();
-      const { after: _after, rebase: _rebase, ...plan } = planWriteBack(current.document, body?.nodeId, connectedFolder(current.name));
+      const folder = connectedFolder(current.name);
+      settleWriteBacksOf(current, folder);
+      const { after: _after, rebase: _rebase, ...plan } = planWriteBack(current.document, body?.nodeId, folder);
       return plan;
     },
     "POST /api/codebase/write": (body) => {
       const current = requireSession();
-      const { plan, operations } = writeBack(current.document, body?.nodeId, connectedFolder(current.name), body?.token);
-      // The file is written; the layers' bases follow it, as one transaction.
-      const event = current.edit(owner, { baseRevision: current.revision, operations, intent: `Write ${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} back to ${plan.file}`, tool: "lilac:codebase" });
+      // Recorded as pending, written, then confirmed: three transactions (#185, writeBack).
+      let event: ReturnType<typeof current.edit> | undefined;
+      const intents = {
+        record: (plan: WriteBackPlan) => `Write ${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} back to ${plan.file}`,
+        confirm: (plan: WriteBackPlan) => `Confirm the write to ${plan.file}`,
+        withdraw: (plan: WriteBackPlan) => `Withdraw the write to ${plan.file}`,
+      };
+      const folder = connectedFolder(current.name);
+      settleWriteBacksOf(current, folder);
+      // Not undoable: undo cannot take back the file, so undoing these would make the
+      // project disagree with it.
+      const plan = writeBack(current.document, body?.nodeId, folder, body?.token, (operations, step, planned) => {
+        event = current.edit(owner, { baseRevision: current.revision, operations, intent: intents[step](planned), tool: "lilac:codebase" }, "http", undefined, { undoable: false });
+      });
       return { ...event, file: plan.file, written: plan.changes.length };
     },
     "POST /api/import/discard": (body) => {

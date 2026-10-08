@@ -144,6 +144,12 @@ export interface CodeSource {
   textIndex?: number;
   /** The source's literal values when it was brought in (or last written back). */
   base: { text?: string; props: Record<string, string> };
+  /**
+   * A write-back recorded before its file was renamed into place and not yet confirmed: the
+   * bases it writes, the SHA-256 the file has once it lands, and the name of the temporary
+   * file next to it that becomes the file (#185). See codebase.ts, pendingState.
+   */
+  pending?: { base: { text?: string; props: Record<string, string> }; sha256: string; temp?: string };
 }
 
 export interface ImportJsxOptions {

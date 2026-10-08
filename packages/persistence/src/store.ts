@@ -684,6 +684,11 @@ export class ProjectStore {
     return this.#seq;
   }
 
+  /** True after a failed journal write: nothing more can be committed until a reopen. */
+  get needsReopen(): boolean {
+    return this.#poisoned;
+  }
+
   /**
    * Apply a history transaction (validation and stale-revision rejection happen first),
    * durably append it to the journal, then update memory. The in-memory document is built
