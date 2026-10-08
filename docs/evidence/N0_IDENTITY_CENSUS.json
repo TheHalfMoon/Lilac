@@ -2,20 +2,20 @@
   "schema": "identity-census-summary/1",
   "filesScanned": 518,
   "filesWithFindings": 311,
-  "gatedFindings": 1937,
+  "gatedFindings": 1938,
   "byCategory": {
     "ACTIVE_PRODUCT_IDENTITY": 762,
     "ACTIVE_INTERNAL_IDENTITY": 347,
     "PUBLIC_API": 59,
     "PERSISTED_DATA": 8,
     "LEGACY_COMPATIBILITY": 47,
-    "TEST_FIXTURE": 473,
+    "TEST_FIXTURE": 474,
     "THIRD_PARTY_INDEPENDENT_OBLIGATION": 198,
     "IMMUTABLE_HISTORICAL_FACT": 413,
     "REMOVE_ENTIRELY": 288
   },
   "byTerm": {
-    "lilac": 1590,
+    "lilac": 1591,
     "paper": 476,
     "firstmate": 29,
     "no-mistakes": 21,
@@ -47,8 +47,8 @@
     "public-cli": 23,
     "public-env": 9,
     "public-mcp-catalog": 27,
-    "tests": 473,
+    "tests": 474,
     "third-party-notices": 23
   },
-  "censusSha256": "e024cf46e535e06422db49e812e94579f97267c3cc2994e42918ef90e011d129"
+  "censusSha256": "49a69c84deb1f94c07792fdb1a92bba93c89fa810496939c96cacc69037ae1eb"
 }

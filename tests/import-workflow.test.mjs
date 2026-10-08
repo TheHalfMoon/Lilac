@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { MAX_IMPORT_HTML_BYTES, MAX_IMPORT_NODES, startStudioHost, styleProperties } from "../packages/studio-host/src/index.ts";
 import { browserTestOptions } from "./support/browser.mjs";
 import { layerCount, openEditor, rendered, waitRevision } from "./support/editor.mjs";
+import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 // PC6 (#146): importing HTML through the product. The import stack sanitizes it offline,
 // intake reviews it, the person decides in the editor, and the commit is one attributed,
@@ -89,7 +90,7 @@ test("the host reviews an import, then commits it as one attributed, undoable tr
     assert.equal((await call("POST", "/api/import/discard", { proposalId: discarded.proposalId })).status, 200);
     assert.equal((await call("POST", "/api/import/commit", { proposalId: discarded.proposalId })).status, 404);
     // The journal records what the import came from.
-    const journal = readFileSync(join(root, "site", ".ninerr", "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
+    const journal = readFileSync(join(root, "site", PROJECT_FILES.directory, "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
     assert.equal(journal[0].metadata.lilac.provenance.import.proposalId, review.proposalId);
     assert.equal(journal[0].metadata.lilac.provenance.import.sourceKind, "html-snapshot");
     // Limits: the import stack's offline policy.
@@ -118,7 +119,7 @@ test("a review that says ready commits; one too large for a single change says s
     assert.equal(host.session.revision, 1);
     // A commit that fails keeps the review: the same review answers again, not "not found".
     const kept = (await call("POST", "/api/import", { html: "<p>kept</p>" })).json;
-    appendFileSync(join(root, "big", ".ninerr", "journal.log"), "tampered\n");
+    appendFileSync(join(root, "big", PROJECT_FILES.directory, "journal.log"), "tampered\n");
     assert.equal((await call("POST", "/api/import/commit", { proposalId: kept.proposalId })).json.error.code, "project-needs-reopen");
     assert.equal((await call("POST", "/api/import/commit", { proposalId: kept.proposalId })).json.error.code, "project-needs-reopen");
   });

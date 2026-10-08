@@ -388,7 +388,6 @@ export class StudioSession {
   }
 }
 
-/** Refuse to break a lock whose holder is a process still running on this machine. */
 /** Whether the process named in a lock file is still running; false when that cannot be read. */
 function lockHolderAlive(lockPath: string): boolean {
   let pid: unknown;
@@ -396,7 +395,7 @@ function lockHolderAlive(lockPath: string): boolean {
     // Only a small regular file is read; links, FIFOs and anything odd are left to
     // persistence's own lock handling.
     const entry = lstatSync(lockPath);
-    if (!entry.isFile() || entry.size > 4096) return;
+    if (!entry.isFile() || entry.size > 4096) return false;
     const fd = openSync(lockPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       pid = JSON.parse(readFileSync(fd, "utf8").slice(0, 4096)).pid;
@@ -415,6 +414,7 @@ function lockHolderAlive(lockPath: string): boolean {
   }
 }
 
+/** Refuse to break a lock whose holder is a process still running on this machine. */
 function assertLockHolderGone(root: string): void {
   // Our own pid holding it means another session in this process: still live.
   if (lockHolderAlive(join(root, PROJECT_FILES.directory, PROJECT_FILES.lock))) {

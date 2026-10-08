@@ -10,6 +10,7 @@ import { editorOrigin, mayNavigate, mayRequest, windowPreferences } from "../pac
 import { findElectron } from "../scripts/desktop/electron.mjs";
 import { desktopTestOptions, display, launchDesktop } from "./support/desktop.mjs";
 import { layerCount, waitRevision } from "./support/editor.mjs";
+import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 // PC9 (#174): the desktop bridge. The Lilac desktop app is a thin Electron shell around the
 // same studio host local web mode runs: a context-isolated, sandboxed window with no Node
@@ -214,12 +215,12 @@ test("the desktop app runs the editor in an isolated, sandboxed window that reac
     step = "close window";
     // Closing the window quits Lilac and stops the host: the project is closed and its
     // lock released.
-    assert.ok(existsSync(join(projects, "desk", ".ninerr", "lock")));
+    assert.ok(existsSync(join(projects, "desk", PROJECT_FILES.directory, "lock")));
     assert.ok(existsSync(join(projects, ".ninerr-studio.json")));
     const exited = new Promise((resolve) => app.process().once("exit", (code) => resolve(code)));
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
     assert.equal(await exited, 0, "Lilac quit when its window closed");
-    assert.equal(existsSync(join(projects, "desk", ".ninerr", "lock")), false, "the lock is released");
+    assert.equal(existsSync(join(projects, "desk", PROJECT_FILES.directory, "lock")), false, "the lock is released");
     assert.equal(existsSync(join(projects, ".ninerr-studio.json")), false, "the discovery file is removed");
     assert.deepEqual(desktop.errors.filter((message) => !/violates the (?:following|document's) Content Security Policy|Not allowed to load local resource: file:/u.test(message)), [], "only the refused requests are logged");
 
