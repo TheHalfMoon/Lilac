@@ -1,4 +1,4 @@
-import { cloneJson } from "@lilac/agent-runtime";
+import { cloneJson } from "@ninerr/agent-runtime";
 import { SupervisorRecoveryError } from "./errors.ts";
 import { SUPERVISOR_SCHEMA_VERSION, type DirtyStateCheckpoint, type RecoveryJournal, type RecoveryPhase, type RuntimeEvidence } from "./types.ts";
 

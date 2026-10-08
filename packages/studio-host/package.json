@@ -9,10 +9,10 @@
   },
   "dependencies": {
     "@ninerr/code-ir": "0.0.0",
-    "@lilac/collaboration": "0.0.0",
+    "@ninerr/collaboration": "0.0.0",
     "@ninerr/document-model": "0.0.0",
     "@ninerr/history": "0.0.0",
-    "@lilac/import-stack": "0.0.0",
+    "@ninerr/import-stack": "0.0.0",
     "@lilac/intake": "0.0.0",
     "@lilac/mcp-protocol": "0.0.0",
     "@ninerr/network-policy": "0.0.0",

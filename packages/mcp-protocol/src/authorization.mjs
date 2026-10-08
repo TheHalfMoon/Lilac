@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
-import { canonicalStringify } from "@lilac/agent-runtime";
-import { evaluateAccess } from "@lilac/collaboration";
+import { canonicalStringify } from "@ninerr/agent-runtime";
+import { evaluateAccess } from "@ninerr/collaboration";
 
 import { MCPContractError, classifyPaperTool } from "./paper-tools.mjs";
 

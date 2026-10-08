@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { types } from "node:util";
-import { RULE_SEVERITIES, normalizeRulePack, normalizeSnapshot, type RuleSeverity } from "@lilac/design-method";
+import { RULE_SEVERITIES, normalizeRulePack, normalizeSnapshot, type RuleSeverity } from "@ninerr/design-method";
 import { DecisionAssuranceValidationError } from "./errors.ts";
 import {
   ASSURANCE_HARD_LIMITS,

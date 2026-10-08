@@ -1,4 +1,4 @@
-import { cloneJson } from "@lilac/agent-runtime";
+import { cloneJson } from "@ninerr/agent-runtime";
 import { AgentEventError, HandlerRegistrationError } from "./errors.ts";
 import {
   AGENT_EVENT_KINDS,

@@ -1,4 +1,4 @@
-import { validateImportProposal, type ImportNode, type ImportProposal } from "@lilac/import-stack";
+import { validateImportProposal, type ImportNode, type ImportProposal } from "@ninerr/import-stack";
 import { SEMANTIC_ROLES, type SemanticRecord, type SemanticReport, type SemanticRole } from "./types.ts";
 
 const ROLE_SET: ReadonlySet<string> = new Set(SEMANTIC_ROLES);

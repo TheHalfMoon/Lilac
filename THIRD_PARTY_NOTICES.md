@@ -10,7 +10,7 @@ Lilac uses or interoperates with third-party software under its respective licen
 - Upstream project: https://github.com/inikulin/parse5
 - Transitive runtime: `entities@8.0.0` (Copyright Felix Bohm, BSD-2-Clause)
 
-Lilac's `@lilac/import-stack` package uses the published local Parse5 HTML parser as a bounded parser only. Lilac owns sanitization, authority limits, deterministic identifiers, source provenance, proposal validation, and history commit boundaries. The MIT and BSD-2-Clause license texts are included by the upstream npm distributions. Any Lilac release that redistributes Parse5 or entities source or object code must preserve the applicable licenses and attribution notices.
+Lilac's `@ninerr/import-stack` package uses the published local Parse5 HTML parser as a bounded parser only. Lilac owns sanitization, authority limits, deterministic identifiers, source provenance, proposal validation, and history commit boundaries. The MIT and BSD-2-Clause license texts are included by the upstream npm distributions. Any Lilac release that redistributes Parse5 or entities source or object code must preserve the applicable licenses and attribution notices.
 
 ## Impeccable
 
@@ -24,7 +24,7 @@ Lilac's `@lilac/import-stack` package uses the published local Parse5 HTML parse
 - License: Apache License 2.0
 - Upstream project: https://github.com/pbakaus/impeccable
 
-Lilac's `@lilac/design-assurance` package invokes the published local Impeccable detector and normalizes its findings. Lilac-specific rule packs and policy logic are project-owned code and are not represented as original Impeccable source.
+Lilac's `@ninerr/design-assurance` package invokes the published local Impeccable detector and normalizes its findings. Lilac-specific rule packs and policy logic are project-owned code and are not represented as original Impeccable source.
 
 The Apache License 2.0 text is included by the upstream npm distribution. Any Lilac release that redistributes Impeccable source or object code must preserve the applicable license and attribution notices.
 
@@ -70,7 +70,7 @@ Lilac's test suite uses `playwright-core` to drive a locally installed Chromium 
 - Copyright: Copyright (c) 2026 Unreal Labs (upstream LICENSE at the pinned revision)
 - Upstream project: https://github.com/unreallabsai/unreal-agent
 
-Lilac's `@lilac/agent-runtime` is a TypeScript semantic port of bounded durability concepts observed at the pinned revision: append-only session history, caller-supplied idempotency identities, replay/resume, immutable-parent forks, versioned operation envelopes, validated operation transitions, atomic tool-call/operation registration, synchronous tool translation, and recovery semantics.
+Lilac's `@ninerr/agent-runtime` is a TypeScript semantic port of bounded durability concepts observed at the pinned revision: append-only session history, caller-supplied idempotency identities, replay/resume, immutable-parent forks, versioned operation envelopes, validated operation transitions, atomic tool-call/operation registration, synchronous tool translation, and recovery semantics.
 
 Lilac does not vendor the Unreal Agent Go harness, provider clients, remote runner, process primitives, branding, or telemetry. Lilac-specific authority fields and document-transaction binding are project-owned extensions. Any future direct redistribution of upstream Unreal Agent source must preserve the MIT license and copyright notice. The upstream license at the pinned revision:
 
@@ -124,23 +124,23 @@ Lilac's `@lilac/agent-supervisor` package ports and adapts bounded supervision s
 - Source revision studied and pinned by Lilac: `130ad63d7163c19df64322556ca9c260eef353be`
 - License: MIT
 
-`@lilac/import-stack`'s bounded static mirror fallback adapts lifecycle ideas from this project, reimplemented on `node:http`. No donor files are included.
+`@ninerr/import-stack`'s bounded static mirror fallback adapts lifecycle ideas from this project, reimplemented on `node:http`. No donor files are included.
 
 ## Guidance-only donors
 
 These projects were studied for design guidance. No code, text, or assets were copied from them. Each is recorded in the named package's provenance.
 
-- `mrmps/classifier-dev` at `a17bf2b6353f6234af6e977a463da7cd1975b68e`, MIT: `@lilac/decision-router`.
+- `mrmps/classifier-dev` at `a17bf2b6353f6234af6e977a463da7cd1975b68e`, MIT: `@ninerr/decision-router`.
 - `kunchenguid/no-mistakes` at `0616eb4911845e2ba04faa17186ecd2686d7d579`, MIT: `@lilac/delivery-governance`.
-- `Appllama/appllama-skills` at `dd5caaec3d5d50ad7fc0324da238119c6b7c3707`, MIT: `@lilac/design-method`.
-- `reinaldosimoes/design-resources` at `43fe2b5d801e34c21e22b5639711f7e250a798e5`, CC0-1.0: `@lilac/design-method`.
+- `Appllama/appllama-skills` at `dd5caaec3d5d50ad7fc0324da238119c6b7c3707`, MIT: `@ninerr/design-method`.
+- `reinaldosimoes/design-resources` at `43fe2b5d801e34c21e22b5639711f7e250a798e5`, CC0-1.0: `@ninerr/design-method`.
 
 ## Reference-only projects
 
 These projects were studied only. No code from them is in Lilac, and none may be copied.
 
-- `kgoedecke/doop` at `d99c8b157d5afd4192b356f89a2b19adc28c75a5`, AGPL-3.0-only (studied for `@lilac/collaboration`).
-- `firecrawl/firecrawl` at `4244638a7041bae8b99bdd42e3c44520f9e62da1`, AGPL-3.0 (an external connector interface only, in `@lilac/import-stack`).
+- `kgoedecke/doop` at `d99c8b157d5afd4192b356f89a2b19adc28c75a5`, AGPL-3.0-only (studied for `@ninerr/collaboration`).
+- `firecrawl/firecrawl` at `4244638a7041bae8b99bdd42e3c44520f9e62da1`, AGPL-3.0 (an external connector interface only, in `@ninerr/import-stack`).
 - `caio0452/jev_search` at `ea073f6db48f5bff73ae4b9f2240d2d302fb9dc1`, no license observed.
 - `vcashwin/paper-snapshot` at `12920e03e5bd6758a5e5d20db92b68e0410b0fb0`, MIT.
 - Public Paper repositories, none incorporated:
@@ -156,7 +156,7 @@ These projects were studied only. No code from them is in Lilac, and none may be
 - License: proprietary.
 - Basis: the Lilac project owner attests full permission to use, copy and modify the Paper.design source for Lilac (`docs/provenance/PAPER_AUTHORIZATION.md`).
 
-No Paper source code is included in this repository. Lilac contains its own code that is compatible with Paper's public interfaces: the public names and classifications of Paper's MCP tools (`@lilac/mcp-protocol`), and behaviour compatibility in `@lilac/collaboration` and `@lilac/import-stack`.
+No Paper source code is included in this repository. Lilac contains its own code that is compatible with Paper's public interfaces: the public names and classifications of Paper's MCP tools (`@lilac/mcp-protocol`), and behaviour compatibility in `@ninerr/collaboration` and `@ninerr/import-stack`.
 
 Paper, Paper.design and related names, logos and marks belong to their owner. They are not licensed by Lilac, and their use here identifies compatibility only.
 
@@ -164,9 +164,9 @@ Paper, Paper.design and related names, logos and marks belong to their owner. Th
 
 Lilac can invoke these when the user has installed them. Lilac does not ship them.
 
-- `docling-project/docling` (MIT, models under their own licenses): `@lilac/import-stack` local document adapter.
-- `playwright` (Apache-2.0): `@lilac/import-stack` dynamic capture.
-- System Chrome, Chromium, Edge or Brave (`system-browsers`): `@lilac/design-assurance` browser scans.
+- `docling-project/docling` (MIT, models under their own licenses): `@ninerr/import-stack` local document adapter.
+- `playwright` (Apache-2.0): `@ninerr/import-stack` dynamic capture.
+- System Chrome, Chromium, Edge or Brave (`system-browsers`): `@ninerr/design-assurance` browser scans.
 
 ## Development tooling
 

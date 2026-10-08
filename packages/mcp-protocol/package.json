@@ -5,7 +5,7 @@
   "version": "0.0.0",
   "exports": "./src/index.mjs",
   "dependencies": {
-    "@lilac/agent-runtime": "0.0.0",
-    "@lilac/collaboration": "0.0.0"
+    "@ninerr/agent-runtime": "0.0.0",
+    "@ninerr/collaboration": "0.0.0"
   }
 }

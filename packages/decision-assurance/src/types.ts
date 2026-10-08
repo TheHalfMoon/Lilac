@@ -1,4 +1,4 @@
-import type { DesignSnapshot, RulePack, RuleSeverity } from "@lilac/design-method";
+import type { DesignSnapshot, RulePack, RuleSeverity } from "@ninerr/design-method";
 
 export const ASSURANCE_SCHEMA_VERSION = 1;
 

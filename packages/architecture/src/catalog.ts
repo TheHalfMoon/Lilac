@@ -101,7 +101,7 @@ const SUBSYSTEMS = [
   {
     id: "collaboration",
     title: "Collaboration and presence",
-    owner: "@lilac/collaboration",
+    owner: "@ninerr/collaboration",
     status: "implemented",
     boundary: "Local-first collaboration, presence, comments, activity, and agent attribution through history transactions.",
     dependsOn: ["history", "agent-runtime"],
@@ -109,7 +109,7 @@ const SUBSYSTEMS = [
   {
     id: "import-export",
     title: "Import and export",
-    owner: "@lilac/import-stack",
+    owner: "@ninerr/import-stack",
     status: "implemented",
     boundary: "Provenance-preserving untrusted intake producing proposals; canonical mutation only through history. Export side planned.",
     dependsOn: ["document-model", "history", "network-policy"],
@@ -133,7 +133,7 @@ const SUBSYSTEMS = [
   {
     id: "agent-runtime",
     title: "Agent runtime",
-    owner: "@lilac/agent-runtime",
+    owner: "@ninerr/agent-runtime",
     status: "implemented",
     boundary: "Durable replayable agent sessions, operation envelopes, and document transaction binding.",
     dependsOn: ["history"],
@@ -165,7 +165,7 @@ const SUBSYSTEMS = [
   {
     id: "design-assurance",
     title: "Design assurance",
-    owner: "@lilac/design-assurance",
+    owner: "@ninerr/design-assurance",
     status: "implemented",
     boundary: "Deterministic local design checks with rule packs, including an accessibility audit of generated and imported output; findings outrank probabilistic recommendations. Browser-scan targets are classified by network-policy.",
     dependsOn: ["document-model", "network-policy"],
@@ -173,7 +173,7 @@ const SUBSYSTEMS = [
   {
     id: "decision-router",
     title: "Decision router",
-    owner: "@lilac/decision-router",
+    owner: "@ninerr/decision-router",
     status: "implemented",
     boundary: "Provider-neutral decisions with confidence, abstention, and review routing; never overrides deterministic violations.",
     dependsOn: ["design-assurance"],
@@ -197,7 +197,7 @@ const SUBSYSTEMS = [
   {
     id: "design-method",
     title: "Design method and resources",
-    owner: "@lilac/design-method",
+    owner: "@ninerr/design-method",
     status: "implemented",
     boundary: "Explainable method rule packs, deterministic review candidates, checklists, and the licensed resource registry.",
     dependsOn: ["design-assurance"],
@@ -269,7 +269,7 @@ const SUBSYSTEMS = [
   {
     id: "sandbox-security",
     title: "Sandbox and security",
-    owner: "@lilac/import-stack",
+    owner: "@ninerr/import-stack",
     status: "stub",
     boundary: "Import sanitization, authority limits, and bounded capture are implemented. General execution sandboxing is planned.",
     dependsOn: ["document-model", "agent-supervisor"],

@@ -1,4 +1,4 @@
-import { canonicalStringify } from "@lilac/agent-runtime";
+import { canonicalStringify } from "@ninerr/agent-runtime";
 import { normalizeAccessPolicy } from "./access.ts";
 import { CollaborationConflictError, CollaborationPersistenceError, CollaborationValidationError } from "./errors.ts";
 import { assertAllowedKeys, assertBoundedString, assertPlainObject, assertSchemaVersion, assertTimestamp, normalizeMetadata } from "./validation.ts";

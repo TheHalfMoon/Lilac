@@ -1,4 +1,4 @@
-import { evaluateSnapshot, type DesignSnapshot, type RulePack, type SnapshotNode } from "@lilac/design-method";
+import { evaluateSnapshot, type DesignSnapshot, type RulePack, type SnapshotNode } from "@ninerr/design-method";
 import {
   ASSURANCE_HARD_LIMITS,
   SEVERITY_PENALTY,

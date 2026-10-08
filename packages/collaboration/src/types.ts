@@ -1,4 +1,4 @@
-import type { JsonValue } from "@lilac/agent-runtime";
+import type { JsonValue } from "@ninerr/agent-runtime";
 
 export const COLLABORATION_SCHEMA_VERSION = 1;
 export const MAX_ID_LENGTH = 256;

@@ -319,7 +319,7 @@ test("import proposal commit mutates only through history with exact attribution
   assert.equal(result.documentRevision, 1);
   const entry = result.history.past.at(-1);
   assert.equal(entry.transaction.actor, "user-1");
-  assert.equal(entry.transaction.tool, "@lilac/import-stack");
+  assert.equal(entry.transaction.tool, "@ninerr/import-stack");
   assert.deepEqual(entry.transaction.metadata.import, {
     requestId: proposal.requestId,
     proposalId: proposal.proposalId,
