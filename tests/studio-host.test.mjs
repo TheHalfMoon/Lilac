@@ -154,13 +154,13 @@ test("create, edit, undo and redo are attributed transactions streamed live and 
     await api(host, "POST", "/api/edit", { baseRevision: 1, intent: "Rename", operations: [{ type: "set-props", nodeId: "frame-1", set: { name: "Hero" } }] });
     const undone = await api(host, "POST", "/api/undo");
     assert.equal(undone.status, 200);
-    assert.equal(undone.json.tool, "lilac:undo");
+    assert.equal(undone.json.tool, "ninerr:undo");
     assert.equal(undone.json.intent, "Undo: Rename");
     let doc = (await api(host, "GET", "/api/document")).json;
     assert.equal(doc.revision, 3);
     assert.equal(doc.document.nodes["frame-1"].props.name, "frame-1");
     const redone = await api(host, "POST", "/api/redo");
-    assert.equal(redone.json.tool, "lilac:redo");
+    assert.equal(redone.json.tool, "ninerr:redo");
     doc = (await api(host, "GET", "/api/document")).json;
     assert.equal(doc.document.nodes["frame-1"].props.name, "Hero");
     assert.equal((await api(host, "POST", "/api/redo")).json.error.code, "nothing-to-redo");
@@ -175,9 +175,9 @@ test("create, edit, undo and redo are attributed transactions streamed live and 
 
     // The journal holds every change, including undo and redo, with collaboration attribution.
     const journal = readFileSync(join(root, "demo", PROJECT_FILES.directory, "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
-    assert.deepEqual(journal.map((tx) => tx.tool), [null, null, "lilac:undo", "lilac:redo", "lilac:undo", "lilac:undo", "lilac:redo"]);
-    assert.equal(journal[2].metadata.lilac.undoOf, journal[1].id);
-    assert.equal(journal[3].metadata.lilac.redoOf, journal[1].id);
+    assert.deepEqual(journal.map((tx) => tx.tool), [null, null, "ninerr:undo", "ninerr:redo", "ninerr:undo", "ninerr:undo", "ninerr:redo"]);
+    assert.equal(journal[2].metadata.ninerr.undoOf, journal[1].id);
+    assert.equal(journal[3].metadata.ninerr.redoOf, journal[1].id);
     for (const tx of journal) {
       assert.equal(tx.actor, "local-user");
       assert.equal(tx.metadata.collaboration.actorKind, "user");
@@ -285,7 +285,7 @@ test("a store that can no longer be written is reported as needing a reopen, wit
 }));
 
 test("undo and redo restore every operation type exactly, across reopen", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "lilac-undo-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-undo-")));
   const owner = { actorId: "local-user", kind: "user", accessClass: "member", displayName: "You" };
   const strip = ({ revision, ...rest }) => JSON.stringify(rest);
   const node = (id, props = {}) => ({ id, type: "frame", props });

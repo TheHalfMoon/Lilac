@@ -30,7 +30,7 @@ const URL_ALIASES = { "inikulin/parse5": "parse5", "fb55/entities": "entities", 
 const URL_NOT_INCORPORATED = new Set(["ehmo/platform-design-skills", "trailhq/Graft", "owner/repo", "TheHalfMoon/Lilac"]); // owner/repo: the placeholder in docs; TheHalfMoon/Lilac: this repository (its clone URL in docs/RELEASE.md)
 // owner/name literals that are not upstream projects: rule ids, MIME types, Lilac paths, and
 // MCP JSON-RPC method names (tools/list).
-const NOT_DONORS = /^(a11y|lilac-mobile-method|application|text|packages|internal|LilacImportStack|tools|notifications|resources|prompts|completion|logging|sampling|roots)\//u;
+const NOT_DONORS = /^(a11y|ninerr-mobile-method|application|text|packages|internal|LilacImportStack|tools|notifications|resources|prompts|completion|logging|sampling|roots)\//u;
 const PATH_LIKE = /\.(ts|mts|mjs|js|cjs|json|md|ya?ml|tsx|jsx|css|html?|txt|svg|png|go|py|rs|toml|lock|sh)$/iu;
 
 test("every entry is well formed and ids are unique", () => {

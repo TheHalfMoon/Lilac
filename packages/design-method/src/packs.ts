@@ -8,7 +8,7 @@ import { normalizeRulePack } from "./validation.ts";
  * checkable. No donor screens, assets, or text are reproduced.
  */
 const PACK = {
-  id: "lilac-mobile-method",
+  id: "ninerr-mobile-method",
   title: "Lilac mobile and native method",
   platform: "universal",
   category: "method",
@@ -59,4 +59,4 @@ const PACK = {
   ],
 };
 
-export const LILAC_MOBILE_METHOD_PACK: RulePack = normalizeRulePack(PACK);
+export const NINERR_MOBILE_METHOD_PACK: RulePack = normalizeRulePack(PACK);

@@ -18,7 +18,7 @@ A runtime exit never deletes a worktree. Worktree cleanup is outside this packag
 Mutation ordering is intentionally broad-to-narrow:
 
 1. global supervisor owner lock (`FileSupervisorLockAdapter`);
-2. task-set reservation lock (`__lilac_supervisor_task_set__`) when creating a fresh worker;
+2. task-set reservation lock (`__ninerr_supervisor_task_set__`) when creating a fresh worker;
 3. per-task mutation lock;
 4. durable compare-and-swap publication and allowlisted runtime side effects.
 

@@ -218,7 +218,7 @@ function validateRule(rule, namespace) {
   }
 }
 
-export function createLilacRulePack({ namespace, rules }) {
+export function createRulePack({ namespace, rules }) {
   assertNonEmptyString(namespace, "rule pack namespace");
   if (!/^[a-z][a-z0-9-]*$/.test(namespace)) {
     throw new DesignAssuranceError("rule pack namespace must be lowercase kebab-case");
@@ -648,7 +648,7 @@ function normalizeUpstream(findings, options) {
 }
 
 function defaultRulePacks(rulePacks) {
-  if (rulePacks === undefined) return [LILAC_CORE_RULE_PACK];
+  if (rulePacks === undefined) return [NINERR_CORE_RULE_PACK];
   if (!Array.isArray(rulePacks)) throw new DesignAssuranceError("rulePacks must be an array");
   return rulePacks;
 }
@@ -863,8 +863,8 @@ function tokenRegistry(document) {
   return isPlainObject(tokens) ? tokens : "INVALID";
 }
 
-export const LILAC_CORE_RULE_PACK = createLilacRulePack({
-  namespace: "lilac",
+export const NINERR_CORE_RULE_PACK = createRulePack({
+  namespace: "ninerr",
   rules: [
     {
       id: "source-binding-source-id",

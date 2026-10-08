@@ -64,7 +64,7 @@ test("the host reviews an import, then commits it as one attributed, undoable tr
     const event = (await call("POST", "/api/import/commit", { proposalId: review.proposalId })).json;
     assert.equal(event.revision, 1);
     assert.equal(event.intent, "Import Pricing page");
-    assert.equal(event.tool, "lilac:import");
+    assert.equal(event.tool, "ninerr:import");
     assert.equal(event.actor, "local-user");
     assert.equal(event.operations.length, 1, "one restore-subtree: the page frame and everything in it");
     const document = host.session.document;
@@ -91,8 +91,8 @@ test("the host reviews an import, then commits it as one attributed, undoable tr
     assert.equal((await call("POST", "/api/import/commit", { proposalId: discarded.proposalId })).status, 404);
     // The journal records what the import came from.
     const journal = readFileSync(join(root, "site", PROJECT_FILES.directory, "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
-    assert.equal(journal[0].metadata.lilac.provenance.import.proposalId, review.proposalId);
-    assert.equal(journal[0].metadata.lilac.provenance.import.sourceKind, "html-snapshot");
+    assert.equal(journal[0].metadata.ninerr.provenance.import.proposalId, review.proposalId);
+    assert.equal(journal[0].metadata.ninerr.provenance.import.sourceKind, "html-snapshot");
     // Limits: the import stack's offline policy.
     assert.equal(MAX_IMPORT_HTML_BYTES, 2 * 1024 * 1024);
     assert.equal(MAX_IMPORT_NODES, 10_000);

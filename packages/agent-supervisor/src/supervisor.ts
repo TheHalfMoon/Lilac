@@ -646,7 +646,7 @@ export async function reconcileTask(deps: SupervisorDependencies, request: Recon
   });
 }
 
-const TASK_SET_LOCK_ID = "__lilac_supervisor_task_set__";
+const TASK_SET_LOCK_ID = "__ninerr_supervisor_task_set__";
 
 export interface StartTaskRequest {
   taskId: string;

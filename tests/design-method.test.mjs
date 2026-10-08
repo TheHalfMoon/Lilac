@@ -5,7 +5,7 @@ import {
   DESIGN_METHOD_PROVENANCE,
   DESIGN_METHOD_SCHEMA_VERSION,
   DesignMethodValidationError,
-  LILAC_MOBILE_METHOD_PACK,
+  NINERR_MOBILE_METHOD_PACK,
   RESOURCE_TAXONOMY_CATEGORIES,
   RESOURCE_TAXONOMY_VERSION,
   builtinChecklists,
@@ -42,15 +42,15 @@ function snapshot(nodes, overrides = {}) {
 }
 
 test("rule pack validation fails closed", () => {
-  assert.equal(LILAC_MOBILE_METHOD_PACK.rules.length, 7);
-  assert.throws(() => normalizeRulePack({ ...LILAC_MOBILE_METHOD_PACK, rules: [] }), DesignMethodValidationError);
-  assert.throws(() => normalizeRulePack({ ...LILAC_MOBILE_METHOD_PACK, platform: "desktop" }), DesignMethodValidationError);
+  assert.equal(NINERR_MOBILE_METHOD_PACK.rules.length, 7);
+  assert.throws(() => normalizeRulePack({ ...NINERR_MOBILE_METHOD_PACK, rules: [] }), DesignMethodValidationError);
+  assert.throws(() => normalizeRulePack({ ...NINERR_MOBILE_METHOD_PACK, platform: "desktop" }), DesignMethodValidationError);
   assert.throws(() => normalizeRulePack({
-    ...LILAC_MOBILE_METHOD_PACK,
-    rules: [...LILAC_MOBILE_METHOD_PACK.rules, { ...LILAC_MOBILE_METHOD_PACK.rules[0] }],
+    ...NINERR_MOBILE_METHOD_PACK,
+    rules: [...NINERR_MOBILE_METHOD_PACK.rules, { ...NINERR_MOBILE_METHOD_PACK.rules[0] }],
   }), DesignMethodValidationError);
-  assert.throws(() => normalizeRulePack({ ...LILAC_MOBILE_METHOD_PACK, rules: [{ id: "Bad Id", statement: "s", rationale: "r", severity: "minor" }] }), DesignMethodValidationError);
-  assert.throws(() => normalizeRulePack({ ...LILAC_MOBILE_METHOD_PACK, rules: [{ id: "x", statement: "s", rationale: "r", severity: "catastrophic" }] }), DesignMethodValidationError);
+  assert.throws(() => normalizeRulePack({ ...NINERR_MOBILE_METHOD_PACK, rules: [{ id: "Bad Id", statement: "s", rationale: "r", severity: "minor" }] }), DesignMethodValidationError);
+  assert.throws(() => normalizeRulePack({ ...NINERR_MOBILE_METHOD_PACK, rules: [{ id: "x", statement: "s", rationale: "r", severity: "catastrophic" }] }), DesignMethodValidationError);
 });
 
 test("deterministic evaluation finds seeded violations with exact references", () => {
@@ -63,7 +63,7 @@ test("deterministic evaluation finds seeded violations with exact references", (
       { id: "t1", kind: "text", text: "Hello", textSize: 34 },
       { id: "t2", kind: "text", text: "World", textSize: 40 },
     ], { themes: ["light", "dark"], tokensThemed: false }),
-    LILAC_MOBILE_METHOD_PACK,
+    NINERR_MOBILE_METHOD_PACK,
   );
   const byRule = Object.fromEntries(candidates.map((candidate) => [candidate.ruleId, candidate]));
   assert.equal(byRule["min-touch-target"].nodeId, "tiny");
@@ -75,7 +75,7 @@ test("deterministic evaluation finds seeded violations with exact references", (
   assert.equal(byRule["themed-tokens"].nodeId, null);
   assert.equal(byRule["named-interactive-nodes"], undefined);
   for (const candidate of candidates) {
-    assert.equal(candidate.packId, "lilac-mobile-method");
+    assert.equal(candidate.packId, "ninerr-mobile-method");
     assert.ok(["minor", "major"].includes(candidate.severity));
   }
   const again = evaluateSnapshot(
@@ -87,7 +87,7 @@ test("deterministic evaluation finds seeded violations with exact references", (
       { id: "t1", kind: "text", text: "Hello", textSize: 34 },
       { id: "t2", kind: "text", text: "World", textSize: 40 },
     ], { themes: ["light", "dark"], tokensThemed: false }),
-    LILAC_MOBILE_METHOD_PACK,
+    NINERR_MOBILE_METHOD_PACK,
   );
   assert.deepEqual(again, candidates);
 });
@@ -101,7 +101,7 @@ test("clean snapshots produce no candidates", () => {
       { id: "avatar", kind: "image", label: "Profile photo", interactive: false, width: 64, height: 64 },
       { id: "feed", kind: "list", label: "Feed", interactive: false, width: 392, height: 844, itemCount: 12, virtualized: true },
     ], { themes: ["light", "dark"], tokensThemed: true }),
-    LILAC_MOBILE_METHOD_PACK,
+    NINERR_MOBILE_METHOD_PACK,
   );
   assert.deepEqual(candidates, []);
 });
@@ -115,9 +115,9 @@ test("snapshot validation fails closed", () => {
 });
 
 test("checklists reference only known rule ids", () => {
-  const lists = builtinChecklists([LILAC_MOBILE_METHOD_PACK]);
+  const lists = builtinChecklists([NINERR_MOBILE_METHOD_PACK]);
   assert.equal(lists.length, 3);
-  const known = new Set(LILAC_MOBILE_METHOD_PACK.rules.map((rule) => `lilac-mobile-method/${rule.id}`));
+  const known = new Set(NINERR_MOBILE_METHOD_PACK.rules.map((rule) => `ninerr-mobile-method/${rule.id}`));
   for (const list of lists) {
     for (const item of list.items) {
       for (const ruleId of item.ruleIds) assert.ok(known.has(ruleId), ruleId);
@@ -126,7 +126,7 @@ test("checklists reference only known rule ids", () => {
   assert.throws(() => normalizeChecklist({
     id: "bad-list",
     role: "critic",
-    items: [{ id: "bad-item", text: "Check the vibes.", ruleIds: ["lilac-mobile-method/no-such-rule"] }],
+    items: [{ id: "bad-item", text: "Check the vibes.", ruleIds: ["ninerr-mobile-method/no-such-rule"] }],
   }, known), DesignMethodValidationError);
 });
 
@@ -167,7 +167,7 @@ test("registry accepts well-formed entries and rejects unknowns", () => {
 
 test("oversized packs, snapshots, and registries fail closed", () => {
   const rules = Array.from({ length: 65 }, (_, index) => ({ id: `rule-${index}`, statement: "s", rationale: "r", severity: "minor" }));
-  assert.throws(() => normalizeRulePack({ ...LILAC_MOBILE_METHOD_PACK, rules }), DesignMethodValidationError);
+  assert.throws(() => normalizeRulePack({ ...NINERR_MOBILE_METHOD_PACK, rules }), DesignMethodValidationError);
   const nodes = Array.from({ length: 2049 }, (_, index) => node({ id: `n${index}` }));
   assert.throws(() => normalizeSnapshot(snapshot(nodes)), DesignMethodValidationError);
   const entries = Array.from({ length: 2049 }, (_, index) => ({ id: `e${index}`, name: "N", category: "fonts", source: "s", license: "MIT" }));
@@ -175,7 +175,7 @@ test("oversized packs, snapshots, and registries fail closed", () => {
 });
 
 test("deterministic serialization for identical inputs", () => {
-  const pack = LILAC_MOBILE_METHOD_PACK;
+  const pack = NINERR_MOBILE_METHOD_PACK;
   assert.equal(canonicalMethodStringify(pack), canonicalMethodStringify(JSON.parse(JSON.stringify(pack))));
   assert.equal(sha256Text("lilac").length, 64);
 });

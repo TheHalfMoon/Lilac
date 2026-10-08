@@ -168,7 +168,7 @@ test("agents read a layer as JSX through MCP get_jsx", async () => {
     await call("/api/projects/create", { name: "p" });
     const { token } = await call("/api/agents/create", { name: "Agent" });
     const added = await call("/api/code/import", { code: "export function Note() { return <p className=\"note\">Hi</p>; }" });
-    assert.equal(added.tool, "lilac:code");
+    assert.equal(added.tool, "ninerr:code");
     assert.equal(added.intent, "Bring in Note");
     const paragraph = Object.values(host.session.document.nodes).find((node) => node.props.tag === "p").id;
     const answer = await fetch(host.mcpUrl, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_jsx", arguments: { nodeId: paragraph } } }) }).then((response) => response.json());

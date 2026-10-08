@@ -284,7 +284,7 @@ const SUBSYSTEMS = [
   },
 ] as const;
 
-export const LILAC_ARCHITECTURE_MAP: ArchitectureMap = normalizeArchitectureMap({
+export const NINERR_ARCHITECTURE_MAP: ArchitectureMap = normalizeArchitectureMap({
   schemaVersion: 1,
   subsystems: [...SUBSYSTEMS],
 });
