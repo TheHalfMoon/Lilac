@@ -87,7 +87,8 @@ async function main() {
 
     const home = join(work, "home");
     const projects = join(work, "projects");
-    mkdirSync(home, { recursive: true });
+    // A home of its own, with the folders each platform keeps an app's data in.
+    for (const folder of ["", join("AppData", "Roaming"), join("AppData", "Local"), ".config"]) mkdirSync(join(home, folder), { recursive: true });
     const env = {
       ...process.env,
       ...screen.env,
@@ -106,7 +107,8 @@ async function main() {
 
     const launch = async () => {
       const port = await freePort();
-      const child = spawn(executable, [`--remote-debugging-port=${port}`, `--proxy-server=http://127.0.0.1:${proxy.address().port}`], { env, stdio: ["ignore", "pipe", "pipe"] });
+      // Chromium's own log goes to stderr, so a failure to start says why.
+      const child = spawn(executable, [`--remote-debugging-port=${port}`, `--proxy-server=http://127.0.0.1:${proxy.address().port}`, "--enable-logging=stderr"], { env, stdio: ["ignore", "pipe", "pipe"] });
       running.add(child);
       let output = "";
       child.stdout.on("data", (chunk) => (output = (output + chunk).slice(-4000)));
