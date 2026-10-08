@@ -11,11 +11,11 @@
     "LEGACY_COMPATIBILITY": 51,
     "TEST_FIXTURE": 226,
     "THIRD_PARTY_INDEPENDENT_OBLIGATION": 198,
-    "IMMUTABLE_HISTORICAL_FACT": 439,
+    "IMMUTABLE_HISTORICAL_FACT": 440,
     "REMOVE_ENTIRELY": 288
   },
   "byTerm": {
-    "lilac": 813,
+    "lilac": 814,
     "paper": 477,
     "firstmate": 29,
     "no-mistakes": 21,
@@ -32,7 +32,7 @@
     "ui-tars": 28
   },
   "byRule": {
-    "dated-evidence": 439,
+    "dated-evidence": 440,
     "default-donor": 39,
     "default-lilac": 215,
     "default-paper": 50,
@@ -48,5 +48,5 @@
     "tests": 226,
     "third-party-notices": 23
   },
-  "censusSha256": "90f0f58ab93bb8892bb0cced2b5cdd85dc97e1912fbb01ef95d3471daa2af586"
+  "censusSha256": "874043483b99dcf4e6c833df596a8641792475fda5ebc176c53356c10ca39e42"
 }
