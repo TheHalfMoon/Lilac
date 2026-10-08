@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, closeSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, fchmodSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { applyPatch, buildCodeIr } from "@lilac/code-ir";
 import { StudioError } from "./errors.ts";
@@ -22,6 +22,8 @@ import { styleProperties } from "./imports.ts";
 export const MAX_SCAN_FILES = 400;
 export const MAX_SCAN_DEPTH = 8;
 export const MAX_SOURCE_BYTES = 256 * 1024;
+/** Directory entries a scan looks at in all, so a very large folder cannot stall the host. */
+export const MAX_SCAN_ENTRIES = 20_000;
 const SOURCE = /\.(?:jsx|tsx)$/u;
 const SKIPPED = new Set(["node_modules", "dist", "build"]);
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
@@ -89,12 +91,14 @@ export function assertFolder(folder: unknown, projectsRoot: string): string {
   }
   let real: string;
   try {
-    real = realpathSync(folder);
+    // The native realpath gives the true case on macOS and Windows, so a differently cased
+    // spelling of the projects folder is still recognised.
+    real = realpathSync.native(folder);
   } catch {
     throw new StudioError(404, "folder-not-found", "that folder does not exist");
   }
   if (!statSync(real).isDirectory()) throw new StudioError(400, "not-a-folder", "that is a file, not a folder");
-  const projects = realpathSync(projectsRoot);
+  const projects = realpathSync.native(projectsRoot);
   const inside = (parent: string, child: string) => child === parent || child.startsWith(parent.endsWith(sep) ? parent : `${parent}${sep}`);
   if (inside(projects, real) || inside(real, projects)) throw new StudioError(400, "folder-overlaps-projects", "a codebase folder must be outside Lilac's projects folder");
   if (dirname(real) === real) throw new StudioError(400, "folder-is-root", "connect a project's folder, not the whole disk");
@@ -103,7 +107,8 @@ export function assertFolder(folder: unknown, projectsRoot: string): string {
 
 /** A source file inside `folder`, by its path relative to it. */
 export function readSourceFile(folder: string, file: unknown): { file: string; content: string; sha256: string; absolute: string } {
-  if (typeof file !== "string" || file === "" || file.length > 512 || isAbsolute(file) || file.split(/[\\/]/u).some((part) => part === ".." || part === "") || !SOURCE.test(file)) {
+  // Forward slashes only: no backslash, and no colon (a Windows drive or alternate stream).
+  if (typeof file !== "string" || file === "" || file.length > 512 || isAbsolute(file) || /[\\:\u0000-\u001f]/u.test(file) || file.split("/").some((part) => part === ".." || part === "." || part === "") || !SOURCE.test(file)) {
     throw new StudioError(400, "invalid-file", "a source file is a .jsx or .tsx path inside the connected folder");
   }
   const absolute = join(folder, file);
@@ -114,7 +119,7 @@ export function readSourceFile(folder: string, file: unknown): { file: string; c
     throw new StudioError(404, "file-not-found", `${file} is not in the connected folder`);
   }
   if (!entry.isFile()) throw new StudioError(400, "invalid-file", `${file} is not a regular file`);
-  const real = realpathSync(absolute);
+  const real = realpathSync.native(absolute);
   if (!real.startsWith(folder.endsWith(sep) ? folder : `${folder}${sep}`)) throw new StudioError(400, "invalid-file", `${file} is outside the connected folder`);
   if (entry.size > MAX_SOURCE_BYTES) throw new StudioError(413, "file-too-large", `${file} is larger than ${MAX_SOURCE_BYTES / 1024} KiB`);
   const content = readFileSync(real, "utf8");
@@ -127,6 +132,7 @@ const exportedNames = (content: string) => [...content.matchAll(/export\s+(?:def
 export function scanComponents(folder: string): { components: Array<{ file: string; component: string }>; files: number; truncated: boolean } {
   const components: Array<{ file: string; component: string }> = [];
   let files = 0;
+  let entriesSeen = 0;
   let truncated = false;
   const walk = (directory: string, depth: number) => {
     if (depth > MAX_SCAN_DEPTH || truncated) return;
@@ -137,6 +143,11 @@ export function scanComponents(folder: string): { components: Array<{ file: stri
       return;
     }
     for (const entry of entries) {
+      entriesSeen += 1;
+      if (entriesSeen > MAX_SCAN_ENTRIES) {
+        truncated = true;
+        return;
+      }
       if (entry.name.startsWith(".") || SKIPPED.has(entry.name)) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) walk(path, depth + 1);
@@ -174,8 +185,10 @@ export function bringIn(folder: string, file: unknown, component: unknown) {
 
 export interface WriteBackPlan {
   file: string;
-  /** The sha256 of the file the plan was made from; the write requires it unchanged. */
+  /** The sha256 of the file the plan was made from. */
   sha256: string;
+  /** Names this exact plan (the file and what it would become); the write requires it. */
+  token: string;
   diff: string;
   changes: Array<{ nodeId: string; field: string; from: string; to: string }>;
   conflicts: Array<{ nodeId: string; field: string; reason: string }>;
@@ -185,11 +198,25 @@ export interface WriteBackPlan {
   rebase: Array<{ nodeId: string; codeSource: CodeSource }>;
 }
 
-const cssText = (style: Record<string, string>) => Object.entries(style).map(([name, value]) => `${name}: ${value}`).join("; ");
-const sameStyle = (a: string, b: Record<string, string>) => {
-  const left = styleProperties({ cssText: a });
-  return Object.keys(left).length === Object.keys(b).length && Object.entries(left).every(([name, value]) => b[name] === value);
-};
+const sourceName = (prop: string) => (prop === "className" ? "class" : prop === "htmlFor" ? "for" : prop);
+
+/** The layer's current value for a source prop, as source text. */
+function layerValue(node: any, prop: string): string | undefined {
+  if (prop === "style") return Object.entries(node.props?.style ?? {}).map(([name, value]) => `${name}: ${value}`).join("; ");
+  const attributes = node.props?.attributes ?? {};
+  const name = sourceName(prop);
+  return typeof attributes[name] === "string" ? attributes[name] : undefined;
+}
+
+function equalProp(prop: string, a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  if (prop === "style") {
+    const left = styleProperties({ cssText: a });
+    const right = styleProperties({ cssText: b });
+    return Object.keys(left).length === Object.keys(right).length && Object.entries(left).every(([name, value]) => right[name] === value);
+  }
+  return a === b;
+}
 
 /**
  * The layer's style as source text, in the source's own order (the layer keeps its style
@@ -199,20 +226,6 @@ function styleInSourceOrder(sourceText: string, style: Record<string, string>): 
   const order = Object.keys(styleProperties({ cssText: sourceText }));
   const names = [...order.filter((name) => Object.hasOwn(style, name)), ...Object.keys(style).filter((name) => !order.includes(name))];
   return names.map((name) => `${name}: ${style[name]}`).join("; ");
-}
-
-/** The layer's current value for a source prop, as source text. */
-function layerValue(node: any, prop: string): string | undefined {
-  if (prop === "style") return cssText(node.props?.style ?? {});
-  const attributes = node.props?.attributes ?? {};
-  const name = prop === "className" ? "class" : prop === "htmlFor" ? "for" : prop;
-  return typeof attributes[name] === "string" ? attributes[name] : undefined;
-}
-
-function equalProp(prop: string, a: string | undefined, b: string | undefined): boolean {
-  if (a === undefined || b === undefined) return a === b;
-  if (prop === "style") return sameStyle(a, styleProperties({ cssText: b }));
-  return a === b;
 }
 
 /** One hunk covering every changed line, with up to 3 lines of context. */
@@ -243,19 +256,34 @@ function unifiedDiff(file: string, before: string, after: string): string {
   return `${lines.join("\n")}\n`;
 }
 
+/**
+ * A text's replacement. When the source text is exactly the value Lilac read, it is
+ * replaced as it is; when the source spreads it over lines (code-ir reads it normalized),
+ * the whitespace around it in the source is kept.
+ */
+function textReplacement(live: string, fileText: string, text: string): string {
+  const escaped = (value: string) => value.replace(/&/gu, "&amp;");
+  if (live === fileText) return escaped(text);
+  const lead = /^\s*/u.exec(live)?.[0] ?? "";
+  const trail = live.length > lead.length ? /\s*$/u.exec(live)?.[0] ?? "" : "";
+  return `${lead}${escaped(text.trim())}${trail}`;
+}
+
 /** What writing the bound layers under `nodeId` back to their file would change. */
 export function planWriteBack(document: any, nodeId: unknown, folder: string): WriteBackPlan {
   if (typeof nodeId !== "string" || !Object.hasOwn(document.nodes, nodeId)) throw new StudioError(404, "node-not-found", "no such layer");
-  // The bound layers in this subtree, all from one file and component.
-  const bound: Array<{ node: any; source: CodeSource }> = [];
-  const walk = (id: string) => {
+  const label = (node: any) => (typeof node.props?.name === "string" ? node.props.name : typeof node.props?.tag === "string" ? node.props.tag : node.type);
+  // Every layer in the subtree, and the bound ones among them.
+  const subtree: any[] = [];
+  const collect = (id: string) => {
     const node = document.nodes[id];
     if (!node) return;
-    const source = node.props?.codeSource;
-    if (source && typeof source === "object" && typeof source.file === "string" && typeof source.path === "string") bound.push({ node, source });
-    for (const child of node.children) walk(child);
+    subtree.push(node);
+    for (const child of node.children) collect(child);
   };
-  walk(nodeId);
+  collect(nodeId);
+  const isBound = (node: any) => node.props?.codeSource && typeof node.props.codeSource === "object" && typeof node.props.codeSource.file === "string" && typeof node.props.codeSource.path === "string";
+  const bound = subtree.filter(isBound).map((node) => ({ node, source: node.props.codeSource as CodeSource }));
   if (bound.length === 0) throw new StudioError(409, "not-from-codebase", "this layer did not come from the connected codebase");
   const { file, component } = bound[0].source;
   if (bound.some(({ source }) => source.file !== file || source.component !== component)) throw new StudioError(409, "mixed-sources", "select one component brought in from the codebase");
@@ -283,35 +311,81 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
   const conflicts: WriteBackPlan["conflicts"] = [];
   const notWritten: WriteBackPlan["notWritten"] = [];
   const rebase: WriteBackPlan["rebase"] = [];
+
+  // Layers here that the source does not have: added, or copied from a bound one.
+  for (const node of subtree) if (!isBound(node)) notWritten.push({ nodeId: node.id, reason: `the layer ${label(node)} was added here and is not written back` });
+  const seen = new Map<string, string>();
+  const copies = new Set<string>();
   for (const { node, source } of bound) {
+    const key = `${source.path}#${source.textIndex ?? ""}`;
+    if (seen.has(key)) {
+      copies.add(node.id);
+      copies.add(seen.get(key)!);
+    } else seen.set(key, node.id);
+  }
+  for (const id of copies) conflicts.push({ nodeId: id, field: "structure", reason: "this layer is a copy of another from the same source; bring the component in again" });
+  // Where each bound element now sits, against where its source is: moved or reordered
+  // layers are not written back.
+  const elementPath = new Map<string, string>();
+  const placeElements = (id: string, path: number[]) => {
+    const node = document.nodes[id];
+    if (!node) return;
+    if (isBound(node) && node.props.codeSource.tag !== "#text") elementPath.set(node.id, path.join("."));
+    const elements = node.children.filter((child: string) => isBound(document.nodes[child]) && document.nodes[child].props.codeSource.tag !== "#text");
+    elements.forEach((child: string, index: number) => placeElements(child, [...path, index]));
+  };
+  const root = bound.find(({ source }) => source.path === "" && source.tag !== "#text");
+  if (root) placeElements(root.node.id, []);
+  let sourceElements = 0;
+  const countElements = (symbol: any) => {
+    sourceElements += 1;
+    for (const child of symbol.children) countElements(ir.symbols[child]);
+  };
+  countElements(ir.symbols[definition.children[0]]);
+  const boundElements = bound.filter(({ source }) => source.tag !== "#text").length;
+  if (boundElements < sourceElements) notWritten.push({ nodeId, reason: "layers removed here are not written back" });
+
+  for (const { node, source } of bound) {
+    if (copies.has(node.id)) continue;
+    const isText = source.tag === "#text";
+    if (!isText && root && elementPath.get(node.id) !== source.path) {
+      notWritten.push({ nodeId: node.id, reason: `the layer ${label(node)} was moved or reordered here, which is not written back` });
+      continue;
+    }
     const symbol = symbolAt(source.path);
-    if (!symbol || symbol.name !== source.tag) {
+    if (!symbol || (!isText && symbol.name !== source.tag)) {
       conflicts.push({ nodeId: node.id, field: "structure", reason: `the source no longer has <${source.tag}> there` });
       continue;
     }
     const nextBase: CodeSource["base"] = { props: { ...source.base.props }, ...(source.base.text === undefined ? {} : { text: source.base.text }) };
-    // Text: a single literal text in the source.
+    // Text: the element's single literal text, or one run of text among its children.
     if (source.base.text !== undefined) {
-      const fileText = symbol.children.length === 0 && symbol.texts.length === 1 ? symbol.texts[0].value : undefined;
+      const entry = isText
+        ? (Number.isInteger(source.textIndex) ? symbol.texts[source.textIndex!] : undefined)
+        : (symbol.children.length === 0 && symbol.texts.length === 1 ? symbol.texts[0] : undefined);
+      const fileText: string | undefined = entry?.value;
       const mine = typeof node.props?.text === "string" ? node.props.text : "";
-      if (fileText === undefined) conflicts.push({ nodeId: node.id, field: "text", reason: "the source's text is no longer one literal" });
-      else if (mine === source.base.text) nextBase.text = fileText;
-      else if (fileText === mine) nextBase.text = mine;
+      if (fileText === undefined) conflicts.push({ nodeId: node.id, field: "text", reason: "the source's text is no longer there as a literal" });
+      // Not changed here: the base stays, so a change made in the file is never undone.
+      else if (mine === source.base.text) {
+        // nothing to write
+      } else if (fileText === mine) nextBase.text = mine;
       else if (fileText !== source.base.text) conflicts.push({ nodeId: node.id, field: "text", reason: "changed both here and in the file" });
       else if (/[{}<>]/u.test(mine)) notWritten.push({ nodeId: node.id, reason: "text with { } < or > is not written as JSX text" });
       else {
-        const range = symbol.texts[0].range;
-        ops.push({ at: range.startOffset, op: { op: "update-text", targetSymbolId: symbol.id, anchor: { range, expectedText: read.content.slice(range.startOffset, range.endOffset) }, replacement: mine.replace(/&/gu, "&amp;") } });
+        const range = entry.range;
+        const live = read.content.slice(range.startOffset, range.endOffset);
+        ops.push({ at: range.startOffset, op: { op: "update-text", targetSymbolId: symbol.id, anchor: { range, expectedText: live }, replacement: textReplacement(live, fileText, mine) } });
         changes.push({ nodeId: node.id, field: "text", from: fileText, to: mine });
         nextBase.text = mine;
       }
     }
     // Literal string props.
     for (const [prop, base] of Object.entries(source.base.props)) {
-      const fileProp = symbol.props.find((entry: any) => entry.name === prop && typeof entry.literal.value === "string");
+      const fileProp = symbol.props.find((candidate: any) => candidate.name === prop && typeof candidate.literal.value === "string");
       let mine = layerValue(node, prop);
       if (!fileProp) {
-        conflicts.push({ nodeId: node.id, field: prop, reason: "no longer a literal string in the source" });
+        if (!equalProp(prop, mine, base)) conflicts.push({ nodeId: node.id, field: prop, reason: "no longer a literal string in the source" });
         continue;
       }
       const fileValue: string = fileProp.literal.value;
@@ -319,10 +393,8 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
         notWritten.push({ nodeId: node.id, reason: `removing ${prop} is not written back` });
         continue;
       }
-      if (equalProp(prop, mine, base)) {
-        nextBase.props[prop] = fileValue;
-        continue;
-      }
+      // Not changed here: the base stays, so a change made in the file is never undone.
+      if (equalProp(prop, mine, base)) continue;
       if (equalProp(prop, fileValue, mine)) {
         nextBase.props[prop] = fileValue;
         continue;
@@ -331,7 +403,7 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
         conflicts.push({ nodeId: node.id, field: prop, reason: "changed both here and in the file" });
         continue;
       }
-      if (/[\r\n]/u.test(mine)) {
+      if (/[\r\n\u2028\u2029]/u.test(mine)) {
         notWritten.push({ nodeId: node.id, reason: `${prop} with a line break is not written` });
         continue;
       }
@@ -341,23 +413,14 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
       changes.push({ nodeId: node.id, field: prop, from: fileValue, to: mine });
       nextBase.props[prop] = mine;
     }
-    // Attributes the layer has but the source does not are not added.
-    const sourceNames = new Set(Object.keys(source.base.props).map((prop) => (prop === "className" ? "class" : prop === "htmlFor" ? "for" : prop)));
-    for (const name of Object.keys(node.props?.attributes ?? {})) if (!sourceNames.has(name)) notWritten.push({ nodeId: node.id, reason: `the new attribute ${name} is not written back` });
-    if (Object.keys(node.props?.style ?? {}).length > 0 && !Object.hasOwn(source.base.props, "style")) notWritten.push({ nodeId: node.id, reason: "a style the source does not have is not written back" });
+    if (!isText) {
+      // Attributes the layer has but the source does not are not added.
+      const sourceNames = new Set(symbol.props.map((prop: any) => sourceName(prop.name)));
+      for (const name of Object.keys(node.props?.attributes ?? {})) if (!sourceNames.has(name)) notWritten.push({ nodeId: node.id, reason: `the new attribute ${name} is not written back` });
+      if (Object.keys(node.props?.style ?? {}).length > 0 && !symbol.props.some((prop: any) => prop.name === "style")) notWritten.push({ nodeId: node.id, reason: "a style the source does not have is not written back" });
+    }
     rebase.push({ nodeId: node.id, codeSource: { ...source, base: nextBase } });
   }
-  // Layers added or removed are not written back.
-  const sourceCount = (() => {
-    let count = 0;
-    const visit = (symbol: any) => {
-      count += 1;
-      for (const child of symbol.children) visit(ir.symbols[child]);
-    };
-    visit(ir.symbols[definition.children[0]]);
-    return count;
-  })();
-  if (sourceCount !== bound.length) notWritten.push({ nodeId, reason: "layers added or removed are not written back" });
 
   // Applied from the end of the file back, so each anchor's range still holds.
   ops.sort((a, b) => b.at - a.at);
@@ -369,30 +432,35 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
       throw new StudioError(409, "patch-refused", `the change could not be applied to ${file}: ${error instanceof Error ? error.message.slice(0, 200) : "refused"}`);
     }
   }
-  return { file: read.file, sha256: read.sha256, diff: unifiedDiff(read.file, read.content, after), changes, conflicts, notWritten, after, rebase };
+  const token = createHash("sha256").update(`${read.sha256}\0${after}`, "utf8").digest("hex");
+  return { file: read.file, sha256: read.sha256, token, diff: unifiedDiff(read.file, read.content, after), changes, conflicts, notWritten, after, rebase };
 }
 
 /**
- * Write the plan for `nodeId` to its file, if the file is still the one previewed
- * (`expectedSha256`). Returns the plan written and the operations that update the bases.
+ * Write the plan for `nodeId` to its file, if it is still exactly the plan the person
+ * previewed (`token`): the same file, becoming the same content. A change to the file or
+ * to the layers since the preview is refused, and must be previewed again.
  */
-export function writeBack(document: any, nodeId: unknown, folder: string, expectedSha256: unknown): { plan: WriteBackPlan; operations: unknown[] } {
+export function writeBack(document: any, nodeId: unknown, folder: string, token: unknown): { plan: WriteBackPlan; operations: unknown[] } {
   const plan = planWriteBack(document, nodeId, folder);
-  if (typeof expectedSha256 !== "string" || plan.sha256 !== expectedSha256) throw new StudioError(409, "file-changed", `${plan.file} changed since the preview; preview it again`);
+  if (typeof token !== "string" || plan.token !== token) throw new StudioError(409, "plan-changed", `${plan.file} or the layers changed since the preview; preview it again`);
   if (plan.changes.length === 0) throw new StudioError(409, "nothing-to-write", "there are no changes to write back");
   const { absolute } = readSourceFile(folder, plan.file);
   const mode = statSync(absolute).mode & 0o777;
   const temporary = join(dirname(absolute), `.${randomUUID()}.lilac-tmp`);
   try {
-    const fd = openSync(temporary, "wx", mode);
+    const fd = openSync(temporary, "wx", 0o600);
     try {
       writeSync(fd, plan.after);
+      // The file keeps its own permissions (the umask does not apply); its owner and group
+      // are this user's, as Lilac writes it.
+      fchmodSync(fd, mode);
       fsyncSync(fd);
     } finally {
       closeSync(fd);
     }
     // Last check, just before the rename: the file is still exactly what was planned from.
-    if (readSourceFile(folder, plan.file).sha256 !== plan.sha256) throw new StudioError(409, "file-changed", `${plan.file} changed while it was being written; preview it again`);
+    if (readSourceFile(folder, plan.file).sha256 !== plan.sha256) throw new StudioError(409, "plan-changed", `${plan.file} changed while it was being written; preview it again`);
     renameSync(temporary, absolute);
   } catch (error) {
     rmSync(temporary, { force: true });

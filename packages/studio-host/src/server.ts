@@ -254,7 +254,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     },
     "POST /api/codebase/write": (body) => {
       const current = requireSession();
-      const { plan, operations } = writeBack(current.document, body?.nodeId, connectedFolder(current.name), body?.sha256);
+      const { plan, operations } = writeBack(current.document, body?.nodeId, connectedFolder(current.name), body?.token);
       // The file is written; the layers' bases follow it, as one transaction.
       const event = current.edit(owner, { baseRevision: current.revision, operations, intent: `Write ${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} back to ${plan.file}`, tool: "lilac:codebase" });
       return { ...event, file: plan.file, written: plan.changes.length };

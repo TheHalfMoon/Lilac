@@ -138,7 +138,10 @@ export interface CodeSource {
   component: string;
   /** Child indexes from the component's root element ("" is the root). */
   path: string;
+  /** The element's tag; "#text" for a run of text inside an element with children. */
   tag: string;
+  /** For a run of text: its index among the element's texts. */
+  textIndex?: number;
   /** The source's literal values when it was brought in (or last written back). */
   base: { text?: string; props: Record<string, string> };
 }
@@ -228,7 +231,7 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
     // Text and elements in the order they appear in the source: text alone is the
     // element's own text; mixed with elements, each run of text is its own text layer.
     const pieces = [
-      ...symbol.texts.map((entry: any) => ({ at: entry.range.startOffset, text: entry.value })),
+      ...symbol.texts.map((entry: any, textIndex: number) => ({ at: entry.range.startOffset, text: entry.value, textIndex })),
       ...symbol.children.map((child: string) => ({ at: ir.symbols[child].range.startOffset, child })),
     ].sort((a, b) => a.at - b.at);
     if (symbol.children.length === 0) {
@@ -239,7 +242,10 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
         if (piece.child !== undefined) record.children.push(convert(piece.child, id, undefined, [...path, symbol.children.indexOf(piece.child)]));
         else if (piece.text !== "") {
           const textId = nextId();
-          nodes.push({ id: textId, type: "text", parentId: id, children: [], props: { text: piece.text }, metadata: {} });
+          const textProps: Record<string, unknown> = { text: piece.text };
+          // A run of text is bound too, by its element and its index among the element's texts.
+          if (options.bind) textProps.codeSource = { file: options.path ?? "", component: componentName, path: path.join("."), tag: "#text", textIndex: piece.textIndex, base: { text: piece.text, props: {} } } satisfies CodeSource;
+          nodes.push({ id: textId, type: "text", parentId: id, children: [], props: textProps, metadata: {} });
           record.children.push(textId);
         }
       }
