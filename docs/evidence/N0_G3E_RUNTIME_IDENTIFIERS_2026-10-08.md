@@ -14,3 +14,5 @@ Issue: #190 (N0 umbrella). These are the identifiers shared between packages at 
 | Supervisor task-set lock | `__lilac_supervisor_task_set__` | `__ninerr_supervisor_task_set__` | It serializes worker creation inside one supervisor process and is not shared across releases. |
 
 The first local run of this change failed the canvas and editor browser tests. The canvas set its selection and resize-handle attributes through `dataset.lilac*`, which produces `data-lilac-*`, while the selectors had moved to `data-ninerr-*`. Both sides now use `ninerr`, and those tests pass locally with Edge as the test browser.
+
+**Tool names shown in the history view.** The history view names a change's tool unless it is the editor's own. An import recorded before N0-G3b shows `@lilac/import-stack`, and a later one shows `@ninerr/import-stack`. Both are true records. Journals are append-only, so earlier entries are never rewritten. (Noted by the N0-G3b review panel.)
