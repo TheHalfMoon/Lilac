@@ -9,6 +9,7 @@ import { accessibilityTreeFromDesignDoc, auditAccessibility } from "../packages/
 import { exportJsx, importJsx, startStudioHost } from "../packages/studio-host/src/index.ts";
 import { browserTestOptions } from "./support/browser.mjs";
 import { layerCount, openEditor, waitRevision } from "./support/editor.mjs";
+import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 // PC8 (#146): accessibility qualification of the editor UI and its generated output. Every
 // editor state is audited with design-assurance's auditAccessibility, using the colours the
@@ -115,7 +116,7 @@ test("the lock and recovery dialogs audit clean", browserTestOptions(), async ()
   const setup = await startStudioHost({ projectsRoot: root, now });
   await fetch(`${setup.url}/api/projects/create`, { method: "POST", headers: { authorization: `Bearer ${setup.token}`, "content-type": "application/json" }, body: JSON.stringify({ name: "locked" }) });
   await setup.close();
-  writeFileSync(join(root, "locked", ".ninerr", "lock"), JSON.stringify({ owner: "gone", pid: 2 ** 22 + 4321, at: "2026-10-07T11:00:00.000Z", nonce: "dead" }));
+  writeFileSync(join(root, "locked", PROJECT_FILES.directory, "lock"), JSON.stringify({ owner: "gone", pid: 2 ** 22 + 4321, at: "2026-10-07T11:00:00.000Z", nonce: "dead" }));
   const host = await startStudioHost({ projectsRoot: root, now });
   const editor = await openEditor(host);
   try {

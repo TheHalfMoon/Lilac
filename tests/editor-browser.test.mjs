@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { startStudioHost } from "../packages/studio-host/src/index.ts";
 import { browserTestOptions, findBrowser } from "./support/browser.mjs";
+import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 // PC4 (#146): the editor end to end, in Chromium, against a real studio host on loopback.
 // Creating and reopening projects, editing through the canvas, layers tree and inspector,
@@ -249,8 +250,8 @@ test("lock takeover, crash recovery and reopen-after-failure are handled in the 
   await fetch(`${setup.url}/api/projects/create`, { method: "POST", headers: token, body: JSON.stringify({ name: "crashed" }) });
   await setup.close();
   // A crash leaves a lock from a process that no longer exists and a torn journal tail.
-  writeFileSync(join(root, "crashed", ".ninerr", "lock"), JSON.stringify({ owner: "crashed-studio", pid: 2 ** 22 + 4321, at: "2026-10-07T11:00:00.000Z", nonce: "dead" }));
-  appendFileSync(join(root, "crashed", ".ninerr", "journal.log"), '{"digest":"torn');
+  writeFileSync(join(root, "crashed", PROJECT_FILES.directory, "lock"), JSON.stringify({ owner: "crashed-studio", pid: 2 ** 22 + 4321, at: "2026-10-07T11:00:00.000Z", nonce: "dead" }));
+  appendFileSync(join(root, "crashed", PROJECT_FILES.directory, "journal.log"), '{"digest":"torn');
 
   const host = await startStudioHost({ projectsRoot: root, now });
   const editor = await openEditor(host);
@@ -258,12 +259,12 @@ test("lock takeover, crash recovery and reopen-after-failure are handled in the 
     const { page } = editor;
     // While another live session holds the project, a takeover is refused, with a message.
     const { StudioSession } = await import("../packages/studio-host/src/index.ts");
-    writeFileSync(join(root, "crashed", ".ninerr", "lock.bak"), "");
-    rmSync(join(root, "crashed", ".ninerr", "lock.bak"));
+    writeFileSync(join(root, "crashed", PROJECT_FILES.directory, "lock.bak"), "");
+    rmSync(join(root, "crashed", PROJECT_FILES.directory, "lock.bak"));
     const { readFileSync: readLock } = await import("node:fs");
-    const deadLock = readLock(join(root, "crashed", ".ninerr", "lock"), "utf8");
-    const torn = readLock(join(root, "crashed", ".ninerr", "journal.log"));
-    rmSync(join(root, "crashed", ".ninerr", "lock"));
+    const deadLock = readLock(join(root, "crashed", PROJECT_FILES.directory, "lock"), "utf8");
+    const torn = readLock(join(root, "crashed", PROJECT_FILES.directory, "journal.log"));
+    rmSync(join(root, "crashed", PROJECT_FILES.directory, "lock"));
     const live = StudioSession.open({ projectsRoot: root, name: "crashed", owner: { actorId: "other", kind: "user", accessClass: "member", displayName: "Other" }, now });
     await page.locator("#dialog[open] [data-project=crashed]").click();
     await page.locator("#lock-reason").fill("I think it crashed");
@@ -272,8 +273,8 @@ test("lock takeover, crash recovery and reopen-after-failure are handled in the 
     await page.keyboard.press("Escape");
     live.close();
     // Put the crash back: the dead session's lock and the torn tail.
-    writeFileSync(join(root, "crashed", ".ninerr", "lock"), deadLock);
-    writeFileSync(join(root, "crashed", ".ninerr", "journal.log"), torn);
+    writeFileSync(join(root, "crashed", PROJECT_FILES.directory, "lock"), deadLock);
+    writeFileSync(join(root, "crashed", PROJECT_FILES.directory, "journal.log"), torn);
     await page.locator("#action-projects").click();
     await page.locator("#dialog[open] [data-project=crashed]").click();
     // The lock dialog explains, and refuses a takeover without a reason.
@@ -294,13 +295,13 @@ test("lock takeover, crash recovery and reopen-after-failure are handled in the 
     assert.equal(host.session.recovery.lockOverride.reason, "the previous session crashed");
 
     // The project's files change outside Lilac: the next edit asks for a reopen, which works.
-    appendFileSync(join(root, "crashed", ".ninerr", "journal.log"), "tampered\n");
+    appendFileSync(join(root, "crashed", PROJECT_FILES.directory, "journal.log"), "tampered\n");
     await page.locator("#action-insert-box").click();
     await page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Reopen the project");
     assert.equal(await page.locator("#dialog[open] p").first().textContent().then((text) => /reopen/u.test(text)), true);
     assert.doesNotMatch(await page.locator("#dialog[open]").textContent(), new RegExp(root.replace(/[.*+?^${}()|[\]\\/]/gu, "\\$&"), "u"), "no filesystem path is shown");
     // Undo the tampering, as a person restoring their files would, and reopen.
-    const journal = join(root, "crashed", ".ninerr", "journal.log");
+    const journal = join(root, "crashed", PROJECT_FILES.directory, "journal.log");
     const { readFileSync } = await import("node:fs");
     writeFileSync(journal, readFileSync(journal, "utf8").replace(/tampered\n$/u, ""));
     await page.locator("#dialog[open] button.primary").click();
