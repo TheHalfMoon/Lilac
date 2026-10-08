@@ -61,7 +61,7 @@ export async function launchDesktop({ env = {}, args = [] } = {}) {
       if (message.type() === "error") errors.push(message.text());
     });
     await window.waitForFunction(() => document.documentElement.dataset.ready === "true");
-    return { app, window, errors };
+    return { app, window, errors, output: () => output };
   } catch (error) {
     // What the window showed, in the error's first line (CI annotates only that).
     const seen = window === null ? "no window" : await window.evaluate(() => `${location.href} status=${JSON.stringify(document.getElementById("status")?.textContent ?? document.body?.innerText?.slice(0, 200) ?? "")}`).catch((reason) => `unreadable (${reason.message.split("\n")[0]})`);
