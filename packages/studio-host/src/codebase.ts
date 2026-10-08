@@ -270,9 +270,15 @@ function textReplacement(live: string, fileText: string, text: string): string {
 }
 
 /** What writing the bound layers under `nodeId` back to their file would change. */
-export function planWriteBack(document: any, nodeId: unknown, folder: string): WriteBackPlan {
+export function planWriteBack(document: any, nodeId: unknown, folder: string, exclude: Set<string> = new Set()): WriteBackPlan {
   if (typeof nodeId !== "string" || !Object.hasOwn(document.nodes, nodeId)) throw new StudioError(404, "node-not-found", "no such layer");
   const label = (node: any) => (typeof node.props?.name === "string" ? node.props.name : typeof node.props?.tag === "string" ? node.props.tag : node.type);
+  const isBound = (node: any) => node?.props?.codeSource && typeof node.props.codeSource === "object" && typeof node.props.codeSource.file === "string" && typeof node.props.codeSource.path === "string";
+  const isRoot = (node: any) => isBound(node) && node.props.codeSource.path === "" && node.props.codeSource.tag !== "#text";
+  // Always the whole component: a layer inside it plans from the component's root.
+  let start = document.nodes[nodeId];
+  while (isBound(start) && !isRoot(start) && start.parentId !== null && document.nodes[start.parentId]) start = document.nodes[start.parentId];
+  if (!isRoot(start)) start = document.nodes[nodeId];
   // Every layer in the subtree, and the bound ones among them.
   const subtree: any[] = [];
   const collect = (id: string) => {
@@ -281,8 +287,7 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
     subtree.push(node);
     for (const child of node.children) collect(child);
   };
-  collect(nodeId);
-  const isBound = (node: any) => node.props?.codeSource && typeof node.props.codeSource === "object" && typeof node.props.codeSource.file === "string" && typeof node.props.codeSource.path === "string";
+  collect(start.id);
   const bound = subtree.filter(isBound).map((node) => ({ node, source: node.props.codeSource as CodeSource }));
   if (bound.length === 0) throw new StudioError(409, "not-from-codebase", "this layer did not come from the connected codebase");
   const { file, component } = bound[0].source;
@@ -311,6 +316,8 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
   const conflicts: WriteBackPlan["conflicts"] = [];
   const notWritten: WriteBackPlan["notWritten"] = [];
   const rebase: WriteBackPlan["rebase"] = [];
+  // Each written field, to read back from the new file before the plan is offered.
+  const checks: Array<{ nodeId: string; field: string; path: string; textIndex?: number; expected: string }> = [];
 
   // Layers here that the source does not have: added, or copied from a bound one.
   for (const node of subtree) if (!isBound(node)) notWritten.push({ nodeId: node.id, reason: `the layer ${label(node)} was added here and is not written back` });
@@ -343,11 +350,48 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
   };
   countElements(ir.symbols[definition.children[0]]);
   const boundElements = bound.filter(({ source }) => source.tag !== "#text").length;
-  if (boundElements < sourceElements) notWritten.push({ nodeId, reason: "layers removed here are not written back" });
+  if (boundElements < sourceElements) notWritten.push({ nodeId: start.id, reason: "layers removed here are not written back" });
+  // Runs of text: each must still be in its own element, in its source order, and none
+  // removed (a run moved or removed is listed, never written to its old place).
+  const misplacedText = new Set<string>();
+  for (const { node, source } of bound) {
+    if (source.tag !== "#text") continue;
+    const parent = document.nodes[node.parentId];
+    if (!isBound(parent) || parent.props.codeSource.tag === "#text" || parent.props.codeSource.path !== source.path || (root && elementPath.get(parent.id) !== source.path)) misplacedText.add(node.id);
+  }
+  for (const { node, source } of bound) {
+    if (source.tag === "#text") continue;
+    const runs = node.children.map((child: string) => document.nodes[child]).filter((child: any) => isBound(child) && child.props.codeSource.tag === "#text");
+    runs.forEach((run: any, index: number) => {
+      if (index > 0 && runs[index - 1].props.codeSource.textIndex >= run.props.codeSource.textIndex) misplacedText.add(run.id);
+    });
+    const symbol = symbolAt(source.path);
+    // Runs and elements together, in the source's own order (by position, as importJsx
+    // reads them): a run moved past an element is out of place too.
+    if (symbol && runs.length > 0) {
+      const sourceOrder = [
+        ...symbol.texts.map((entry: any, textIndex: number) => ({ at: entry.range.startOffset, key: `t${textIndex}`, empty: entry.value === "" })),
+        ...symbol.children.map((child: string, index: number) => ({ at: ir.symbols[child].range.startOffset, key: `e${index}`, empty: false })),
+      ].filter((piece) => !piece.empty).sort((a, b) => a.at - b.at).map((piece) => piece.key);
+      const here = node.children.map((child: string) => document.nodes[child]).filter(isBound).map((child: any) => (child.props.codeSource.tag === "#text" ? `t${child.props.codeSource.textIndex}` : `e${child.props.codeSource.path.split(".").at(-1)}`));
+      const present = new Set(here);
+      const expected = sourceOrder.filter((key) => present.has(key));
+      if (here.join(",") !== expected.join(",")) for (const run of runs) misplacedText.add(run.id);
+    }
+    if (symbol && symbol.children.length > 0) {
+      const sourceRuns = symbol.texts.filter((entry: any) => entry.value !== "").length;
+      const present = bound.filter(({ source: other }) => other.tag === "#text" && other.path === source.path).length;
+      if (present < sourceRuns) notWritten.push({ nodeId: node.id, reason: `text removed from ${label(node)} here is not written back` });
+    }
+  }
 
   for (const { node, source } of bound) {
     if (copies.has(node.id)) continue;
     const isText = source.tag === "#text";
+    if (isText && misplacedText.has(node.id)) {
+      notWritten.push({ nodeId: node.id, reason: "a run of text moved or reordered here is not written back" });
+      continue;
+    }
     if (!isText && root && elementPath.get(node.id) !== source.path) {
       notWritten.push({ nodeId: node.id, reason: `the layer ${label(node)} was moved or reordered here, which is not written back` });
       continue;
@@ -372,11 +416,14 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
       } else if (fileText === mine) nextBase.text = mine;
       else if (fileText !== source.base.text) conflicts.push({ nodeId: node.id, field: "text", reason: "changed both here and in the file" });
       else if (/[{}<>]/u.test(mine)) notWritten.push({ nodeId: node.id, reason: "text with { } < or > is not written as JSX text" });
+      else if (/^\s*\{/u.test(read.content.slice(entry.range.startOffset, entry.range.endOffset))) notWritten.push({ nodeId: node.id, reason: "text written as a {…} expression in the source is not written back" });
+      else if (exclude.has(`${node.id}:text`)) notWritten.push({ nodeId: node.id, reason: "this text would not read back as written, so it is not written" });
       else {
         const range = entry.range;
         const live = read.content.slice(range.startOffset, range.endOffset);
         ops.push({ at: range.startOffset, op: { op: "update-text", targetSymbolId: symbol.id, anchor: { range, expectedText: live }, replacement: textReplacement(live, fileText, mine) } });
         changes.push({ nodeId: node.id, field: "text", from: fileText, to: mine });
+        checks.push({ nodeId: node.id, field: "text", path: source.path, textIndex: isText ? source.textIndex : undefined, expected: mine });
         nextBase.text = mine;
       }
     }
@@ -407,10 +454,15 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
         notWritten.push({ nodeId: node.id, reason: `${prop} with a line break is not written` });
         continue;
       }
+      if (exclude.has(`${node.id}:${prop}`)) {
+        notWritten.push({ nodeId: node.id, reason: `${prop} would not read back as written, so it is not written` });
+        continue;
+      }
       if (prop === "style") mine = styleInSourceOrder(fileValue, node.props?.style ?? {});
       const range = fileProp.range;
       ops.push({ at: range.startOffset, op: { op: "update-prop", targetSymbolId: symbol.id, anchor: { range, expectedText: read.content.slice(range.startOffset, range.endOffset) }, replacement: `${prop}="${mine.replace(/&/gu, "&amp;").replace(/"/gu, "&quot;")}"` } });
       changes.push({ nodeId: node.id, field: prop, from: fileValue, to: mine });
+      checks.push({ nodeId: node.id, field: prop, path: source.path, expected: mine });
       nextBase.props[prop] = mine;
     }
     if (!isText) {
@@ -432,8 +484,46 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string): W
       throw new StudioError(409, "patch-refused", `the change could not be applied to ${file}: ${error instanceof Error ? error.message.slice(0, 200) : "refused"}`);
     }
   }
+  // Read the new file back: every written field must read as the value written (no
+  // whitespace, entity or merge drift). A field that does not is left out and listed.
+  if (checks.length > 0) {
+    const failing = readBackFailures(read.file, after, component, checks);
+    if (failing.length > 0) {
+      if (exclude.size > 0) throw new StudioError(409, "patch-refused", `the change to ${file} would not read back as written`);
+      // Rebuilt once without those fields (exclude is then not empty, so this recursion is
+      // at most one level deep).
+      return planWriteBack(document, nodeId, folder, new Set(failing));
+    }
+  }
   const token = createHash("sha256").update(`${read.sha256}\0${after}`, "utf8").digest("hex");
   return { file: read.file, sha256: read.sha256, token, diff: unifiedDiff(read.file, read.content, after), changes, conflicts, notWritten, after, rebase };
+}
+
+/** The checks (as `nodeId:field`) whose value does not read back from `content`. */
+function readBackFailures(file: string, content: string, component: string, checks: Array<{ nodeId: string; field: string; path: string; textIndex?: number; expected: string }>): string[] {
+  let ir: any;
+  try {
+    ir = buildCodeIr([{ path: file, content }]);
+  } catch {
+    return checks.map((check) => `${check.nodeId}:${check.field}`);
+  }
+  const definition = (Object.values(ir.symbols) as any[]).find((symbol) => symbol.kind === "component" && symbol.name === component && symbol.children.length > 0 && ir.rootIds.includes(symbol.children[0]));
+  if (!definition || ir.unsupported.length > 0) return checks.map((check) => `${check.nodeId}:${check.field}`);
+  const at = (path: string) => {
+    let symbol = ir.symbols[definition.children[0]];
+    for (const index of path === "" ? [] : path.split(".").map(Number)) symbol = symbol?.children?.[index] === undefined ? undefined : ir.symbols[symbol.children[index]];
+    return symbol;
+  };
+  return checks.filter((check) => {
+    const symbol = at(check.path);
+    if (!symbol) return true;
+    if (check.field === "text") {
+      const entry = check.textIndex === undefined ? (symbol.children.length === 0 && symbol.texts.length === 1 ? symbol.texts[0] : undefined) : symbol.texts[check.textIndex];
+      return entry?.value !== check.expected;
+    }
+    const prop = symbol.props.find((candidate: any) => candidate.name === check.field && typeof candidate.literal.value === "string");
+    return !prop || !equalProp(check.field, prop.literal.value, check.expected);
+  }).map((check) => `${check.nodeId}:${check.field}`);
 }
 
 /**
