@@ -118,7 +118,7 @@ jobs:
             `head=${head}`,
             `target=${{ matrix.target }}`,
             `journey=${journey === null ? "not run" : journey.ok ? "ok" : "failed"}`,
-            `steps=${journey === null ? 0 : journey.steps.filter((item) => item.ok).length}/${journey === null ? 0 : journey.steps.length}`,
+            `steps=${journey === null ? 0 : journey.steps.filter((item) => item.ok).length}/${journey?.total ?? 0}`,
           ].join("; "))}`);
           if (journey !== null && !journey.ok) console.log(`::error title=Release-candidate journey failure::${escape(`head=${head} target=${{ matrix.target }} ${journey.error}`)}`);
           // Job logs are not always readable: the end of a failed step's output, as an annotation.
