@@ -129,6 +129,9 @@ test("the command line gate exits 1 on gated findings and 0 without, and never s
     result = verify();
     assert.equal(result.status, 1);
     assert.match(result.stderr, /is out of date; run node scripts\/identity-census\.mjs --write/u);
+    result = spawnSync(process.execPath, [script, "--verify", "--check", "--root", repo.root], { encoding: "utf8" });
+    assert.equal(result.status, 2, "combined modes are refused rather than running only one");
+    assert.match(result.stderr, /give one of --verify, --check per run/u);
   } finally {
     repo.dispose();
   }

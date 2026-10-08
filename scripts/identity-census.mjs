@@ -136,6 +136,12 @@ function main(argv) {
   const rootIndex = argv.indexOf("--root");
   const root = rootIndex === -1 ? ROOT : argv[rootIndex + 1];
   if (root === undefined) throw new Error("--root needs a directory");
+  // One mode per run, so a combined invocation cannot run one check and silently skip another.
+  const modes = ["--write", "--verify", "--check"].filter((mode) => argv.includes(mode));
+  if (modes.length > 1) {
+    process.stderr.write(`identity census: give one of ${modes.join(", ")} per run\n`);
+    return 2;
+  }
   const record = census(policy, root, trackedFiles(root));
   if (argv.includes("--write")) {
     mkdirSync(dirname(join(root, CENSUS_PATH)), { recursive: true });
