@@ -87,6 +87,10 @@ test("the package holds the packages the shell and the editor reach, and no othe
     writeFileSync(join(dir, "entry.mjs"), 'import "./side-effect.mjs";\nimport { x } from "../../outside.mjs";\n');
     // The bare import comes first, so it is the one named: bare imports are followed too.
     assert.throws(() => reachablePackages([join(dir, "entry.mjs")]), /imports \.\/side-effect\.mjs, outside packages/u);
+    for (const specifier of ["@lilac/history", "@Ninerr/history"]) {
+      writeFileSync(join(dir, "stale.mjs"), `import { x } from "${specifier}";\n`);
+      assert.throws(() => reachablePackages([join(dir, "stale.mjs")]), /not a workspace package name/u, specifier);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
