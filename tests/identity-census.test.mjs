@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { census, classify, loadPolicy, serialize } from "../scripts/identity-census.mjs";
 
@@ -26,8 +28,15 @@ test("the policy is well formed: known categories and terms, unique ids, a catch
   assert.ok(!policy.gated.has("LEGACY_COMPATIBILITY"));
   assert.ok(!policy.gated.has("THIRD_PARTY_INDEPENDENT_OBLIGATION"));
   assert.ok(!policy.gated.has("IMMUTABLE_HISTORICAL_FACT"));
-  assert.throws(() => loadPolicy(JSON.stringify({ terms: { a: "a" }, categories: { X: "" }, gated: [], rules: [{ id: "r", category: "Y" }] })), /unknown category/u);
-  assert.throws(() => loadPolicy(JSON.stringify({ terms: { a: "a" }, categories: { X: "" }, gated: [], rules: [{ id: "r", category: "X", path: "^a" }] })), /last rule/u);
+  const policyWith = (rules) => JSON.stringify({ terms: { a: "a" }, categories: { X: "" }, gated: [], rules });
+  const last = { id: "last", category: "X", reason: "r" };
+  assert.doesNotThrow(() => loadPolicy(policyWith([{ id: "p", category: "X", path: "^a", reason: "r" }, last])));
+  assert.throws(() => loadPolicy(policyWith([{ id: "r", category: "Y", reason: "r" }])), /unknown category/u);
+  assert.throws(() => loadPolicy(policyWith([{ id: "r", category: "X", path: "^a", reason: "r" }])), /last rule/u);
+  assert.throws(() => loadPolicy(policyWith([{ id: "early", category: "X", reason: "r" }, last])), /last rule/u, "an unconstrained rule cannot shadow later rules");
+  assert.throws(() => loadPolicy(policyWith([{ id: "typo", category: "X", paths: "^a", reason: "r" }, last])), /unknown key paths/u, "a mistyped key is not a silent catch-all");
+  assert.throws(() => loadPolicy(policyWith([{ id: "p", category: "X", path: "^a" }, last])), /reason is required/u);
+  assert.throws(() => loadPolicy(policyWith([{ id: "p", category: "X", terms: ["b"], reason: "r" }, last])), /unknown term b/u);
 });
 
 test("rules classify by path, term and line", () => {
@@ -36,6 +45,11 @@ test("rules classify by path, term and line", () => {
   assert.equal(rule("tests/fixtures/projects/v1-basic/.lilac/project.json", "lilac", null), "legacy-project-fixture");
   assert.equal(rule("docs/evidence/GRAIN1_CLOSEOUT_2026-10-03.md", "lilac", "Lilac"), "dated-evidence");
   assert.equal(rule("docs/evidence/PAPER_DEEP_RECOVERY_2026-10-01.md", "paper", "Paper"), "paper-recovery-evidence");
+  assert.equal(rule("docs/evidence/UNDATED_NOTES.md", "lilac", "Lilac"), "default-lilac", "only date-suffixed evidence is historical");
+  assert.equal(rule("THIRD_PARTY_NOTICES.md", "paper", "## Paper.design"), "default-paper", "Paper attribution in the notices stays gated");
+  assert.equal(rule("THIRD_PARTY_NOTICES.md", "unreal-agent", "## Unreal Agent"), "default-donor", "donor attribution in the notices stays gated");
+  assert.equal(rule("THIRD_PARTY_NOTICES.md", "impeccable", "## Impeccable"), "third-party-notices");
+  assert.equal(rule("packages/design-assurance/src/rules.mjs", "impeccable", "impeccable"), "default-donor", "the Impeccable exemption is file-specific");
   assert.equal(rule("package-lock.json", "impeccable", "\"node_modules/impeccable\""), "independent-runtime-impeccable");
   assert.equal(rule("package-lock.json", "lilac", "\"@lilac/canvas\""), "default-lilac");
   assert.equal(rule("packages/persistence/src/types.ts", "lilac", "export const PROJECT_FORMAT = \"lilac-project\";"), "persisted-project-format");
@@ -72,5 +86,27 @@ test("the census is deterministic and the gate counts gated categories only", ()
     assert.equal(record.files.find((file) => file.path === "packages/x/src/lilac.ts").findings[0].lines.length, 0, "a path finding has no line");
   } finally {
     dirty.dispose();
+  }
+});
+
+test("the command line gate exits 1 on gated findings and 0 without, and never scans its own files", () => {
+  const script = fileURLToPath(new URL("../scripts/identity-census.mjs", import.meta.url));
+  const repo = tree({ "README.md": "# Ninerr\n", "scripts/identity-policy.json": "lilac paper\n" });
+  try {
+    const git = (...args) => execFileSync("git", args, { cwd: repo.root, stdio: "ignore" });
+    git("init", "-q");
+    git("add", "-A");
+    const gate = () => spawnSync(process.execPath, [script, "--check", "--root", repo.root], { encoding: "utf8" });
+    let result = gate();
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /no gated findings in 1 files/u);
+    writeFileSync(join(repo.root, "app.mjs"), "// Lilac\n");
+    git("add", "-A");
+    result = gate();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /^app\.mjs:1: lilac \(ACTIVE_PRODUCT_IDENTITY, rule default-lilac, 1x\)$/mu);
+    assert.match(result.stderr, /identity gate: 1 gated findings/u);
+  } finally {
+    repo.dispose();
   }
 });

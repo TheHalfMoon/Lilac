@@ -1,6 +1,6 @@
 {
   "schema": "identity-policy/1",
-  "description": "Classification of product, donor and legacy identity in tracked files (N0.1), and the independence gate (N0.9). Rules are ordered: the first rule whose path, term and line patterns all match classifies a finding. Keep every non-gated rule narrow and give it a reason.",
+  "description": "Classification of product, donor and legacy identity in tracked files (N0.1), and the independence gate (N0.9). Rules are ordered: the first rule whose path, term and line patterns all match classifies a finding. Every rule has a reason; every rule but the last has at least one constraint. The census tool, this policy, its test and the census artifact are not scanned: they must name every term.",
   "terms": {
     "lilac": "lilac",
     "paper": "paper",
@@ -39,12 +39,6 @@
   ],
   "rules": [
     {
-      "id": "identity-gate-own-files",
-      "category": "LEGACY_COMPATIBILITY",
-      "path": "^(scripts/identity-policy\\.json|scripts/identity-census\\.mjs|tests/identity-census\\.test\\.mjs|docs/evidence/N0_IDENTITY_CENSUS\\.json)$",
-      "reason": "The census and gate must name every term they look for."
-    },
-    {
       "id": "paper-recovery-workflows",
       "category": "REMOVE_ENTIRELY",
       "path": "^(\\.github/workflows/paper-public-[a-z-]+\\.yml|scripts/census-paper-asar\\.py|scripts/import-authorized-paper\\.mjs|tests/import-authorized-paper\\.test\\.mjs|docs/IMPORT_RUNBOOK\\.md)$",
@@ -59,8 +53,8 @@
     {
       "id": "dated-evidence",
       "category": "IMMUTABLE_HISTORICAL_FACT",
-      "path": "^docs/evidence/",
-      "reason": "Dated qualification records describe the product as it was named when they were written."
+      "path": "^docs/evidence/[A-Za-z0-9_.-]+_\\d{4}-\\d{2}-\\d{2}\\.(md|json)$",
+      "reason": "Dated qualification records (date-suffixed) describe the product as it was named when they were written."
     },
     {
       "id": "legacy-project-fixture",
@@ -72,28 +66,37 @@
       "id": "third-party-notices",
       "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
       "path": "^(THIRD_PARTY_NOTICES\\.md|docs/provenance/LICENSE_REGISTER\\.json|scripts/license-policy\\.json|docs/provenance/ELECTRON_LICENSE\\.txt)$",
-      "terms": ["impeccable", "docling", "paper", "firstmate", "no-mistakes", "doop", "classifier-dev", "jev-search", "unreal-agent", "website-downloader", "appllama", "design-resources", "firecrawl", "ui-tars"],
-      "reason": "License notices and the license register; donor entries are reviewed in N0-G5 and N0-G7."
+      "terms": [
+        "impeccable",
+        "docling"
+      ],
+      "reason": "License notices and register entries for independently licensed runtimes Ninerr keeps; donor entries in the same files stay gated until N0-G5 and N0-G7 resolve them."
     },
     {
       "id": "independent-runtime-impeccable",
       "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-      "path": "^(package-lock\\.json|packages/design-assurance/|tests/design-assurance\\.test\\.mjs|packages/design-assurance/package\\.json)",
-      "terms": ["impeccable"],
+      "path": "^(package-lock\\.json|packages/design-assurance/package\\.json|packages/design-assurance/src/index\\.mjs|tests/design-assurance\\.test\\.mjs)$",
+      "terms": [
+        "impeccable"
+      ],
       "reason": "Impeccable is an independently licensed (Apache-2.0) runtime dependency invoked as a separate process."
     },
     {
       "id": "independent-runtime-docling",
       "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-      "path": "^(packages/import-stack/src/docling(-proposal)?\\.ts|tests/import-stack\\.test\\.mjs|tests/sandbox-[a-z-]+\\.test\\.mjs)$",
-      "terms": ["docling"],
+      "path": "^(packages/import-stack/src/(docling|docling-proposal|index)\\.ts|tests/import-stack\\.test\\.mjs|tests/sandbox-surfaces\\.test\\.mjs)$",
+      "terms": [
+        "docling"
+      ],
       "reason": "Docling is an optional, independently licensed local runtime that the import stack invokes; it is never distributed."
     },
     {
       "id": "persisted-project-format",
       "category": "PERSISTED_DATA",
       "path": "^packages/persistence/src/(types|journal|fsio|store)\\.ts$",
-      "terms": ["lilac"],
+      "terms": [
+        "lilac"
+      ],
       "line": "\\.lilac|lilac-project|lilac-journal-genesis",
       "reason": "Project directory, manifest format and journal genesis domain written into every project (N0-G2)."
     },
@@ -101,7 +104,9 @@
       "id": "persisted-host-files",
       "category": "PERSISTED_DATA",
       "path": "^(packages/studio-host/src/(agents|codebase|relay|server|projects-folder)\\.ts|scripts/lilac\\.mjs)$",
-      "terms": ["lilac"],
+      "terms": [
+        "lilac"
+      ],
       "line": "\\.lilac-|lilac_agent_|Lilac Projects|lilac-tmp",
       "reason": "Registries, discovery file, credential prefix and projects-folder default written to the user's disk (N0-G2)."
     },
@@ -109,7 +114,9 @@
       "id": "persisted-history-tools",
       "category": "PERSISTED_DATA",
       "path": "^packages/studio-host/src/(session|server)\\.ts$",
-      "terms": ["lilac"],
+      "terms": [
+        "lilac"
+      ],
       "line": "tool: \"lilac:",
       "reason": "History tool identifiers recorded in every journal entry (N0-G3)."
     },
@@ -117,21 +124,27 @@
       "id": "public-env",
       "category": "PUBLIC_API",
       "line": "LILAC_(PROJECTS|MCP_TOKEN)\\b",
-      "terms": ["lilac"],
+      "terms": [
+        "lilac"
+      ],
       "reason": "Environment variables users and MCP clients set (N0-G3, legacy names read with a notice)."
     },
     {
       "id": "public-mcp-catalog",
       "category": "PUBLIC_API",
       "path": "^(packages/mcp-protocol/|packages/studio-host/src/mcp\\.ts|docs/MCP\\.md)",
-      "terms": ["paper"],
+      "terms": [
+        "paper"
+      ],
       "reason": "MCP tool catalog mirrored from Paper and checked for drift against it (N0-G4)."
     },
     {
       "id": "public-cli",
       "category": "PUBLIC_API",
       "path": "^(scripts/lilac(-mcp)?\\.mjs|package\\.json)$",
-      "terms": ["lilac"],
+      "terms": [
+        "lilac"
+      ],
       "reason": "Commands and entry points users run (N0-G3)."
     },
     {
@@ -149,13 +162,17 @@
     {
       "id": "default-lilac",
       "category": "ACTIVE_PRODUCT_IDENTITY",
-      "terms": ["lilac"],
+      "terms": [
+        "lilac"
+      ],
       "reason": "Any other Lilac occurrence is active identity."
     },
     {
       "id": "default-paper",
       "category": "ACTIVE_PRODUCT_IDENTITY",
-      "terms": ["paper"],
+      "terms": [
+        "paper"
+      ],
       "reason": "Any other Paper occurrence is donor product identity."
     },
     {

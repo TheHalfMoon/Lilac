@@ -7,6 +7,7 @@
 //   node scripts/identity-census.mjs            print the census JSON
 //   node scripts/identity-census.mjs --write    write docs/evidence/N0_IDENTITY_CENSUS.json
 //   node scripts/identity-census.mjs --check    fail on any finding in a gated category
+//   --root <dir>                                scan another Git checkout instead of this one
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -14,13 +15,22 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 export const CENSUS_PATH = "docs/evidence/N0_IDENTITY_CENSUS.json";
+// The artifact is the output, and the tool, its policy and its test must name every term;
+// scanning them would make the result describe the census rather than the product.
+const NOT_SCANNED = new Set([CENSUS_PATH, "scripts/identity-census.mjs", "scripts/identity-policy.json", "tests/identity-census.test.mjs"]);
+const RULE_KEYS = new Set(["id", "category", "path", "terms", "line", "reason"]);
 const MAX_LINES_LISTED = 50;
+const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 export function loadPolicy(text = readFileSync(join(ROOT, "scripts/identity-policy.json"), "utf8")) {
   const policy = JSON.parse(text);
   const terms = Object.entries(policy.terms).map(([id, source]) => ({ id, pattern: new RegExp(source, "iu") }));
   const categories = new Set(Object.keys(policy.categories));
-  const rules = policy.rules.map((rule) => {
+  const rules = policy.rules.map((rule, index) => {
+    for (const key of Object.keys(rule)) if (!RULE_KEYS.has(key)) throw new Error(`rule ${rule.id}: unknown key ${key}`);
+    if (typeof rule.reason !== "string" || rule.reason.trim() === "") throw new Error(`rule ${rule.id}: a reason is required`);
+    const constrained = rule.path !== undefined || rule.terms !== undefined || rule.line !== undefined;
+    if (constrained === (index === policy.rules.length - 1)) throw new Error(`rule ${rule.id}: the last rule, and only the last rule, matches every finding`);
     if (!categories.has(rule.category)) throw new Error(`rule ${rule.id}: unknown category ${rule.category}`);
     for (const term of rule.terms ?? []) if (!Object.hasOwn(policy.terms, term)) throw new Error(`rule ${rule.id}: unknown term ${term}`);
     return {
@@ -31,10 +41,7 @@ export function loadPolicy(text = readFileSync(join(ROOT, "scripts/identity-poli
       line: rule.line === undefined ? null : new RegExp(rule.line, "u"),
     };
   });
-  const ids = new Set(rules.map((rule) => rule.id));
-  if (ids.size !== rules.length) throw new Error("rule ids must be unique");
-  const last = rules.at(-1);
-  if (!last || last.path || last.terms || last.line) throw new Error("the last rule must match every finding");
+  if (new Set(rules.map((rule) => rule.id)).size !== rules.length) throw new Error("rule ids must be unique");
   for (const category of policy.gated) if (!categories.has(category)) throw new Error(`unknown gated category ${category}`);
   return { terms, rules, gated: new Set(policy.gated), categories: [...categories] };
 }
@@ -50,10 +57,9 @@ export function classify(policy, path, term, line) {
   throw new Error("unreachable: the last rule matches everything");
 }
 
-function trackedFiles(root) {
+export function trackedFiles(root) {
   return execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
-    // The census artifact is the output; scanning it would make the output depend on itself.
-    .split("\0").filter((path) => path !== "" && path !== CENSUS_PATH).sort();
+    .split("\0").filter((path) => path !== "" && !NOT_SCANNED.has(path)).sort(byCodeUnit);
 }
 
 /** Scan `files` (paths relative to `root`) and return the census record. */
@@ -83,7 +89,7 @@ export function census(policy, root = ROOT, files = trackedFiles(root)) {
       }
     }
     if (findings.size > 0) {
-      const sorted = [...findings.values()].sort((a, b) => a.term.localeCompare(b.term) || a.rule.localeCompare(b.rule));
+      const sorted = [...findings.values()].sort((a, b) => byCodeUnit(a.term, b.term) || byCodeUnit(a.rule, b.rule));
       results.push({ path, findings: sorted });
     }
   }
@@ -105,9 +111,12 @@ export function serialize(record) {
 
 function main(argv) {
   const policy = loadPolicy();
-  const record = census(policy);
+  const rootIndex = argv.indexOf("--root");
+  const root = rootIndex === -1 ? ROOT : argv[rootIndex + 1];
+  if (root === undefined) throw new Error("--root needs a directory");
+  const record = census(policy, root, trackedFiles(root));
   if (argv.includes("--write")) {
-    writeFileSync(join(ROOT, CENSUS_PATH), serialize(record));
+    writeFileSync(join(root, CENSUS_PATH), serialize(record));
     process.stdout.write(`wrote ${CENSUS_PATH}: ${record.filesWithFindings} files, ${record.gatedFindings} gated findings\n`);
     return 0;
   }

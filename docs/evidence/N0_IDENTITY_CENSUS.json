@@ -1,35 +1,35 @@
 {
   "schema": "identity-census/1",
-  "filesScanned": 507,
-  "filesWithFindings": 311,
-  "gatedFindings": 1992,
+  "filesScanned": 504,
+  "filesWithFindings": 309,
+  "gatedFindings": 2045,
   "byCategory": {
-    "ACTIVE_PRODUCT_IDENTITY": 786,
-    "ACTIVE_INTERNAL_IDENTITY": 306,
+    "ACTIVE_PRODUCT_IDENTITY": 798,
+    "ACTIVE_INTERNAL_IDENTITY": 347,
     "PUBLIC_API": 62,
     "PERSISTED_DATA": 27,
-    "LEGACY_COMPATIBILITY": 86,
+    "LEGACY_COMPATIBILITY": 7,
     "TEST_FIXTURE": 523,
-    "THIRD_PARTY_INDEPENDENT_OBLIGATION": 251,
-    "IMMUTABLE_HISTORICAL_FACT": 393,
+    "THIRD_PARTY_INDEPENDENT_OBLIGATION": 198,
+    "IMMUTABLE_HISTORICAL_FACT": 396,
     "REMOVE_ENTIRELY": 288
   },
   "byTerm": {
-    "lilac": 1669,
-    "paper": 491,
-    "firstmate": 31,
-    "no-mistakes": 23,
-    "doop": 30,
-    "classifier-dev": 17,
-    "jev-search": 10,
-    "unreal-agent": 29,
-    "website-downloader": 17,
-    "appllama": 27,
-    "docling": 129,
-    "design-resources": 18,
-    "firecrawl": 30,
-    "impeccable": 171,
-    "ui-tars": 30
+    "lilac": 1641,
+    "paper": 476,
+    "firstmate": 29,
+    "no-mistakes": 21,
+    "doop": 28,
+    "classifier-dev": 15,
+    "jev-search": 9,
+    "unreal-agent": 26,
+    "website-downloader": 15,
+    "appllama": 25,
+    "docling": 124,
+    "design-resources": 16,
+    "firecrawl": 28,
+    "impeccable": 165,
+    "ui-tars": 28
   },
   "files": [
     {
@@ -285,8 +285,8 @@
       "findings": [
         {
           "term": "appllama",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 1,
           "lines": [
             135
@@ -294,8 +294,8 @@
         },
         {
           "term": "classifier-dev",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 1,
           "lines": [
             133
@@ -303,8 +303,8 @@
         },
         {
           "term": "design-resources",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 1,
           "lines": [
             136
@@ -321,8 +321,8 @@
         },
         {
           "term": "doop",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 1,
           "lines": [
             142
@@ -330,8 +330,8 @@
         },
         {
           "term": "firecrawl",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 1,
           "lines": [
             143
@@ -339,8 +339,8 @@
         },
         {
           "term": "firstmate",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 3,
           "lines": [
             111,
@@ -367,8 +367,8 @@
         },
         {
           "term": "jev-search",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 1,
           "lines": [
             144
@@ -417,8 +417,8 @@
         },
         {
           "term": "no-mistakes",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 1,
           "lines": [
             134
@@ -426,8 +426,8 @@
         },
         {
           "term": "paper",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_PRODUCT_IDENTITY",
+          "rule": "default-paper",
           "count": 12,
           "lines": [
             145,
@@ -446,8 +446,8 @@
         },
         {
           "term": "ui-tars",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 4,
           "lines": [
             99,
@@ -458,8 +458,8 @@
         },
         {
           "term": "unreal-agent",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 6,
           "lines": [
             65,
@@ -472,8 +472,8 @@
         },
         {
           "term": "website-downloader",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "default-donor",
           "count": 2,
           "lines": [
             121,
@@ -1882,20 +1882,22 @@
           "term": "docling",
           "category": "IMMUTABLE_HISTORICAL_FACT",
           "rule": "dated-evidence",
-          "count": 2,
+          "count": 3,
           "lines": [
-            26,
-            31
+            28,
+            33,
+            35
           ]
         },
         {
           "term": "impeccable",
           "category": "IMMUTABLE_HISTORICAL_FACT",
           "rule": "dated-evidence",
-          "count": 2,
+          "count": 3,
           "lines": [
-            26,
-            31
+            28,
+            33,
+            35
           ]
         },
         {
@@ -1905,34 +1907,35 @@
           "count": 10,
           "lines": [
             7,
-            27,
-            28,
-            31,
-            35,
-            36,
-            37,
-            38,
+            29,
+            30,
+            33,
             39,
-            40
+            40,
+            41,
+            42,
+            43,
+            44
           ]
         },
         {
           "term": "paper",
           "category": "IMMUTABLE_HISTORICAL_FACT",
           "rule": "dated-evidence",
-          "count": 11,
+          "count": 12,
           "lines": [
             7,
-            25,
             27,
-            31,
-            42,
-            44,
-            45,
+            29,
+            33,
+            35,
             46,
             48,
             49,
-            50
+            50,
+            52,
+            53,
+            54
           ]
         }
       ]
@@ -3456,8 +3459,8 @@
       "findings": [
         {
           "term": "appllama",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             35
@@ -3465,8 +3468,8 @@
         },
         {
           "term": "classifier-dev",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             33
@@ -3474,8 +3477,8 @@
         },
         {
           "term": "design-resources",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             36
@@ -3492,8 +3495,8 @@
         },
         {
           "term": "doop",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             42
@@ -3501,8 +3504,8 @@
         },
         {
           "term": "firecrawl",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             43
@@ -3510,8 +3513,8 @@
         },
         {
           "term": "firstmate",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             30
@@ -3534,8 +3537,8 @@
         },
         {
           "term": "jev-search",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             44
@@ -3561,8 +3564,8 @@
         },
         {
           "term": "no-mistakes",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             34
@@ -3570,8 +3573,8 @@
         },
         {
           "term": "paper",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 10,
           "lines": [
             45,
@@ -3588,8 +3591,8 @@
         },
         {
           "term": "ui-tars",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             31
@@ -3597,8 +3600,8 @@
         },
         {
           "term": "unreal-agent",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             29
@@ -3606,8 +3609,8 @@
         },
         {
           "term": "website-downloader",
-          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
-          "rule": "third-party-notices",
+          "category": "ACTIVE_INTERNAL_IDENTITY",
+          "rule": "donor-provenance-records",
           "count": 1,
           "lines": [
             37
@@ -5172,8 +5175,8 @@
       "findings": [
         {
           "term": "docling",
-          "category": "ACTIVE_INTERNAL_IDENTITY",
-          "rule": "default-donor",
+          "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
+          "rule": "independent-runtime-docling",
           "count": 2,
           "lines": [
             18,
@@ -6328,192 +6331,6 @@
       ]
     },
     {
-      "path": "scripts/identity-policy.json",
-      "findings": [
-        {
-          "term": "appllama",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            14,
-            75
-          ]
-        },
-        {
-          "term": "classifier-dev",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            10,
-            75
-          ]
-        },
-        {
-          "term": "design-resources",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            16,
-            75
-          ]
-        },
-        {
-          "term": "docling",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 6,
-          "lines": [
-            15,
-            75,
-            86,
-            88,
-            89,
-            90
-          ]
-        },
-        {
-          "term": "doop",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            9,
-            75
-          ]
-        },
-        {
-          "term": "firecrawl",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            17,
-            75
-          ]
-        },
-        {
-          "term": "firstmate",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            7,
-            75
-          ]
-        },
-        {
-          "term": "impeccable",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 5,
-          "lines": [
-            18,
-            75,
-            79,
-            82,
-            83
-          ]
-        },
-        {
-          "term": "jev-search",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 1,
-          "lines": [
-            11
-          ]
-        },
-        {
-          "term": "lilac",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 16,
-          "lines": [
-            5,
-            68,
-            96,
-            97,
-            103,
-            104,
-            105,
-            112,
-            113,
-            119,
-            120,
-            133,
-            134,
-            150,
-            152,
-            153
-          ]
-        },
-        {
-          "term": "no-mistakes",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            8,
-            75
-          ]
-        },
-        {
-          "term": "paper",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 13,
-          "lines": [
-            6,
-            48,
-            50,
-            51,
-            54,
-            56,
-            57,
-            75,
-            127,
-            128,
-            156,
-            158,
-            159
-          ]
-        },
-        {
-          "term": "ui-tars",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            19,
-            75
-          ]
-        },
-        {
-          "term": "unreal-agent",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            12,
-            75
-          ]
-        },
-        {
-          "term": "website-downloader",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            13,
-            75
-          ]
-        }
-      ]
-    },
-    {
       "path": "scripts/import-authorized-paper.mjs",
       "findings": [
         {
@@ -7630,61 +7447,6 @@
           "count": 1,
           "lines": [
             9
-          ]
-        }
-      ]
-    },
-    {
-      "path": "tests/identity-census.test.mjs",
-      "findings": [
-        {
-          "term": "impeccable",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 2,
-          "lines": [
-            39,
-            51
-          ]
-        },
-        {
-          "term": "lilac",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 12,
-          "lines": [
-            35,
-            36,
-            37,
-            40,
-            41,
-            42,
-            43,
-            49,
-            50,
-            66,
-            71,
-            72
-          ]
-        },
-        {
-          "term": "paper",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 3,
-          "lines": [
-            38,
-            66,
-            71
-          ]
-        },
-        {
-          "term": "unreal-agent",
-          "category": "LEGACY_COMPATIBILITY",
-          "rule": "identity-gate-own-files",
-          "count": 1,
-          "lines": [
-            44
           ]
         }
       ]
