@@ -70,7 +70,7 @@ function withProject(callback) {
 test("provenance is local-only and the package has no external dependencies", () => {
   assert.match(PERSISTENCE_PROVENANCE.posture, /No network, model, or hosted service/);
   const manifest = JSON.parse(readFileSync(new URL("../packages/persistence/package.json", import.meta.url), "utf8"));
-  assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["@lilac/document-model", "@lilac/history"]);
+  assert.deepEqual(Object.keys(manifest.dependencies).sort(), ["@ninerr/document-model", "@ninerr/history"]);
 });
 
 test("create, open, commit, close, and reopen round-trip the document", () => withProject((root) => {

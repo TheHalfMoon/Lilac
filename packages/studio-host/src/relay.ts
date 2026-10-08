@@ -2,7 +2,7 @@ import { lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import { isLoopbackAddress } from "@lilac/network-policy";
+import { isLoopbackAddress } from "@ninerr/network-policy";
 
 // The stdio MCP relay. An MCP client that speaks stdio (one JSON-RPC message per line)
 // starts this; each message is forwarded to the running studio host's MCP endpoint with

@@ -8,15 +8,15 @@
     "node": ">=22.18.0"
   },
   "dependencies": {
-    "@lilac/code-ir": "0.0.0",
+    "@ninerr/code-ir": "0.0.0",
     "@lilac/collaboration": "0.0.0",
-    "@lilac/document-model": "0.0.0",
-    "@lilac/history": "0.0.0",
+    "@ninerr/document-model": "0.0.0",
+    "@ninerr/history": "0.0.0",
     "@lilac/import-stack": "0.0.0",
     "@lilac/intake": "0.0.0",
     "@lilac/mcp-protocol": "0.0.0",
-    "@lilac/network-policy": "0.0.0",
-    "@lilac/persistence": "0.0.0",
-    "@lilac/renderer": "0.0.0"
+    "@ninerr/network-policy": "0.0.0",
+    "@ninerr/persistence": "0.0.0",
+    "@ninerr/renderer": "0.0.0"
   }
 }

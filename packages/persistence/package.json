@@ -1,5 +1,5 @@
 {
-  "name": "@lilac/persistence",
+  "name": "@ninerr/persistence",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     "node": ">=22.18.0"
   },
   "dependencies": {
-    "@lilac/document-model": "0.0.0",
-    "@lilac/history": "0.0.0"
+    "@ninerr/document-model": "0.0.0",
+    "@ninerr/history": "0.0.0"
   }
 }

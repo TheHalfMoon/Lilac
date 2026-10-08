@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { closeSync, constants, lstatSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { LocalCollaborationRoom, createAccessPolicy, createCollaborationState } from "@lilac/collaboration";
-import { createDocument } from "@lilac/document-model";
-import { createHistoryState } from "@lilac/history";
-import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, createProject, migrateLegacyProject, openProject, projectLayout, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
+import { createDocument } from "@ninerr/document-model";
+import { createHistoryState } from "@ninerr/history";
+import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, createProject, migrateLegacyProject, openProject, projectLayout, type ProjectStore, type RecoveryReport } from "@ninerr/persistence";
 import { StudioError } from "./errors.ts";
 
 /** Who is acting. People act through the editor; agents act through MCP (PC5). */

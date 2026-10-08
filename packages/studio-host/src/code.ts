@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { buildCodeIr, codeToDesign, designToCode, type DesignDoc, type DesignDocNode } from "@lilac/code-ir";
-import { planElement } from "@lilac/renderer";
+import { buildCodeIr, codeToDesign, designToCode, type DesignDoc, type DesignDocNode } from "@ninerr/code-ir";
+import { planElement } from "@ninerr/renderer";
 import { StudioError } from "./errors.ts";
 import { styleProperties } from "./imports.ts";
 
-// The design/code workflow (PC6, gate 11), over @lilac/code-ir.
+// The design/code workflow (PC6, gate 11), over @ninerr/code-ir.
 //
 // Export: a layer and what is inside it become one JSX function component. Each layer is
 // first reduced by the renderer's own sanitizer (planElement), so the code says exactly

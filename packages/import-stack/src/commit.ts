@@ -1,4 +1,4 @@
-import { commitTransaction } from "@lilac/history";
+import { commitTransaction } from "@ninerr/history";
 import { ImportConflictError, ImportValidationError } from "./errors.ts";
 import { collectProposalSubtree, validateImportProposal } from "./proposal.ts";
 import type { ImportCommitResult, ImportNode, ImportProposal } from "./types.ts";

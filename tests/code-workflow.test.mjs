@@ -10,7 +10,7 @@ import { exportJsx, importJsx, startStudioHost } from "../packages/studio-host/s
 import { browserTestOptions } from "./support/browser.mjs";
 import { layerCount, openEditor, rendered, waitRevision } from "./support/editor.mjs";
 
-// PC6 (#163): the design/code workflow through the product, over @lilac/code-ir. A layer is
+// PC6 (#163): the design/code workflow through the product, over @ninerr/code-ir. A layer is
 // exported as a JSX component exactly as the canvas draws it (the renderer's own
 // sanitizer decides what is in it), and JSX is brought into the design as one undoable
 // transaction. Closes PC gate 11.

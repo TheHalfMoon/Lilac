@@ -7,12 +7,12 @@ import {
   isLoopbackAddress,
   type NetworkPolicy,
   type UrlDecision,
-} from "@lilac/network-policy";
+} from "@ninerr/network-policy";
 import { ImportSecurityError, ImportValidationError } from "./errors.ts";
 import type { ImportPolicy } from "./types.ts";
 import { assertSafeProvenanceUrl } from "./validation.ts";
 
-// Address classification is owned by @lilac/network-policy; re-exported for compatibility.
+// Address classification is owned by @ninerr/network-policy; re-exported for compatibility.
 export { isForbiddenRemoteAddress, isLoopbackAddress };
 
 /**

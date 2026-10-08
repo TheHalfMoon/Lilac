@@ -8,8 +8,8 @@
     "node": ">=22.18.0"
   },
   "dependencies": {
-    "@lilac/document-model": "0.0.0",
-    "@lilac/network-policy": "0.0.0",
+    "@ninerr/document-model": "0.0.0",
+    "@ninerr/network-policy": "0.0.0",
     "impeccable": "4.1.0"
   }
 }

@@ -7,8 +7,8 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 
-import { validateDocument } from "@lilac/document-model";
-import { classifyAddress } from "@lilac/network-policy";
+import { validateDocument } from "@ninerr/document-model";
+import { classifyAddress } from "@ninerr/network-policy";
 
 import { assertNoPolicyDenials, startBrowserPolicyProxy } from "./browser-proxy.mjs";
 import { DesignAssuranceError } from "./errors.mjs";
@@ -702,7 +702,7 @@ export async function scanStaticHtml({
   });
 }
 
-// Address classification is owned by @lilac/network-policy; only "public" passes.
+// Address classification is owned by @ninerr/network-policy; only "public" passes.
 function isPrivateBrowserHost(hostname) {
   const host = hostname.toLowerCase().replace(/\.$/u, "");
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true;

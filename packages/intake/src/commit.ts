@@ -1,6 +1,6 @@
-import { createHistoryState } from "@lilac/history";
+import { createHistoryState } from "@ninerr/history";
 import { commitImportProposal, validateImportProposal, type ImportProposal } from "@lilac/import-stack";
-import type { ProjectStore } from "@lilac/persistence";
+import type { ProjectStore } from "@ninerr/persistence";
 import { IntakeNotReadyError, IntakeValidationError } from "./errors.ts";
 import { reviewImport } from "./review.ts";
 import { inferSemantics } from "./semantics.ts";
@@ -24,12 +24,12 @@ function snapshotProposal(proposal: unknown): ImportProposal {
  * once; the review, the import transaction, and the semantics all use that single copy. The
  * document change is exactly the `@lilac/import-stack` history transaction (computed against
  * the store's current document and revision), annotated with OBSERVED semantics in node props,
- * then persisted through the store, which re-validates it through `@lilac/history`. Nothing is
+ * then persisted through the store, which re-validates it through `@ninerr/history`. Nothing is
  * written when the review is not commit-ready or the revision is stale.
  */
 export function commitIntake(store: ProjectStore, proposalInput: ImportProposal, input: { transactionId: string; at: string }): IntakeCommitResult {
   if (store === null || typeof store !== "object" || typeof store.commit !== "function") {
-    throw new IntakeValidationError("store must be an open @lilac/persistence project store");
+    throw new IntakeValidationError("store must be an open @ninerr/persistence project store");
   }
   if (input === null || typeof input !== "object") throw new IntakeValidationError("input must be an object");
   const proposal = snapshotProposal(proposalInput);

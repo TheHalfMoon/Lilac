@@ -2,7 +2,7 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import { Agent, createServer, request as httpRequest } from "node:http";
 import { connect, isIP } from "node:net";
 
-import { classifyAddress, isLinkLocalOrMetadataAddress } from "@lilac/network-policy";
+import { classifyAddress, isLinkLocalOrMetadataAddress } from "@ninerr/network-policy";
 
 import { DesignAssuranceError } from "./errors.mjs";
 

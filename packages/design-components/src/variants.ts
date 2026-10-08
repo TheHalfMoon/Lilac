@@ -1,4 +1,4 @@
-import { applyPatch, codeToDesign, normalizeCodeIr, type CodeIr, type PatchOp } from "@lilac/code-ir";
+import { applyPatch, codeToDesign, normalizeCodeIr, type CodeIr, type PatchOp } from "@ninerr/code-ir";
 import { DesignComponentsDriftError, DesignComponentsValidationError } from "./errors.ts";
 import { bindContract, detectDrift } from "./binding.ts";
 import {

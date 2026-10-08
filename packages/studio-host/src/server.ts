@@ -3,8 +3,8 @@ import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameS
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { extname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isLoopbackAddress } from "@lilac/network-policy";
-import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES } from "@lilac/persistence";
+import { isLoopbackAddress } from "@ninerr/network-policy";
+import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES } from "@ninerr/persistence";
 import { AgentRegistry } from "./agents.ts";
 import { StudioError } from "./errors.ts";
 import { exportJsx, importJsx } from "./code.ts";

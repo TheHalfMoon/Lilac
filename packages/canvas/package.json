@@ -1,5 +1,5 @@
 {
-  "name": "@lilac/canvas",
+  "name": "@ninerr/canvas",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
     "node": ">=22.18.0"
   },
   "dependencies": {
-    "@lilac/renderer": "0.0.0"
+    "@ninerr/renderer": "0.0.0"
   }
 }

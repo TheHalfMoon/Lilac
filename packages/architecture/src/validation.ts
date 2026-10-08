@@ -10,8 +10,8 @@ import {
 
 export const IMPLEMENTED_PACKAGES = [
   "@lilac/design-assurance",
-  "@lilac/document-model",
-  "@lilac/history",
+  "@ninerr/document-model",
+  "@ninerr/history",
   "@lilac/mcp-protocol",
   "@lilac/agent-runtime",
   "@lilac/agent-events",
@@ -22,18 +22,18 @@ export const IMPLEMENTED_PACKAGES = [
   "@lilac/delivery-governance",
   "@lilac/design-method",
   "@lilac/architecture",
-  "@lilac/code-ir",
+  "@ninerr/code-ir",
   "@lilac/design-components",
   "@lilac/agent-workspace",
   "@lilac/visual-git",
   "@lilac/decision-assurance",
-  "@lilac/persistence",
-  "@lilac/network-policy",
+  "@ninerr/persistence",
+  "@ninerr/network-policy",
   "@lilac/intake",
   "@lilac/studio-host",
   "@lilac/studio-web",
-  "@lilac/renderer",
-  "@lilac/canvas",
+  "@ninerr/renderer",
+  "@ninerr/canvas",
   "@lilac/desktop",
 ] as const;
 
@@ -89,8 +89,9 @@ export function normalizeSubsystem(value: unknown, index: number): SubsystemReco
   if (typeof value.title !== "string" || value.title.trim() === "" || value.title.length > 256) {
     throw new ArchitectureValidationError(`${label}.title must be a bounded non-empty string`);
   }
-  if (typeof value.owner !== "string" || !/^@lilac\/[a-z][a-z0-9-]*$/u.test(value.owner)) {
-    throw new ArchitectureValidationError(`${label}.owner must be a Lilac package name`);
+  // @ninerr, and @lilac until every workspace package has moved (N0-G3).
+  if (typeof value.owner !== "string" || !/^@(?:ninerr|lilac)\/[a-z][a-z0-9-]*$/u.test(value.owner)) {
+    throw new ArchitectureValidationError(`${label}.owner must be a workspace package name`);
   }
   if (!SUBSYSTEM_STATUSES.includes(value.status as (typeof SUBSYSTEM_STATUSES)[number])) {
     throw new ArchitectureValidationError(`${label}.status is unsupported`);

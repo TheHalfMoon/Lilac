@@ -1,4 +1,4 @@
-import { normalizeCodeIr, type CodeIr, type SourceSymbol } from "@lilac/code-ir";
+import { normalizeCodeIr, type CodeIr, type SourceSymbol } from "@ninerr/code-ir";
 import { DesignComponentsDriftError, DesignComponentsValidationError } from "./errors.ts";
 import {
   type BoundComponent,

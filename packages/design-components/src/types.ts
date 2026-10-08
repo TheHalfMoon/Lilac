@@ -1,4 +1,4 @@
-import type { DesignDoc, SourceRange } from "@lilac/code-ir";
+import type { DesignDoc, SourceRange } from "@ninerr/code-ir";
 
 export const DESIGN_COMPONENTS_SCHEMA_VERSION = 1;
 

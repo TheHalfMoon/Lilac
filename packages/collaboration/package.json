@@ -6,6 +6,6 @@
   "exports": "./src/index.ts",
   "dependencies": {
     "@lilac/agent-runtime": "0.0.0",
-    "@lilac/history": "0.0.0"
+    "@ninerr/history": "0.0.0"
   }
 }

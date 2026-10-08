@@ -1,4 +1,4 @@
-import { NODE_FIELDS } from "@lilac/document-model";
+import { NODE_FIELDS } from "@ninerr/document-model";
 import { canonicalJson, sha256Hex } from "./canonical.ts";
 import { PersistenceCorruptionError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
 import { JOURNAL_GENESIS_DOMAINS, PERSISTENCE_LIMITS, type JournalEntry, type JournalGenesisDomain } from "./types.ts";

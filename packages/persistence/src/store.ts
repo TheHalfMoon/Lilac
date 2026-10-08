@@ -1,8 +1,8 @@
 import { createHash, randomUUID, type Hash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { DOCUMENT_FIELDS, DOCUMENT_SCHEMA_VERSION, NODE_FIELDS, cloneDocument, normalizeDocument, validateDocument } from "@lilac/document-model";
-import { applyTransaction, createTransaction } from "@lilac/history";
+import { DOCUMENT_FIELDS, DOCUMENT_SCHEMA_VERSION, NODE_FIELDS, cloneDocument, normalizeDocument, validateDocument } from "@ninerr/document-model";
+import { applyTransaction, createTransaction } from "@ninerr/history";
 import { canonicalJson } from "./canonical.ts";
 import { PersistenceCorruptionError, PersistenceLockError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
 import {

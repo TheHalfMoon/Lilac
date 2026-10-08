@@ -60,13 +60,13 @@ test("canonical catalog covers every required subsystem exactly once", () => {
   }
   assert.equal(new Set(ids).size, ids.length);
   const owners = Object.fromEntries(normalized.subsystems.map((subsystem) => [subsystem.id, subsystem.owner]));
-  assert.equal(owners["document-model"], "@lilac/document-model");
-  assert.equal(owners["history"], "@lilac/history");
+  assert.equal(owners["document-model"], "@ninerr/document-model");
+  assert.equal(owners["history"], "@ninerr/history");
   assert.equal(owners["collaboration"], "@lilac/collaboration");
   assert.equal(owners["import-export"], "@lilac/import-stack");
   assert.equal(owners["agent-runtime"], "@lilac/agent-runtime");
   assert.equal(owners["mcp-surface"], "@lilac/mcp-protocol");
-  assert.equal(owners["canvas-viewport"], "@lilac/canvas");
+  assert.equal(owners["canvas-viewport"], "@ninerr/canvas");
   assert.equal(owners["components"], "@lilac/design-components");
   assert.equal(owners["agent-workspace"], "@lilac/agent-workspace");
   assert.equal(owners["visual-git"], "@lilac/visual-git");
