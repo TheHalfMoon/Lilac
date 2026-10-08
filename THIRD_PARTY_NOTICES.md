@@ -44,6 +44,7 @@ Impeccable's upstream `NOTICE.md` at the pinned revision is reproduced verbatim 
 
 ## Electron
 
+- Project: `electron/electron`
 - Runtime: Electron `44.7.0`, the official release archives for linux-x64, darwin-arm64 and win32-x64, pinned by SHA-256 in `scripts/desktop/electron.mjs` and fetched by `scripts/fetch-electron.mjs` (not the `electron` npm package)
 - Copyright: Electron contributors; 2013-2020 GitHub Inc.
 - License: MIT
