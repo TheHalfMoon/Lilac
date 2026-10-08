@@ -59,7 +59,11 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          archive=$(ls dist/desktop/Lilac-${{ matrix.target }}.tar.gz dist/desktop/Lilac-${{ matrix.target }}.zip 2>/dev/null | head -n 1)
+          # The step runs under bash -e: pick the archive by testing, not with a failing ls.
+          archive=""
+          for candidate in dist/desktop/Lilac-${{ matrix.target }}.tar.gz dist/desktop/Lilac-${{ matrix.target }}.zip; do
+            if [ -f "$candidate" ]; then archive="$candidate"; fi
+          done
           echo "archive: [$archive]" > smoke.err
           node scripts/smoke-desktop.mjs "$archive" 2>>smoke.err | tee smoke.json
           exit "${PIPESTATUS[0]}"
