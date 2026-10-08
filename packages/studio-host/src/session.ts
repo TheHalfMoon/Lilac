@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { LocalCollaborationRoom, createAccessPolicy, createCollaborationState } from "@lilac/collaboration";
 import { createDocument } from "@lilac/document-model";
 import { createHistoryState } from "@lilac/history";
-import { PROJECT_FILES, createProject, openProject, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
+import { PROJECT_FILES, createProject, migrateLegacyProject, openProject, projectLayout, type ProjectStore, type RecoveryReport } from "@lilac/persistence";
 import { StudioError } from "./errors.ts";
 
 /** Who is acting. People act through the editor; agents act through MCP (PC5). */
@@ -84,7 +84,8 @@ export function assertProjectName(name: unknown): string {
 export class StudioSession {
   readonly name: string;
   readonly owner: StudioActor;
-  readonly recovery: Readonly<RecoveryReport>;
+  /** What opening repaired; `legacyProject` when a project from before Ninerr was migrated. */
+  readonly recovery: Readonly<RecoveryReport & { legacyProject?: true }>;
   #store: ProjectStore;
   #documentId: string;
   #grants: Array<{ principalKind: "actor"; principalId: string; capabilities: string[] }>;
@@ -101,10 +102,10 @@ export class StudioSession {
   // layers. The store still validates and applies every transaction itself.
   #base: { document: any; past: never[]; future: never[] } | null = null;
 
-  private constructor(name: string, store: ProjectStore, owner: StudioActor, now: () => string) {
+  private constructor(name: string, store: ProjectStore, owner: StudioActor, now: () => string, legacyMigratedFrom: number | null = null) {
     this.name = name;
     this.owner = owner;
-    this.recovery = store.recovery;
+    this.recovery = legacyMigratedFrom === null ? store.recovery : Object.freeze({ ...store.recovery, migratedFrom: legacyMigratedFrom, legacyProject: true as const });
     this.#store = store;
     this.#documentId = store.document.id;
     this.#grants = [{ principalKind: "actor", principalId: owner.actorId, capabilities: OWNER_CAPABILITIES }];
@@ -129,7 +130,11 @@ export class StudioSession {
     if (entry.isSymbolicLink() || !entry.isDirectory()) throw new StudioError(400, "invalid-project", `${name} is not a project directory inside the projects root`);
     if (input.breakStaleLock !== undefined) assertLockHolderGone(root);
     try {
-      return new StudioSession(name, openProject(root, { owner: input.owner.actorId, at, ...(input.breakStaleLock ? { breakStaleLock: input.breakStaleLock } : {}) }), input.owner, input.now);
+      // A project from before the rename is migrated into the Ninerr format first; its
+      // original directory is left unchanged next to the new one (persistence, N0-G2).
+      const legacy = projectLayout(root) === "legacy" ? migrateLegacyProject(root, { owner: input.owner.actorId, at }) : null;
+      const store = openProject(root, { owner: input.owner.actorId, at, ...(input.breakStaleLock ? { breakStaleLock: input.breakStaleLock } : {}) });
+      return new StudioSession(name, store, input.owner, input.now, legacy?.migratedFrom ?? null);
     } catch (error) {
       throw asOpenError(error, name);
     }

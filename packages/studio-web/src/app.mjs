@@ -170,7 +170,8 @@ function recoveryNotes(recovery) {
   const notes = [];
   if (recovery.tornTailBytes > 0) notes.push(`An unfinished write at the end of the project's history was discarded (${recovery.tornTailBytes} bytes). Every completed change is intact.`);
   if (recovery.staleTemporaryFiles > 0) notes.push(`${recovery.staleTemporaryFiles} temporary file(s) left by an interrupted save were removed.`);
-  if (recovery.migratedFrom !== null && recovery.migratedFrom !== undefined) notes.push(`The project was upgraded from format version ${recovery.migratedFrom}.`);
+  if (recovery.legacyProject) notes.push("This project was made before the rename to Ninerr. It was copied into the Ninerr format; the original copy is unchanged next to it.");
+  else if (recovery.migratedFrom !== null && recovery.migratedFrom !== undefined) notes.push(`The project was upgraded from format version ${recovery.migratedFrom}.`);
   if (recovery.lockOverride) notes.push(`A stale lock held by ${recovery.lockOverride.previous?.owner ?? "another session"} was taken over: ${recovery.lockOverride.reason}.`);
   return notes;
 }

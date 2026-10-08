@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createDocument } from "../packages/document-model/src/index.mjs";
-import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, PersistenceCorruptionError, createProject, openProject } from "../packages/persistence/src/index.ts";
+import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, PersistenceCorruptionError, createProject, migrateLegacyProject, openProject } from "../packages/persistence/src/index.ts";
 import { isFilesystemError, removeStaleFiles } from "../packages/persistence/src/fsio.ts";
 
 // P06 gate 10 (#133): systematic crash-point injection. Every injected crash state either
@@ -254,6 +254,27 @@ test("an in-place schema-1 upgrade interrupted before its manifest rename upgrad
       const again = open(copy);
       assert.equal(again.recovery.migratedFrom, null);
       again.close();
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a legacy migration interrupted before its directory rename leaves no Ninerr project, and migrates again", () => {
+  const root = tempRoot();
+  try {
+    cpSync(LEGACY_CORPUS, root, { recursive: true });
+    withCopy(root, (copy) => {
+      // The staging directory a crash leaves: assembled, never renamed into place.
+      cpSync(join(copy, LEGACY_PROJECT_DIRECTORY), join(copy, `${PROJECT_FILES.directory}.tmp-4242-${randomUUID()}`), { recursive: true });
+    }, (copy) => {
+      assert.equal(existsSync(join(copy, PROJECT_FILES.directory)), false);
+      assert.throws(() => open(copy), /legacy project from before Ninerr/u, "an interrupted migration is not a project");
+      const report = migrateLegacyProject(copy, { owner: "writer-1", at: AT });
+      assert.equal(report.migratedFrom, 1);
+      const store = open(copy);
+      assert.equal(store.revision, 5);
+      store.close();
     });
   } finally {
     rmSync(root, { recursive: true, force: true });

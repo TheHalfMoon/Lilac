@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { DOCUMENT_SCHEMA_VERSION, createDocument } from "../packages/document-model/src/index.mjs";
 import { MCP_CONFIRMATION_WINDOW_MS, MCP_TRANSPORTS, PAPER_MCP_OBSERVED_AT, PAPER_MCP_TOOL_NAMES, authorizeMCPToolCall, classifyPaperTool, mcpArgumentsSha256 } from "../packages/mcp-protocol/src/index.mjs";
 import { createAccessPolicy } from "../packages/collaboration/src/index.ts";
-import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, PROJECT_MIGRATIONS, PROJECT_SCHEMA_VERSION, createProject, openProject } from "../packages/persistence/src/index.ts";
+import { PROJECT_FILES, PROJECT_MIGRATIONS, PROJECT_SCHEMA_VERSION, createProject, migrateLegacyProject, openProject, projectLayout } from "../packages/persistence/src/index.ts";
 
 // P07a (#140): the release documents must describe the code as it is. Every cited path
 // exists, and every number or example they state is checked against the implementation.
@@ -109,16 +109,16 @@ test("the migration example runs as written", () => {
   const doc = read("docs/MIGRATION.md");
   const example = /```js\n([\s\S]*?)```/.exec(doc)[1];
   const lines = example.trim().split("\n");
-  // The example's call, run on a schema-1 project in the Ninerr directory, gives the stated result.
-  assert.equal(lines[2], 'const store = openProject(root, { owner: "my-app", at: new Date().toISOString() });');
-  assert.equal(lines[3], "store.recovery.migratedFrom; // 1");
-  assert.equal(lines[4], 'store.manifest.journalGenesis; // "lilac-journal-genesis"');
+  // The example's calls, run on the legacy corpus as written, give the stated result.
+  assert.equal(lines[2], 'if (projectLayout(root) === "legacy") migrateLegacyProject(root, { owner: "my-app", at: new Date().toISOString() });');
+  assert.equal(lines[3], 'const store = openProject(root, { owner: "my-app", at: new Date().toISOString() });');
+  const stated = /^store\.manifest\.journalGenesis; \/\/ "([a-z-]+)"$/u.exec(lines[4])[1];
   const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-migration-doc-")));
   try {
-    cpSync(fileURLToPath(new URL(`./fixtures/projects/v1-basic/${LEGACY_PROJECT_DIRECTORY}/`, import.meta.url)), join(root, PROJECT_FILES.directory), { recursive: true });
+    cpSync(fileURLToPath(new URL("./fixtures/projects/v1-basic/", import.meta.url)), root, { recursive: true });
+    if (projectLayout(root) === "legacy") migrateLegacyProject(root, { owner: "my-app", at: new Date().toISOString() });
     const store = openProject(root, { owner: "my-app", at: new Date().toISOString() });
-    assert.equal(store.recovery.migratedFrom, 1, "the example's stated result");
-    assert.equal(store.manifest.journalGenesis, "lilac-journal-genesis");
+    assert.equal(store.manifest.journalGenesis, stated, "the example's stated result");
     store.close();
   } finally {
     rmSync(root, { recursive: true, force: true });
