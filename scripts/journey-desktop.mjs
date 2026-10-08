@@ -82,7 +82,7 @@ async function main() {
     await waitForRevision(page, 3);
     const box = await page.locator("#inspector").getAttribute("data-node-id");
     const styleOf = (nodeId) => page.evaluate((id) => {
-      const element = document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${id}"]`);
+      const element = document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${id}"]`);
       return { left: parseFloat(element?.style.left), width: parseFloat(element?.style.width), background: element?.style.background };
     }, nodeId);
     const inserted = await styleOf(box);
@@ -96,18 +96,18 @@ async function main() {
     const edited = await styleOf(box);
     step("2b a box is inserted, moved, resized and filled", edited.left === inserted.left + 10 && edited.width === inserted.width + 10 && edited.background === "rgb(51, 102, 153)", { inserted, edited });
     // The heading's text, edited in the inspector: its text layer, the heading's child.
-    const heading = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("h1")?.getAttribute("data-lilac-id"));
+    const heading = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("h1")?.getAttribute("data-ninerr-id"));
     await page.locator(`[role=treeitem][data-node-id="${heading}"] > [role=group] > [role=treeitem] > .row`).first().click();
     await page.locator("#inspect-text").fill("Launch week");
     await page.locator("#inspect-text").press("Tab");
     await waitForRevision(page, 7);
-    step("2c text is edited", (await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${id}"]`)?.textContent, heading)) === "Launch week");
+    step("2c text is edited", (await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${id}"]`)?.textContent, heading)) === "Launch week");
     await page.locator("#action-undo").click();
     await waitForRevision(page, 8);
-    const undone = await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${id}"]`)?.textContent, heading);
+    const undone = await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${id}"]`)?.textContent, heading);
     await page.locator("#action-redo").click();
     await waitForRevision(page, 9);
-    const redone = await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${id}"]`)?.textContent, heading);
+    const redone = await page.evaluate((id) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${id}"]`)?.textContent, heading);
     step("2d undo and redo", undone === "Launch day" && redone === "Launch week", { undone, redone });
 
     // 3. Use an agent, connected in the editor, over MCP on 127.0.0.1.
@@ -158,9 +158,9 @@ async function main() {
     const listed = await page.locator("#codebase-components li").allTextContents();
     await page.locator("#codebase-components button", { hasText: "Bring in" }).click();
     await waitForRevision(page, 13);
-    const cardId = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("section.card")?.getAttribute("data-lilac-id"));
-    const cardHeading = await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"] h2`)?.getAttribute("data-lilac-id"), cardId);
-    step("4a a codebase folder is connected and its component brought in", listed.length === 1 && listed[0].startsWith("PriceCard PriceCard.jsx") && cardHeading !== undefined && (await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`)?.textContent, cardHeading)) === "Pro", listed);
+    const cardId = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("section.card")?.getAttribute("data-ninerr-id"));
+    const cardHeading = await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${nodeId}"] h2`)?.getAttribute("data-ninerr-id"), cardId);
+    step("4a a codebase folder is connected and its component brought in", listed.length === 1 && listed[0].startsWith("PriceCard PriceCard.jsx") && cardHeading !== undefined && (await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${nodeId}"]`)?.textContent, cardHeading)) === "Pro", listed);
     await page.locator(`[role=treeitem][data-node-id="${cardHeading}"] > .row`).click();
     await page.locator("#inspect-text").fill("Team");
     await page.locator("#inspect-text").press("Tab");
@@ -191,7 +191,7 @@ async function main() {
     await page.locator("#code-import").fill(exported);
     await page.locator("#dialog[open] button.primary", { hasText: "Add to design" }).click();
     await waitForRevision(page, 18);
-    const cards = await page.evaluate(() => [...document.querySelector("iframe").contentDocument.querySelectorAll("section.card")].map((element) => element.getAttribute("data-lilac-id")));
+    const cards = await page.evaluate(() => [...document.querySelector("iframe").contentDocument.querySelectorAll("section.card")].map((element) => element.getAttribute("data-ninerr-id")));
     const reExported = await exportOf(cards.find((nodeId) => nodeId !== cardId));
     await page.keyboard.press("Escape");
     step("5 the component round-trips: the copy exports the same code", cards.length === 2 && reExported === exported && /<section className="card" style="[^"]*padding: 16px/u.test(exported) && /<section className="card" style="[^"]*background: #ffe4e6/u.test(exported) && /<h2>Team<\/h2>/u.test(exported) && /<p>Everything in Free, and more\.<\/p>/u.test(exported), { exported: exported.slice(0, 200), reExported: reExported.slice(0, 200) });
@@ -231,7 +231,7 @@ async function main() {
     const after = await snapshot();
     // (The history panel lists the changes made since the project was opened; who made
     // each earlier change is kept in the project's journal, not shown after a reopen, #179.)
-    const filled = await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-lilac-id="${nodeId}"]`)?.style.background, box);
+    const filled = await page.evaluate((nodeId) => document.querySelector("iframe").contentDocument.querySelector(`[data-ninerr-id="${nodeId}"]`)?.style.background, box);
     step("7b the project reopens as it was: every layer, the page and the component, as code", JSON.stringify(after) === JSON.stringify(before) && filled === "rgb(51, 102, 153)", { before: { ...before, page: before.page.slice(0, 120) }, after: { ...after, page: after.page.slice(0, 120) }, filled });
     step("7c closing Ninerr quits it cleanly again", (await ninerr.quit()) === 0);
     // The project's journal keeps who made each change: the agent's three, as the agent.

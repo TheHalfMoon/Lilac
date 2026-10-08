@@ -184,7 +184,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
   world.setAttribute("style", "position:absolute;left:0;top:0;transform-origin:0 0;");
   const capture = owner.createElement("div");
   capture.setAttribute("style", "position:absolute;inset:0;cursor:default;");
-  capture.dataset.lilacCapture = "";
+  capture.dataset.ninerrCapture = "";
   const overlay = owner.createElement("div");
   overlay.setAttribute("style", OVERLAY_STYLE);
   stage.append(world, capture, overlay);
@@ -207,7 +207,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     drawSelection();
   };
   const sizeFrame = () => {
-    const root = frameDocument.querySelector("[data-lilac-root]");
+    const root = frameDocument.querySelector("[data-ninerr-root]");
     frame.style.width = `${Math.max(320, Math.ceil(root.scrollWidth))}px`;
     frame.style.height = `${Math.max(240, Math.ceil(frameDocument.documentElement.scrollHeight))}px`;
   };
@@ -221,7 +221,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     const point = screenToWorld(viewport, { x: screenPoint.x - stageRect.left, y: screenPoint.y - stageRect.top });
     // Rendered content is inert (no focus or input inside the canvas), and inert content is
     // invisible to elementFromPoint, so it is lifted for this one synchronous query.
-    const root = frameDocument.querySelector("[data-lilac-root]");
+    const root = frameDocument.querySelector("[data-ninerr-root]");
     root.inert = false;
     let element;
     try {
@@ -245,11 +245,11 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
       const rect = worldRect(element);
       const topLeft = worldToScreen(viewport, rect);
       const box = owner.createElement("div");
-      box.dataset.lilacSelection = id;
+      box.dataset.ninerrSelection = id;
       box.setAttribute("style", `position:absolute;left:${topLeft.x}px;top:${topLeft.y}px;width:${rect.width * viewport.zoom}px;height:${rect.height * viewport.zoom}px;outline:2px solid #6d4aff;outline-offset:-1px;`);
       if (selection.length === 1) {
         const handle = owner.createElement("div");
-        handle.dataset.lilacHandle = "resize";
+        handle.dataset.ninerrHandle = "resize";
         handle.setAttribute("style", "position:absolute;right:-5px;bottom:-5px;width:10px;height:10px;background:#fff;border:2px solid #6d4aff;pointer-events:auto;cursor:nwse-resize;");
         box.appendChild(handle);
       }
@@ -319,7 +319,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
     }
   });
   overlay.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || event.target?.dataset?.lilacHandle !== "resize" || selection.length !== 1 || held !== null) return;
+    if (event.button !== 0 || event.target?.dataset?.ninerrHandle !== "resize" || selection.length !== 1 || held !== null) return;
     event.preventDefault();
     event.stopPropagation();
     stage.focus();
@@ -511,7 +511,7 @@ export async function mountCanvas(container, { onCommit = () => {}, onSelect = (
       applyViewport();
     },
     fit() {
-      const root = frameDocument.querySelector("[data-lilac-root]");
+      const root = frameDocument.querySelector("[data-ninerr-root]");
       viewport = fitBounds({ x: 0, y: 0, width: Math.max(1, root.scrollWidth), height: Math.max(1, frameDocument.documentElement.scrollHeight) }, stage.clientWidth, stage.clientHeight);
       applyViewport();
     },

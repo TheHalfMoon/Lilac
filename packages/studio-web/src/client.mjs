@@ -4,7 +4,7 @@
 // the Authorization header (and, for EventSource, which cannot set headers, in the query of
 // the event stream).
 
-const TOKEN_KEY = "lilac.token";
+const TOKEN_KEY = "ninerr.token";
 
 export class HostError extends Error {
   constructor(status, code, message) {

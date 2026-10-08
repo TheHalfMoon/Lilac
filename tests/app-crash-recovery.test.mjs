@@ -77,7 +77,7 @@ test("Lilac killed mid-session recovers through the editor, with every committed
 
     // Crash 2: killed in the middle of a burst of edits from another client, and the last,
     // interrupted write left torn at the end of the journal.
-    const token = await tab.page.evaluate(() => sessionStorage.getItem("lilac.token"));
+    const token = await tab.page.evaluate(() => sessionStorage.getItem("ninerr.token"));
     const call = (path, body) => fetch(`${ninerr.origin}${path}`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
     let revision = 4;
     const burst = (async () => {
