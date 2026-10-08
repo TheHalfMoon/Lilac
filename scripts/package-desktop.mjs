@@ -63,6 +63,9 @@ export function reachablePackages(entries) {
           queue.push(join(ROOT, "packages", name, "src"));
         }
         if (existsSync(next) && statSync(next).isFile()) queue.push(next);
+      } else if (/^@(?:ninerr|lilac)\//iu.test(specifier)) {
+        // A stale or miscased workspace name would be refused at runtime: fail packaging now.
+        throw new Error(`${relative(ROOT, path)} imports ${specifier}, not a workspace package name`);
       }
     }
   }
