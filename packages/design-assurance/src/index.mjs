@@ -218,7 +218,7 @@ function validateRule(rule, namespace) {
   }
 }
 
-export function createNinerrRulePack({ namespace, rules }) {
+export function createRulePack({ namespace, rules }) {
   assertNonEmptyString(namespace, "rule pack namespace");
   if (!/^[a-z][a-z0-9-]*$/.test(namespace)) {
     throw new DesignAssuranceError("rule pack namespace must be lowercase kebab-case");
@@ -863,7 +863,7 @@ function tokenRegistry(document) {
   return isPlainObject(tokens) ? tokens : "INVALID";
 }
 
-export const NINERR_CORE_RULE_PACK = createNinerrRulePack({
+export const NINERR_CORE_RULE_PACK = createRulePack({
   namespace: "ninerr",
   rules: [
     {

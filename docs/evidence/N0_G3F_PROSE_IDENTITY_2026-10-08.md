@@ -3,7 +3,7 @@
 Issue: #190 (N0 umbrella). The product name `Lilac` becomes `Ninerr` throughout:
 - the packages' source, and their READMEs;
 - code comments and user-visible messages;
-- test titles and names, temporary-directory prefixes, and helpers such as `createNinerrRulePack`.
+- test titles and names, temporary-directory prefixes, and helpers such as `NINERR_CORE_RULE_PACK`.
 
 ## Not renamed
 - **Deliberate legacy references.**

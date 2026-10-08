@@ -192,4 +192,9 @@ test("the MCP relay reads the credential from the legacy variable, with a note",
   const result = spawnSync(process.execPath, ["scripts/ninerr-mcp.mjs", "--url", "http://127.0.0.1:9/mcp"], { env, input: "", encoding: "utf8", timeout: 15_000 });
   assert.match(result.stderr, /LILAC_MCP_TOKEN is read because NINERR_MCP_TOKEN is not set/u);
   assert.doesNotMatch(result.stderr, /set NINERR_MCP_TOKEN/u, "the legacy credential is used");
+  assert.doesNotMatch(result.stderr, /ninerr_agent_x/u, "the credential is never printed");
+  // When both are set, the Ninerr variable wins and no note is printed.
+  const both = spawnSync(process.execPath, ["scripts/ninerr-mcp.mjs", "--url", "http://127.0.0.1:9/mcp"], { env: { ...env, NINERR_MCP_TOKEN: "ninerr_agent_y" }, input: "", encoding: "utf8", timeout: 15_000 });
+  assert.doesNotMatch(both.stderr, /LILAC_MCP_TOKEN/u);
+  assert.doesNotMatch(both.stderr, /ninerr_agent_[xy]/u, "the credential is never printed");
 });
