@@ -20,6 +20,9 @@ function entryOf(name) {
 registerHooks({
   resolve(specifier, context, nextResolve) {
     const match = SCOPE.exec(specifier);
+    // Only a package's own entry is mapped; anything else in the scope is refused, so it can
+    // never resolve to a @lilac link outside the app (a checkout it was unpacked in).
+    if (match === null && specifier.startsWith("@lilac/")) throw new Error(`${specifier} is not a packaged Lilac package entry`);
     if (match === null) return nextResolve(specifier, context);
     // The format is left to Node, which strips the types of a .ts entry.
     return { url: entryOf(match[1]), shortCircuit: true };

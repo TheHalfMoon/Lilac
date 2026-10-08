@@ -30,21 +30,24 @@ PC9b closes PC gate 15: "Supported desktop packaging (Windows, macOS and Linux w
 
 ## The smoke test
 
-`scripts/smoke-desktop.mjs` takes the archive and works as follows.
-- **Setup.** It unpacks the archive into a temporary folder and runs the packaged app as a person does, with its own home and projects folder. The app runs behind a local proxy that records any connection off the computer.
+`scripts/smoke-desktop.mjs` takes the archive and works as follows. Every launch runs behind the proxy.
+- **Setup.** It unpacks the archive into a temporary folder and runs the packaged app as a person does, with its own home and projects folder. The app runs behind a local proxy that records every connection the browser side makes off the computer: the pages and Chromium itself.
 - **Driving the app.** It drives the app over Chromium's remote-debugging protocol, because the fuses refuse Node's inspector. It also runs one launch with `ELECTRON_RUN_AS_NODE` set.
 
-It records ten checks:
+It records eleven checks:
 1. the fuses in the binary are Lilac's;
 2. the editor runs isolated in the desktop app: no `process`, no `require`, and the desktop bridge is present;
-3. an edit is committed: a project is created, a layer added and renamed;
-4. the project is locked while it is open;
-5. closing Lilac quits it with 0;
-6. quitting releases the project: the lock and the discovery file are gone;
-7. after a restart the change is there;
-8. closing Lilac quits it with 0 again;
-9. `ELECTRON_RUN_AS_NODE=1` with `-e` does not run as Node;
-10. nothing left the computer, from any process, across all three launches.
+3. it runs as a packaged app, so there are no developer tools in the window, its requests or its menu. The app reports which kind of run it is, because Electron's `app.isPackaged` goes by the executable's name, which a packaged macOS Lilac keeps as Electron's. The shell decides by `process.defaultApp` instead;
+4. an edit is committed: a project is created, a layer added and renamed;
+5. the project is locked while it is open;
+6. closing the window (its page target, as a person closes it) quits Lilac with 0;
+7. quitting releases the project: the lock and the discovery file are gone;
+8. after a restart the change is there;
+9. closing the window quits it with 0 again;
+10. with `ELECTRON_RUN_AS_NODE=1` and `-e`, the binary does not run the script; it starts Lilac, which says so, and is stopped;
+11. the browser side sent nothing off the computer, across all three launches.
+
+**What check 11 does not cover.** The proxy covers Chromium's network stack only. The host's own Node code in the main process is not behind it. That code is the same as local web mode's, where PC7's preload trap shows no connection leaves the computer.
 
 ## Evidence
 
@@ -78,14 +81,14 @@ Electron's `LICENSES.chromium.html` lists every component of the runtime. Electr
 
 **GPL** is named in 60 components and **AGPL** in 4, mostly inside other licenses' texts.
 
-**The rule.** Every component whose text names a non-permissive license (LGPL, GPL, MPL, EPL, CDDL, AGPL) must be on the reviewed list. If one is not, packaging fails, on every platform. The list records why each one is acceptable for a Lilac that redistributes the runtime unmodified:
+**The rule.** Every component whose text names a non-permissive license (LGPL, GPL, MPL, EPL, CDDL, AGPL) must be on the reviewed list. If one is not, packaging fails, on every platform. The list records why each one is acceptable. Lilac changes the runtime only in Electron's documented fuse bytes, which are recorded in `lilac-package.json`. It also renames the executable, removes the default app and, on macOS, edits the bundle name and re-signs:
 
 - **Statically linked LGPL: WebKit-derived Blink.** Blink's LGPL-2.0+/LGPL-2.1+ files, from WebKit and KHTML, are linked into the binary.
-  - Lilac redistributes Electron unmodified.
-  - Its complete corresponding source is Electron v44.7.0 with Chromium at its pinned revision.
+  - Lilac changes the binary only in Electron's fuse bytes.
+  - Its corresponding source is Electron v44.7.0, with Chromium at its pinned revision, plus those fuse settings.
   - Lilac's own code is a separate program that the runtime loads, not code linked into it.
 - **Separately linked LGPL: FFmpeg.** It is `libffmpeg`, which can be replaced, and its source is Chromium's `third_party/ffmpeg`.
-- **MPL file-level copyleft, unmodified:**
+- **MPL file-level copyleft, in files Lilac does not change:**
   - NSS/NSPR, hunspell, Eigen, symphonia and axe-core;
   - tri-licensed Mozilla code, used under MPL.
 - **System libraries, loaded dynamically and not shipped:** glibc, GTK, libsecret, libv4l, Speech Dispatcher, BRLTTY.
@@ -96,10 +99,16 @@ Electron's `LICENSES.chromium.html` lists every component of the runtime. Electr
 
 Packaging passed the review on all three runners, so the macOS and Windows notices bring no component that has not been reviewed.
 
-**Obligations, all met by the package:**
+**Obligations the package meets:**
 - Electron's `LICENSE` and `LICENSES.chromium.html` ship unchanged.
 - The packager refuses an Electron `LICENSE` that is not the reviewed text.
 - The MIT text is also kept at `docs/provenance/ELECTRON_LICENSE.txt`. The release bundle's license index and SBOM include the runtime, with the SHA-256 of each pinned archive.
+
+**Obligations left to the release audit (PC-L, #139):**
+- the written source offer that LGPL-2.1 asks of a binary release, for statically linked Blink and for FFmpeg;
+- whether Lilac's own attribution bundle should ship inside the desktop package. The release evidence bundle (`docs/RELEASE.md`) is published beside each release. The package carries the notices that redistribution needs: Electron's two files, `THIRD_PARTY_NOTICES.md`, and each dependency's own license text.
+
+**How the classifier matches.** It matches license names in full and SPDX-style ids (for example `LGPL-2.1`, `MPL-2.0`).
 
 **What this review is not.** It is an engineering review of the notices Electron publishes, not legal advice. The founder's Apache-2.0 audit (PC-L) relies on it.
 
@@ -107,4 +116,6 @@ Packaging passed the review on all three runners, so the macOS and Windows notic
 
 - **Publisher signatures.** Code signing (Windows Authenticode, Apple Developer ID) and notarization need the owner's certificates and are tracked on #139. Until then, the packages show the expected warnings, as `docs/DESKTOP.md` describes.
 - **Version details.** The Windows executable's version resources still name Electron. Changing them needs a resource editor, which is not part of this assembly.
+- **Asar integrity.** The fuses for asar integrity (`EnableEmbeddedAsarIntegrityValidation`, `OnlyLoadAppFromAsar`) stay off: the app ships as plain files. Anyone who can write the install folder can change the app. That is the next hardening step once a release signature exists (#139).
+- **The macOS Impeccable binary.** The packaged macOS Impeccable binary keeps its own signature. The smoke test never runs it, so Gatekeeper's handling of it in a downloaded copy is not checked.
 - **Linux sandbox.** On Ubuntu 24.04 and later, unprivileged user namespaces are restricted by AppArmor. The package does not install an AppArmor profile or a setuid helper. `docs/DESKTOP.md` gives both options, and CI lifts the restriction for its runner.

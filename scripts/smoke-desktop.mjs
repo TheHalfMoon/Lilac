@@ -5,9 +5,10 @@
 //
 // The archive is unpacked into a temporary folder and the packaged app is run as a person
 // runs it, with its own projects folder and home, behind a local proxy that records any
-// connection off this computer. It is driven over Chromium's remote-debugging protocol
-// (the packaged app's fuses refuse Node's inspector): create a project, add a layer,
-// rename it, quit; start it again and find the change; quit. Its fuses are read back from
+// connection the browser side makes off this computer. It is driven over Chromium's
+// remote-debugging protocol (the packaged app's fuses refuse Node's inspector): create a
+// project, add a layer, rename it, close the window; start it again and find the change;
+// close it again. Its fuses are read back from
 // the binary, and ELECTRON_RUN_AS_NODE is shown to have no effect. The result is printed
 // as one JSON line and the exit code is 0 only if every check held.
 import { spawn, spawnSync } from "node:child_process";
@@ -135,9 +136,12 @@ async function main() {
         page,
         output: () => output,
         async quit() {
-          // As the person does: close the window; Lilac quits and closes its host.
+          // As the person does: close the window (its page target); Lilac quits and closes
+          // its host.
+          const pageSession = await page.context().newCDPSession(page);
+          const { targetInfo } = await pageSession.send("Target.getTargetInfo");
           const session = await browser.newBrowserCDPSession();
-          await session.send("Browser.close").catch(() => {});
+          await session.send("Target.closeTarget", { targetId: targetInfo.targetId }).catch(() => {});
           const code = await Promise.race([exited, sleep(20_000).then(() => "still running after 20 s")]);
           return code;
         },
@@ -149,6 +153,9 @@ async function main() {
     let lilac = await launch();
     let { page } = lilac;
     check("the editor runs isolated, in the desktop app", await page.evaluate(() => typeof process === "undefined" && typeof require === "undefined" && window.lilacDesktop?.desktop === true));
+    // A packaged run allows no developer tools (in the window, its requests and its menu).
+    const packagedRun = lilac.output().includes("lilac: desktop app (packaged)");
+    check("it runs as a packaged app", packagedRun, packagedRun ? undefined : lilac.output().slice(-300));
     await page.locator("#new-project-name").fill("smoke");
     await page.locator("#dialog[open] button.primary", { hasText: "Create project" }).click();
     await revision(page, 0);
@@ -174,20 +181,26 @@ async function main() {
     check("closing Lilac quits it cleanly again", secondExit === 0, secondExit === 0 ? undefined : { exit: secondExit, output: lilac.output().slice(-400) });
 
     // The RunAsNode fuse: the environment variable no longer turns the binary into Node.
+    // Instead of running the script, the binary starts Lilac (which says so), and is stopped.
     const marker = "lilac-ran-as-node";
-    const asNode = spawn(executable, ["-e", `process.stdout.write(${JSON.stringify(marker)})`], { env: { ...env, ELECTRON_RUN_AS_NODE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+    const asNode = spawn(executable, ["-e", `process.stdout.write(${JSON.stringify(marker)})`, `--proxy-server=http://127.0.0.1:${proxy.address().port}`], { env: { ...env, ELECTRON_RUN_AS_NODE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
     running.add(asNode);
     let asNodeOutput = "";
     asNode.stdout.on("data", (chunk) => (asNodeOutput += chunk));
-    await Promise.race([new Promise((resolveExit) => asNode.once("exit", resolveExit)), sleep(8_000)]);
+    asNode.stderr.on("data", (chunk) => (asNodeOutput += chunk));
+    const asNodeExited = new Promise((resolveExit) => asNode.once("exit", resolveExit));
+    for (let tries = 0; tries < 100 && !asNodeOutput.includes("lilac: desktop app") && asNode.exitCode === null; tries += 1) await sleep(100);
+    const startedLilac = asNodeOutput.includes("lilac: desktop app (packaged)");
     if (asNode.exitCode === null) {
       asNode.kill();
-      await new Promise((resolveExit) => asNode.once("exit", resolveExit));
+      await Promise.race([asNodeExited, sleep(10_000)]);
     }
     running.delete(asNode);
-    check("ELECTRON_RUN_AS_NODE has no effect", !asNodeOutput.includes(marker), asNodeOutput.includes(marker) ? asNodeOutput.slice(0, 200) : undefined);
+    check("ELECTRON_RUN_AS_NODE has no effect", !asNodeOutput.includes(marker) && startedLilac, startedLilac && !asNodeOutput.includes(marker) ? undefined : { ranTheScript: asNodeOutput.includes(marker), startedLilac });
 
-    check("nothing left this computer", egress.length === 0, egress.length === 0 ? undefined : egress);
+    // The proxy sees the browser side's requests (pages and Chromium's own); the host's Node
+    // code makes none, and its offline guarantee is the network policy's (PC7, P05 D6b).
+    check("the browser side sent nothing off this computer", egress.length === 0, egress.length === 0 ? undefined : egress);
   } finally {
     for (const child of running) child.kill();
     await new Promise((resolveClose) => proxy.close(resolveClose));

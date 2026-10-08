@@ -87,7 +87,7 @@ jobs:
           };
           const manifest = read("dist/desktop/Lilac-${{ matrix.target }}.json");
           const smoke = read("smoke.json", true);
-          const fuses = manifest ? Object.entries(manifest.fuses).map(([name, on]) => `${name}=${on ? 1 : 0}`).join(",") : "none";
+          const fuses = manifest ? Object.entries(manifest.fuses).map(([name, on]) => `${name}=${on === "removed" ? "r" : on ? 1 : 0}`).join(",") : "none";
           console.log(`::notice title=Desktop package evidence::${escape([
             `head=${head}`,
             `target=${{ matrix.target }}`,

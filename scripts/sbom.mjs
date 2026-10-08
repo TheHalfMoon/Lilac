@@ -180,7 +180,10 @@ export function buildSbom(lockText, policy) {
     scope: "required",
     licenses: [{ license: { id: "MIT" } }],
     externalReferences: Object.keys(ELECTRON_ARCHIVES).sort().map((target) => ({ type: "distribution", url: `https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/${archiveName(target)}`, hashes: [{ alg: "SHA-256", content: ELECTRON_ARCHIVES[target] }] })),
-    properties: [{ name: "lilac:runtime", value: "desktop" }, { name: "lilac:notices", value: "LICENSES.chromium.html (shipped unchanged)" }],
+    // Electron's own code is MIT; the Chromium, Node and other components inside it carry
+    // their own licenses (including LGPL-2.1+ Blink and FFmpeg, and MPL-2.0 files), all
+    // listed in the LICENSES.chromium.html each package ships.
+    properties: [{ name: "lilac:runtime", value: "desktop" }, { name: "lilac:notices", value: "LICENSES.chromium.html (shipped unchanged)" }, { name: "lilac:bundledComponentLicenses", value: "Chromium components under their own licenses, including LGPL-2.1-or-later (Blink, FFmpeg) and MPL-2.0; see LICENSES.chromium.html" }],
   });
   if (components.has("workspace:@lilac/desktop")) addEdges("workspace:@lilac/desktop", [electronRef]);
   return {

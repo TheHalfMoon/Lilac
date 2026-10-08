@@ -43,7 +43,10 @@ The `Desktop` workflow (`.github/workflows/desktop.yml`) builds each package on 
 
 Packages are not yet signed by a publisher; signing needs the owner's certificates (#139). Until then:
 
-- **macOS (Apple silicon).** Unzip it and move `Lilac.app` to Applications. The app has an ad-hoc signature only, so the first time, open it with Control-click, then Open. The menu bar shows Lilac, but Activity Monitor names the process Electron.
+- **macOS (Apple silicon).** Unzip it and move `Lilac.app` to Applications. The app has an ad-hoc signature only and is not notarized, so macOS refuses to open a downloaded copy at first.
+  - On macOS 15 and later, try to open it once, then choose Open Anyway in System Settings, Privacy & Security.
+  - Or remove the download's quarantine flag yourself: `xattr -dr com.apple.quarantine /Applications/Lilac.app`.
+  - The menu bar shows Lilac, but Activity Monitor names the process Electron.
 - **Windows (x64).** Unzip it and run `Lilac.exe`. SmartScreen may warn about an unknown publisher; choose More info, then Run anyway. The file's version details still name Electron.
 - **Linux (x64).** Unpack it with `tar -xzf Lilac-linux-x64.tar.gz` and run `Lilac-linux-x64/lilac`.
   - Chromium's sandbox, which Lilac never turns off, needs unprivileged user namespaces.
@@ -56,7 +59,9 @@ The window is isolated and sandboxed, with no Node, and its preload gives the pa
 - **No permissions:** it is granted none (camera, microphone, location, notifications, screen capture or clipboard reads).
 - **No requests elsewhere:** it can reach nothing but Lilac's own host on 127.0.0.1.
 
-Chromium's own background requests are turned off too. The tests run the app behind a proxy that records any connection off the computer, and require that there are none.
+Chromium's own background requests are turned off too. The tests run the app behind a proxy that records every connection the browser side (pages and Chromium itself) makes off the computer, and require that there are none. Lilac's host code, which runs in the app's main process, is the same as in local web mode, where a test (PC7) shows it makes no connection off the computer; the desktop smoke test does not watch the main process's own connections.
+
+**What a local program can still do.** A program running as you can start Lilac with Chromium switches, such as `--remote-debugging-port`, and take control of the editor. No fuse covers these. That program could already act as you, so it is outside what Lilac defends against (see `SECURITY.md`).
 
 **Lifecycle:**
 - Closing the window quits Lilac. The host closes first, so every project is closed and its lock released.

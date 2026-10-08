@@ -81,4 +81,12 @@ test("the package holds the packages the shell and the editor reach, and no othe
   }
   for (const name of ["agent-supervisor", "visual-git", "decision-router", "architecture"]) assert.ok(!packages.includes(name), `${name} is not`);
   for (const name of packages) assert.ok(existsSync(join(ROOT, "packages", name, "package.json")), `${name} is a workspace package`);
+  // A file the app would load from outside packages/ fails packaging rather than being left out.
+  const dir = scratch();
+  try {
+    writeFileSync(join(dir, "entry.mjs"), 'import "./side-effect.mjs";\nimport { x } from "../../outside.mjs";\n');
+    assert.throws(() => reachablePackages([join(dir, "entry.mjs")]), /outside packages/u);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -45,7 +45,8 @@ export function reachablePackages(entries) {
       continue;
     }
     const text = readFileSync(path, "utf8");
-    for (const [, specifier] of text.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*)["']([^"']+)["']/gu)) {
+    // from "x", import("x") and a bare import "x".
+    for (const [, specifier] of text.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s+)["']([^"']+)["']/gmu)) {
       const scoped = /^@lilac\/([a-z][a-z0-9-]*)/u.exec(specifier);
       if (scoped !== null) {
         if (!found.has(scoped[1])) {
@@ -55,7 +56,9 @@ export function reachablePackages(entries) {
       } else if (specifier.startsWith(".")) {
         const next = resolve(dirname(path), specifier);
         const name = relative(join(ROOT, "packages"), next).split(/[\\/]/u)[0];
-        if (!name.startsWith("..") && !found.has(name)) {
+        // Every file the app loads must be inside a packaged package: fail closed.
+        if (name.startsWith("..") || name === "") throw new Error(`${relative(ROOT, path)} imports ${specifier}, outside packages/`);
+        if (!found.has(name)) {
           found.add(name);
           queue.push(join(ROOT, "packages", name, "src"));
         }

@@ -90,7 +90,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (709/709 test
   - PC7 #167 (`b46cd1c`): gates 6 and 16.
   - PC8 (#168): PC8a #169 (`5f05fa4`), gate 12; PC8b #170 (`ff08a1f`), gate 13; PC8c #171 (`7123c0e`), gate 14.
   - Evidence for each is in `docs/evidence/` (PC4_*, PC5_*, PC6A_*, PC6B_*, PC7_*, PC8A_*, PC8B_*, PC8C_*).
-  - PC9 (#174): PC9a #175 (`7732a1a`), gate 5, the desktop bridge; PC9b (this grain), gate 15, desktop packaging for Linux x64, macOS arm64 and Windows x64 with a packaged-app smoke test on each runner. Evidence: `docs/evidence/PC9A_DESKTOP_BRIDGE_2026-10-08.md`, `docs/evidence/PC9B_DESKTOP_PACKAGING_2026-10-08.md`.
+  - PC9 (#174): PC9a #175 (`7732a1a`), gate 5, the desktop bridge; PC9b #177, gate 15, desktop packaging for Linux x64, macOS arm64 and Windows x64 with a packaged-app smoke test on each runner. Evidence: `docs/evidence/PC9A_DESKTOP_BRIDGE_2026-10-08.md`, `docs/evidence/PC9B_DESKTOP_PACKAGING_2026-10-08.md`.
   - Remaining: PC10, the release-candidate end-to-end test (gate 17).
 
   Grain plan. A grain may advance a gate, but only the grain named as closing it may set it `CLOSED_CANONICAL`, after end-to-end evidence through the product surface:

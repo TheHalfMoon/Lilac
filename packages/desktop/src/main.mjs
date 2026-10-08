@@ -10,6 +10,10 @@ import { prepareProjectsFolder, projectsFolder, startStudioHost } from "../../st
 import { editorOrigin, mayNavigate, mayRequest, windowPreferences } from "./policy.mjs";
 
 const PRELOAD = fileURLToPath(new URL("./preload.cjs", import.meta.url));
+// A development run starts Electron's default app with this folder (process.defaultApp);
+// a packaged Lilac starts itself. (app.isPackaged would not do: it goes by the
+// executable's name, which a packaged macOS Lilac keeps as Electron's.)
+const PACKAGED = process.defaultApp !== true;
 
 // Every renderer is sandboxed, whatever a window asks for.
 app.enableSandbox();
@@ -51,7 +55,7 @@ function harden(origin) {
   defaults.setDevicePermissionHandler(() => false);
   defaults.setDisplayMediaRequestHandler((_request, callback) => callback({}));
   // The page reaches only the host, whatever it tries.
-  const devtools = !app.isPackaged;
+  const devtools = !PACKAGED;
   defaults.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !mayRequest(origin, details.url, { devtools }) }));
   // Downloads are refused (exports are copied, not downloaded).
   defaults.on("will-download", (event) => event.preventDefault());
@@ -72,7 +76,7 @@ function menu() {
   // The standard roles (copy and paste, quit, window and zoom); developer tools only in a
   // development run, never in a packaged app.
   const view = [{ role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { type: "separator" }, { role: "togglefullscreen" }];
-  if (!app.isPackaged) view.push({ type: "separator" }, { role: "toggleDevTools" });
+  if (!PACKAGED) view.push({ type: "separator" }, { role: "toggleDevTools" });
   const template = [
     ...(process.platform === "darwin" ? [{ role: "appMenu" }] : [{ label: "File", submenu: [{ role: "quit" }] }]),
     { role: "editMenu" },
@@ -103,7 +107,7 @@ function openWindow() {
     title: "Lilac",
     show: false,
     backgroundColor: "#16141f",
-    webPreferences: windowPreferences(PRELOAD, { devTools: !app.isPackaged }),
+    webPreferences: windowPreferences(PRELOAD, { devTools: !PACKAGED }),
   });
   // A renderer that crashed is replaced, with a fresh link: nothing is lost, as every
   // change was committed by the host.
@@ -139,6 +143,8 @@ async function start() {
   for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => app.quit());
 
   await app.whenReady();
+  // Said once, so a log shows which kind of run this is.
+  process.stderr.write(`lilac: desktop app (${PACKAGED ? "packaged" : "development"}), Electron ${process.versions.electron}\n`);
   const projectsRoot = projectsFolder();
   try {
     prepareProjectsFolder(projectsRoot);
