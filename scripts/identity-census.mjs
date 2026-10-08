@@ -6,12 +6,13 @@
 //
 //   node scripts/identity-census.mjs            print the census JSON
 //   node scripts/identity-census.mjs --write    write its summary to docs/evidence/N0_IDENTITY_CENSUS.json
+//   node scripts/identity-census.mjs --verify   fail when that summary does not match this tree
 //   node scripts/identity-census.mjs --check    fail on any finding in a gated category
 //   --root <dir>                                scan another Git checkout instead of this one
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -137,9 +138,24 @@ function main(argv) {
   if (root === undefined) throw new Error("--root needs a directory");
   const record = census(policy, root, trackedFiles(root));
   if (argv.includes("--write")) {
+    mkdirSync(dirname(join(root, CENSUS_PATH)), { recursive: true });
     writeFileSync(join(root, CENSUS_PATH), serialize(summarize(record)));
     process.stdout.write(`wrote ${CENSUS_PATH}: ${record.filesWithFindings} files, ${record.gatedFindings} gated findings\n`);
     return 0;
+  }
+  if (argv.includes("--verify")) {
+    let committed = null;
+    try {
+      committed = readFileSync(join(root, CENSUS_PATH), "utf8");
+    } catch {
+      // reported below as out of date
+    }
+    if (committed === serialize(summarize(record))) {
+      process.stdout.write(`identity census: ${CENSUS_PATH} is current\n`);
+      return 0;
+    }
+    process.stderr.write(`identity census: ${CENSUS_PATH} is out of date; run node scripts/identity-census.mjs --write\n`);
+    return 1;
   }
   if (argv.includes("--check")) {
     if (record.gatedFindings === 0) {

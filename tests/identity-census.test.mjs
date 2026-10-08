@@ -89,6 +89,13 @@ test("the census is deterministic and the gate counts gated categories only", ()
     const lines = record.files.find((file) => file.path === "packages/x/src/index.ts").findings.map((finding) => [finding.term, finding.lines]);
     assert.deepEqual(lines, [["lilac", [1]], ["paper", [2]]]);
     assert.equal(record.files.find((file) => file.path === "packages/x/src/lilac.ts").findings[0].lines.length, 0, "a path finding has no line");
+    // Moving one finding to another line keeps every count but changes the digest.
+    writeFileSync(join(dirty.root, "packages/x/src/index.ts"), "\n// Lilac\nconst a = 'paper';\n");
+    const moved = summarize(census(policy, dirty.root, dirty.paths));
+    const { censusSha256: before, ...counts } = summarize(record);
+    const { censusSha256: after, ...movedCounts } = moved;
+    assert.deepEqual(movedCounts, counts);
+    assert.notEqual(after, before, "the digest pins line-level detail the counts do not");
   } finally {
     dirty.dispose();
   }
@@ -111,6 +118,17 @@ test("the command line gate exits 1 on gated findings and 0 without, and never s
     assert.equal(result.status, 1);
     assert.match(result.stderr, /^app\.mjs:1: lilac \(ACTIVE_PRODUCT_IDENTITY, rule default-lilac, 1x\)$/mu);
     assert.match(result.stderr, /identity gate: 1 gated findings/u);
+
+    const verify = () => spawnSync(process.execPath, [script, "--verify", "--root", repo.root], { encoding: "utf8" });
+    assert.equal(verify().status, 1, "no committed summary is out of date");
+    assert.equal(spawnSync(process.execPath, [script, "--write", "--root", repo.root], { encoding: "utf8" }).status, 0);
+    result = verify();
+    assert.equal(result.status, 0, result.stderr);
+    writeFileSync(join(repo.root, "app.mjs"), "// Lilac\n// Lilac\n");
+    git("add", "-A");
+    result = verify();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /is out of date; run node scripts\/identity-census\.mjs --write/u);
   } finally {
     repo.dispose();
   }
