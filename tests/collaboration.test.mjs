@@ -64,9 +64,9 @@ test("pins Paper evidence and Doop as AGPL reference-only with zero imported cod
     const evidence = COLLABORATION_PROVENANCE.paperEvidence;
     const record = readFileSync(new URL(`../${evidence.retired}`, import.meta.url), "utf8");
     assert.ok(evidence.paths.length >= 2);
-    for (const path of evidence.paths) {
-      assert.match(record, new RegExp(`^\\| \`${path.replace(/[.]/g, "\\.")}\` \\| \`[0-9a-f]{40}\` \\|$`, "m"), path);
-      assert.ok(!existsSync(new URL(`../${path}`, import.meta.url)), `${path} is retired`);
+    for (const cited of evidence.paths) {
+      assert.match(record, new RegExp(`^\\| \`${cited.replace(/[.]/g, "\\.")}\` \\| \`[0-9a-f]{40}\` \\|$`, "m"), cited);
+      assert.ok(!existsSync(new URL(`../${cited}`, import.meta.url)), `${cited} is retired`);
     }
   }
 });

@@ -767,9 +767,9 @@ test("provenance pins permissive donors and keeps Firecrawl reference-only", () 
     const evidence = IMPORT_STACK_PROVENANCE.paper.evidence;
     const record = readFileSync(new URL(`../${evidence.retired}`, import.meta.url), "utf8");
     assert.ok(evidence.paths.length >= 2);
-    for (const path of evidence.paths) {
-      assert.match(record, new RegExp(`^\\| \`${path.replace(/[.]/g, "\\.")}\` \\| \`[0-9a-f]{40}\` \\|$`, "m"), path);
-      assert.ok(!existsSync(new URL(`../${path}`, import.meta.url)), `${path} is retired`);
+    for (const cited of evidence.paths) {
+      assert.match(record, new RegExp(`^\\| \`${cited.replace(/[.]/g, "\\.")}\` \\| \`[0-9a-f]{40}\` \\|$`, "m"), cited);
+      assert.ok(!existsSync(new URL(`../${cited}`, import.meta.url)), `${cited} is retired`);
     }
   }
 });
