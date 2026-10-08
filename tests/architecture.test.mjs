@@ -137,8 +137,10 @@ test("a stub names its own planned remainder, and an implemented subsystem names
   // A phrase cannot tell whose remainder it is, so review checks that; these patterns catch the
   // drift either way (N0-G6).
   const remainder = /\bplanned\.|\b(?:is|are) planned\b|\bplanned (?:\(#|until)\b|\b(?:remains?|remaining|waits?|awaits) (?:planned|until)\b|\bnot yet\b/iu;
-  for (const subsystem of NINERR_ARCHITECTURE_MAP.subsystems) {
-    if (subsystem.status === "stub") assert.match(subsystem.boundary, remainder, `${subsystem.id} is a stub but its boundary states no planned remainder`);
-    if (subsystem.status === "implemented") assert.doesNotMatch(subsystem.boundary, remainder, `${subsystem.id} is implemented but its boundary states planned work`);
-  }
+  const contradictions = NINERR_ARCHITECTURE_MAP.subsystems.flatMap((subsystem) => {
+    if (subsystem.status === "stub" && !remainder.test(subsystem.boundary)) return [`${subsystem.id} is a stub but its boundary states no planned remainder`];
+    if (subsystem.status === "implemented" && remainder.test(subsystem.boundary)) return [`${subsystem.id} is implemented but its boundary states planned work`];
+    return [];
+  });
+  assert.deepEqual(contradictions, []);
 });
