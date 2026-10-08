@@ -49,7 +49,11 @@ jobs:
         # As in CI: lift Ubuntu's AppArmor restriction rather than run unsandboxed.
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Package
-        run: node scripts/package-desktop.mjs --out dist/desktop
+        shell: bash
+        run: |
+          set -uo pipefail
+          node scripts/package-desktop.mjs --out dist/desktop 2>&1 | tee package.log
+          exit "${PIPESTATUS[0]}"
       - name: Smoke-test the packaged app
         id: smoke
         shell: bash
@@ -84,6 +88,14 @@ jobs:
             `checks=${smoke === null ? 0 : smoke.checks.filter((item) => item.ok).length}/${smoke === null ? 0 : smoke.checks.length}`,
           ].join("; "))}`);
           if (smoke !== null && !smoke.ok) console.log(`::error title=Desktop smoke failure::${escape(`head=${head} target=${{ matrix.target }} ${smoke.error}`)}`);
+          // Job logs are not always readable: the end of a failed step's output, as an annotation.
+          for (const [file, title] of [["package.log", "Desktop package output"], ["smoke.json", "Desktop smoke output"]]) {
+            if ((manifest !== null && file === "package.log") || (file === "smoke.json" && smoke?.ok)) continue;
+            try {
+              const text = fs.readFileSync(file, "utf8").replace(/\x1b\[[0-9;]*m/g, "");
+              console.log(`::warning title=${title}::${escape(`head=${head} target=${{ matrix.target }} ${text.slice(-900)}`)}`);
+            } catch {}
+          }
           NODE
       - name: Upload the package
         if: success()

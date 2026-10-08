@@ -17,6 +17,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, r
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ELECTRON_VERSION, WINDOWS_TAR, currentTarget, electronDirectory, fetchElectron } from "./desktop/electron.mjs";
+import { classifyChromiumLicenses } from "./desktop/chromium-licenses.mjs";
 import { LILAC_FUSES, writeFuses } from "./desktop/fuses.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -128,6 +129,11 @@ async function main() {
     resources = join(staging, "resources");
   }
   rmSync(join(resources, "default_app.asar"), { force: true });
+  // Every component the runtime's own notice names under a non-permissive license must be
+  // one Lilac has reviewed; the notice ships unchanged.
+  const chromiumLicenses = classifyChromiumLicenses(join(staging, "LICENSES.chromium.html"));
+  if (chromiumLicenses.unreviewed.length > 0) throw new Error(`LICENSES.chromium.html names components not yet reviewed: ${JSON.stringify(chromiumLicenses.unreviewed)}`);
+  if (!existsSync(join(staging, "LICENSE"))) throw new Error("the runtime's LICENSE is missing");
   const fuses = writeFuses(fused, LILAC_FUSES);
 
   // The app, as plain files.
@@ -155,6 +161,7 @@ async function main() {
     electron: ELECTRON_VERSION,
     executable: relative(staging, executable).split("\\").join("/"),
     fuses,
+    chromiumLicenses: { components: chromiumLicenses.components, sha256: chromiumLicenses.sha256, families: chromiumLicenses.families },
     packages,
     dependencies: dependencies.map(({ name, version, license }) => ({ name, version, license })),
     appSha256: treeDigest(app),
