@@ -27,12 +27,15 @@ export const PROJECT_MIGRATIONS: Readonly<Record<number, ManifestMigration>> = O
  */
 export function withBuiltInMigrations(extra: Readonly<Record<number, ManifestMigration>> | undefined): Readonly<Record<number, ManifestMigration>> {
   if (extra !== undefined && (extra === null || typeof extra !== "object" || Array.isArray(extra))) throw new PersistenceValidationError("migrations must be an object of steps keyed by schema version");
-  for (const [version, step] of Object.entries(extra ?? {})) {
+  // Read once: the result is built from the checked entries, so a getter cannot hand back a
+  // different step after the check.
+  const entries = Object.entries(extra ?? {});
+  for (const [version, step] of entries) {
     if (!/^(?:0|[1-9]\d{0,8})$/u.test(version)) throw new PersistenceValidationError(`migration key ${JSON.stringify(version).slice(0, 40)} is not a schema version`);
     if (typeof step !== "function") throw new PersistenceValidationError(`migration from project schema ${version} is not a function`);
     if (Object.hasOwn(PROJECT_MIGRATIONS, version)) throw new PersistenceValidationError(`migration from project schema ${version} is built in and cannot be replaced`);
   }
-  return Object.freeze({ ...extra, ...PROJECT_MIGRATIONS });
+  return Object.freeze({ ...Object.fromEntries(entries), ...PROJECT_MIGRATIONS });
 }
 
 export function migrateManifest(
