@@ -30,12 +30,12 @@ test("the catalog is Ninerr's 16-tool surface, frozen and without duplicates", (
 });
 
 test("each tool is classified by what it does to the document", () => {
-  assert.equal(classifyTool("get_tree_summary"), "read");
-  assert.equal(classifyTool("finish_working_on_nodes"), "read");
-  assert.equal(classifyTool("update_styles"), "write");
-  assert.equal(classifyTool("delete_nodes"), "consequential");
+  assert.equal(classifyTool("layer_tree"), "read");
+  assert.equal(classifyTool("finish_task"), "read");
+  assert.equal(classifyTool("set_styles"), "write");
+  assert.equal(classifyTool("delete_layers"), "consequential");
   // A name outside the catalog is unknown, including a name the catalog's own object inherits.
-  for (const name of ["future_tool", "get_screenshot", "toString", "constructor", "__proto__"]) assert.equal(classifyTool(name), "unknown", name);
+  for (const name of ["future_tool", "get_screenshot", "get_tree_summary", "toString", "constructor", "__proto__"]) assert.equal(classifyTool(name), "unknown", name);
   assert.throws(() => classifyTool(""), MCPContractError);
   const classes = MCP_TOOL_NAMES.map(classifyTool);
   assert.equal(classes.filter((value) => value === "read").length, 9);
@@ -51,14 +51,14 @@ test("a server offering exactly the catalog passes the surface check", () => {
 });
 
 test("the surface check reports missing and extra tools deterministically", () => {
-  const changed = MCP_TOOL_NAMES.filter((name) => name !== "get_selection");
+  const changed = MCP_TOOL_NAMES.filter((name) => name !== "selection");
   changed.push("zeta_tool", "alpha_tool");
   assert.deepEqual(diffMCPTools(changed), {
-    missing: ["get_selection"],
+    missing: ["selection"],
     extra: ["alpha_tool", "zeta_tool"],
   });
-  assert.throws(() => assertMCPToolSurface(makeConfig(changed)), /missing \[get_selection\], extra \[alpha_tool, zeta_tool\]/u);
-  assert.throws(() => diffMCPTools("get_selection"), MCPContractError);
+  assert.throws(() => assertMCPToolSurface(makeConfig(changed)), /missing \[selection\], extra \[alpha_tool, zeta_tool\]/u);
+  assert.throws(() => diffMCPTools("selection"), MCPContractError);
 });
 
 test("client validation requires a supported transport when requested", () => {
@@ -76,7 +76,7 @@ test("tool results require typed content entries", () => {
 });
 
 test("duplicate tool definitions are rejected", () => {
-  const config = makeConfig(["get_tree_summary", "get_tree_summary"]);
-  assert.throws(() => validateMCPServerConfig(config), /Duplicate MCP tool get_tree_summary/);
-  assert.throws(() => assertMCPToolSurface(config), /Duplicate MCP tool get_tree_summary/);
+  const config = makeConfig(["layer_tree", "layer_tree"]);
+  assert.throws(() => validateMCPServerConfig(config), /Duplicate MCP tool layer_tree/);
+  assert.throws(() => assertMCPToolSurface(config), /Duplicate MCP tool layer_tree/);
 });

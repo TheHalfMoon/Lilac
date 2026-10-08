@@ -42,8 +42,8 @@ test("the MCP documentation matches the tool surface, classes and confirmation w
   assert.match(doc, new RegExp(`the ${classes.read.length} read-only tools`));
   assert.equal(CONFIRMATION_WAIT_MS, 50_000);
   assert.match(doc, /up to 50 seconds for an answer \(`CONFIRMATION_WAIT_MS`\)/);
-  assert.deepEqual(classes.consequential, ["delete_nodes"]);
-  assert.match(doc, /\| consequential \| `delete_nodes` \|/);
+  assert.deepEqual(classes.consequential, ["delete_layers"]);
+  assert.match(doc, /\| consequential \| `delete_layers` \|/);
   assert.equal(classifyTool("not_a_tool"), "unknown");
   assert.deepEqual([...MCP_TRANSPORTS], ["stdio", "http"]);
   assert.match(doc, /`stdio` and `http`/);
@@ -75,6 +75,15 @@ test("the MCP documentation matches the tool surface, classes and confirmation w
     }
   }
   assert.deepEqual(listed.sort(), [...MCP_TOOL_NAMES].sort(), "the class table names every tool once");
+  // The rename table maps each earlier name to a current tool; an earlier name is unknown now.
+  const renamed = [...doc.matchAll(/^\| `([a-z_]+)` \| `([a-z_]+)` \|$/gm)];
+  assert.equal(renamed.length, MCP_TOOL_NAMES.length);
+  assert.deepEqual(renamed.map((row) => row[2]).sort(), [...MCP_TOOL_NAMES].sort());
+  for (const [, before, now] of renamed) {
+    assert.notEqual(before, now);
+    assert.equal(classifyTool(before), "unknown", `${before} is no longer a tool`);
+    assert.match(decide(before).reason, /^unknown tool/u);
+  }
   assert.ok(decide("x".repeat(1000)).reason.length <= 100, "an unknown tool's reason is bounded");
   assert.doesNotMatch(doc, /Not implemented/);
 });

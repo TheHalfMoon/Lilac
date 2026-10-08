@@ -7,22 +7,22 @@ export const MCP_TRANSPORTS = Object.freeze(["stdio", "http"]);
 // plus the person's confirmation of that exact call. A name not listed here is unknown and
 // is denied without consulting a policy.
 const CLASSES = Object.freeze({
-  get_basic_info: "read",
-  get_tree_summary: "read",
-  get_node_info: "read",
-  get_children: "read",
-  find_nodes: "read",
-  get_selection: "read",
-  get_jsx: "read",
-  get_guide: "read",
-  finish_working_on_nodes: "read",
-  create_artboard: "write",
-  set_text_content: "write",
-  rename_nodes: "write",
-  update_styles: "write",
-  move_nodes: "write",
-  duplicate_nodes: "write",
-  delete_nodes: "consequential",
+  project_info: "read",
+  layer_tree: "read",
+  layer_details: "read",
+  layer_children: "read",
+  find_layers: "read",
+  selection: "read",
+  layer_code: "read",
+  guide: "read",
+  finish_task: "read",
+  create_frame: "write",
+  set_text: "write",
+  rename_layers: "write",
+  set_styles: "write",
+  move_layers: "write",
+  duplicate_layers: "write",
+  delete_layers: "consequential",
 });
 
 export const MCP_TOOL_NAMES = Object.freeze(Object.keys(CLASSES));

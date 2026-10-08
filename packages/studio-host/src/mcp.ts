@@ -71,7 +71,7 @@ const strings = (value: unknown, label: string): string[] => {
 
 const TOOLS: Tool[] = [
   {
-    name: "get_basic_info",
+    name: "project_info",
     title: "Project information",
     description: "The open project: its name, document id and name, revision, node count and root layers.",
     inputSchema: object({}),
@@ -81,7 +81,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "get_tree_summary",
+    name: "layer_tree",
     title: "Layer tree",
     description: "The layer tree under a node (or the whole document), to a depth (default 3, at most 12), at most 500 nodes.",
     inputSchema: object({ nodeId: { type: "string" }, depth: { type: "integer", minimum: 1, maximum: MAX_TREE_DEPTH } }),
@@ -121,7 +121,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "get_node_info",
+    name: "layer_details",
     title: "Layer details",
     description: "One layer: its type, parent, children and properties (tag, text, name, attributes, style).",
     inputSchema: object({ nodeId: { type: "string" } }, ["nodeId"]),
@@ -131,7 +131,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "get_children",
+    name: "layer_children",
     title: "Child layers",
     description: "The direct children of a layer, or the root layers.",
     inputSchema: object({ nodeId: { type: "string" } }),
@@ -142,7 +142,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "find_nodes",
+    name: "find_layers",
     title: "Find layers",
     description: "Layers whose name or text contains `query` (case-insensitive), optionally of a type or tag; at most `limit` (default 50, at most 500).",
     inputSchema: object({ query: { type: "string" }, type: { type: "string" }, tag: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: MAX_RESULT_NODES } }),
@@ -162,7 +162,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "get_selection",
+    name: "selection",
     title: "Selection",
     description: "The layers selected in the Ninerr editor right now.",
     inputSchema: object({}),
@@ -172,7 +172,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "get_jsx",
+    name: "layer_code",
     title: "Layer as JSX",
     description: "A layer and everything inside it as a JSX function component, exactly as the canvas renders it (through code-ir).",
     inputSchema: object({ nodeId: { type: "string" } }, ["nodeId"]),
@@ -185,7 +185,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "get_guide",
+    name: "guide",
     title: "How to work with Ninerr",
     description: "How Ninerr documents, layers and edits work for an agent.",
     inputSchema: object({}),
@@ -193,23 +193,23 @@ const TOOLS: Tool[] = [
       guide: [
         "A Ninerr document is a tree of layers. Each layer has an id, a type (frame, element, text, ...) and props: tag (an HTML element), text, name (the layer name), attributes and style (CSS properties).",
         "Every edit you make is one history transaction attributed to you; the person sees it live on the canvas and can undo it.",
-        "Read with get_basic_info, get_tree_summary, get_children, get_node_info, find_nodes and get_selection.",
-        "Edit with create_artboard, set_text_content, rename_nodes, update_styles, move_nodes and duplicate_nodes. delete_nodes needs the person to approve it in Ninerr.",
+        "Read with project_info, layer_tree, layer_children, layer_details, find_layers and selection; layer_code gives a layer as JSX.",
+        "Edit with create_frame, set_text, rename_layers, set_styles, move_layers and duplicate_layers. delete_layers needs the person to approve it in Ninerr.",
         "Style values are CSS strings (\"24px\", \"#336699\"); null removes a property.",
       ].join("\n"),
     }),
   },
   {
-    name: "finish_working_on_nodes",
+    name: "finish_task",
     title: "Finish working",
     description: "Tell Ninerr you have finished with these layers. Changes nothing.",
     inputSchema: object({ nodeIds: idList }),
     run: () => ({ ok: true }),
   },
   {
-    name: "create_artboard",
-    title: "Create artboard",
-    description: "Add a new top-level frame (artboard) of a size, optionally named.",
+    name: "create_frame",
+    title: "Create frame",
+    description: "Add a new top-level frame of a size, optionally named.",
     inputSchema: object({ name: { type: "string", maxLength: 200 }, width: { type: "number", minimum: 1, maximum: 100000 }, height: { type: "number", minimum: 1, maximum: 100000 } }, ["width", "height"]),
     run: ({ session, edit }, args) => {
       const size = (value: unknown, label: string) => {
@@ -220,11 +220,11 @@ const TOOLS: Tool[] = [
       const document = session.document as any;
       const props: Record<string, unknown> = { tag: "main", style: { position: "relative", width: size(args.width, "width"), height: size(args.height, "height"), background: "#ffffff" } };
       if (typeof args.name === "string" && args.name.trim() !== "") props.name = args.name.trim().slice(0, 200);
-      return { nodeId: id, ...(edit([{ type: "insert-node", node: { id, type: "frame", props }, parentId: null, index: document.rootIds.length }], "Create artboard") as object) };
+      return { nodeId: id, ...(edit([{ type: "insert-node", node: { id, type: "frame", props }, parentId: null, index: document.rootIds.length }], "Create frame") as object) };
     },
   },
   {
-    name: "set_text_content",
+    name: "set_text",
     title: "Set text",
     description: "Replace a layer's text.",
     inputSchema: object({ nodeId: { type: "string" }, text: { type: "string", maxLength: 100000 } }, ["nodeId", "text"]),
@@ -235,7 +235,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "rename_nodes",
+    name: "rename_layers",
     title: "Rename layers",
     description: "Set layer names; an empty name removes it.",
     inputSchema: object({ renames: { type: "array", minItems: 1, maxItems: 500, items: object({ nodeId: { type: "string" }, name: { type: "string", maxLength: 200 } }, ["nodeId", "name"]) } }, ["renames"]),
@@ -251,8 +251,8 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "update_styles",
-    title: "Update styles",
+    name: "set_styles",
+    title: "Set styles",
     description: "Change CSS properties of layers. Values are CSS strings; null removes the property.",
     inputSchema: object({ updates: { type: "array", minItems: 1, maxItems: 500, items: object({ nodeId: { type: "string" }, styles: { type: "object", additionalProperties: { type: ["string", "null"] } } }, ["nodeId", "styles"]) } }, ["updates"]),
     run: ({ session, edit }, args) => {
@@ -270,11 +270,11 @@ const TOOLS: Tool[] = [
         }
         return { type: "set-props", nodeId: node.id, set: { style } };
       });
-      return edit(operations, "Update styles");
+      return edit(operations, "Set styles");
     },
   },
   {
-    name: "move_nodes",
+    name: "move_layers",
     title: "Move layers",
     description: "Move layers to a new parent (null for top level) at an index.",
     inputSchema: object({ moves: { type: "array", minItems: 1, maxItems: 500, items: object({ nodeId: { type: "string" }, parentId: { type: ["string", "null"] }, index: { type: "integer", minimum: 0 } }, ["nodeId", "parentId"]) } }, ["moves"]),
@@ -289,7 +289,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "duplicate_nodes",
+    name: "duplicate_layers",
     title: "Duplicate layers",
     description: "Copy layers (with everything inside them) next to the originals; returns the copies' ids.",
     inputSchema: object({ nodeIds: idList }, ["nodeIds"]),
@@ -332,7 +332,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "delete_nodes",
+    name: "delete_layers",
     title: "Delete layers",
     description: "Delete layers and everything inside them. The person must approve this in Ninerr; the call waits for their answer.",
     inputSchema: object({ nodeIds: idList }, ["nodeIds"]),
@@ -448,7 +448,7 @@ export class ConfirmationBroker {
    * The person's decision, made in the editor. An approval serves the calls waiting on the
    * request; if none is waiting (they timed out), it is kept for one identical retry.
    * Identical waiting calls (at most 4) each run once: the only consequential tool,
-   * delete_nodes, is idempotent, so the repeats find nothing left to delete. A consequential
+   * delete_layers, is idempotent, so the repeats find nothing left to delete. A consequential
    * tool that is not idempotent must run once and share its result instead.
    */
   decide(id: unknown, approve: boolean, at: string): void {
@@ -516,7 +516,7 @@ export async function handleMcpMessage(context: McpContext, actor: StudioActor, 
     case "initialize": {
       const requested = params?.protocolVersion;
       const protocolVersion = MCP_PROTOCOL_VERSIONS.includes(requested) ? requested : MCP_PROTOCOL_VERSIONS[0];
-      return { jsonrpc: "2.0", id, result: { protocolVersion, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO, instructions: "Ninerr design documents. Call get_guide first." } };
+      return { jsonrpc: "2.0", id, result: { protocolVersion, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO, instructions: "Ninerr design documents. Call guide first." } };
     }
     case "ping":
       return { jsonrpc: "2.0", id, result: {} };
@@ -604,7 +604,7 @@ async function confirm(context: McpContext, session: StudioSession, actor: Studi
     }
     return `${label === null ? kind : `${label} (${kind})`}${inside > 0 ? ` with ${inside} layer${inside === 1 ? "" : "s"} inside` : ""}`;
   };
-  const summary = `${toolName === "delete_nodes" ? "Delete" : toolName} ${ids.length} layer${ids.length === 1 ? "" : "s"}: ${ids.slice(0, 5).map(describeNode).join(", ")}${ids.length > 5 ? ", …" : ""}`;
+  const summary = `${toolName === "delete_layers" ? "Delete" : toolName} ${ids.length} layer${ids.length === 1 ? "" : "s"}: ${ids.slice(0, 5).map(describeNode).join(", ")}${ids.length > 5 ? ", …" : ""}`;
   const decision = await context.confirmations.request({ ...key, agentName: actor.displayName, summary }, at, context.confirmationWaitMs ?? CONFIRMATION_WAIT_MS);
   if (decision.outcome === "denied") return "The person declined this change.";
   if (decision.outcome === "busy") return "Too many changes are already waiting for the person's approval. Wait for them to decide, then call again.";

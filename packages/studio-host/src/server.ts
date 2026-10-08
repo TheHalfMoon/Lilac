@@ -105,7 +105,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     current.edit(owner, { baseRevision: current.revision, operations, intent: "Settle earlier write-backs", tool: "ninerr:codebase" }, "http", undefined, { undoable: false });
     for (const temporary of temporaries) removeTemporary(temporary);
   };
-  // What the person has selected in the editor, for MCP's get_selection.
+  // What the person has selected in the editor, for MCP's selection.
   let selection: string[] = [];
   let session: StudioSession | null = null;
   let unsubscribe: (() => void) | null = null;

@@ -47,7 +47,7 @@ test("the stdio relay forwards a stdio MCP client to the running host, and only 
     const lines = [
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "stdio-test" } } },
       { jsonrpc: "2.0", method: "notifications/initialized" },
-      { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "create_artboard", arguments: { name: "From stdio", width: 320, height: 200 } } },
+      { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "create_frame", arguments: { name: "From stdio", width: 320, height: 200 } } },
     ];
     for (const line of lines) child.stdin.write(`${JSON.stringify(line)}\n`);
     child.stdin.write("not json\n");
