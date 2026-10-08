@@ -127,7 +127,7 @@ const SUBSYSTEMS = [
     title: "Round-trip synchronization",
     owner: "@lilac/code-ir",
     status: "stub",
-    boundary: "Conflict detection, hunk-based three-way reconciliation, and golden code/design round-trip fixpoints are delivered (P05 D1 vertical slice); live canvas-to-source synchronization is planned. Never silently overwrites human code.",
+    boundary: "Conflict detection, hunk-based three-way reconciliation, and golden code/design round-trip fixpoints are delivered (P05 D1 vertical slice). From a connected codebase folder (PC11), components come into the design bound to their source, and edits to their text and literal props are written back as a previewed, three-way, range-anchored patch; structural edits and live synchronization are planned. Never silently overwrites human code.",
     dependsOn: ["code-ir", "history"],
   },
   {

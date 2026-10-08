@@ -7,6 +7,7 @@ import { isLoopbackAddress } from "@lilac/network-policy";
 import { AgentRegistry } from "./agents.ts";
 import { StudioError } from "./errors.ts";
 import { exportJsx, importJsx } from "./code.ts";
+import { CodebaseLinks, assertFolder, bringIn, planWriteBack, scanComponents, writeBack } from "./codebase.ts";
 import { ImportDesk, MAX_IMPORT_HTML_BYTES } from "./imports.ts";
 import { ConfirmationBroker, handleMcpMessage } from "./mcp.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
@@ -87,7 +88,13 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   };
   const streams = new Set<ServerResponse>();
   const imports = new ImportDesk();
+  const connectedFolder = (project: string) => {
+    const folder = codebases.get(project);
+    if (folder === null) throw new StudioError(409, "no-codebase", "connect a codebase folder first");
+    return assertFolder(folder, projectsRoot);
+  };
   const agents = new AgentRegistry(projectsRoot, owner);
+  const codebases = new CodebaseLinks(projectsRoot);
   // What the person has selected in the editor, for MCP's get_selection.
   let selection: string[] = [];
   let session: StudioSession | null = null;
@@ -214,6 +221,43 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       const { operations, frameId, componentName, layers } = importJsx(body?.code);
       const placed = operations.map((operation: any) => ({ ...operation, index: (current.document as any).rootIds.length }));
       return { ...current.edit(owner, { baseRevision: current.revision, operations: placed, intent: `Bring in ${componentName}`, tool: "lilac:code" }), frameId, layers };
+    },
+    // A connected codebase (PC11): only the person, through the editor's session, ever
+    // connects one, brings a component in from it, or writes back to it.
+    "GET /api/codebase": () => {
+      const current = requireSession();
+      const folder = codebases.get(current.name);
+      if (folder === null) return { folder: null, components: [] };
+      return { folder, ...scanComponents(assertFolder(folder, projectsRoot)) };
+    },
+    "POST /api/codebase/connect": (body) => {
+      const current = requireSession();
+      const folder = assertFolder(body?.folder, projectsRoot);
+      codebases.set(current.name, folder);
+      return { folder, ...scanComponents(folder) };
+    },
+    "POST /api/codebase/disconnect": () => {
+      codebases.set(requireSession().name, null);
+      return { folder: null, components: [] };
+    },
+    "POST /api/codebase/import": (body) => {
+      const current = requireSession();
+      const folder = connectedFolder(current.name);
+      const { operations, frameId, componentName, layers, file } = bringIn(folder, body?.file, body?.component);
+      const placed = operations.map((operation: any) => ({ ...operation, index: (current.document as any).rootIds.length }));
+      return { ...current.edit(owner, { baseRevision: current.revision, operations: placed, intent: `Bring in ${componentName} from ${file}`, tool: "lilac:codebase" }), frameId, layers };
+    },
+    "POST /api/codebase/preview": (body) => {
+      const current = requireSession();
+      const { after: _after, rebase: _rebase, ...plan } = planWriteBack(current.document, body?.nodeId, connectedFolder(current.name));
+      return plan;
+    },
+    "POST /api/codebase/write": (body) => {
+      const current = requireSession();
+      const { plan, operations } = writeBack(current.document, body?.nodeId, connectedFolder(current.name), body?.token);
+      // The file is written; the layers' bases follow it, as one transaction.
+      const event = current.edit(owner, { baseRevision: current.revision, operations, intent: `Write ${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} back to ${plan.file}`, tool: "lilac:codebase" });
+      return { ...event, file: plan.file, written: plan.changes.length };
     },
     "POST /api/import/discard": (body) => {
       imports.discard(body?.proposalId);
