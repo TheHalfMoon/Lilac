@@ -21,3 +21,10 @@ One test compared a sorted dependency list with a hand-ordered expectation. With
 
 ## Persisted data
 Package names are not persisted for behaviour. Journal entries from earlier releases record tool names such as `@lilac/import-stack` as attribution only, and nothing reads them back.
+
+## Review delta 1
+
+The light ps-review panel, with the resolver checked for security, found no must-fix. Taken from its worth-considering items, the packaged app's resolver is now in `packages/desktop/src/resolve.mjs`, as a plain function that `bootstrap.mjs` registers:
+- **Case-insensitive scope.** The workspace scope is matched without regard to case. On Windows and macOS, `@Ninerr/…` or `@Lilac/…` could otherwise reach a workspace link outside the app.
+- **Names must match.** A resolved package's manifest must name itself exactly as the specifier does. A packaged build can therefore not quietly accept a stale name that a checkout would refuse.
+- **Tested.** `tests/desktop-package.test.mjs` covers entries, normal resolution, a look-alike scope, subpaths, empty and traversing names, other spellings of the scope, and a stale name.
