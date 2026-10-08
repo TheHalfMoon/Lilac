@@ -26,10 +26,24 @@ Issue: #190 (N0 umbrella). The second half of N0-G3d; the desktop app, packaging
 
 - **The repository URL** (`TheHalfMoon/Lilac`). It changes with the repository rename (N0-G10).
 - **Renderer DOM attributes, history tool identifiers, the editor's session-storage key and the desktop preload bridge.** These are runtime identifiers shared between packages, and they move together in N0-G3e.
-- **Prose names in code comments and test titles.** These are N0-G3f.
+- **Prose names in code comments, test titles and editor text, elsewhere.** These are N0-G3f. The files this grain renames do get their own prose, test titles and test markers renamed:
+  - the entry-point scripts and `scripts/smoke.mjs`;
+  - the `web-mode` and `mcp-relay` test titles;
+  - the `NINERR-NETWORK-ATTEMPT` marker;
+  - the test origin `ninerr.test`.
+
+  The editor text for the relay setup is renamed too. The editor's dialog titles and the browser wrapper's temporary-folder prefix are not, so their tests still expect the old text.
 - **The Paper-derived MCP tool catalog.** That is N0-G4.
 
 ## Effect on existing installs
 
 - **The desktop app's user-data directory.** It follows the product name, so it is new. It holds no project data, which lives in the projects folder.
 - **MCP clients.** They need the new script path, `scripts/ninerr-mcp.mjs`. Their `LILAC_MCP_TOKEN` keeps working, with a note.
+
+## Census
+The `public-cli` rule matched the old entry points, which are gone, so it is removed.
+
+## Verification
+- Local (Windows, Edge): `mcp-relay`, `legacy-host`, `identity-census`, `smoke`, `web-mode`, `browser-proxy` and `renderer-browser`, recorded in the PR's qualification comment.
+- The legacy token test checks that `NINERR_MCP_TOKEN` wins when both variables are set, and that the credential is never printed.
+- Exact-head CI and review: the PR's qualification comment.

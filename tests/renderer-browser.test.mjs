@@ -164,12 +164,12 @@ test("rendered content cannot fetch: remote images are dropped and the frame blo
         { id: "ok", type: "image", props: { attributes: { src: "data:image/gif;base64,R0lGODlhAQABAAAAACw=", alt: "Pixel" } } },
       ],
     });
-    const result = await page.evaluate((d) => {
+    const result = await page.evaluate(({ d, origin }) => {
       window.r.render(d);
       const frameDoc = window.frame.contentDocument;
       // Even an image inserted behind the renderer's back is blocked by the frame's CSP.
       const rogue = frameDoc.createElement("img");
-      rogue.src = "http://ninerr.test/rogue.png";
+      rogue.src = `${origin}/rogue.png`;
       frameDoc.body.appendChild(rogue);
       return new Promise((resolve) => setTimeout(() => resolve({
         src: frameDoc.querySelector('[data-ninerr-id="img"]').getAttribute("src"),
@@ -177,7 +177,7 @@ test("rendered content cannot fetch: remote images are dropped and the frame blo
         bg: frameDoc.querySelector('[data-ninerr-id="bg"]').style.background,
         okSrc: frameDoc.querySelector('[data-ninerr-id="ok"]').getAttribute("src"),
       }), 300));
-    }, doc);
+    }, { d: doc, origin: TEST_ORIGIN });
     assert.equal(result.src, null);
     assert.equal(result.alt, "Tracked");
     assert.equal(result.bg, "");

@@ -8,7 +8,7 @@ import {
   DESIGN_ASSURANCE_SCHEMA_VERSION,
   DesignAssuranceError,
   IMPECCABLE_PIN,
-  createNinerrRulePack,
+  createRulePack,
   normalizeImpeccableFinding,
   scanBrowserSnapshot,
   scanBrowserUrl,
@@ -96,7 +96,7 @@ test("installed Impeccable runtime matches the recorded package and engine pin",
 });
 
 test("local rule evidence must be JSON-serializable", async () => {
-  const badPack = createNinerrRulePack({
+  const badPack = createRulePack({
     namespace: "bad-evidence",
     rules: [{
       id: "bigint",
@@ -134,11 +134,11 @@ test("rule packs reserve the upstream namespace and reject duplicate ids", () =>
     check: () => [],
   };
   assert.throws(
-    () => createNinerrRulePack({ namespace: "impeccable", rules: [rule] }),
+    () => createRulePack({ namespace: "impeccable", rules: [rule] }),
     DesignAssuranceError,
   );
   assert.throws(
-    () => createNinerrRulePack({ namespace: "demo", rules: [rule, rule] }),
+    () => createRulePack({ namespace: "demo", rules: [rule, rule] }),
     /duplicate rule id/,
   );
 });
@@ -266,7 +266,7 @@ test("browser adapter uses the shared report contract and protects private targe
 });
 
 test("browser snapshot seam normalizes upstream and Ninerr rule-pack findings", async () => {
-  const snapshotPack = createNinerrRulePack({
+  const snapshotPack = createRulePack({
     namespace: "snapshot-test",
     rules: [{
       id: "empty-page",

@@ -66,7 +66,7 @@ test("hand-built hostile props are reduced to the allowlists", () => {
     props: {
       tag: "SCRIPT",
       text: "hello",
-      attributes: { onclick: "alert(1)", ONLOAD: "x", href: "javascript:alert(1)", style: "color:red", id: "spoof", "data-ninerr-id": "spoof", srcdoc: "<b>", class: "card", "aria-label": "Card", "data-test": "1" },
+      attributes: { onclick: "alert(1)", ONLOAD: "x", href: "javascript:alert(1)", style: "color:red", id: "spoof", "data-ninerr-id": "spoof", "data-ninerr-root": "", "data-lilac-id": "spoof", "DATA-LILAC-HREF": "x", srcdoc: "<b>", class: "card", "aria-label": "Card", "data-test": "1" },
       style: { color: "red", background: "url(https://evil.example/x.png)", width: "expression(alert(1))", "font-family": "a\\62 c", "--brand": "#f00", "margin;x": "1px", padding: 4 },
     },
   });
@@ -74,7 +74,7 @@ test("hand-built hostile props are reduced to the allowlists", () => {
   assert.deepEqual(plan.attributes, { class: "card", "aria-label": "Card", "data-test": "1" });
   assert.deepEqual(plan.style, { color: "red", "--brand": "#f00", padding: "4" });
   assert.equal(plan.text, "hello");
-  assert.ok(plan.dropped >= 9);
+  assert.ok(plan.dropped >= 12);
   const link = planElement({ id: "a", type: "element", props: { tag: "a", attributes: { href: " https://example.com/x ", target: "_top" } } });
   assert.deepEqual(link.attributes, { "data-ninerr-href": "https://example.com/x" }, "links are inert, and only _blank survives as a target");
   const image = planElement({ id: "i", type: "image", props: { attributes: { src: "https://evil.example/p.png", alt: "Chart" } } });

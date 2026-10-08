@@ -16,8 +16,8 @@ node scripts/fetch-electron.mjs
 ## Packages
 
 `node scripts/package-desktop.mjs` packages the app for the computer it runs on: Linux x64, macOS arm64 or Windows x64. The result goes in `dist/desktop/`:
-- **The archive:** `Lilac-linux-x64.tar.gz`, `Lilac-darwin-arm64.zip` or `Lilac-win32-x64.zip`.
-- **A manifest** (`Lilac-<target>.json`), also included in the package as `lilac-package.json`. It records:
+- **The archive:** `Ninerr-linux-x64.tar.gz`, `Ninerr-darwin-arm64.zip` or `Ninerr-win32-x64.zip`.
+- **A manifest** (`Ninerr-<target>.json`), also included in the package as `ninerr-package.json`. It records:
   - the commit and the Electron version;
   - the fuses;
   - the license review of the runtime's notice;
@@ -43,12 +43,12 @@ The `Desktop` workflow (`.github/workflows/desktop.yml`) builds each package on 
 
 A release's archives are in its GitHub Release, each with a Sigstore attestation from the release workflow and a line in `SHA256SUMS`; `docs/RELEASE.md` says how to check one before installing it. Packages are not yet signed by a publisher; signing needs the owner's certificates (#139). Until then:
 
-- **macOS (Apple silicon).** Unzip it and move `Lilac.app` to Applications. The app has an ad-hoc signature only and is not notarized, so macOS refuses to open a downloaded copy at first.
+- **macOS (Apple silicon).** Unzip it and move `Ninerr.app` to Applications. The app has an ad-hoc signature only and is not notarized, so macOS refuses to open a downloaded copy at first.
   - On macOS 15 and later, try to open it once, then choose Open Anyway in System Settings, Privacy & Security.
-  - Or remove the download's quarantine flag yourself: `xattr -dr com.apple.quarantine /Applications/Lilac.app`.
+  - Or remove the download's quarantine flag yourself: `xattr -dr com.apple.quarantine /Applications/Ninerr.app`.
   - The menu bar shows Lilac, but Activity Monitor names the process Electron.
-- **Windows (x64).** Unzip it and run `Lilac.exe`. SmartScreen may warn about an unknown publisher; choose More info, then Run anyway. The file's version details still name Electron.
-- **Linux (x64).** Unpack it with `tar -xzf Lilac-linux-x64.tar.gz` and run `Lilac-linux-x64/lilac`.
+- **Windows (x64).** Unzip it and run `Ninerr.exe`. SmartScreen may warn about an unknown publisher; choose More info, then Run anyway. The file's version details still name Electron.
+- **Linux (x64).** Unpack it with `tar -xzf Ninerr-linux-x64.tar.gz` and run `Ninerr-linux-x64/ninerr`.
   - Chromium's sandbox, which Lilac never turns off, needs unprivileged user namespaces.
   - Most distributions allow them. Ubuntu 24.04 and later restrict them through AppArmor. There, either give the app an AppArmor profile that allows `userns`, or make `chrome-sandbox` in the package owned by root and setuid (`sudo chown root chrome-sandbox && sudo chmod 4755 chrome-sandbox`).
 
