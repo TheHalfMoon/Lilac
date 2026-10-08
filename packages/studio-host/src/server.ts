@@ -8,7 +8,7 @@ import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES } from "@lilac/persistence";
 import { AgentRegistry } from "./agents.ts";
 import { StudioError } from "./errors.ts";
 import { exportJsx, importJsx } from "./code.ts";
-import { CodebaseLinks, assertFolder, bringIn, planWriteBack, scanComponents, settleWriteBacks, writeBack, type WriteBackPlan } from "./codebase.ts";
+import { CodebaseLinks, assertFolder, bringIn, planWriteBack, removeTemporary, scanComponents, settleWriteBacks, writeBack, type WriteBackPlan } from "./codebase.ts";
 import { ImportDesk, MAX_IMPORT_HTML_BYTES } from "./imports.ts";
 import { ConfirmationBroker, handleMcpMessage } from "./mcp.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
@@ -103,7 +103,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     const { operations, temporaries } = settleWriteBacks(current.document, folder);
     if (operations.length === 0) return;
     current.edit(owner, { baseRevision: current.revision, operations, intent: "Settle earlier write-backs", tool: "lilac:codebase" }, "http", undefined, { undoable: false });
-    for (const temporary of temporaries) rmSync(temporary, { force: true });
+    for (const temporary of temporaries) removeTemporary(temporary);
   };
   // What the person has selected in the editor, for MCP's get_selection.
   let selection: string[] = [];
@@ -200,8 +200,10 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       if (linked !== null) {
         try {
           settleWriteBacksOf(requireSession(), assertFolder(linked, projectsRoot));
-        } catch {
-          // A folder that cannot be read now is settled when it is next planned from.
+        } catch (error) {
+          // A folder that cannot be read now is settled when it is next planned from; a project
+          // whose store failed must be reopened, and says so.
+          if (error instanceof StudioError && error.code === "project-needs-reopen") throw error;
         }
       }
       return describe();

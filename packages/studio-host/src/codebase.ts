@@ -221,9 +221,9 @@ export function scanComponents(folder: string): { components: Array<{ file: stri
         let content: string;
         try {
           if (lstatSync(path).size > MAX_SOURCE_BYTES) continue;
-          content = readFileSync(path, "utf8");
+          content = UTF8.decode(readFileSync(path));
         } catch {
-          continue;
+          continue; // unreadable, or not exact UTF-8: not offered, as planning would refuse it
         }
         const file = relative(folder, path).split(sep).join("/");
         for (const component of exportedNames(content)) components.push({ file, component });
@@ -626,16 +626,28 @@ function writeTemporary(folder: string, plan: WriteBackPlan): { temporary: strin
   return { temporary, absolute };
 }
 
-/** Rename the temporary into place, if the file is still exactly what was planned from. */
+/**
+ * Rename the temporary into place, if the file is still exactly what was planned from. On
+ * failure the temporary is left: it proves the rename never happened, and writeBack removes
+ * it once the record's withdrawal is committed.
+ */
 function replaceFile(folder: string, plan: WriteBackPlan, { temporary, absolute }: { temporary: string; absolute: string }): void {
   try {
     // Last check, just before the rename: the file is still exactly what was planned from.
     if (readSourceFile(folder, plan.file).sha256 !== plan.sha256) throw new StudioError(409, "plan-changed", `${plan.file} changed while it was being written; preview it again`);
     renameSync(temporary, absolute);
   } catch (error) {
-    rmSync(temporary, { force: true });
     if (error instanceof StudioError) throw error;
     throw new StudioError(500, "write-failed", `${plan.file} could not be written`);
+  }
+}
+
+/** Remove a leftover temporary; one that cannot be removed now is harmless and settles later. */
+export function removeTemporary(path: string): void {
+  try {
+    rmSync(path, { force: true });
+  } catch {
+    // held open elsewhere (a scanner on Windows); left for the next settle
   }
 }
 
@@ -652,10 +664,10 @@ export type WriteBackCommit = (operations: unknown[], step: "record" | "confirm"
  * 2. `record` commits the write as pending on each layer: the bases it writes, the SHA-256
  *    the file will have, and the temporary's name. If this fails, the temporary is removed
  *    and nothing has been written.
- * 3. The temporary is renamed into place. If that fails, `withdraw` removes the record. If
- *    the withdrawal fails too, or the process stops before the rename, the record stays; the
- *    file does not match it, and while the temporary exists it proves the rename never
- *    happened, so `settleWriteBacks` withdraws it later. Otherwise the layer is a conflict.
+ * 3. The temporary is renamed into place. If that fails, `withdraw` removes the record and
+ *    then the temporary. If the withdrawal fails too, or the process stops before the rename,
+ *    the record and its temporary stay; the temporary proves the rename never happened, so
+ *    `settleWriteBacks` withdraws the record later.
  * 4. `confirm` commits the new bases. If this fails, the file is written and the record is
  *    durable: the file matches it, so it settles as written.
  */
@@ -673,7 +685,7 @@ export function writeBack(document: any, nodeId: unknown, folder: string, token:
   try {
     commit(set(moving.map(({ nodeId: id, codeSource, settled }) => ({ nodeId: id, codeSource: { ...settled, pending: { base: codeSource.base, sha256: landed, temp: basename(target.temporary) } } }))), "record", plan);
   } catch (error) {
-    rmSync(target.temporary, { force: true });
+    removeTemporary(target.temporary);
     throw error;
   }
   try {
@@ -681,8 +693,10 @@ export function writeBack(document: any, nodeId: unknown, folder: string, token:
   } catch (error) {
     try {
       commit(set(moving.map(({ nodeId: id, settled }) => ({ nodeId: id, codeSource: settled }))), "withdraw", plan);
+      removeTemporary(target.temporary);
     } catch {
-      // The record stays and does not match the file, so planning reports a conflict.
+      // The record stays with its temporary, which proves the rename never happened, so
+      // settleWriteBacks withdraws it later.
     }
     throw error;
   }

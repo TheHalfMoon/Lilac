@@ -63,3 +63,11 @@ Also taken from the panel:
 Remaining residual: a write to the file in the microseconds between the last digest check and the rename is lost. Closing that gap would need operating-system file locking. This predates #185.
 
 With records settled on open, the earlier "write-back conflict until the component is brought in again" case now arises only when the file changed in a way that cannot be told apart. That case remains P09 source-UX work.
+
+## Review delta 2
+
+The delta re-review found no must-fix. Taken from it:
+- **A failed rename keeps its temporary until the withdrawal is committed.** If the withdrawal fails too, the temporary still proves the rename never happened, and the next settle withdraws the record. Before, the temporary was removed first, which left a permanent conflict. Tested: the record and its temporary stay, then the next preview settles both and offers the change again.
+- **Temporary removal never fails a request.** A file held open on Windows, for example by a scanner, is left for the next settle.
+- **Scanning decodes source the same way planning does.** A file that is not exact UTF-8 is not offered for bringing in (tested).
+- **Opening a project with a connected codebase** still ignores a folder that cannot be read during settling. A failed store write is now reported as needing a reopen, not swallowed.

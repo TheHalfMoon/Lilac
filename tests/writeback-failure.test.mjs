@@ -206,6 +206,7 @@ test("a source file that is not valid UTF-8 is refused, never rewritten", async 
     assert.equal(response.json.error?.code, "source-not-utf8");
     assert.equal((await call("POST", "/api/codebase/write", { nodeId: section.id, token: preview.token })).json.error?.code, "source-not-utf8");
     assert.deepEqual(readFileSync(cardPath), bytes);
+    assert.deepEqual((await call("GET", "/api/codebase")).json.components, [], "nor is it offered to bring in");
   });
 });
 
@@ -226,7 +227,7 @@ test("#185: after an unconfirmed write lands, a later edit writes back only itse
   });
 });
 
-test("#185: a file changed before the rename withdraws the record; if the withdrawal fails too, the layer is a conflict", async () => {
+test("#185: a file changed before the rename withdraws the record, and settles it later if the withdrawal fails too", async () => {
   await withEditedCard(async (context) => {
     const { host, code, cardPath, section, h2, preview, sessionCommit, previewNow } = context;
     const external = CARD.replace("Everything in Free, and more.", "All of Free.");
@@ -248,10 +249,14 @@ test("#185: a file changed before the rename withdraws the record; if the withdr
       sessionCommit(operations, step);
       if (step === "record") writeFileSync(cardPath, external);
     }), (error) => error.code === "plan-changed");
-    assert.equal(host.session.document.nodes[h2.id].props.codeSource.pending.base.text, "Team", "the record stays");
+    const pending = host.session.document.nodes[h2.id].props.codeSource.pending;
+    assert.equal(pending.base.text, "Team", "the record stays");
+    assert.ok(existsSync(join(code, pending.temp)), "and so does its temporary, which proves the rename never happened");
     const again = await previewNow();
-    assert.deepEqual(again.changes, [], "nothing is written while it is unknown whether the record landed");
-    assert.deepEqual(again.conflicts.map((conflict) => [conflict.nodeId, conflict.field]), [[h2.id, "write-back"]]);
+    assert.equal(host.session.document.nodes[h2.id].props.codeSource.pending, undefined, "settling withdrew it");
+    assert.equal(existsSync(join(code, pending.temp)), false);
+    assert.deepEqual(again.changes.map((change) => change.field), ["text"], "the change is offered again, on the new file");
+    assert.deepEqual(again.conflicts, []);
     assert.equal(readFileSync(cardPath, "utf8"), external);
   });
 });
