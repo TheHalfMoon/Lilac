@@ -97,16 +97,6 @@
       "reason": "Docling is an optional, independently licensed local runtime that the import stack invokes; it is never distributed."
     },
     {
-      "id": "persisted-history-tools",
-      "category": "PERSISTED_DATA",
-      "path": "^packages/studio-host/src/(session|server)\\.ts$",
-      "terms": [
-        "lilac"
-      ],
-      "line": "tool: \"lilac:",
-      "reason": "History tool identifiers recorded in every journal entry (N0-G3)."
-    },
-    {
       "id": "public-env",
       "category": "PUBLIC_API",
       "line": "LILAC_(PROJECTS|MCP_TOKEN)\\b",
