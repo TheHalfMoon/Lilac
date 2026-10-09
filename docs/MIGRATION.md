@@ -28,7 +28,7 @@ Ninerr stores a project under `<root>/.ninerr`. This page describes:
 
 **Golden fixtures.**
 
-- `tests/fixtures/projects/v2-basic` is the golden project of this release, and this release must regenerate it byte for byte.
+- `tests/fixtures/projects/v2-basic` is the golden project of this release, and this release must regenerate it byte for byte. It is written as a crash leaves a project: the snapshot stands at tx-2 and the journal goes on past it, so opening it replays three entries of every kind. A clean close would have checkpointed at the journal's end (#239).
 - `tests/fixtures/projects/v1-basic` is the same history written before the rename. It is frozen as the legacy migration corpus.
 
 ## Versions
@@ -56,6 +56,11 @@ Every refusal above is a `PersistenceVersionError`. Its message names the bounda
 - a schema-1 manifest that is not in the legacy format.
 
 The only damage that is repaired automatically is an unterminated last journal line from an interrupted write (`recovery.tornTailBytes`). Stale temporary files and leftover `lock.broken-*` copies are also cleared, and they are counted in `recovery.staleTemporaryFiles`.
+
+**A clean close after changes moves the snapshot to the journal's last entry (#239).** It writes a checkpoint, so the snapshot reference records where the journal ends. A journal later cut while the project is closed, for example by a sync tool or a disk, then points the snapshot past its end, and the open is refused as damage. It is never opened at an earlier state without a word.
+- **After a crash** there is no clean close, so the snapshot stays where the last checkpoint put it. A cut through the last line is the torn tail above; whole lines lost after the checkpoint cannot be told from changes never made.
+- **A close that cannot write** leaves the project as after a crash. This happens when the store has lost its lock, its directory has moved, a journal write failed, or the checkpoint itself fails (a full disk, say). Close never throws for it.
+- **Opening and closing without a change** writes nothing. So a project opened after a crash and closed unchanged stays as the crash left it, until a session changes it.
 
 This release never writes anything a format-1 reader would refuse:
 - **History normalizes first.** It drops unknown transaction fields, and refuses an unknown operation type with `TransactionError`.

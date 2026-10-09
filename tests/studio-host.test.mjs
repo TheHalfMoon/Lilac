@@ -313,7 +313,9 @@ test("undo and redo restore every operation type exactly, across reopen", async 
     const inMemory = strip(session.document);
     session.close();
     session = StudioSession.open({ projectsRoot: root, name: "p", owner, now });
-    assert.equal(strip(session.document), inMemory, "the persisted state equals the session's");
+    // The same document; a clean close checkpoints (#239), so it reads back from a snapshot,
+    // whose keys are in canonical order, where the session kept them as edits added them.
+    assert.deepEqual(JSON.parse(strip(session.document)), JSON.parse(inMemory), "the persisted state equals the session's");
     // Undo stacks are per actor; a new edit clears the editing actor's redo.
     const agent = { actorId: "agent-1", kind: "agent", accessClass: "service", displayName: "Agent", ownerActorId: "local-user" };
     assert.equal(session.canUndo(agent), false);
