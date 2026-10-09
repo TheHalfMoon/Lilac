@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 
 import { join } from "node:path";
 
-import { createDocument } from "../packages/document-model/src/index.mjs";
+import { createDocument, serializeDocument } from "../packages/document-model/src/index.mjs";
 import {
   JOURNAL_GENESIS,
   PERSISTENCE_LIMITS,
@@ -83,11 +83,13 @@ test("create, open, commit, close, and reopen round-trip the document", () => wi
   store.close();
   assert.equal(existsSync(file(root, PROJECT_FILES.lock)), false);
 
+  // A clean close moved the snapshot to the journal's end (#239): nothing is left to replay.
+  assert.equal(JSON.parse(readFileSync(file(root, PROJECT_FILES.snapshot), "utf8")).journalSeq, 2);
   const reopened = open(root);
   assert.deepEqual(reopened.document, expected);
   assert.equal(reopened.revision, 2);
   assert.equal(reopened.journalSeq, 2);
-  assert.equal(reopened.recovery.replayedEntries, 2);
+  assert.equal(reopened.recovery.replayedEntries, 0);
   assert.equal(reopened.document.nodes["node-1"].props.title, "Final");
   reopened.close();
 }));
@@ -118,12 +120,33 @@ test("checkpoint moves the snapshot so reopen replays only later entries", () =>
   const snapshot = store.checkpoint();
   assert.equal(snapshot.journalSeq, 2);
   store.commit(setTitle("tx-3", 2, "Three"));
-  store.close();
-  const reopened = open(root);
+  // A crash, not a close (which would move the snapshot again): the reopen replays tx-3 only.
+  const reopened = open(root, { owner: "writer-2", breakStaleLock: { reason: "the writer crashed" } });
   assert.equal(reopened.recovery.replayedEntries, 1);
   assert.equal(reopened.revision, 3);
   assert.equal(reopened.document.nodes["node-1"].props.title, "Three");
   reopened.close();
+  // The crashed writer no longer holds the lock: its close writes nothing (#239).
+  store.close();
+  assert.equal(JSON.parse(readFileSync(file(root, PROJECT_FILES.snapshot), "utf8")).journalSeq, 2);
+}));
+
+test("a clean close moves the snapshot to the journal's end, so a later cut between whole lines is refused (#239)", () => withProject((root) => {
+  const store = open(root);
+  store.commit(setTitle("tx-1", 0, "One"));
+  store.commit(setTitle("tx-2", 1, "Two"));
+  store.commit(setTitle("tx-3", 2, "Three"));
+  store.close();
+  const journal = file(root, PROJECT_FILES.journal);
+  const bytes = readFileSync(journal);
+  // Cut after the first whole line, as a sync tool or a disk might while the project is closed.
+  writeFileSync(journal, bytes.subarray(0, bytes.indexOf(0x0a) + 1));
+  assert.throws(() => open(root), (error) => error instanceof PersistenceCorruptionError && /past the end of the journal/u.test(error.message));
+  // Opening and closing without a change writes nothing.
+  writeFileSync(journal, bytes);
+  const before = readFileSync(file(root, PROJECT_FILES.snapshot));
+  open(root).close();
+  assert.deepEqual(readFileSync(file(root, PROJECT_FILES.snapshot)), before);
 }));
 
 test("a torn journal tail is reported and removed, including inside a multi-byte character", () => withProject((root) => {
@@ -335,7 +358,10 @@ test("a failed journal write poisons the store until reopen", () => withProject(
   }
   assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /reopened after a failed journal write/);
   assert.throws(() => store.checkpoint(), /reopened after a failed journal write/);
+  // A store whose journal write failed closes as it is: no checkpoint at close (#239).
+  const snapshot = readFileSync(file(root, PROJECT_FILES.snapshot));
   store.close();
+  assert.deepEqual(readFileSync(file(root, PROJECT_FILES.snapshot)), snapshot);
   const reopened = open(root);
   assert.equal(reopened.revision, 1);
   reopened.commit(setTitle("tx-2", 1, "Two"));
@@ -403,16 +429,17 @@ test("an unterminated final line is an unacknowledged write and is recovered eve
   const store = open(root);
   store.commit(setTitle("tx-1", 0, "One"));
   store.commit(setTitle("tx-2", 1, "Two"));
-  store.close();
+  // The process dies while appending, before any close: the last line loses its terminator.
   const journal = file(root, PROJECT_FILES.journal);
   const bytes = readFileSync(journal);
   const firstLineEnd = bytes.indexOf(0x0a) + 1;
   writeFileSync(journal, bytes.subarray(0, bytes.length - 1));
-  const recovered = open(root);
+  const recovered = open(root, { owner: "writer-2", breakStaleLock: { reason: "the writer crashed" } });
   assert.equal(recovered.revision, 1);
   assert.equal(recovered.recovery.tornTailBytes, bytes.length - 1 - firstLineEnd);
   assert.deepEqual(readFileSync(journal), bytes.subarray(0, firstLineEnd));
   recovered.close();
+  store.close();
 }));
 
 test("values JSON cannot represent are refused, and memory always equals replay", () => withProject((root) => {
@@ -439,10 +466,19 @@ test("memory equals replay in key order too: a later style shorthand still wins 
   // Insertion order is not sorted order; the order of style entries decides what is drawn.
   store.commit({ id: "tx-order", actor: "user-1", baseRevision: 0, operations: [{ type: "set-props", nodeId: "node-1", set: { style: { "margin-left": "5px", margin: "0px" }, zeta: 1, alpha: { b: 1, a: 2 } } }] });
   const inMemory = JSON.stringify(store.document);
+  // Replayed from the journal (a crash: no close), key for key and in the same order.
+  const replayed = open(root, { owner: "writer-2", breakStaleLock: { reason: "the writer crashed" } });
+  assert.equal(JSON.stringify(replayed.document), inMemory, "the same document, key for key and in the same order");
+  // Read from a snapshot (a clean close checkpoints, #239): the same document, and its style
+  // in the same order; only a layer's own keys are in canonical order.
+  replayed.commit({ id: "tx-again", actor: "user-1", baseRevision: 1, operations: [{ type: "set-props", nodeId: "node-1", set: { zeta: 2 } }] });
+  const beforeClose = replayed.document;
+  replayed.close();
   store.close();
-  const reopened = open(root);
-  assert.equal(JSON.stringify(reopened.document), inMemory, "the same document, key for key and in the same order");
-  reopened.close();
+  const fromSnapshot = open(root);
+  assert.equal(serializeDocument(fromSnapshot.document), serializeDocument(beforeClose));
+  assert.equal(JSON.stringify(fromSnapshot.document.nodes["node-1"].props.style), JSON.stringify(beforeClose.nodes["node-1"].props.style));
+  fromSnapshot.close();
 }));
 
 test("an existing .ninerr of any kind is never replaced by project creation", () => {

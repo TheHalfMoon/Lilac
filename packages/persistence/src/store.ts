@@ -482,7 +482,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   const lockOverride = acquireLock(files.lock, lockRecord, options.breakStaleLock);
   try {
     unchanged();
-    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, replayed } = readVerifiedProject(projectDir, migrations);
+    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, snapshot, replayed } = readVerifiedProject(projectDir, migrations);
     // Repairs are written only once every check has passed, so an open refused as newer or
     // corrupt leaves the project's files as it found them (#241), leftovers included.
     unchanged();
@@ -513,6 +513,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       journalContent: createHash("sha256").update(journalBytes.subarray(0, parsed.validBytes)),
       journalIdentity: fileIdentity(files.journal, "journal"),
       lock: lockRecord,
+      snapshotSeq: snapshot.journalSeq,
       directory,
       recovery: { tornTailBytes: parsed.tornTailBytes, staleTemporaryFiles, replayedEntries: replayed, migratedFrom, lockOverride },
     });
@@ -615,6 +616,8 @@ interface StoreState {
   journalContent: Hash;
   journalIdentity: FileIdentity;
   lock: LockRecord;
+  /** The journal entry the snapshot reference stands at. */
+  snapshotSeq: number;
   directory: DirectoryIdentity;
   recovery: RecoveryReport;
 }
@@ -634,6 +637,8 @@ export class ProjectStore {
   #closed = false;
   #poisoned = false;
   #directory: DirectoryIdentity;
+  #snapshotSeq: number;
+  #committed = false;
 
   constructor(token: symbol, projectDir: string, manifest: ProjectManifest, document: ProjectDocument, state: StoreState) {
     if (token !== STORE_TOKEN) throw new PersistenceValidationError("ProjectStore is created by openProject");
@@ -648,6 +653,7 @@ export class ProjectStore {
     this.#journalIdentity = state.journalIdentity;
     this.#lock = state.lock;
     this.#directory = state.directory;
+    this.#snapshotSeq = state.snapshotSeq;
   }
 
   #assertOpen(): void {
@@ -735,6 +741,7 @@ export class ProjectStore {
     }
     this.#document = next;
     this.#seq = entry.seq;
+    this.#committed = true;
     this.#digest = digest;
     this.#journalBytes += bytes;
     this.#journalContent.update(line, "utf8");
@@ -747,6 +754,7 @@ export class ProjectStore {
     const documentObject = putObject(this.projectDir, Buffer.from(canonicalJson(this.#document), "utf8"));
     const snapshot: SnapshotRef = { revision: this.#document.revision, documentObject, journalSeq: this.#seq, chainDigest: this.#digest };
     atomicWrite(join(this.projectDir, PROJECT_FILES.snapshot), canonicalJson(snapshot), "snapshot reference");
+    this.#snapshotSeq = this.#seq;
     return snapshot;
   }
 
@@ -764,6 +772,19 @@ export class ProjectStore {
   /** Release the writer lock (only if it is still ours). */
   close(): void {
     if (this.#closed) return;
+    // A clean close moves the snapshot to the journal's last entry. Nothing else records where
+    // the journal ends, so without it a journal cut between whole lines while the project is
+    // closed (by a sync tool, a disk, a person) would open at an earlier state and say nothing;
+    // with it, such a cut points the snapshot past the journal's end and is refused (#239).
+    // Only after this session committed: opening and closing without a change writes nothing.
+    // Best effort: the journal already holds every change, so close never throws for it.
+    if (this.#committed && !this.#poisoned && this.#seq !== this.#snapshotSeq) {
+      try {
+        this.checkpoint();
+      } catch {
+        // A store that can no longer write (moved, its lock taken over) closes as it is.
+      }
+    }
     this.#closed = true;
     // After the project directory moved or was swapped, the lock path points elsewhere;
     // the lock is then left for breakStaleLock rather than removing a file outside.

@@ -27,7 +27,9 @@ function tempRoot(prefix = "ninerr-crash-") {
   return realpathSync(mkdtempSync(join(tmpdir(), prefix)));
 }
 
-// A project with `commits` journal entries, optionally checkpointed after `checkpointAt`.
+// A project with `commits` journal entries, optionally checkpointed after `checkpointAt`, as a
+// crash leaves it: the writer stops without closing (a clean close would move the snapshot to
+// the journal's end, #239), and its lock is gone, as after an override.
 function project(commits, checkpointAt = null) {
   const root = tempRoot();
   createProject(root, { projectId: "proj-1", document: createDocument({ id: "doc-1", nodes: [{ id: "node-1", type: "frame", props: { title: title(0) } }] }), createdAt: AT });
@@ -36,7 +38,7 @@ function project(commits, checkpointAt = null) {
     store.commit(setTitle(revision));
     if (revision === checkpointAt) store.checkpoint();
   }
-  store.close();
+  rmSync(ninerr(root, PROJECT_FILES.lock));
   return root;
 }
 

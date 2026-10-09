@@ -11,9 +11,10 @@ import { createPrng, positiveIntegerFromEnv, propertySeeds } from "./support/prn
 import { generatedEdit } from "./support/reference-model.mjs";
 
 // P08-G3a (#230, founder section P08.3): the project store under generated damage. Each seed
-// builds a real project (a checkpoint part-way, so the snapshot and the journal both matter),
-// keeping the document after every journal length. Then each case copies it, damages it, and
-// opens it. The damage: bytes flipped, inserted or removed, truncation, text appended, a file
+// builds a real project twice, keeping the document after every journal length: once closed
+// cleanly (a clean close checkpoints at the journal's end, #239), and once as a crash leaves it
+// (no close, so the snapshot stays at a checkpoint part-way and the journal matters too). Then
+// each case copies one of them, damages it, and opens it. The damage: bytes flipped, inserted or removed, truncation, text appended, a file
 // emptied, deleted or replaced by a directory; journal lines swapped, repeated or dropped; a
 // byte flipped in the last line only (what a crash mid-append leaves); a JSON value changed,
 // removed or added; values only a hash can tell (a name inside a journal line, inside the
@@ -22,10 +23,12 @@ import { generatedEdit } from "./support/reference-model.mjs";
 // directory; and a lock held by someone else. The store must fail closed:
 // - a refused open throws the store's own typed error and leaves every file exactly as it
 //   found it (a foreign lock stays, and no lock of ours is left);
-// - an open that succeeds yields a valid document the project really held: the latest, or the
-//   very one an earlier journal length gave, and only when what is left of the journal is a
-//   prefix of it (its end was cut). A cut through a line is repaired and reported; a cut
-//   between whole lines cannot be told from changes never made (#239);
+// - an open that succeeds yields a valid document the project really held. A cleanly closed
+//   project opens at its latest state or not at all: a cut journal no longer reaches the
+//   snapshot (#239). A crashed one opens at the latest state, or at the very state an earlier
+//   journal length gave when what is left of the journal is a prefix of it (its end was cut):
+//   a cut through a line is repaired and reported; a cut between whole lines after a crash
+//   cannot be told from changes never made;
 // - opening the result again gives the very same document: recovery is deterministic;
 // - through the studio host, every fifth case answers a typed refusal (422, or 409 for a
 //   lock) that also changes nothing, never a 500, or opens the very document the store opens.
@@ -61,9 +64,10 @@ function snapshotFiles(root, { withLock = false } = {}) {
 /**
  * A real project: generated edits with a checkpoint part-way. Returns the document after each
  * journal length (in bytes), so an earlier state can be checked against the exact one it
- * must be, and the latest document.
+ * must be, and the latest document. With `crashed`, the writer stops without closing, and its
+ * lock is gone, as after an override; otherwise it closes cleanly.
  */
-function buildProject(prng, root) {
+function buildProject(prng, root, { crashed }) {
   mkdirSync(root);
   createProject(root, { projectId: "fuzz-project", document: createDocument({ id: "fuzz-doc", nodes: [] }), createdAt: AT });
   const project = open(root);
@@ -89,9 +93,13 @@ function buildProject(prng, root) {
       }
     }
     if (!checkpointed) project.checkpoint();
-    return { byLength, latest: serializeDocument(project.document) };
+    // One more edit after the checkpoint, so the journal always goes on past the snapshot.
+    project.commit({ id: "tx-tail", actor: "fuzz-user", baseRevision: project.revision, intent: "Tail", operations: [{ type: "insert-node", node: { id: "tail", type: "frame", props: { name: "Tail" } }, parentId: null }] });
+    byLength.set(readFileSync(journal).length, serializeDocument(project.document));
+    return { byLength, latest: serializeDocument(project.document), journal: readFileSync(journal) };
   } finally {
-    project.close();
+    if (crashed) rmSync(join(store(root), PROJECT_FILES.lock));
+    else project.close();
   }
 }
 
@@ -131,7 +139,7 @@ function damage(prng, root, { filesOnly = false } = {}) {
   const bytes = readFileSync(path);
   const kinds = ["flip", "insert", "remove", "truncate", "append", "empty", "delete", "directory", ...TEXT_KINDS, "oversize"];
   // A value inside one journal line changed, the line still valid JSON: only the hash chain can tell.
-  if (target === PROJECT_FILES.journal) kinds.push("swap-lines", "repeat-line", "drop-line", "flip-last-line", "line-value", "line-value");
+  if (target === PROJECT_FILES.journal) kinds.push("swap-lines", "repeat-line", "drop-line", "flip-last-line", "cut-last-line", "cut-last-line", "line-value", "line-value");
   if (JSON_FILES.includes(target)) kinds.push("json-change", "json-remove", "json-add");
   // An object the snapshot uses, its text changed but still valid, canonical JSON: only its
   // content hash can tell.
@@ -204,6 +212,12 @@ function damage(prng, root, { filesOnly = false } = {}) {
       next = Buffer.from(`${text.slice(0, name + 8)}X${text.slice(name + 8)}`, "utf8");
       break;
     }
+    case "cut-last-line": {
+      // A cut inside the final line: what a crash mid-append leaves.
+      const start = bytes.lastIndexOf(0x0a, bytes.length - 2) + 1;
+      next = bytes.subarray(0, prng.int(start + 1, bytes.length - 1));
+      break;
+    }
     case "flip-last-line": {
       // Damage inside the final line only: what a crash mid-append can leave.
       const text = bytes.toString("utf8");
@@ -254,15 +268,21 @@ test("the store under generated damage fails closed: refused unchanged, or exact
       const pool = hostPool(now);
       try {
         const { call } = await pool.open(base);
-        const original = join(base, "original");
-        const { byLength, latest } = buildProject(prng, original);
-        const originalJournal = readFileSync(join(store(original), PROJECT_FILES.journal));
-        assert.ok(JSON.parse(readFileSync(join(store(original), PROJECT_FILES.snapshot), "utf8")).journalSeq > 0, "the snapshot is a checkpoint, not the start");
+        const originals = {
+          closed: { root: join(base, "closed"), ...buildProject(prng, join(base, "closed"), { crashed: false }) },
+          crashed: { root: join(base, "crashed"), ...buildProject(prng, join(base, "crashed"), { crashed: true }) },
+        };
+        const snapshotSeq = (root) => JSON.parse(readFileSync(join(store(root), PROJECT_FILES.snapshot), "utf8")).journalSeq;
+        const entries = (journal) => journal.toString("utf8").split("\n").filter((line) => line !== "").length;
+        assert.equal(snapshotSeq(originals.closed.root), entries(originals.closed.journal), "a clean close checkpoints at the journal's end");
+        assert.ok(snapshotSeq(originals.crashed.root) > 0 && snapshotSeq(originals.crashed.root) < entries(originals.crashed.journal), "after a crash, the snapshot is a checkpoint part-way");
         for (let index = 0; index < CASES; index += 1) {
           const copy = join(base, `case-${index}`);
-          cpSync(original, copy, { recursive: true });
-          const what = damage(prng, copy);
-          const lockedByOther = what === "foreign-lock";
+          const from = prng.pick(["closed", "crashed"]);
+          const { byLength, latest, journal: originalJournal } = originals[from];
+          cpSync(originals[from].root, copy, { recursive: true });
+          const what = `${from}: ${damage(prng, copy)}`;
+          const lockedByOther = what.endsWith(": foreign-lock");
           const damaged = snapshotFiles(copy, { withLock: lockedByOther });
           const where = `seed ${seed}, case ${index}: ${what}`;
           // Through the host, on a copy of the damaged project: a typed answer that changes
@@ -292,25 +312,26 @@ test("the store under generated damage fails closed: refused unchanged, or exact
             assert.deepEqual(snapshotFiles(copy, { withLock: lockedByOther }), damaged, `${where}: a refused open changes no file`);
             if (!lockedByOther) assert.equal(existsSync(join(store(copy), PROJECT_FILES.lock)), false, `${where}: and leaves no lock`);
             assert.equal(hosted, null, `${where}: the host opened what the store refuses`);
-            tally(`refused (${error.name})`);
+            tally(`${from}, refused (${error.name})`);
             rmSync(copy, { recursive: true, force: true });
             continue;
           }
           let text;
           try {
-            if (what.startsWith("leftovers")) assert.equal(project.recovery.staleTemporaryFiles, 2, `${where}: the leftovers are cleared and counted`);
+            if (what.includes(": leftovers")) assert.equal(project.recovery.staleTemporaryFiles, 2, `${where}: the leftovers are cleared and counted`);
             const document = project.document;
             validateDocument(document);
             text = serializeDocument(document);
             if (text === latest) {
-              tally("opened at the latest state");
+              tally(`${from}, opened at the latest state`);
             } else {
+              assert.equal(from, "crashed", `${where}: a cleanly closed project opens at its latest state or not at all (#239)`);
               // An earlier state only when the journal's end was cut, and then exactly the state
               // that journal length gives.
               const left = readFileSync(join(store(copy), PROJECT_FILES.journal));
               assert.ok(left.length < originalJournal.length && originalJournal.subarray(0, left.length).equals(left), `${where}: an earlier state only when what is left of the journal is a prefix of it`);
               assert.equal(text, byLength.get(left.length), `${where}: exactly the state that journal length gave`);
-              tally(project.recovery.tornTailBytes > 0 ? "opened at an earlier state (a cut through a line, repaired)" : "opened at an earlier state (a cut between lines, #239)");
+              tally(project.recovery.tornTailBytes > 0 ? "crashed, opened at an earlier state (a cut through a line, repaired)" : "crashed, opened at an earlier state (a cut between whole lines)");
             }
             if (index % 5 === 0) assert.equal(hosted, text, `${where}: the host opens the very document the store opens`);
           } finally {
@@ -332,4 +353,11 @@ test("the store under generated damage fails closed: refused unchanged, or exact
     });
   }
   t.diagnostic(`outcomes: ${JSON.stringify(totals)}`);
+  // A full run (not a replayed seed) reaches what matters: both kinds of project opened and
+  // refused, and a crash's cut through a line repaired.
+  if (seeds.length >= 4 && CASES >= 60) {
+    for (const what of ["closed, opened at the latest state", "closed, refused (PersistenceCorruptionError)", "crashed, opened at the latest state", "crashed, refused (PersistenceCorruptionError)", "crashed, opened at an earlier state (a cut through a line, repaired)", "hosted 422", "hosted 409", "hosted 200"]) {
+      assert.ok((totals[what] ?? 0) > 0, `the cases include at least one: ${what}`);
+    }
+  }
 });
