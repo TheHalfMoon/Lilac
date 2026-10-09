@@ -72,11 +72,7 @@
       "id": "third-party-notices",
       "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
       "path": "^(THIRD_PARTY_NOTICES\\.md|docs/provenance/LICENSE_REGISTER\\.json|scripts/license-policy\\.json|docs/provenance/ELECTRON_LICENSE\\.txt)$",
-      "terms": [
-        "impeccable",
-        "docling"
-      ],
-      "reason": "License notices and register entries for independently licensed runtimes Ninerr keeps; donor entries in the same files stay gated until N0-G5 and N0-G7 resolve them."
+      "reason": "THIRD_PARTY_NOTICES.md, the license register, the license policy and Electron's license: the obligations Ninerr keeps and the audited record of every source (N0-G7)."
     },
     {
       "id": "independent-runtime-impeccable",
@@ -98,18 +94,149 @@
     },
     {
       "id": "public-env",
-      "category": "PUBLIC_API",
+      "category": "LEGACY_COMPATIBILITY",
       "line": "LILAC_(PROJECTS|MCP_TOKEN)\\b",
       "terms": [
         "lilac"
       ],
-      "reason": "Environment variables users and MCP clients set (N0-G3, legacy names read with a notice)."
+      "reason": "The pre-rename environment variables, read only when the NINERR_* one is unset and with a notice (N0-G3)."
     },
     {
       "id": "donor-provenance-records",
-      "category": "ACTIVE_INTERNAL_IDENTITY",
+      "category": "IMMUTABLE_HISTORICAL_FACT",
       "path": "^(packages/[a-z-]+/src/provenance\\.(ts|mjs)|packages/[a-z-]+/NOTICE\\.md|docs/DONORS\\.md|docs/DONOR_[A-Z_0-9-]+\\.md|docs/provenance/)",
-      "reason": "Per-package donor attribution and donor ledgers; consolidated into one provenance register (N0-G5)."
+      "reason": "Provenance ledgers and per-package provenance records: which source was studied or adapted, at which revision, under which license (N0-G5, N0-G7). They record facts; they are not product identity."
+    },
+    {
+      "id": "provenance-agent-events-ui-tars",
+      "category": "IMMUTABLE_HISTORICAL_FACT",
+      "path": "^packages/agent-events/src/index.ts$",
+      "terms": [
+        "ui-tars"
+      ],
+      "reason": "Provenance in the package's own module: the studied UI-TARS Desktop revision."
+    },
+    {
+      "id": "provenance-agent-runtime-unreal-agent",
+      "category": "IMMUTABLE_HISTORICAL_FACT",
+      "path": "^packages/agent-runtime/src/operation.ts$",
+      "terms": [
+        "unreal-agent"
+      ],
+      "reason": "Provenance in the package's own module: the studied Unreal Agent revision."
+    },
+    {
+      "id": "provenance-agent-supervisor-firstmate",
+      "category": "IMMUTABLE_HISTORICAL_FACT",
+      "path": "^packages/agent-supervisor/src/index.ts$",
+      "terms": [
+        "firstmate"
+      ],
+      "reason": "Provenance in the package's own module: the adapted firstmate revision."
+    },
+    {
+      "id": "provenance-agent-supervisor-readme-firstmate",
+      "category": "IMMUTABLE_HISTORICAL_FACT",
+      "path": "^packages/agent-supervisor/README.md$",
+      "terms": [
+        "firstmate"
+      ],
+      "reason": "Provenance in the package's own module: firstmate's MIT attribution."
+    },
+    {
+      "id": "provenance-design-method-appllama",
+      "category": "IMMUTABLE_HISTORICAL_FACT",
+      "path": "^packages/design-method/src/packs.ts$",
+      "terms": [
+        "appllama"
+      ],
+      "reason": "Provenance in the package's own module: the studied Appllama skill."
+    },
+    {
+      "id": "provenance-import-stack-firecrawl",
+      "category": "IMMUTABLE_HISTORICAL_FACT",
+      "path": "^packages/import-stack/src/connectors.ts$",
+      "terms": [
+        "firecrawl"
+      ],
+      "reason": "Provenance in the package's own module: Firecrawl's external-connector posture."
+    },
+    {
+      "id": "legacy-refusals-in-code",
+      "category": "LEGACY_COMPATIBILITY",
+      "path": "^(packages/desktop/src/resolve\\.mjs|scripts/package-desktop\\.mjs|packages/renderer/src/index\\.mjs|packages/studio-web/src/app\\.mjs)$",
+      "terms": [
+        "lilac"
+      ],
+      "line": "\\(\\?:ninerr\\|lilac\\)|startsWith\\(\"data-lilac\"\\)",
+      "reason": "The four constructs that recognize the old identity so it is refused or read: the packaged resolver's and packaging's @lilac/ scope refusal, the renderer's data-lilac attribute refusal, and the history view's lilac: tool recognition (N0-G3, N0-G6)."
+    },
+    {
+      "id": "legacy-identity-tests",
+      "category": "LEGACY_COMPATIBILITY",
+      "path": "^tests/(architecture|desktop-package|migration-compatibility|renderer-plan)\\.test\\.mjs$",
+      "terms": [
+        "lilac"
+      ],
+      "line": "@lilac/|@Lilac/|data-lilac|DATA-LILAC|lilac-project|lilac-journal-genesis",
+      "reason": "Tests that the old scope, attribute prefix and project format are refused or migrated."
+    },
+    {
+      "id": "legacy-identity-docs",
+      "category": "LEGACY_COMPATIBILITY",
+      "path": "^(docs/MIGRATION\\.md|docs/DESKTOP\\.md)$",
+      "terms": [
+        "lilac"
+      ],
+      "reason": "The migration guide and the desktop guide's projects-folder note describe the old format, folder and variable so a setup from before the rename keeps working."
+    },
+    {
+      "id": "repository-url",
+      "category": "LEGACY_COMPATIBILITY",
+      "terms": [
+        "lilac"
+      ],
+      "line": "TheHalfMoon/Lilac|cd Lilac\\b",
+      "reason": "The repository's own URL and clone directory until N0-G10 renames the repository; GitHub redirects the old URL after."
+    },
+    {
+      "id": "program-history",
+      "category": "IMMUTABLE_HISTORICAL_FACT",
+      "path": "^docs/(CURRENT|MASTER_PLAN)\\.md$",
+      "reason": "The program state and plan keep the record of phases, grains and decisions before the rename; their current sections name Ninerr (N0-G8b)."
+    },
+    {
+      "id": "provenance-and-license-tests",
+      "category": "IMMUTABLE_HISTORICAL_FACT",
+      "path": "^tests/(agent-events|agent-runtime|agent-supervisor-core|collaboration|decision-router|delivery-governance|design-method|import-stack|license-register)\\.test\\.mjs$",
+      "terms": [
+        "firstmate",
+        "no-mistakes",
+        "doop",
+        "classifier-dev",
+        "jev-search",
+        "unreal-agent",
+        "website-downloader",
+        "appllama",
+        "docling",
+        "design-resources",
+        "firecrawl",
+        "impeccable",
+        "ui-tars",
+        "paper",
+        "lilac"
+      ],
+      "reason": "Tests that hold the provenance records and the license register to their facts (pinned repositories, revisions, licenses and the A/B categories)."
+    },
+    {
+      "id": "independent-runtime-tests",
+      "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
+      "path": "^tests/(browser-proxy|release-bundle|sandbox-network|sbom)\\.test\\.mjs$|^tests/support/argv-echo\\.mjs$",
+      "terms": [
+        "impeccable",
+        "docling"
+      ],
+      "reason": "Tests of the independently licensed runtimes Ninerr invokes (Impeccable's scanner and browser wrapper, its package in the SBOM and bundle)."
     },
     {
       "id": "tests",
