@@ -1,6 +1,6 @@
 # Founder source authorization: 2026-10-08
 
-On 2026-10-08 (session message at 15:23:51 UTC), the founder set the Ninerr independence program (N0) and gave this authorization. It is quoted verbatim:
+On 2026-10-08 (session message at 15:23:51 UTC), the founder set the Ninerr independence program (N0) and gave this authorization. The excerpt below is verbatim; the message continues with instructions on reuse, which are not quoted here:
 
 ```text
 FOUNDER SOURCE AUTHORIZATION — AUTHORITATIVE
@@ -23,7 +23,7 @@ It includes permission, where covered by those authorizations, to remove:
 * visible “based on X” product positioning.
 ```
 
-In the same message, the founder set the project license. Also verbatim:
+In the same message, the founder set the project license. This excerpt is also verbatim:
 
 ```text
 PROJECT LICENSE
@@ -47,6 +47,13 @@ Then:
 * update release bundle.
 ```
 
+The same message also separates the Electron runtime's obligations from this authorization, verbatim:
+
+```text
+ELECTRON / LGPL
+Electron-related LGPL obligations are separate from founder-authorized donor source permissions unless separately covered.
+```
+
 ## Scope
 
 "All donor/source projects previously authorized for this project" means the projects that earlier owner attestations record:
@@ -66,7 +73,9 @@ Then:
   - `pbakaus/impeccable`;
   - `bytedance/UI-TARS-desktop`.
 
-These are category A in `docs/provenance/LICENSE_REGISTER.json`.
+These projects are category A in `docs/provenance/LICENSE_REGISTER.json`.
+
+One exception applies. A project's register entry can describe a runtime that Ninerr invokes rather than donor code. That is the case for `docling-project/docling`: the CLI the user installs, with its models. Such an entry is category B, because the runtime and its models stay under their own licenses, whoever authorized the upstream project. `impeccable` is the same: the npm package Ninerr ships is category B.
 
 Every other entry is category B: an independent third party whose own license applies, whatever this authorization says. That covers:
 - the npm dependencies Ninerr ships, including the `impeccable` package, which is published under Apache-2.0 and governed by that license as a dependency;
@@ -74,5 +83,9 @@ Every other entry is category B: an independent third party whose own license ap
 - optional runtimes Ninerr does not ship;
 - development tooling;
 - public repositories that were studied but are outside the authorized set.
+
+The set includes the public `paper-design/*` repositories. Each carries its own public license, and `docs/DONORS.md` does not treat them as the Paper product source. Reading the Paper.design authorization as covering them would claim a reach the attestation does not state. This reading is cautious, and only the founder can widen it. Today it changes nothing: they are reference-only, and nothing is copied from them.
+
+The 2026-10-03 attestation also says it "does not replace upstream license/NOTICE preservation". The founder's 2026-10-08 permission to remove donor-facing material applies only "where covered by those authorizations". So a license or NOTICE file that ships with copied category A code is kept unless that rule is superseded explicitly. Today no category A source is vendored.
 
 This record states only what the founder wrote. It does not extend the authorization to anything the founder did not name, and it removes no category B obligation.
