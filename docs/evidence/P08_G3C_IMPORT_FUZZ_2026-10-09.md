@@ -35,13 +35,18 @@ The whole file runs with every way out of the computer trapped (`tests/support/n
 - **A refusal changes nothing:** the document and its revision stay as they were.
 - **What is committed leaves a valid document.** Code that is brought in exports, and that export brought in again exports the very same code.
 - **Nothing tries to reach the network.** At the end, the test makes one deliberate attempt, and the watch must see it.
+- **Each limit refuses with its own named error:**
+  - `import-too-large` (413);
+  - `import-refused` naming `maxDomDepth` or `maxDomNodes` (422);
+  - `code-too-large` (413);
+  - for a source file over its limit, it is left out of the scan, and asking for it anyway gets `file-too-large` (413).
 - **Coverage:** a full run must commit an HTML import, round-trip code and bring in a codebase component.
 - **At the end,** closing and reopening the project in a new host gives back exactly the document the session held.
 
 ## Results
 **Locally (Windows 11, Node 24):**
 - **The default 4 seeds × (5 limit inputs + 50 cases) pass in 18 s, identically on two runs:**
-  - **Limits:** each refused by name, as `import-too-large`, the DOM depth and node limits, and `code-too-large`. A source file over the limit is not listed as a component.
+  - **Limits:** each refused with its own error, as required.
   - **HTML:** 94 reviewed as ready, of which 74 committed and 20 discarded; 18 refused as `import-refused`, each naming the problem (no importable nodes, depth or node limits).
   - **Code:** 9 brought in, each with a stable round trip; 34 refused, each naming the construct it cannot bring in (unparseable JSX, an unsupported attribute, a stray angle bracket, the token budget).
   - **Codebase:** 2 components brought in and 23 refused; 32 files not a component, including those that are not UTF-8.

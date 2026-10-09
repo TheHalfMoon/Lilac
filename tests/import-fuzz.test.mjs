@@ -72,13 +72,14 @@ function encode(prng, input) {
   }
 }
 
-// Inputs at and past each limit, brought in once per seed before the generated cases.
+// Inputs past each limit, brought in once per seed before the generated cases, and the
+// refusal each must get.
 const BOUNDARY = [
-  { route: "html", input: `<p>${"x".repeat(MAX_IMPORT_HTML_BYTES)}</p>`, what: "an HTML page over its byte limit" },
-  { route: "html", input: `${"<div>".repeat(2_000)}deep`, what: "HTML nested past the depth limit" },
-  { route: "html", input: "<p>x</p>".repeat(MAX_IMPORT_NODES + 1), what: "HTML past the node limit" },
-  { route: "code", input: `export function Big() {\n  return <p>${"x".repeat(256 * 1024)}</p>;\n}\n`, what: "code over its byte limit" },
-  { route: "codebase", input: `export function Big() {\n  return <p>${"x".repeat(MAX_SOURCE_BYTES)}</p>;\n}\n`, what: "a source file over its byte limit" },
+  { route: "html", input: `<p>${"x".repeat(MAX_IMPORT_HTML_BYTES)}</p>`, what: "an HTML page over its byte limit", expect: [413, "import-too-large", /limited to/u] },
+  { route: "html", input: `${"<div>".repeat(2_000)}deep`, what: "HTML nested past the depth limit", expect: [422, "import-refused", /maxDomDepth/u] },
+  { route: "html", input: "<p>x</p>".repeat(MAX_IMPORT_NODES + 1), what: "HTML past the node limit", expect: [422, "import-refused", /maxDomNodes/u] },
+  { route: "code", input: `export function Big() {\n  return <p>${"x".repeat(256 * 1024)}</p>;\n}\n`, what: "code over its byte limit", expect: [413, "code-too-large", /limited to/u] },
+  { route: "codebase", input: `export function Big() {\n  return <p>${"x".repeat(MAX_SOURCE_BYTES)}</p>;\n}\n`, what: "a source file over its byte limit", expect: [413, "file-too-large", /larger than/u] },
 ];
 
 /** One input mutated: a corpus entry changed in one or two ways, or two spliced. */
@@ -147,6 +148,12 @@ test("imports under mutated real input: typed refusals that change nothing, vali
           const where = `seed ${seed}, case ${index} (${boundary?.what ?? route}, ${input.length} characters): ${JSON.stringify(input.slice(0, 120))}`;
           const started = Date.now();
           const accepted = [];
+          /** A limit input gets exactly its refusal. */
+          const limited = (answer) => {
+            assert.deepEqual([answer.status, answer.json?.error?.code], boundary.expect.slice(0, 2), `${where}: refused by its limit`);
+            assert.match(answer.json.error.message, boundary.expect[2]);
+            tally(`limit refused: ${boundary.what}`);
+          };
           const refuse = (answer, what) => {
             assert.ok(answer.status < 500, `${where}: ${what} answers ${answer.status} ${JSON.stringify(answer.json)?.slice(0, 200)}`);
             if (answer.status !== 200) assert.equal(typeof answer.json?.error?.code, "string", `${where}: ${what} names a typed error`);
@@ -160,6 +167,7 @@ test("imports under mutated real input: typed refusals that change nothing, vali
           };
           if (route === "html") {
             const review = await running.call("POST", "/api/import", { html: input, name: "Fuzzed page" });
+            if (boundary) limited(review);
             if (refuse(review, "the review")) {
               tally(review.json.commitReady ? "html reviewed, ready" : "html reviewed, blocked");
               if (review.json.commitReady && prng.next() < 0.8) {
@@ -179,6 +187,7 @@ test("imports under mutated real input: typed refusals that change nothing, vali
             } else tally(`html refused (${review.json.error.code})`);
           } else if (route === "code") {
             const brought = await running.call("POST", "/api/code/import", { code: input });
+            if (boundary) limited(brought);
             if (refuse(brought, "bringing code in")) {
               accepted.push("code");
               tally("code brought in");
@@ -196,7 +205,11 @@ test("imports under mutated real input: typed refusals that change nothing, vali
             const scan = await running.call("GET", "/api/codebase");
             if (!refuse(scan, "the scan")) tally("codebase scan refused");
             const found = scan.status === 200 ? scan.json.components.find((entry) => entry.file === "Fuzzed.jsx") : undefined;
-            if (found) {
+            if (boundary) {
+              // Too large to scan, and refused by name when asked for anyway.
+              assert.equal(found, undefined, `${where}: a file over the limit is not listed`);
+              limited(await running.call("POST", "/api/codebase/import", { file: "Fuzzed.jsx", component: "Big" }));
+            } else if (found) {
               const brought = await running.call("POST", "/api/codebase/import", { file: found.file, component: found.component });
               if (refuse(brought, "bringing the file in")) {
                 accepted.push("codebase");
