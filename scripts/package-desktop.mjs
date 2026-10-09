@@ -17,6 +17,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, r
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ELECTRON_LICENSE_SHA256, ELECTRON_VERSION, WINDOWS_TAR, currentTarget, electronDirectory, fetchElectron } from "./desktop/electron.mjs";
+import { RECORD_PATH, readRecord, validateRecord } from "./desktop/corresponding-source.mjs";
 import { classifyChromiumLicenses } from "./desktop/chromium-licenses.mjs";
 import { NINERR_FUSES, writeFuses } from "./desktop/fuses.mjs";
 
@@ -166,6 +167,11 @@ async function main() {
   if (target.startsWith("darwin-")) run("codesign", ["--force", "--deep", "--sign", "-", join(staging, "Ninerr.app")]);
 
   const commit = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim() || null;
+  // The runtime's exact corresponding source (N0-G7b): a package is built only from a record
+  // that matches the pinned runtime, and names the record and the commits it binds.
+  const source = readRecord();
+  const sourceProblems = validateRecord(source);
+  if (sourceProblems.length > 0) throw new Error(`${RECORD_PATH}: ${sourceProblems.join("; ")}`);
   const manifest = {
     product: "Ninerr",
     target,
@@ -174,6 +180,14 @@ async function main() {
     executable: relative(staging, executable).split("\\").join("/"),
     fuses,
     chromiumLicenses: { components: chromiumLicenses.components, sha256: chromiumLicenses.sha256, families: chromiumLicenses.families },
+    correspondingSource: {
+      record: RECORD_PATH,
+      sha256: createHash("sha256").update(readFileSync(join(ROOT, RECORD_PATH))).digest("hex"),
+      electronArchiveSha256: source.electron.archives[target],
+      electronCommit: source.electron.source.commit,
+      chromiumCommit: source.chromium.source.commit,
+      ffmpegCommit: source.components.find((component) => component.name === "ffmpeg").source.commit,
+    },
     packages,
     dependencies: dependencies.map(({ name, version, license }) => ({ name, version, license })),
     appSha256: treeDigest(app),

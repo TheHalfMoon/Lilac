@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "electron": {
+    "version": "44.7.0",
+    "license": "MIT",
+    "licenseSha256": "5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d",
+    "archives": {
+      "linux-x64": "3ae7d5bdad61c664486c6ab61361dd084d064c8c08af8d13a687096e18ce555a",
+      "darwin-arm64": "e04e411b58a0a14375dd21b0ab4a378fd38930a702e4e20e322fee4849404c0b",
+      "win32-x64": "eee30dc8fa1f5ea95490e59f44e46ea68dd24c6e93d22facf70fe5c2d4c2665c"
+    },
+    "source": {
+      "repository": "https://github.com/electron/electron",
+      "tag": "v44.7.0",
+      "commit": "61f55c4ce540416b3e43f75f6c0f125d22e5e908",
+      "tree": "dbc6c90e0f23db09d7ce49d6bfd8d230a400a8e1"
+    },
+    "modifications": "Ninerr changes the shipped binary only in Electron's documented fuse bytes, recorded per package in ninerr-package.json."
+  },
+  "chromium": {
+    "version": "152.0.7977.130",
+    "source": {
+      "repository": "https://chromium.googlesource.com/chromium/src",
+      "tag": "152.0.7977.130",
+      "commit": "2c592105bbcd9490a9894df48d0fe59b2c512651",
+      "tree": "c91b573dac0b8675109dcedb2f84ce6e9019c9fb"
+    },
+    "patches": "Electron's patches to Chromium are in the Electron source at the commit above (patches/chromium)."
+  },
+  "components": [
+    {
+      "name": "Blink (WebKit)",
+      "license": "LGPL-2.0+/LGPL-2.1+ and BSD",
+      "linkage": "statically linked into the Electron executable",
+      "source": "Chromium at the commit above, third_party/blink, with Electron's patches"
+    },
+    {
+      "name": "ffmpeg",
+      "license": "LGPL-2.1+",
+      "linkage": "the separately linked libffmpeg, replaceable",
+      "source": {
+        "repository": "https://chromium.googlesource.com/chromium/third_party/ffmpeg",
+        "commit": "2b68d2babae73714846961fb0ee47e3b3d2e39a9",
+        "pinnedBy": "Chromium DEPS ffmpeg_revision"
+      }
+    },
+    {
+      "name": "Node.js",
+      "license": "MIT",
+      "linkage": "built into the Electron executable",
+      "source": {
+        "repository": "https://github.com/nodejs/node",
+        "tag": "v24.21.0",
+        "pinnedBy": "Electron DEPS node_version"
+      }
+    }
+  ],
+  "build": "Electron's documented source build (gclient sync of the Electron commit above, which checks out Chromium at its pinned version) reproduces the runtime; https://www.electronjs.org/docs/latest/development/build-instructions-gn"
+}

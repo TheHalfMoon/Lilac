@@ -7,7 +7,7 @@ A Lilac release is a tagged commit together with its signed release files: the d
 | File | What it is |
 | --- | --- |
 | `Ninerr-linux-x64.tar.gz`, `Ninerr-darwin-arm64.zip`, `Ninerr-win32-x64.zip` | The desktop app (`docs/DESKTOP.md` says how to install it). Each is packaged on its own platform's runner from the tagged commit, smoke-tested, and taken through the release-candidate journey before it is collected. |
-| `Ninerr-<platform>.json` | Each archive's package manifest: its SHA-256, the Electron runtime and its pinned archive, the fuses, and whether it is publisher-signed (not yet, #139). |
+| `Ninerr-<platform>.json` | Each archive's package manifest: its SHA-256, the Electron runtime and its pinned archive, its corresponding-source binding, the fuses, and whether it is publisher-signed (not yet, #139). |
 | `ninerr-release-evidence-<sha>.tar.gz` | The evidence bundle below, as one archive. |
 | `SHA256SUMS` | The SHA-256 of each file above. |
 
@@ -39,6 +39,26 @@ The evidence bundle's `MANIFEST.json` names that commit as `sourceCommit`, and i
 **Determinism.** Two builds of the same commit and lockfile are byte-identical. Nothing in the bundle depends on host paths, time, or which platform binary npm installed. `tests/release-bundle.test.mjs` checks both, the second by building with another platform's binary in place. The bundled text files are checked out with LF line endings on every platform (`.gitattributes`), so a Windows checkout produces the same bytes.
 
 **Project license.** Ninerr is licensed under Apache-2.0 (`LICENSE`), and `MANIFEST.json` records `projectLicense: "Apache-2.0"` from `package.json`. The bundle and the desktop app ship `LICENSE` with the third-party notices. The source-rights audit behind the declaration is in `docs/evidence/N0_G7A1_SOURCE_CATEGORIES_2026-10-09.md` and `docs/evidence/N0_G7A_LICENSE_2026-10-09.md`.
+
+## The Electron runtime's corresponding source
+
+The desktop app redistributes Electron's official release archive, changed only in its fuse bytes. Electron statically links LGPL components from Chromium (Blink, from WebKit) and ships the LGPL `libffmpeg`. `docs/provenance/ELECTRON_CORRESPONDING_SOURCE.json` binds the runtime to its exact source:
+- each shipped archive's SHA-256, as the release publishes it;
+- the Electron version, with its git commit and tree, which carries Electron's patches to Chromium;
+- the Chromium version Electron pins, with Chromium's commit and tree;
+- the ffmpeg revision Chromium pins;
+- the licenses.
+
+Git commit and tree ids are content addresses, so they identify the source exactly. Electron publishes no source archive, and no official Chromium source tarball exists for this Chromium release, so the record names repositories and commits.
+
+`node scripts/desktop/corresponding-source.mjs --check` resolves every link live and compares it with the record. The release workflow runs it before it builds anything. Packaging refuses a record that does not match the pinned runtime, and each package manifest names the record's SHA-256 and the commits it binds. The record ships in the bundle with the other provenance records.
+
+How a binary release offers this source to recipients is a release-gate decision. The choices are:
+- mirroring the source with the release;
+- a written offer in the project owner's name;
+- relying on the public repositories at the recorded commits.
+
+It is recorded in `docs/evidence/N0_G7B_ELECTRON_SOURCE_2026-10-09.md`.
 
 ## How a release is signed
 
