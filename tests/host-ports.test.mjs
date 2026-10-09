@@ -11,7 +11,10 @@ import { BROWSER_BLOCKED_PORTS, listenOnBrowserPort, startStudioHost } from "../
 // ports, which Chromium, Electron and Node's fetch enforce). On a machine whose dynamic port
 // range starts low, port 0 can be handed one, and the editor would then never load.
 
-test("the blocked list is the Fetch standard's, including the range low dynamic ports reach", () => {
+const FETCH_BAD_PORTS_WITHOUT_ZERO = [1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080];
+
+test("the blocked list is the Fetch standard's bad ports without 0, exactly", () => {
+  assert.deepEqual([...BROWSER_BLOCKED_PORTS].sort((a, b) => a - b), FETCH_BAD_PORTS_WITHOUT_ZERO);
   for (const port of [6665, 6666, 6667, 6668, 6669, 6697, 10080, 5060, 2049, 1719]) assert.ok(BROWSER_BLOCKED_PORTS.has(port), String(port));
   for (const port of [0, 80, 443, 3000, 8080, 6670]) assert.ok(!BROWSER_BLOCKED_PORTS.has(port), String(port));
 });
@@ -42,6 +45,22 @@ test("a blocked port that is handed out is given back and another one taken", as
     assert.equal(offered.length, 0, "the blocked port was tried first, then given back");
   } finally {
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("a port in use asked for explicitly still fails as before, and no error listener is left behind", async () => {
+  const taken = createServer();
+  await new Promise((resolve) => taken.listen(0, "127.0.0.1", resolve));
+  const server = createServer();
+  try {
+    await assert.rejects(listenOnBrowserPort(server, taken.address().port, "127.0.0.1"), (error) => error.code === "EADDRINUSE");
+    assert.equal(server.listenerCount("error"), 0);
+    const port = await listenOnBrowserPort(server, 0, "127.0.0.1");
+    assert.ok(port > 0);
+    assert.equal(server.listenerCount("error"), 0, "a successful listen leaves no listener either");
+  } finally {
+    await new Promise((resolve) => taken.close(resolve));
+    await new Promise((resolve) => (server.listening ? server.close(resolve) : resolve()));
   }
 });
 

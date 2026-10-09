@@ -2,8 +2,10 @@ import type { Server } from "node:http";
 import { StudioError } from "./errors.ts";
 
 /**
- * The ports browsers refuse to load: the Fetch standard's "bad port" list, which Chromium
- * (and so Electron) and Node's fetch also enforce. A host on one of them would serve an
+ * The ports browsers refuse to load: the Fetch standard's "bad port" list without 0, which
+ * here means "any free port" and is never a port a server is bound to. It is the list Node's
+ * fetch refuses (checked against Node 24 for every port up to 10999); Chromium, and so
+ * Electron, follows the standard. A host on one of them would serve an
  * editor no browser can open. The operating system can hand one out for port 0 where its
  * dynamic range starts low (Windows' starts at 1024 on some machines), so a host must never
  * keep one.

@@ -434,6 +434,8 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   server.keepAliveTimeout = 5_000;
   // Never a port browsers refuse to open (ports.ts): the editor must load in every browser.
   await listenOnBrowserPort(server, options.port ?? 0, LOOPBACK);
+  // An error after listening (a failed accept, for example) does not stop the host, as before.
+  server.on("error", () => {});
   const address = server.address();
   if (address === null || typeof address === "string" || !isLoopbackAddress(address.address)) {
     server.close();
