@@ -611,7 +611,8 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
       const items = (entries, render) => (entries.length === 0 ? [] : [el("ul", {}, entries.map((entry) => el("li", {}, render(entry))))]);
       preview.replaceChildren(
         plan.changes.length > 0 ? el("p", {}, `${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} to ${plan.file}:`)
-          : plan.matched.length > 0 ? el("p", {}, `Nothing needs writing: ${plan.matched.length} field${plan.matched.length === 1 ? " here matches" : "s here match"} the file again. Mark ${plan.matched.length === 1 ? "it" : "them"} as matching, so a later change ${plan.matched.length === 1 ? "to it is" : "to them is"} written back rather than seen as a conflict.`)
+          : plan.matched.length > 0 ? el("p", {}, `Nothing needs writing: ${plan.matched.length} field${plan.matched.length === 1 ? " has" : "s have"} the same value here and in the file. Mark ${plan.matched.length === 1 ? "it" : "them"} as matching, so a later change ${plan.matched.length === 1 ? "to it is" : "to them is"} written back rather than seen as a conflict.`)
+          : plan.conflicts.length > 0 ? el("p", {}, "There is nothing to write back.")
           : el("p", {}, "There is nothing to write back: the file already has these values."),
         ...(plan.diff === "" ? [] : [el("pre", { class: "diff", id: "codebase-diff", tabindex: "0", "aria-label": `Changes to ${plan.file}` }, plan.diff)]),
         ...(plan.conflicts.length === 0 ? [] : [el("p", {}, "Changed both here and in the file, so not written:")]),

@@ -55,6 +55,18 @@ test("a conflict resolved by taking the file's value is marked as matching, and 
     // The person takes the file's text: both fields now agree; nothing to write, two to mark.
     await edit({ text: "Outside" });
     plan = await preview();
+    // A plan to mark is stale once the file changes, like any other.
+    const original = readFileSync(card, "utf8");
+    writeFileSync(card, `${original}\n`);
+    const stale = await call("POST", "/api/codebase/write", { nodeId: section.id, token: plan.token });
+    assert.equal(stale.status, 409);
+    assert.equal(stale.json.error.code, "plan-changed");
+    writeFileSync(card, original);
+    // And once the fields to mark change: the plan names exactly the fields it marks.
+    await edit({ text: "Here" });
+    assert.equal((await call("POST", "/api/codebase/write", { nodeId: section.id, token: plan.token })).json.error.code, "plan-changed");
+    await edit({ text: "Outside" });
+    plan = await preview();
     assert.deepEqual(plan.conflicts, []);
     assert.deepEqual(plan.changes, []);
     assert.deepEqual(plan.matched.map((entry) => `${entry.field}=${entry.value}`).sort(), ["style=padding: 24px", "text=Outside"]);

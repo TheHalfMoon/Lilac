@@ -601,7 +601,8 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
       return planWriteBack(document, nodeId, folder, new Set(failing));
     }
   }
-  const token = createHash("sha256").update(`${read.sha256}\0${after}`, "utf8").digest("hex");
+  // The token names the file, what it would become, and the fields it would mark as matching.
+  const token = createHash("sha256").update(`${read.sha256}\0${after}\0${JSON.stringify(matched)}`, "utf8").digest("hex");
   return { file: read.file, sha256: read.sha256, token, diff: unifiedDiff(read.file, read.content, after), changes, conflicts, notWritten, matched, after, rebase };
 }
 
@@ -699,6 +700,9 @@ export type WriteBackCommit = (operations: unknown[], step: "record" | "confirm"
  *    `settleWriteBacks` withdraws the record later.
  * 4. `confirm` commits the new bases. If this fails, the file is written and the record is
  *    durable: the file matches it, so it settles as written.
+ *
+ * A plan with no change but fields that already agree with the file (`matched`) is one step,
+ * `settle`: it commits those fields' new bases, and writes no temporary and no file.
  */
 export function writeBack(document: any, nodeId: unknown, folder: string, token: unknown, commit: WriteBackCommit): WriteBackPlan {
   const plan = planWriteBack(document, nodeId, folder);

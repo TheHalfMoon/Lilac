@@ -106,6 +106,24 @@ test("connect a folder, bring a component in, edit it and write the edit back to
     assert.equal(await page.locator("#codebase-write").count(), 0);
     assert.match(readFileSync(cardPath, "utf8"), /<h2>Business<\/h2>/u, "the file's own change stays");
     await page.locator("#dialog[open] button", { hasText: "Close" }).last().click();
+
+    // Resolved by taking the file's text: nothing to write, and the field is marked as matching,
+    // so a later change to it is written rather than seen as a conflict again.
+    await page.locator(`[role=treeitem][data-node-id="${heading}"] > .row`).click();
+    await page.locator("#inspect-text").fill("Business");
+    await page.locator("#inspect-text").press("Tab");
+    await waitRevision(page, 7);
+    await page.locator(`[role=treeitem][data-node-id="${section}"] > .row`).click();
+    await page.locator("#action-code").click();
+    await page.locator("#codebase-review").click();
+    await page.locator("#codebase-preview p").first().waitFor();
+    assert.match(await page.locator("#codebase-preview").textContent(), /Nothing needs writing: 1 field has the same value here and in the file\. Mark it as matching/u);
+    assert.equal(await page.locator("#codebase-write").textContent(), "Mark as matching");
+    const before = readFileSync(cardPath, "utf8");
+    await page.locator("#codebase-write").click();
+    await waitRevision(page, 8);
+    assert.equal(await page.locator("#status").textContent(), "Marked 1 field as matching PriceCard.jsx.");
+    assert.equal(readFileSync(cardPath, "utf8"), before, "marking writes nothing to the file");
     assert.deepEqual(editor.foreign, []);
     assert.deepEqual(editor.errors, []);
   } finally {
