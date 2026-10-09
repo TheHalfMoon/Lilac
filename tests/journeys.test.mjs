@@ -31,9 +31,8 @@ const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), "ninerr-journey-")
 
 const content = (document) => serializeDocument({ ...document, revision: 0 });
 
-/** The exact state: the canonical document and every store file but the lock, byte for byte. */
-async function exactState(call, root, project) {
-  const { revision, document } = await ok(call("GET", "/api/document"), "document");
+/** Every store file but the lock, byte for byte, and the list of stored objects. */
+function storeFiles(root, project) {
   const store = join(root, project, PROJECT_FILES.directory);
   const files = {};
   for (const name of readdirSync(store).sort()) {
@@ -41,16 +40,39 @@ async function exactState(call, root, project) {
     files[name] = readFileSync(join(store, name), "utf8");
   }
   const objects = readdirSync(join(store, PROJECT_FILES.objects), { recursive: true }).map(String).sort();
-  return { revision, document: serializeDocument(document), files, objects };
+  return { files, objects };
 }
 
-/** Close the project and its host, start a new host on the same folder, and reopen it. */
+/** The exact state: the canonical document, and the store's files. */
+async function exactState(call, root, project) {
+  const { revision, document } = await ok(call("GET", "/api/document"), "document");
+  return { revision, document: serializeDocument(document), ...storeFiles(root, project) };
+}
+
+/**
+ * Close the project and its host, start a new host on the same folder, and reopen it. The
+ * store as the close left it is kept as `closed`, to check the reopen reads it without a write.
+ */
 async function reopen(pool, running, root, project) {
   await ok(running.call("POST", "/api/projects/close"), "close");
   await running.host.close();
+  const closed = storeFiles(root, project);
   const next = await pool.open(root);
   await ok(next.call("POST", "/api/projects/open", { name: project }), "reopen");
-  return next;
+  return { ...next, closed };
+}
+
+/**
+ * After `reopen`, against `before` (taken while the project was open): the same document and
+ * revision, the very same journal, the store exactly as the close left it (the reopen writes
+ * nothing), and the snapshot at the journal's last entry, where a clean close puts it (#239).
+ */
+async function assertReopenedExact(running, root, project, before, message) {
+  const after = await exactState(running.call, root, project);
+  assert.deepEqual([after.revision, after.document, after.files[PROJECT_FILES.journal]], [before.revision, before.document, before.files[PROJECT_FILES.journal]], message);
+  assert.deepEqual({ files: after.files, objects: after.objects }, running.closed, `${message}: the reopen writes nothing`);
+  const entries = after.files[PROJECT_FILES.journal].split("\n").filter((line) => line !== "").length;
+  assert.equal(JSON.parse(after.files[PROJECT_FILES.snapshot]).journalSeq, entries, `${message}: the snapshot stands at the journal's end`);
 }
 
 /**
@@ -125,11 +147,11 @@ perSeed("Journey A: create, edit, save, close and reopen; the exact state surviv
   // Every accepted edit, undo and redo is one revision, and none of the refused edits is.
   assert.equal(before.revision, tally.edits + tally.undos + tally.redos);
   running = await reopen(pool, running, root, "work");
-  assert.deepEqual(await exactState(running.call, root, "work"), before, "the reopened state is exact");
+  await assertReopenedExact(running, root, "work", before, "the reopened state is exact");
   // The reopened document is still the reference model's, read from the store this time.
   assert.deepEqual(shape((await ok(running.call("GET", "/api/document"), "document")).document), tally.model, "the reopened document has the reference model's shape");
   running = await reopen(pool, running, root, "work");
-  assert.deepEqual(await exactState(running.call, root, "work"), before, "a second reopen changes nothing");
+  await assertReopenedExact(running, root, "work", before, "a second reopen changes nothing");
   // The reopened project keeps working.
   await ok(running.call("POST", "/api/edit", { baseRevision: before.revision, intent: "After reopen", operations: [{ type: "insert-node", node: { id: "after", type: "frame", props: { name: "After" } }, parentId: null }] }), "edit after reopen");
 });
@@ -163,7 +185,7 @@ perSeed("Journey B: import a page, inspect, edit, save, reopen, export it as cod
   await ok(running.call("POST", "/api/edit", { baseRevision: revision, intent: "Edit the paragraph", operations: [{ type: "set-props", nodeId: paragraph.children[0], set: { text: edited } }] }), "edit");
   const before = await exactState(running.call, root, "site");
   running = await reopen(pool, running, root, "site");
-  assert.deepEqual(await exactState(running.call, root, "site"), before, "the imported, edited page reopens exactly");
+  await assertReopenedExact(running, root, "site", before, "the imported, edited page reopens exactly");
   ({ document } = await ok(running.call("GET", "/api/document"), "document"));
   const contains = (nodeId) => nodeId === paragraph.id || (document.nodes[nodeId].children ?? []).some(contains);
   const pageId = document.rootIds.find(contains);
@@ -283,7 +305,7 @@ perSeed("Journey C: connect a codebase, bring a component in, edit, review the d
   // Exact state survives one more reopen, and the file and the project still agree.
   const before = await exactState(running.call, projects, "app");
   running = await reopen(pool, running, projects, "app");
-  assert.deepEqual(await exactState(running.call, projects, "app"), before);
+  await assertReopenedExact(running, projects, "app", before, "the source-linked project reopens exactly");
   assert.equal(JSON.parse(before.document).nodes[h2.id].props.codeSource.base.text, `${heading} Final`);
   preview = await ok(running.call("POST", "/api/codebase/preview", { nodeId: section.id }), "preview after the last reopen");
   assert.deepEqual([preview.changes, preview.conflicts, preview.matched], [[], [], []]);
@@ -348,7 +370,7 @@ perSeed("Journey D: an agent over MCP inspects and edits; the person reviews, ac
   // Persist and reopen: exact, and the agent's credential still works.
   const before = await exactState(running.call, root, "agentic");
   running = await reopen(pool, running, root, "agentic");
-  assert.deepEqual(await exactState(running.call, root, "agentic"), before, "the agent session reopens exactly");
+  await assertReopenedExact(running, root, "agentic", before, "the agent session reopens exactly");
   assert.equal(content(JSON.parse(before.document)), withScratch, "what persisted is the reverted document");
   // Attribution persisted: the journal read back after the reopen names the agent and its tool
   // for the deletion, and the person for the revert, the undo and the redo.
