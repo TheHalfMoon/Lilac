@@ -1,6 +1,7 @@
 export { StudioError } from "./errors.ts";
 export { STUDIO_HOST_PROVENANCE } from "./provenance.ts";
 export { MAX_OPERATIONS_PER_EDIT, StudioSession, assertProjectName, type ChangeEvent, type EditInput, type StudioActor } from "./session.ts";
+export { BROWSER_BLOCKED_PORTS, listenOnBrowserPort } from "./ports.ts";
 export { startStudioHost, type StudioHost, type StudioHostOptions } from "./server.ts";
 export { ImportDesk, MAX_IMPORT_HTML_BYTES, MAX_IMPORT_NODES, styleProperties, type ImportReviewSummary } from "./imports.ts";
 export { AGENT_CAPABILITIES, AgentRegistry, type AgentSummary } from "./agents.ts";
