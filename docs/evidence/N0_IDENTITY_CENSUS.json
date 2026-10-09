@@ -11,11 +11,11 @@
     "LEGACY_COMPATIBILITY": 73,
     "TEST_FIXTURE": 0,
     "THIRD_PARTY_INDEPENDENT_OBLIGATION": 254,
-    "IMMUTABLE_HISTORICAL_FACT": 967,
+    "IMMUTABLE_HISTORICAL_FACT": 968,
     "REMOVE_ENTIRELY": 0
   },
   "byTerm": {
-    "lilac": 480,
+    "lilac": 481,
     "paper": 228,
     "firstmate": 32,
     "no-mistakes": 23,
@@ -32,7 +32,7 @@
     "ui-tars": 31
   },
   "byRule": {
-    "dated-evidence": 651,
+    "dated-evidence": 652,
     "donor-provenance-records": 221,
     "independent-runtime-docling": 93,
     "independent-runtime-impeccable": 82,
@@ -62,5 +62,5 @@
     "repository-url": 7,
     "third-party-notices": 66
   },
-  "censusSha256": "4c5917fcc845c3763d6b58cadd0c734d7ead269a324ae1685c068eb111b9e935"
+  "censusSha256": "b84042bf10691b4555ebd76e7bdd80432dec3786a93a6fcad926525241cbe2c6"
 }

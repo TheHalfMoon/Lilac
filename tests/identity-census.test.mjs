@@ -110,6 +110,12 @@ test("the allowlist is narrow: a new occurrence beside an allowed one is still g
   assert.ok(gated("packages/studio-web/src/app.mjs", "lilac", "<h1>Welcome to TheHalfMoon/Lilac</h1>"), "the URL form in product code");
   assert.ok(gated("README.md", "lilac", "TheHalfMoon/Lilac Studio is great"), "the URL in a file that does not cite it");
   assert.ok(gated("docs/RELEASE.md", "lilac", "see TheHalfMoon/Lilac-studio"), "a longer name built on the URL");
+  // Both ends of every admitted form are guarded (N0-G9 review, cycle 3).
+  assert.ok(gated("docs/RELEASE.md", "lilac", "see TheHalfMoon/Lilac.studio"), "a dotted name built on the URL");
+  assert.ok(gated("docs/RELEASE.md", "lilac", "abcd Lilac"), "the clone directory inside another word");
+  assert.ok(gated("docs/DESKTOP.md", "lilac", "MY_LILAC_PROJECTS"), "an old variable inside a longer name");
+  assert.ok(gated("docs/MIGRATION.md", "lilac", "lilac-project-studio"), "a migration term inside a longer name");
+  assert.ok(gated("docs/MIGRATION.md", "lilac", ".lilac-studio"), "the project directory inside a longer name");
   // The legacy modules and fixture recognize the old product name only.
   assert.ok(gated("packages/persistence/src/legacy.ts", "paper", "export const BRAND = 'Lilac'; // Paper"), "Paper in a legacy module");
   assert.ok(gated("tests/fixtures/projects/v1-basic/.lilac/project.json", "paper", "{\"name\":\"Paper\"}"), "Paper in the legacy fixture");

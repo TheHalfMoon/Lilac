@@ -117,7 +117,7 @@
     {
       "id": "public-env",
       "category": "LEGACY_COMPATIBILITY",
-      "line": "^(?:LILAC_(?:PROJECTS|MCP_TOKEN)\\b|\"Lilac Projects\"|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$",
+      "line": "^(?:(?<![\\w-])LILAC_(?:PROJECTS|MCP_TOKEN)(?![\\w-])|\"Lilac Projects\"|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$",
       "terms": [
         "lilac"
       ],
@@ -237,7 +237,7 @@
         "lilac"
       ],
       "reason": "The migration guide names the pre-rename project directory, format and journal genesis; every mention of the old name on the line must be one of them.",
-      "line": "^(?:(?<![\\w.])\\.lilac\\b|(?<![\\w-])lilac-project\\b|(?<![\\w-])lilac-journal-genesis\\b|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$"
+      "line": "^(?:(?<![\\w.])\\.lilac(?![\\w-])|(?<![\\w-])lilac-project(?![\\w-])|(?<![\\w-])lilac-journal-genesis(?![\\w-])|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$"
     },
     {
       "id": "repository-url",
@@ -245,7 +245,7 @@
       "terms": [
         "lilac"
       ],
-      "line": "^(?:TheHalfMoon/Lilac(?:\\.git)?(?![\\w-])|cd Lilac(?![\\w-])|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$",
+      "line": "^(?:(?<![\\w-])TheHalfMoon/Lilac(?:\\.git)?(?![\\w-]|\\.\\w)|(?<![\\w-])cd Lilac(?![\\w-]|\\.\\w)|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$",
       "reason": "The repository's own URL and clone directory until N0-G10 renames the repository; every mention of the old name on the line must be one of them.",
       "path": "^(docs/(CURRENT|RELEASE)\\.md|tests/license-register\\.test\\.mjs)$"
     },
