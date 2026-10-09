@@ -48,7 +48,7 @@ It computes its own inverse for every operation: insert ↔ remove, remove ↔ r
 **Deterministic.** A seed decides its whole run: the test picks layers in the model's order, not the host's, because the host sorts layers by id and the agent's ids are random. Two runs of the default seeds give identical transition counts.
 
 **Coverage gate.** A full run (at least 4 seeds of at least 120 steps; not a replayed seed) must reach every transition that matters:
-- edits accepted and refused;
+- edits accepted and refused, and an edit that clears the person's redo stack;
 - undo, redo and revert, and a conflict of each;
 - the agent's frames, deletions and refused moves, and a declined deletion;
 - a revert of an earlier change and one from before a reopen, both refused;

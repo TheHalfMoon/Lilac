@@ -176,6 +176,7 @@ async function runMachine(seed, root, pool) {
         model.doc = expected.model;
         model.revision += 1;
         push(model.person.undo, { transactionId: result.json.transactionId, operations: edit.operations, inverse: expected.inverse });
+        if (model.person.redo.length > 0) count("edit cleared redo"); // then check() asserts canRedo is false
         model.person.redo = [];
         personMetAgent = result.json.affectedNodeIds.some((id) => touched.agent.includes(id));
         touch("person", result.json.affectedNodeIds);
@@ -355,7 +356,7 @@ test("the session as a state machine: a person and an agent, undo, redo, revert,
   t.diagnostic(`transitions: ${JSON.stringify(totals)}`);
   // Only for a full run, not a replayed seed.
   if (seeds.length >= 4 && STEPS >= 120) {
-    for (const what of ["edit", "edit refused", "undo", "undo conflict", "redo", "redo conflict", "agent create_frame", "agent move_layers refused", "agent delete_layers", "agent deletion declined", "revert", "revert conflict", "revert of an earlier change refused", "revert from before a reopen refused", "stale edit refused", "reopen", "checkpoint"]) {
+    for (const what of ["edit", "edit refused", "edit cleared redo", "undo", "undo conflict", "redo", "redo conflict", "agent create_frame", "agent move_layers refused", "agent delete_layers", "agent deletion declined", "revert", "revert conflict", "revert of an earlier change refused", "revert from before a reopen refused", "stale edit refused", "reopen", "checkpoint"]) {
       assert.ok((totals[what] ?? 0) > 0, `the sessions include at least one ${what}`);
     }
   }
