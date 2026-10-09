@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { closeSync, constants, lstatSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, constants, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { LocalCollaborationRoom, createAccessPolicy, createCollaborationState } from "@ninerr/collaboration";
 import { createDocument } from "@ninerr/document-model";
@@ -120,9 +120,18 @@ export class StudioSession {
     const name = assertProjectName(input.name);
     const root = `${input.projectsRoot}/${name}`;
     const at = input.now();
+    // A name that differs from an existing project's only by case is taken on every platform,
+    // so a projects folder means the same on any disk (#247).
+    if (input.create !== undefined && readdirSync(input.projectsRoot).some((entry) => entry.toLowerCase() === name.toLowerCase())) {
+      throw new StudioError(409, "project-exists", `${name} already exists`);
+    }
     if (input.create !== undefined) createProjectDirectory(root, name, input.create.title, at);
     let entry;
     try {
+      // Only by its folder's exact name: on a case-insensitive disk another case of the name
+      // would open the same folder under a different name, and the state kept by name (its
+      // codebase link) would not follow (#247). This is how a case-sensitive disk behaves.
+      if (!readdirSync(input.projectsRoot).includes(name)) throw new Error("no folder of that exact name");
       entry = lstatSync(root);
     } catch {
       throw new StudioError(404, "project-not-found", `no project named ${name}`);
