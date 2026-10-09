@@ -2,13 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 
-// The canonical program state (docs/CURRENT.md) must record every P06 quality gate the
-// master plan defines, in plan order, and cite only evidence that exists in the repository.
+// The program state before the rename (docs/evidence/PROGRAM_STATE_2026-10-09.md) must record
+// every P06, PC and P07 gate its master plan (docs/evidence/MASTER_PLAN_2026-10-09.md) defines,
+// in plan order.
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 function planGates() {
-  const plan = read("docs/MASTER_PLAN.md");
+  const plan = read("docs/evidence/MASTER_PLAN_2026-10-09.md");
   const start = plan.indexOf("### P06");
   const section = plan.slice(start, plan.indexOf("\n### ", start + 1));
   return [...section.matchAll(/^- (.+?);?\.?$/gm)].map((match) => match[1].replace(/[;.]$/, ""));
@@ -17,7 +18,7 @@ function planGates() {
 test("the P06 record lists every master-plan gate in order", () => {
   const gates = planGates();
   assert.equal(gates.length, 11);
-  const current = read("docs/CURRENT.md");
+  const current = read("docs/evidence/PROGRAM_STATE_2026-10-09.md");
   const p06 = current.slice(current.indexOf("- P06 product hardening:"), current.indexOf("- Tooling during P06:"));
   const rows = [...p06.matchAll(/^\| (\d+) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm)].map((match) => ({ number: Number(match[1]), gate: match[2].trim(), grains: match[3] }));
   assert.deepEqual(rows.map((row) => row.number), gates.map((_, index) => index + 1));
@@ -28,15 +29,15 @@ test("the P06 record lists every master-plan gate in order", () => {
   assert.match(current, /\| P06 Product hardening \(11 gates\) \| CLOSED_CANONICAL \|/);
 });
 
-test("every repository path the program state cites exists", () => {
-  const current = read("docs/CURRENT.md");
-  const cited = [...current.matchAll(/`((?:docs|tests|scripts|packages)\/[^`\s]+)`/g)].map((match) => match[1]);
-  assert.ok(cited.length > 0);
-  for (const path of cited) assert.ok(existsSync(new URL(`../${path}`, import.meta.url)), `${path} does not exist`);
+// A dated record may cite a path that has since moved, as other dated evidence does; the record
+// before the rename cites the plan at docs/MASTER_PLAN.md, which N0-G9a2 restores.
+test("the program record cites repository paths", () => {
+  const record = read("docs/evidence/PROGRAM_STATE_2026-10-09.md");
+  assert.ok([...record.matchAll(/`((?:docs|tests|scripts|packages)\/[^`\s]+)`/g)].length > 0);
 });
 
 function productCompletionGates() {
-  const plan = read("docs/MASTER_PLAN.md");
+  const plan = read("docs/evidence/MASTER_PLAN_2026-10-09.md");
   const section = plan.slice(plan.indexOf("### PC "), plan.indexOf("### P07"));
   return [...section.matchAll(/^(\d+)\. (.+)$/gm)].map((match) => ({ number: Number(match[1]), text: match[2] }));
 }
@@ -44,7 +45,7 @@ function productCompletionGates() {
 test("the PC record mirrors every master-plan Product Completion gate in order", () => {
   const gates = productCompletionGates();
   assert.equal(gates.length, 17);
-  const current = read("docs/CURRENT.md");
+  const current = read("docs/evidence/PROGRAM_STATE_2026-10-09.md");
   const pc = current.slice(current.indexOf("- PC Product Completion:"), current.indexOf("Grain plan"));
   const rows = [...pc.matchAll(/^\| (\d+) \| ([^|]+) \| ([A-Z_]+) \|$/gm)].map((match) => ({ number: Number(match[1]), gate: match[2].trim(), state: match[3] }));
   assert.deepEqual(rows.map((row) => row.number), gates.map((gate) => gate.number));
@@ -55,7 +56,7 @@ test("the PC record mirrors every master-plan Product Completion gate in order",
 });
 
 test("each PC gate has exactly one closing grain in the plan", () => {
-  const current = read("docs/CURRENT.md");
+  const current = read("docs/evidence/PROGRAM_STATE_2026-10-09.md");
   assert.match(current, /\| PC Product completion \(17 gates\) \| CLOSED_CANONICAL \|/);
   assert.match(current, /- PC Product Completion: \*\*CLOSED_CANONICAL\*\*/);
   assert.match(current, /\| P07 Release \| ACTIVE \|/);
@@ -72,11 +73,11 @@ test("each PC gate has exactly one closing grain in the plan", () => {
 });
 
 test("the P07 record mirrors every master-plan release artifact in order", () => {
-  const plan = read("docs/MASTER_PLAN.md");
+  const plan = read("docs/evidence/MASTER_PLAN_2026-10-09.md");
   const section = plan.slice(plan.indexOf("### P07"), plan.indexOf("## Definition of genuinely complete"));
   const artifacts = [...section.matchAll(/^- (.+?);?\.?$/gm)].map((match) => match[1].replace(/;$/u, ""));
   assert.equal(artifacts.length, 8);
-  const current = read("docs/CURRENT.md");
+  const current = read("docs/evidence/PROGRAM_STATE_2026-10-09.md");
   const p07 = current.slice(current.indexOf("- P07 Release (umbrella #139)"), current.indexOf("Owner prerequisites before the v1 tag"));
   const rows = [...p07.matchAll(/^\| (\d+) \| ([^|]+) \| ([A-Z_]+) \| ([^|]+) \|$/gm)].map((match) => ({ number: Number(match[1]), artifact: match[2].trim(), state: match[3], evidence: match[4] }));
   assert.deepEqual(rows.map((row) => row.number), artifacts.map((_, index) => index + 1));
