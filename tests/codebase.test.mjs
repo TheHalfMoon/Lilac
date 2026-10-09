@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -397,13 +397,17 @@ test("one write-back carries many changed fields, and too many are refused by co
     assert.equal(written.status, 200, JSON.stringify(written.json).slice(0, 300));
     const after = readFileSync(join(code, "List.jsx"), "utf8");
     for (let index = 0; index < 300; index += 1) assert.ok(after.includes(`<p title="Title ${index}">Changed Item ${index}</p>`), `item ${index}`);
-    // 2,501 texts and titles are 5,002 changed fields: refused by count, and the file is untouched.
+    // 2,501 texts and titles are 5,002 changed fields: refused by count, and nothing is written.
     const before = readFileSync(join(code, "Long.jsx"), "utf8");
-    const refused = (await changeAndPreview("Long.jsx", 2_501, true)).preview;
+    const long = await changeAndPreview("Long.jsx", 2_501, true);
+    const refused = long.preview;
     assert.equal(refused.status, 409);
     assert.equal(refused.json.error.code, "patch-refused");
-    assert.match(refused.json.error.message, /this change has 5002 edits, more than the 5000 one write-back can carry/u);
+    assert.match(refused.json.error.message, /5002 changed fields, more than the 5000 one write-back can carry/u);
+    const write = await call("POST", "/api/codebase/write", { nodeId: long.section.id, token: "0".repeat(64) });
+    assert.equal(write.status, 409, JSON.stringify(write.json));
     assert.equal(readFileSync(join(code, "Long.jsx"), "utf8"), before);
+    assert.deepEqual(readdirSync(code).sort(), ["List.jsx", "Long.jsx"], "no temporary file is left");
   } finally {
     await host.close();
     rmSync(root, { recursive: true, force: true });

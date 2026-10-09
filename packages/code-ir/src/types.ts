@@ -8,8 +8,8 @@ export const CODE_IR_SCHEMA_VERSION = 1;
 // - maxSymbols matches the studio host's export limit of 5,000 layers, counted in elements:
 //   runs of text between elements become layers of their own, so a component near the limit
 //   can still be too large to export at once (the export refuses it with its reason).
-// - maxChildrenPerSymbol was measured at 4,096 children on one element. Runs of text sit
-//   between and around them, so an element has one more of those (#256).
+// - maxChildrenPerSymbol was measured at 4,096 children on one element. Runs of text are
+//   capped one higher, so text between and around that many children fits (#256).
 // - maxPatchOps matches maxSymbols: one write-back carries up to 5,000 changed fields, measured
 //   on a 252 KiB file at 0.86 s to preview and 1.3 s to write (#256).
 export const CODE_IR_HARD_LIMITS = {
