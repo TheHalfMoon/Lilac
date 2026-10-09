@@ -1,25 +1,25 @@
-# Lilac — Canonical Program State
+# Ninerr — Canonical Program State
 
-Last updated: 2026-10-08
+Last updated: 2026-10-09
 
 ## Program
 
-**LILAC-P00 — Foundation, authorized-source intake, and staged product implementation**
+**N0 — Ninerr independence and migration** (umbrella #190). The product was renamed from Lilac to Ninerr on 2026-10-08; the program order is N0, then P08 deep qualification and dogfooding, P09 Ninerr UI and UX, P10 release candidate hardening, and the founder release gate (`docs/MASTER_PLAN.md`).
 
-Status: **ACTIVE** — Paper recovery is opportunistic and non-blocking. Grains 1–9 are `CLOSED_CANONICAL`; P03 architecture ownership and P04 parity disposition are complete; repository-side Graft context policy is canonical; P05 differentiators D1–D7 have delivered slices; all 11 P06 Product Hardening gates are `CLOSED_CANONICAL` (umbrella #100, closed); the scope-independent P07 artifacts have landed; all 17 PC Product Completion gates are `CLOSED_CANONICAL` and the phase is closed (umbrella #146); the program is in P07 Release.
+Status: **N0 ACTIVE.** Before N0, grains 1–9, P03, P04, the P05 slices, all 11 P06 gates and all 17 PC gates were `CLOSED_CANONICAL`, and the program was in P07 Release. N0 has delivered, each through its own PR with exact-head CI, Jev and review: the identity census (G1); the persisted-data and host migrations with backward compatibility (G2) and the #185 write-back fix; the package scope, product, tooling, runtime and prose identity (G3); Ninerr's own MCP surface (G4); the retirement of all Paper recovery tooling and records (G5); the coherence audit (G6); the A/B source-rights audit, the Apache-2.0 license, the notices and the Electron corresponding source (G7); and the product documentation (G8). The CI identity gate (G9) and the repository rename (G10) remain. Paper recovery is closed: N0-G5 retired it.
 
 ## Canonical main
 
-`8b5a74f3c333811b7af70cc8b3bd91a10cad18db`
+`6a6e2b7342cd42f4fa85b01b3bed467dcf92fe8c`
 
-This is the normal merge commit for PR #184 (PC11b, a connected codebase through the editor and the release-candidate journey), which closed PC11 (#182) and with it the last work of the PC Product Completion phase (umbrella #146).
+This is the normal merge commit for PR #217 (N0-G7b, the Electron runtime's corresponding source), the last N0 grain whose post-merge run was verified when this page was updated. Post-merge Foundation checks completed `SUCCESS` on that exact SHA (769/769 tests). The Desktop package runs for Linux x64, macOS arm64 and Windows x64 each succeeded, including the release-candidate journey. Later N0 grains record their own post-merge runs in their PRs.
 
-Post-merge Foundation checks completed `SUCCESS` on that exact SHA (721/721 tests), and the Desktop package runs for Linux x64, macOS arm64 and Windows x64 each passed the release-candidate journey (18/18).
+Before N0, the canonical main was `8b5a74f3c333811b7af70cc8b3bd91a10cad18db`, the merge of PR #184 (PC11b), which closed the PC Product Completion phase (umbrella #146) with 721/721 tests and an 18/18 journey on each platform.
 
 ## Post-grain program state
 
 - P03 architecture ownership: complete via PR #47, Issue #46 closed. `packages/architecture` maps every required subsystem to exactly one owner with machine-checked validation; missing subsystems are declared as planned, not implemented.
-- P04 parity disposition: complete via PR #49, Issue #48 closed. Every `docs/PARITY_MATRIX.md` row carries a terminal disposition with evidence or a deferral pointer; nothing is intentionally dropped.
+- P04 parity disposition: complete via PR #49, Issue #48 closed. Every row of the parity matrix (retired in N0-G8b to `docs/evidence/PARITY_MATRIX_2026-10-06.md`) carries a terminal disposition with evidence or a deferral pointer; nothing is intentionally dropped.
 - P05 D1 code/design IR slice: complete via PR #52, Issue #51 closed. `packages/code-ir` provides bounded JSX/TSX, CSS, and Tailwind adapters, range-anchored patches, hunk-based three-way reconciliation, and golden round-trip fixpoints with zero new runtime dependencies.
 - P05 D2 native design components: complete via PR #55, Issue #54 closed. `packages/design-components` provides contracts with typed props/slots/states/variants, strict binding of props and slots to D1 symbols (states are declared but not yet source-bound; #78), verified-patch variants with drift refusal, source-linked previews, drift detection, and system membership with only the `@ninerr/code-ir` workspace dependency.
 - P05 D3 multi-agent workspace: complete via PR #58, Issue #57 closed. `packages/agent-workspace` provides the program role registry with capability scopes, role assignment, out-of-scope rejection, an append-only action ledger with full attribution, cancellation, and reversal marking with zero new runtime dependencies.
@@ -60,17 +60,17 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (721/721 test
 | 2 | Self-hosted/local web mode | DELIVERED | PC7 #167 (`b46cd1c`), `npm start`; its release form is the tagged source (`docs/RELEASE.md`, P07d) |
 | 3 | MCP documentation | DELIVERED | #140 → #141 (`9bca91b`, 620/620), `docs/MCP.md` |
 | 4 | Migration docs | DELIVERED | #140 → #141 (`9bca91b`), `docs/MIGRATION.md` |
-| 5 | Security policy | DELIVERED | #140 → #141 (`9bca91b`), `SECURITY.md`. Private vulnerability reporting is still off (prerequisite 2) |
+| 5 | Security policy | DELIVERED | #140 → #141 (`9bca91b`), `SECURITY.md`. Private vulnerability reporting is enabled (prerequisite 2, verified in N0-G8a) |
 | 6 | SBOM and attribution bundle | DELIVERED | #144 → #145 (`e702f58`, 630/630), `scripts/release-bundle.mjs`. The project license was `NOASSERTION` until N0-G7a2 declared Apache-2.0 |
 | 7 | Signed release evidence | DELIVERED | #144 → #145 (`e702f58`); P07d (`df894bc`) signs the desktop archives too and makes a draft release. It signs on the first pushed `v*` tag |
 | 8 | Reproducible smoke test | DELIVERED | #142 → #143 (`285df27`, 625/625), `npm run smoke` |
 
   Owner prerequisites before the v1 tag (each needs an owner decision or credential; items 1 and 4 then need a repository grain before the tag):
-  1. **License.** Confirm that the Paper authorization permits public distribution and sublicensing of Lilac's Paper-compatible interfaces and behaviour, or say what must be isolated (#148). Then the PC-L2 grain declares Apache-2.0, regenerates the SBOM, bundle and notices, and brings `SECURITY.md`'s supported-versions section up to the release.
-  2. **Private vulnerability reporting.** Enable it in the repository's security settings (`SECURITY.md` names it as the preferred channel, with a fallback until then).
+  1. **License.** Resolved in N0-G7: Ninerr is Apache-2.0 (`LICENSE`), after the A/B source-rights audit (`docs/evidence/N0_G7A_LICENSE_2026-10-09.md`). As first recorded: confirm that the Paper authorization permits public distribution and sublicensing of Lilac's Paper-compatible interfaces and behaviour, or say what must be isolated (#148). Then the PC-L2 grain declares Apache-2.0, regenerates the SBOM, bundle and notices, and brings `SECURITY.md`'s supported-versions section up to the release.
+  2. **Private vulnerability reporting.** Resolved: enabled and verified. As first recorded: enable it in the repository's security settings (`SECURITY.md` names it as the preferred channel, with a fallback until then).
   3. **Publisher signing.** An Apple Developer ID with notarization credentials and a Windows code-signing certificate, as Actions secrets (#139).
-  4. **LGPL corresponding source.** The archives redistribute Electron's LGPL-2.1 components (FFmpeg as `libffmpeg`, and Blink). Their corresponding source is Electron v44.7.0's own source, with its patches applied to Chromium at the pinned revision (plus Lilac's fuse settings), not plain Chromium. Choose how each release provides it: mirrored with the release, or a written offer. A repository grain then implements the choice in the release workflow and the notices.
-  5. **The tag.** Pushing `v1.0.0` is the release decision; the workflow then signs every file and makes a draft release, which the owner publishes.
+  4. **LGPL corresponding source.** The binding is done in N0-G7b (`docs/provenance/ELECTRON_CORRESPONDING_SOURCE.json`), verified live in the release workflow; how a binary release offers it is a founder release-gate decision (`docs/evidence/N0_G7B_ELECTRON_SOURCE_2026-10-09.md`). As first recorded: The archives redistribute Electron's LGPL-2.1 components (FFmpeg as `libffmpeg`, and Blink). Their corresponding source is Electron v44.7.0's own source, with its patches applied to Chromium at the pinned revision (plus Lilac's fuse settings), not plain Chromium. Choose how each release provides it: mirrored with the release, or a written offer. A repository grain then implements the choice in the release workflow and the notices.
+  5. **The tag.** Not authorized: no release tag is created until the founder release gate. Pushing `v1.0.0` is the release decision; the workflow then signs every file and makes a draft release, which the owner publishes.
 - Founder decisions (2026-10-07, recorded on #146):
   - **Scope.** Lilac ships as a usable product. Desktop builds and local web mode are required, so the PC Product Completion phase was added before P07 closes.
   - **License.** The target is Apache-2.0, applied only after an evidence-based compatibility audit.
@@ -143,8 +143,8 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (721/721 test
 ## Canonical facts
 
 - Repository: `TheHalfMoon/Lilac`.
-- Product name: **Lilac**.
-- Paper.design remains an authorized donor/source according to the project owner's explicit attestation.
+- Product name: **Ninerr** (named Lilac until 2026-10-08). The repository is renamed in N0-G10.
+- Paper.design is a founder-authorized source (category A in `docs/provenance/LICENSE_REGISTER.json`). No Paper material is in the tree, and Ninerr does not depend on Paper (`docs/evidence/N0_G6_COHERENCE_AUDIT_2026-10-09.md`). The following facts are kept as history.
 - The complete Paper private monorepo has not been recovered and must not be claimed as recovered.
 - Public, shipped, and user-authorized local Paper evidence is sufficient for continued product implementation.
 - Paper source recovery Issue #2 remains open for genuinely new marginal evidence only; it is not an implementation blocker.
