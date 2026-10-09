@@ -362,6 +362,37 @@ export function applyTransaction(document, transaction, { enforceBaseRevision = 
 }
 
 /**
+ * Replay transactions that were each validated when they were committed (a journal) onto a
+ * copy of `document`, in order: one clone, every operation through the same code as
+ * applyTransaction, each transaction's base revision checked, and one validation of the
+ * result. Its cost is the document plus the operations, where applying them one by one
+ * with applyTransaction costs their product (#251). A state that is invalid only between
+ * two transactions is not caught; the result is fully validated. A transaction that does
+ * not apply throws a TransactionError whose `index` names it.
+ */
+export function replayTransactions(document, transactions) {
+  validateDocument(document);
+  const working = cloneData(document);
+  for (const [index, transaction] of transactions.entries()) {
+    try {
+      const normalized = createTransaction(transaction);
+      if (normalized.baseRevision !== null && normalized.baseRevision !== working.revision) {
+        throw new TransactionError(`Stale transaction ${normalized.id}: expected revision ${normalized.baseRevision}, current revision ${working.revision}`);
+      }
+      for (const operation of normalized.operations) applyOperation(working, operation);
+    } catch (error) {
+      const failure = new TransactionError(error instanceof Error ? error.message : String(error));
+      failure.index = index;
+      throw failure;
+    }
+    working.revision += 1;
+  }
+  const result = withSortedNodes(working);
+  validateDocument(result);
+  return result;
+}
+
+/**
  * Apply a transaction that an authority (the studio host) has already validated and
  * committed to the caller's own copy of the document, in place. The operations go through
  * the same code as applyTransaction, but the document is not cloned, re-validated or
