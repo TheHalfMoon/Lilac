@@ -282,6 +282,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
         record: (plan: WriteBackPlan) => `Write ${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} back to ${plan.file}`,
         confirm: (plan: WriteBackPlan) => `Confirm the write to ${plan.file}`,
         withdraw: (plan: WriteBackPlan) => `Withdraw the write to ${plan.file}`,
+        settle: (plan: WriteBackPlan) => `Mark ${plan.matched.length} field${plan.matched.length === 1 ? "" : "s"} as matching ${plan.file}`,
       };
       const folder = connectedFolder(current.name);
       settleWriteBacksOf(current, folder);
@@ -290,7 +291,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       const plan = writeBack(current.document, body?.nodeId, folder, body?.token, (operations, step, planned) => {
         event = current.edit(owner, { baseRevision: current.revision, operations, intent: intents[step](planned), tool: "ninerr:codebase" }, "http", undefined, { undoable: false });
       });
-      return { ...event, file: plan.file, written: plan.changes.length };
+      return { ...event, file: plan.file, written: plan.changes.length, matched: plan.matched.length };
     },
     "POST /api/import/discard": (body) => {
       imports.discard(body?.proposalId);

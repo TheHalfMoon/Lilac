@@ -273,6 +273,11 @@ export interface WriteBackPlan {
   changes: Array<{ nodeId: string; field: string; from: string; to: string }>;
   conflicts: Array<{ nodeId: string; field: string; reason: string }>;
   notWritten: Array<{ nodeId: string; reason: string }>;
+  /**
+   * Fields changed both here and in the file to the same value. Nothing is written for them,
+   * but their base must move to that value, or a later change to them would conflict forever.
+   */
+  matched: Array<{ nodeId: string; field: string; value: string }>;
   after: string;
   /** The bound layers' new sources once written (`codeSource`), and as they stand now (`settled`). */
   rebase: Array<{ nodeId: string; codeSource: CodeSource; settled: CodeSource }>;
@@ -407,6 +412,7 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
   const changes: WriteBackPlan["changes"] = [];
   const conflicts: WriteBackPlan["conflicts"] = [];
   const notWritten: WriteBackPlan["notWritten"] = [];
+  const matched: WriteBackPlan["matched"] = [];
   const rebase: WriteBackPlan["rebase"] = [];
   // Each written field, to read back from the new file before the plan is offered.
   const checks: Array<{ nodeId: string; field: string; path: string; textIndex?: number; expected: string }> = [];
@@ -509,7 +515,10 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
       // Not changed here: the base stays, so a change made in the file is never undone.
       else if (mine === source.base.text) {
         // nothing to write
-      } else if (fileText === mine) nextBase.text = mine;
+      } else if (fileText === mine) {
+        nextBase.text = mine;
+        matched.push({ nodeId: node.id, field: "text", value: mine });
+      }
       else if (fileText !== source.base.text) conflicts.push({ nodeId: node.id, field: "text", reason: "changed both here and in the file" });
       else if (/[{}<>]/u.test(mine)) notWritten.push({ nodeId: node.id, reason: "text with { } < or > is not written as JSX text" });
       else if (/^\s*\{/u.test(read.content.slice(entry.range.startOffset, entry.range.endOffset))) notWritten.push({ nodeId: node.id, reason: "text written as a {…} expression in the source is not written back" });
@@ -540,6 +549,7 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
       if (equalProp(prop, mine, base)) continue;
       if (equalProp(prop, fileValue, mine)) {
         nextBase.props[prop] = fileValue;
+        matched.push({ nodeId: node.id, field: prop, value: fileValue });
         continue;
       }
       if (!equalProp(prop, fileValue, base)) {
@@ -592,7 +602,7 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
     }
   }
   const token = createHash("sha256").update(`${read.sha256}\0${after}`, "utf8").digest("hex");
-  return { file: read.file, sha256: read.sha256, token, diff: unifiedDiff(read.file, read.content, after), changes, conflicts, notWritten, after, rebase };
+  return { file: read.file, sha256: read.sha256, token, diff: unifiedDiff(read.file, read.content, after), changes, conflicts, notWritten, matched, after, rebase };
 }
 
 /** The checks (as `nodeId:field`) whose value does not read back from `content`. */
@@ -671,7 +681,7 @@ export function removeTemporary(path: string): void {
 }
 
 /** How a write-back records its steps in the project: one committed transaction each. */
-export type WriteBackCommit = (operations: unknown[], step: "record" | "confirm" | "withdraw", plan: WriteBackPlan) => void;
+export type WriteBackCommit = (operations: unknown[], step: "record" | "confirm" | "withdraw" | "settle", plan: WriteBackPlan) => void;
 
 /**
  * Write the plan for `nodeId` to its file, if it is still exactly the plan the person
@@ -693,13 +703,19 @@ export type WriteBackCommit = (operations: unknown[], step: "record" | "confirm"
 export function writeBack(document: any, nodeId: unknown, folder: string, token: unknown, commit: WriteBackCommit): WriteBackPlan {
   const plan = planWriteBack(document, nodeId, folder);
   if (typeof token !== "string" || plan.token !== token) throw new StudioError(409, "plan-changed", `${plan.file} or the layers changed since the preview; preview it again`);
-  if (plan.changes.length === 0) throw new StudioError(409, "nothing-to-write", "there are no changes to write back");
-  const landed = sha256(plan.after);
+  if (plan.changes.length === 0 && plan.matched.length === 0) throw new StudioError(409, "nothing-to-write", "there are no changes to write back");
   // The layers whose base this write changes take part, and so do those still carrying an
   // earlier record (planning resolved it from the file; this write settles it). The others
   // are the same either way.
   const moving = plan.rebase.filter(({ nodeId: id, codeSource, settled }) => !sameBase(codeSource.base, settled.base) || document.nodes[id]?.props?.codeSource?.pending !== undefined);
   const set = (sources: Array<{ nodeId: string; codeSource: CodeSource }>) => sources.map(({ nodeId: id, codeSource }) => ({ type: "set-props", nodeId: id, set: { codeSource } }));
+  // Only matched fields: the file already has every value, so nothing is written to it; their
+  // bases move to those values in one transaction.
+  if (plan.changes.length === 0) {
+    commit(set(moving), "settle", plan);
+    return plan;
+  }
+  const landed = sha256(plan.after);
   const target = writeTemporary(folder, plan);
   try {
     commit(set(moving.map(({ nodeId: id, codeSource, settled }) => ({ nodeId: id, codeSource: { ...settled, pending: { base: codeSource.base, sha256: landed, temp: basename(target.temporary) } } }))), "record", plan);

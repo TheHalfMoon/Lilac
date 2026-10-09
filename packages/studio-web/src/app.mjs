@@ -610,15 +610,17 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
       const plan = await state.client.post("/api/codebase/preview", { nodeId: boundNode.id });
       const items = (entries, render) => (entries.length === 0 ? [] : [el("ul", {}, entries.map((entry) => el("li", {}, render(entry))))]);
       preview.replaceChildren(
-        plan.changes.length === 0 ? el("p", {}, "There is nothing to write back: the file already has these values.") : el("p", {}, `${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} to ${plan.file}:`),
+        plan.changes.length > 0 ? el("p", {}, `${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} to ${plan.file}:`)
+          : plan.matched.length > 0 ? el("p", {}, `Nothing needs writing: ${plan.matched.length} field${plan.matched.length === 1 ? " here matches" : "s here match"} the file again. Mark ${plan.matched.length === 1 ? "it" : "them"} as matching, so a later change ${plan.matched.length === 1 ? "to it is" : "to them is"} written back rather than seen as a conflict.`)
+          : el("p", {}, "There is nothing to write back: the file already has these values."),
         ...(plan.diff === "" ? [] : [el("pre", { class: "diff", id: "codebase-diff", tabindex: "0", "aria-label": `Changes to ${plan.file}` }, plan.diff)]),
         ...(plan.conflicts.length === 0 ? [] : [el("p", {}, "Changed both here and in the file, so not written:")]),
         ...items(plan.conflicts, (conflict) => `${conflict.field}: ${conflict.reason}`),
         ...(plan.notWritten.length === 0 ? [] : [el("p", {}, "Not written back:")]),
         ...items(plan.notWritten, (entry) => entry.reason),
       );
-      if (plan.changes.length > 0) {
-        const write = el("button", { type: "button", class: "primary", id: "codebase-write" }, "Write to file");
+      if (plan.changes.length > 0 || plan.matched.length > 0) {
+        const write = el("button", { type: "button", class: "primary", id: "codebase-write" }, plan.changes.length > 0 ? "Write to file" : "Mark as matching");
         write.addEventListener("click", () => {
           error.textContent = "";
           write.disabled = true;
@@ -627,7 +629,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
               const result = await state.client.post("/api/codebase/write", { nodeId: boundNode.id, token: plan.token });
               close();
               applyChange(result);
-              setStatus(`Wrote ${result.written} change${result.written === 1 ? "" : "s"} to ${result.file}.`);
+              setStatus(result.written > 0 ? `Wrote ${result.written} change${result.written === 1 ? "" : "s"} to ${result.file}.` : `Marked ${result.matched} field${result.matched === 1 ? "" : "s"} as matching ${result.file}.`);
             } catch (failure) {
               write.disabled = false;
               if (failure instanceof HostError && failure.code === "project-needs-reopen") {
