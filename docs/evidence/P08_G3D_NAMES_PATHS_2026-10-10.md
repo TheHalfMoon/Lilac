@@ -31,7 +31,7 @@ Last, case variants of existing projects.
 - **Hostile names:** every one is refused as `invalid-project-name`, both to create and to open.
 - **A name that differs from an existing project's only by case** is neither created (`project-exists`) nor opened (`project-not-found`), on any disk (#247).
 - **After it all,** the projects folder holds exactly the valid projects, beside only the host's own `.ninerr-*` files, and the project list matches. Nothing appeared outside it, including any sibling named like it.
-- **Folders:** each refused folder is refused by name (`folder-overlaps-projects`, `invalid-folder`, `not-a-folder`). The long, non-ASCII folder connects in all three spellings, and a scan lists exactly the expected components.
+- **Folders:** each refused folder is refused by name (`folder-overlaps-projects`, `invalid-folder`, `not-a-folder`, `folder-not-found`). The long, non-ASCII folder connects in all three spellings, and a scan lists exactly the expected components.
 - **Hostile source file paths** are refused with exactly the code each must get.
 - **Every listed component comes in.** A write-back to the non-ASCII file changes exactly that file, by exactly the edit, and every other file in the folder stays byte for byte as it was.
 
