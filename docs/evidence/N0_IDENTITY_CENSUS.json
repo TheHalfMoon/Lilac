@@ -2,16 +2,16 @@
   "schema": "identity-census-summary/1",
   "filesScanned": 527,
   "filesWithFindings": 140,
-  "gatedFindings": 0,
+  "gatedFindings": 86,
   "byCategory": {
-    "ACTIVE_PRODUCT_IDENTITY": 0,
-    "ACTIVE_INTERNAL_IDENTITY": 0,
+    "ACTIVE_PRODUCT_IDENTITY": 77,
+    "ACTIVE_INTERNAL_IDENTITY": 9,
     "PUBLIC_API": 0,
     "PERSISTED_DATA": 0,
     "LEGACY_COMPATIBILITY": 73,
     "TEST_FIXTURE": 0,
-    "THIRD_PARTY_INDEPENDENT_OBLIGATION": 264,
-    "IMMUTABLE_HISTORICAL_FACT": 987,
+    "THIRD_PARTY_INDEPENDENT_OBLIGATION": 254,
+    "IMMUTABLE_HISTORICAL_FACT": 911,
     "REMOVE_ENTIRELY": 0
   },
   "byTerm": {
@@ -33,7 +33,10 @@
   },
   "byRule": {
     "dated-evidence": 595,
-    "donor-provenance-records": 290,
+    "default-donor": 9,
+    "default-lilac": 57,
+    "default-paper": 20,
+    "donor-provenance-records": 221,
     "independent-runtime-docling": 93,
     "independent-runtime-impeccable": 82,
     "independent-runtime-tests": 13,
@@ -42,17 +45,25 @@
     "legacy-identity-tests": 7,
     "legacy-project-fixture": 7,
     "legacy-refusals-in-code": 4,
-    "program-history": 49,
     "provenance-agent-events-ui-tars": 1,
     "provenance-agent-runtime-unreal-agent": 1,
     "provenance-agent-supervisor-firstmate": 2,
     "provenance-agent-supervisor-readme-firstmate": 1,
-    "provenance-and-license-tests": 46,
     "provenance-design-method-appllama": 1,
+    "provenance-history": 42,
     "provenance-import-stack-firecrawl": 1,
+    "provenance-test-agent-events": 2,
+    "provenance-test-agent-runtime": 2,
+    "provenance-test-agent-supervisor-core": 4,
+    "provenance-test-collaboration": 8,
+    "provenance-test-decision-router": 1,
+    "provenance-test-delivery-governance": 1,
+    "provenance-test-design-method": 4,
+    "provenance-test-import-stack": 5,
+    "provenance-test-license-register": 19,
     "public-env": 1,
     "repository-url": 7,
-    "third-party-notices": 76
+    "third-party-notices": 66
   },
-  "censusSha256": "e90f59132ccd80d2e78f81d81d1aee3ba022ccf7057d024d0e222282d0c42231"
+  "censusSha256": "c68d93dffb1c5a32202803d3c49ff2408edca4af33c0be94bd9aa9e0846fd565"
 }

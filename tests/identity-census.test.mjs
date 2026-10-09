@@ -55,8 +55,9 @@ test("rules classify by path, term and line", () => {
   assert.equal(rule("package-lock.json", "lilac", "\"@lilac/canvas\""), "default-lilac");
   assert.equal(rule("packages/persistence/src/legacy.ts", "lilac", "export const LEGACY_PROJECT_FORMAT = \"lilac-project\";"), "legacy-identity-readers");
   assert.equal(rule("packages/persistence/src/types.ts", "lilac", "export const PROJECT_FORMAT = \"lilac-project\";"), "default-lilac", "legacy identity outside the legacy module is gated");
-  assert.equal(rule("scripts/ninerr-mcp.mjs", "lilac", "const token = process.env.LILAC_MCP_TOKEN;"), "public-env");
-  assert.equal(classify(policy, "scripts/ninerr-mcp.mjs", "lilac", "process.env.LILAC_MCP_TOKEN").category, "LEGACY_COMPATIBILITY", "the old variables are legacy readers");
+  // The old variables are read only in the legacy modules; the desktop guide names them.
+  assert.equal(rule("packages/studio-host/src/legacy.ts", "lilac", "export const LEGACY_MCP_TOKEN_ENV = \"LILAC_MCP_TOKEN\";"), "legacy-identity-readers");
+  assert.equal(rule("docs/DESKTOP.md", "lilac", "or an existing \"Lilac Projects\" folder, read through `LILAC_PROJECTS`"), "public-env");
   assert.equal(rule("packages/agent-runtime/src/operation.ts", "unreal-agent", "  repository: \"unreallabsai/unreal-agent\","), "provenance-agent-runtime-unreal-agent");
 });
 
@@ -83,6 +84,30 @@ test("the allowlist is narrow: a new occurrence beside an allowed one is still g
   assert.ok(gated("docs/RELEASE.md", "lilac", "A Lilac release is a tagged commit"), "product prose in the same doc is gated");
   // Paper outside a record is gated.
   assert.ok(gated("docs/ARCHITECTURE.md", "paper", "Paper"), "Paper in a current doc is gated");
+  // Every mention of the old name on an allowed line must itself be allowed (N0-G9 review).
+  assert.ok(gated("packages/studio-web/src/app.mjs", "lilac", "/^(?:ninerr|lilac):/u.test(t); showDialog(\"Welcome to Lilac\");"), "copy on the same line as an allowed construct");
+  assert.ok(gated("docs/RELEASE.md", "lilac", "Lilac is the product; clone TheHalfMoon/Lilac"), "prose on the same line as the repository URL");
+  assert.ok(gated("tests/desktop-package.test.mjs", "lilac", "test(\"Lilac packages @lilac/history\")"), "a title on the same line as an allowed scope");
+  // The old variables are admitted only in the desktop guide's note, and only as their names.
+  assert.ok(gated("packages/studio-host/src/index.ts", "lilac", "process.env.LILAC_PROJECTS ?? join(home, \"Lilac Projects\")"), "reading an old variable outside the legacy module");
+  assert.ok(gated("tests/web-mode.test.mjs", "lilac", "const LILAC_PROJECTS = \"Lilac\";"), "an old variable in a test fixture");
+  assert.ok(gated("docs/DESKTOP.md", "lilac", "Welcome to Lilac, the design tool."), "new prose in the desktop guide");
+  assert.ok(gated("docs/MIGRATION.md", "lilac", "Lilac is still supported."), "new prose in the migration guide");
+  // The notices, the register and the provenance records name Ninerr as Ninerr.
+  assert.ok(gated("THIRD_PARTY_NOTICES.md", "lilac", "Lilac is distributed under Apache-2.0."), "the old name in the notices");
+  assert.ok(gated("docs/provenance/LICENSE_REGISTER.json", "lilac", "\"never shipped by Lilac\""), "the old name in the register");
+  assert.ok(gated("docs/DONORS.md", "lilac", "Lilac ships with its own product name"), "the old name in the living ledger");
+  assert.ok(gated("packages/canvas/src/provenance.mjs", "lilac", "export const NAME = \"Lilac\";"), "the old name in a provenance module");
+  assert.equal(rule("docs/provenance/PAPER_AUTHORIZATION.md", "lilac", "for the Lilac project."), "provenance-history", "the owner's dated attestation keeps the name it was given under");
+  // A new ledger file is not admitted by a pattern.
+  assert.ok(gated("docs/DONOR_NEW_PLAN.md", "paper", "Ninerr will embed Paper."), "a new donor document");
+  // The living program pages are not exempt; the record before the rename is dated evidence.
+  assert.ok(gated("docs/CURRENT.md", "lilac", "- Lilac is the current product name."), "the old name in the program state");
+  assert.ok(gated("docs/MASTER_PLAN.md", "paper", "N0 next: depend on Paper's renderer."), "Paper in the plan");
+  assert.equal(rule("docs/evidence/PROGRAM_STATE_2026-10-09.md", "lilac", "Product name: **Lilac**."), "dated-evidence");
+  // Provenance tests admit only their own records' names.
+  assert.ok(gated("tests/collaboration.test.mjs", "lilac", "test(\"Lilac collaboration works\")"), "the old name in a provenance test");
+  assert.ok(gated("tests/agent-events.test.mjs", "paper", "Paper"), "another source in a provenance test");
 });
 
 test("the census is deterministic and the gate counts gated categories only", () => {

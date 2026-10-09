@@ -7,38 +7,41 @@ Issue: #190 (N0 umbrella). The founder required an independence regression gate 
 - `node scripts/identity-census.mjs --verify`: the committed census summary is current;
 - `node scripts/identity-census.mjs --check`: no tracked file carries a finding in a gated category.
 
-The test suite enforces the same thing: `tests/identity-census.test.mjs` fails when the repository has any gated finding. At this commit the census scans 527 files and finds no gated findings.
+The test suite enforces the same thing: `tests/identity-census.test.mjs` fails when the repository has any gated finding.
 
 The gated categories are unchanged: active product identity, active internal identity, public API, persisted data, test fixtures and material to remove. Three categories are not gated: legacy compatibility, third-party obligations and immutable historical facts.
 
 ## The allowlist
-Every rule that admits the old product name, Paper or a donor name is narrow, has a stated reason, and is reviewed. They are in `scripts/identity-policy.json`, and they are ordered before the catch-all rules.
+Every rule that admits the old product name, Paper or a donor name is narrow, has a stated reason, and is reviewed. They are in `scripts/identity-policy.json`.
 
-- **Legacy compatibility.**
-  - `legacy-refusals-in-code` admits only the four constructs that recognize the old identity in code. These are the `@(?:ninerr|lilac)` scope refusal in `packages/desktop/src/resolve.mjs` and `scripts/package-desktop.mjs`, the renderer's `startsWith("data-lilac")` refusal, and the history view's `(?:ninerr|lilac):` recognition. Each is matched by its exact line, so any other mention of the old name in those files is gated.
-  - `legacy-identity-tests` admits the old scope, attribute and format, matched by line, in the four tests that prove they are refused or migrated.
-  - `legacy-identity-docs` covers the migration guide and the desktop guide's note on the old folder and variable.
-  - `public-env` covers the old environment variables, which Ninerr reads only as a fallback with a notice.
-  - `repository-url` admits only the repository's own URL and clone directory. N0-G10 renames the repository and removes the need for it.
-- **Historical facts.**
-  - `donor-provenance-records` covers the provenance ledgers and the per-package provenance files.
-  - Six per-file rules (`provenance-*`) each admit one donor name in one package module that keeps its own provenance.
-  - `program-history` covers the program state and the plan, whose earlier sections are the record before the rename.
-  - `provenance-and-license-tests` covers the tests that hold those records to their facts.
-- **Third-party obligations.**
-  - `third-party-notices` covers the notices, the register, the license policy and Electron's license.
-  - The `independent-runtime-*` rules cover Impeccable and Docling, which Ninerr invokes, and the tests of them.
+**Whole-line rules.** A rule constrained by line admits a line only when every mention of the old name on it is one of the rule's allowed forms. A sentence beside an allowed construct is therefore still gated.
+- `legacy-refusals-in-code` covers the four constructs that recognize the old identity in code. These are the `@(?:ninerr|lilac)` scope refusal in the packaged resolver and in packaging, the renderer's `startsWith("data-lilac")` refusal, and the history view's `(?:ninerr|lilac):` recognition.
+- `legacy-identity-tests` covers the old scope, attribute prefix, project format and journal genesis in the four tests that prove they are refused or migrated.
+- `legacy-identity-docs` covers the old project directory, format and genesis in `docs/MIGRATION.md` only.
+- `public-env` covers the old variable names and the old folder name in `docs/DESKTOP.md` only. Code reads them only in the legacy modules (`legacy-identity-readers`).
+- `repository-url` covers only the repository's own URL and clone directory, until N0-G10 renames the repository.
 
-`tests/identity-census.test.mjs` proves that each rule is narrow. The construct a rule was written for passes, and the following stay gated:
-- new product copy in the same file;
-- a comment naming the old product;
-- a test title naming it;
-- another donor in a provenance module;
-- a donor name outside provenance;
-- product prose beside the repository URL;
-- Paper in a current document.
+**Provenance and obligations name Ninerr as Ninerr.**
+- `third-party-notices` admits donor and Paper names in the notices, the register, the license policy and Electron's license, but not the old product name.
+- `donor-provenance-records` covers the provenance ledgers and the per-package provenance files, listed by path rather than by pattern. It too admits donor and Paper names only.
+- `provenance-history` admits the old name only in the four records made under it: the dated donor study and donor expansion, and the owner's Paper authorization and retired-records list.
+- Six `provenance-*` rules each admit one donor in one package module that keeps its own provenance.
+- Nine `provenance-test-*` rules each admit only the names of the records that test holds to their facts.
+- The `independent-runtime-*` rules cover Impeccable and Docling, which Ninerr invokes, and the tests of them.
 
-Writing that test caught one rule that was too broad: one provenance rule paired any of its files with any of its donors. It is now one rule per file and donor.
+**No living document is exempt.** The program record before the rename is dated evidence (N0-G9a1). `docs/CURRENT.md` and `docs/MASTER_PLAN.md` hold only the current program (N0-G9a2), and the gate checks them like any other file.
+
+## Proof that the rules are narrow
+`tests/identity-census.test.mjs` passes the construct each rule was written for, and probes every opening the N0-G9 review found. Each of these probes stays gated:
+- **Copy on the same line as an allowed form:** a dialog beside the history-view pattern, a sentence beside the repository URL, a test title beside an allowed scope.
+- **An old variable outside the legacy module:** one read in the studio host, or one declared in a test fixture.
+- **New prose in a narrowly admitted file:** in the desktop or migration guide, the notices, the register, the living ledger or a provenance module.
+- **New or living documents:** a new donor document, and the old name or Paper in the current program pages.
+- **A provenance test** naming the old product or another source.
+
+## History of this grain
+- **The first allowlist** matched a line rule anywhere in the line, admitted the old variables from any file, and exempted whole files: the program pages, the ledgers and the register. That hid about 80 present-tense uses of the old name. The N0-G9 review found it and showed every opening.
+- **N0-G9a1 and N0-G9a2** moved the record before the rename, renamed the living records and restored slim program pages. This grain tightened the rules as described above.
 
 ## Also
 `trackedFiles` lists each path once. During a merge, `git ls-files` lists a conflicted path once per stage, which made the census overcount mid-merge in N0-G3f.
