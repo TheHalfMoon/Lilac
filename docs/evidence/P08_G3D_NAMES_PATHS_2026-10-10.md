@@ -5,7 +5,7 @@ Issue: #230 (P08 umbrella), founder section P08.3: hostile paths, links, device 
 ## What runs
 `tests/names-paths.test.mjs` runs two table-driven tests through the studio host.
 
-**Project names.** Five valid names are tried, up to the 64-character limit. Forty-one hostile ones are tried as well:
+**Project names.** Five valid names are tried, up to the 64-character limit. Forty hostile ones are tried as well:
 - empty, `.`, `..`, `a..b`;
 - traversal with either separator, `a/b`, `a\b`, `C:`, `C:x`, a UNC path, an absolute path;
 - Windows device names, with and without an extension and in either case;
@@ -18,21 +18,21 @@ Issue: #230 (P08 umbrella), founder section P08.3: hostile paths, links, device 
 Last, case variants of existing projects.
 
 **Codebase folders and source files.**
-- **Folders that are refused:** the projects folder itself, a folder above it, a folder inside it, relative paths, an empty path, a file, and a missing folder.
-- **A folder that works:** one with a long, non-ASCII path, past the 260 characters Windows once allowed. It is connected as is, with a trailing separator, and through a `..` segment.
+- **Folders that are refused:** the projects folder itself, a folder above it, a folder inside it, relative paths, an empty path, a file, and a missing folder. Each gets its own code: `folder-overlaps-projects`, `invalid-folder`, `not-a-folder` or `folder-not-found`.
+- **A folder that works:** one with a long, non-ASCII path, past the 260 characters Windows once allowed. It is connected as is, with a trailing separator, and through a real `..` segment.
 - **The files in it:**
-  - files to be listed: plain, non-ASCII, with a space, with a 150-character name, and nested;
-  - files that must not be listed: hidden, under `node_modules` or `dist`, an uppercase extension, not a source file, no component, over the 256 KiB limit, nested deeper than the scan's limit.
-- **Source file paths:** paths that leave the folder, use a backslash, a drive, an alternate data stream, `./`, NUL, or name a file that is missing or not a source file.
+  - files to be listed: plain, non-ASCII, with a space, with a 150-character name, nested, and exactly at the scan's depth limit of 8 folders;
+  - files that must not be listed: hidden, under `node_modules` or `dist`, an uppercase extension, not a source file, no component, over the 256 KiB limit, nested one folder past the scan's limit.
+- **Source file paths:** paths that leave the folder, use a backslash, a drive, an alternate data stream, `./` or NUL, or name a file that is not a source file. Each is refused as `invalid-file`. A missing file is `file-not-found`.
 
 ## What must hold
 - **The host never answers 500.** Every refusal names a typed error.
 - **Valid names:** each is created as a folder of exactly that name inside the projects folder, and opens by that exact name.
 - **Hostile names:** every one is refused as `invalid-project-name`, both to create and to open.
 - **A name that differs from an existing project's only by case** is neither created (`project-exists`) nor opened (`project-not-found`), on any disk (#247).
-- **After it all,** the projects folder holds exactly the valid projects, nothing appeared outside it, and the project list matches.
+- **After it all,** the projects folder holds exactly the valid projects, beside only the host's own `.ninerr-*` files, and the project list matches. Nothing appeared outside it, including any sibling named like it.
 - **Folders:** each refused folder is refused by name (`folder-overlaps-projects`, `invalid-folder`, `not-a-folder`). The long, non-ASCII folder connects in all three spellings, and a scan lists exactly the expected components.
-- **Hostile source file paths** are refused with a typed error.
+- **Hostile source file paths** are refused with exactly the code each must get.
 - **Every listed component comes in.** A write-back to the non-ASCII file changes exactly that file, by exactly the edit, and every other file in the folder stays byte for byte as it was.
 
 ## Results

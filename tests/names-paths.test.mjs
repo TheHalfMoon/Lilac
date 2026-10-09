@@ -24,6 +24,8 @@ const component = (name, heading) => `export function ${name}() {\n  return (\n 
 
 /** Every entry under `root`, as relative paths, sorted. */
 const tree = (root) => readdirSync(root, { recursive: true }).map(String).sort();
+/** Whether a relative path is the projects folder or inside it (and not a sibling named like it). */
+const inProjects = (entry) => entry === "projects" || entry.startsWith(`projects${sep}`);
 
 const VALID = ["a", "site-2", "Plans.v2", "under_score", "x".repeat(64)];
 const INVALID = [
@@ -39,7 +41,7 @@ test("project names: only names that stay exactly inside the projects folder, op
   const pool = hostPool(now);
   try {
     const { call } = await pool.open(projects);
-    const outside = tree(base).filter((entry) => !entry.startsWith("projects"));
+    const outside = tree(base).filter((entry) => !inProjects(entry));
     for (const name of VALID) {
       const created = await call("POST", "/api/projects/create", { name });
       assert.equal(created.status, 200, `${JSON.stringify(name)}: ${JSON.stringify(created.json)}`);
@@ -58,8 +60,9 @@ test("project names: only names that stay exactly inside the projects folder, op
     for (const name of ["A", "SITE-2", "plans.V2"]) {
       assert.deepEqual([(await call("POST", "/api/projects/create", { name })).json.error?.code, (await call("POST", "/api/projects/open", { name })).json.error?.code], ["project-exists", "project-not-found"], name);
     }
-    assert.deepEqual(readdirSync(projects).filter((entry) => !entry.startsWith(".")).sort(), [...VALID].sort(), "exactly the valid projects, and nothing else, were created");
-    assert.deepEqual(tree(base).filter((entry) => !entry.startsWith("projects")), outside, "nothing appeared outside the projects folder");
+    // Only the host's own registry files (.ninerr-*) are not projects.
+    assert.deepEqual(readdirSync(projects).filter((entry) => !/^\.ninerr-/u.test(entry)).sort(), [...VALID].sort(), "exactly the valid projects, and nothing else, were created");
+    assert.deepEqual(tree(base).filter((entry) => !inProjects(entry)), outside, "nothing appeared outside the projects folder");
     assert.deepEqual((await ok(call("GET", "/api/projects"), "list")).projects.sort(), [...VALID].sort());
   } finally {
     await pool.closeAll();
@@ -86,7 +89,7 @@ test("codebase folders and source files: hostile paths are refused, and a scan a
       assert.ok(connected.status >= 400 && connected.status < 500);
     }
     const missing = await call("POST", "/api/codebase/connect", { folder: join(base, "missing") });
-    assert.ok(missing.status >= 400 && missing.status < 500 && typeof missing.json.error.code === "string", JSON.stringify(missing.json));
+    assert.deepEqual([missing.status, missing.json.error.code], [404, "folder-not-found"]);
 
     // A folder with a long, non-ASCII path, past the 260 characters Windows once allowed.
     const folder = join(base, "Código コード", ...Array.from({ length: 5 }, (_, index) => `segment-${index}-${"x".repeat(50)}`));
@@ -98,6 +101,8 @@ test("codebase folders and source files: hostile paths are refused, and a scan a
       "With Space.jsx": component("Spaced", "Pro"),
       [`${"L".repeat(150)}.tsx`]: component("Long", "Pro"),
       "nested/deeper/Deep.jsx": component("Deep", "Pro"),
+      // Exactly at the scan's depth limit (8 folders deep): still listed.
+      [`${Array.from({ length: 8 }, (_, index) => `d${index}`).join("/")}/AtLimit.jsx`]: component("AtLimit", "Pro"),
     };
     const unlisted = {
       ".hidden.jsx": component("Hidden", "Pro"),
@@ -107,22 +112,26 @@ test("codebase folders and source files: hostile paths are refused, and a scan a
       "notes.md": "# notes",
       "Plain.jsx": "export const x = 1;\n",
       "Big.jsx": `${component("Big", "Pro")}// ${"x".repeat(256 * 1024)}\n`,
-      [`${Array.from({ length: 10 }, (_, index) => `d${index}`).join("/")}/TooDeep.jsx`]: component("TooDeep", "Pro"),
+      // One folder past the scan's depth limit (8): just past it.
+      [`${Array.from({ length: 9 }, (_, index) => `d${index}`).join("/")}/TooDeep.jsx`]: component("TooDeep", "Pro"),
     };
     for (const [file, content] of Object.entries({ ...listed, ...unlisted })) {
       mkdirSync(join(folder, file, ".."), { recursive: true });
       writeFileSync(join(folder, file), content);
     }
-    for (const variant of [folder, `${folder}${sep}`, join(folder, "nested", "..")]) {
+    // As is, with a trailing separator, and through a real ".." segment (join would remove it).
+    for (const variant of [folder, `${folder}${sep}`, `${folder}${sep}nested${sep}..`]) {
       await ok(call("POST", "/api/codebase/connect", { folder: variant }), `connect ${variant.slice(-40)}`);
       const scan = await ok(call("GET", "/api/codebase"), "scan");
-      assert.deepEqual(scan.components.map(({ file, component: name }) => `${file} ${name}`).sort(), ["Card.jsx Card", "With Space.jsx Spaced", "nested/deeper/Deep.jsx Deep", "カード.jsx Kaado", `${"L".repeat(150)}.tsx Long`].sort(), `a scan lists exactly the expected components (connected as ${variant.slice(-30)})`);
+      assert.deepEqual(scan.components.map(({ file, component: name }) => `${file} ${name}`).sort(), ["Card.jsx Card", "With Space.jsx Spaced", "nested/deeper/Deep.jsx Deep", "d0/d1/d2/d3/d4/d5/d6/d7/AtLimit.jsx AtLimit", "カード.jsx Kaado", `${"L".repeat(150)}.tsx Long`].sort(), `a scan lists exactly the expected components (connected as ${variant.slice(-30)})`);
     }
     // Source file paths that leave the folder, or are not source files, are refused by name.
-    for (const file of ["../Card.jsx", "/Card.jsx", "C:/Card.jsx", "nested\\deeper\\Deep.jsx", "Card.jsx:stream", "./Card.jsx", "notes.md", "Upper.JSX", "missing.jsx", "a\u0000.jsx", ""]) {
+    for (const file of ["../Card.jsx", "/Card.jsx", "C:/Card.jsx", "nested\\deeper\\Deep.jsx", "Card.jsx:stream", "./Card.jsx", "notes.md", "Upper.JSX", "a\u0000.jsx", ""]) {
       const brought = await call("POST", "/api/codebase/import", { file, component: "Card" });
-      assert.ok(brought.status >= 400 && brought.status < 500 && typeof brought.json?.error?.code === "string", `${JSON.stringify(file)}: ${brought.status} ${JSON.stringify(brought.json)}`);
+      assert.deepEqual([brought.status, brought.json?.error?.code], [400, "invalid-file"], `${JSON.stringify(file)}: ${JSON.stringify(brought.json)}`);
     }
+    const absent = await call("POST", "/api/codebase/import", { file: "missing.jsx", component: "Card" });
+    assert.deepEqual([absent.status, absent.json.error.code], [404, "file-not-found"]);
     // Every listed component comes in; a write-back to the non-ASCII file changes only that file.
     for (const [file, content] of Object.entries(listed)) {
       const name = /export function (\w+)/u.exec(content)[1];
