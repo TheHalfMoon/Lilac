@@ -41,6 +41,28 @@ test("every entry is well formed and ids are unique", () => {
     for (const field of ["license", "evidence", "compatible", "obligations"]) assert.equal(typeof entry[field], "string", `${entry.id}.${field}`);
     assert.ok(["yes", "reference-only", "founder-confirmation-required"].includes(entry.compatible), `${entry.id} has a known conclusion`);
     if (entry.revision !== undefined) assert.match(entry.revision, /^[0-9a-f]{7,40}$/u, `${entry.id} revision`);
+    assert.ok(Object.hasOwn(register.categories, entry.category), `${entry.id} is category A or B`);
+  }
+});
+
+// Category A is exactly the founder-authorized donor and source projects; everything else is B.
+test("category A is exactly the founder-authorized projects, and every other entry is B", () => {
+  const authorization = read("docs/provenance/FOUNDER_AUTHORIZATION_2026-10-08.md");
+  const expansion = read("docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03.md");
+  const paper = new Set(["paper.design", "paper-design/paper"]);
+  // An entry for a runtime Ninerr ships or invokes stays under its own license, even when its
+  // upstream project is authorized (the impeccable package, the Docling CLI).
+  const RUNTIME_KINDS = new Set(["dependency", "bundled-runtime", "optional-runtime"]);
+  // classifier.dev is recorded as a project; its registered upstream is mrmps/classifier-dev.
+  const attested = [...expansion.matchAll(/^- `([^`]+)`$/gmu)].map((match) => match[1]);
+  const registered = (project) => (project === "classifier.dev" ? "mrmps/classifier-dev" : project);
+  assert.ok(expansion.includes("- `classifier.dev`") || expansion.includes("- classifier.dev"), "classifier.dev is attested");
+  for (const project of [...attested, "classifier.dev"]) assert.ok(byId.has(registered(project)), `${project} has a register entry`);
+  const authorized = new Set([...paper, ...attested.map(registered), "mrmps/classifier-dev"]);
+  for (const entry of register.entries) {
+    const own = authorized.has(entry.id) && !RUNTIME_KINDS.has(entry.kind);
+    assert.equal(entry.category, own ? "A" : "B", `${entry.id} is ${own ? "an authorized project's own source" : "an independent third party"}`);
+    if (own && !paper.has(entry.id)) assert.ok(authorization.includes(entry.id) || entry.id === "mrmps/classifier-dev", `${entry.id} is named in the founder record's scope`);
   }
 });
 
