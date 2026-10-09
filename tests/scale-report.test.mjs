@@ -17,7 +17,7 @@ test("large projects through the host: measured and reported", { timeout: 600_00
   const deep = await measureDeep(1_000);
   const history = await measureHistory(1_000, 100);
   const imported = await measureImport(8_000);
-  const writeBack = await measureWriteBack(250);
+  const writeBack = await measureWriteBack(4_000);
   results.push(flat1k, flat10k, deep, history, imported, writeBack);
   t.diagnostic(`\n${markdown({ platform: platform(), results })}`);
 
@@ -29,5 +29,5 @@ test("large projects through the host: measured and reported", { timeout: 600_00
   assert.ok(deep.editMs.p95 < 500, `an edit 1,000 levels deep: p95 ${deep.editMs.p95} ms`);
   assert.ok(history.crashReopenMs < 15_000, `recovering 100 edits after a crash: ${history.crashReopenMs} ms`);
   assert.ok(imported.reviewMs + imported.commitMs < 15_000, `importing ${imported.workload}: ${imported.reviewMs + imported.commitMs} ms`);
-  assert.ok(writeBack.previewMs + writeBack.writeMs < 2_000, `a write-back: ${writeBack.previewMs + writeBack.writeMs} ms`);
+  assert.ok(writeBack.previewMs + writeBack.writeMs < 10_000, `a write-back: ${writeBack.previewMs + writeBack.writeMs} ms`);
 });

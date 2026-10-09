@@ -165,7 +165,8 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
   if (typeof source !== "string" || source.trim() === "") throw new StudioError(400, "invalid-code", "code must be a non-empty string");
   if (Buffer.byteLength(source) > MAX_CODE_BYTES) throw new StudioError(413, "code-too-large", "code is limited to 256 KiB");
   const refuse = (message: string) => new StudioError(422, "code-refused", message.slice(0, 300));
-  const exportedNames = [...source.matchAll(/export\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9]*)/gu)].map((match) => match[1]);
+  // Each name once: a source can repeat a declaration thousands of times (#250).
+  const exportedNames = [...new Set([...source.matchAll(/export\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9]*)/gu)].map((match) => match[1]))];
   let ir: any;
   try {
     ir = buildCodeIr([{ path: options.path ?? `${exportedNames[0] ?? "Imported"}.jsx`, content: source }]);
@@ -181,8 +182,13 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
   // A component's definition is the component symbol whose element is a root; a JSX use of
   // the same name (<Button>) is also a component symbol, but inside another element. The
   // first exported function with a definition is brought in (others in the file are not).
-  const symbols = Object.values(ir.symbols) as any[];
-  const definitionOf = (name: string) => symbols.find((symbol) => symbol.kind === "component" && symbol.name === name && symbol.children.length > 0 && ir.rootIds.includes(symbol.children[0]));
+  // Built once, so finding definitions stays linear in the symbols however many names there are.
+  const roots = new Set(ir.rootIds);
+  const definitions = new Map<string, any>();
+  for (const symbol of Object.values(ir.symbols) as any[]) {
+    if (symbol.kind === "component" && symbol.children.length > 0 && roots.has(symbol.children[0]) && !definitions.has(symbol.name)) definitions.set(symbol.name, symbol);
+  }
+  const definitionOf = (name: string) => definitions.get(name);
   if (options.component !== undefined && !exportedNames.includes(options.component)) throw refuse(`${options.component} is not an exported function component of this file`);
   const declared = options.component ?? exportedNames.find((name) => definitionOf(name) !== undefined) ?? exportedNames[0] ?? null;
   const component = declared === null ? undefined : definitionOf(declared);
@@ -238,14 +244,14 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
     // element's own text; mixed with elements, each run of text is its own text layer.
     const pieces = [
       ...symbol.texts.map((entry: any, textIndex: number) => ({ at: entry.range.startOffset, text: entry.value, textIndex })),
-      ...symbol.children.map((child: string) => ({ at: ir.symbols[child].range.startOffset, child })),
+      ...symbol.children.map((child: string, childIndex: number) => ({ at: ir.symbols[child].range.startOffset, child, childIndex })),
     ].sort((a, b) => a.at - b.at);
     if (symbol.children.length === 0) {
       const text = symbol.texts.map((entry: any) => entry.value).join("");
       if (text !== "") record.props.text = text;
     } else {
       for (const piece of pieces) {
-        if (piece.child !== undefined) record.children.push(convert(piece.child, id, undefined, [...path, symbol.children.indexOf(piece.child)]));
+        if (piece.child !== undefined) record.children.push(convert(piece.child, id, undefined, [...path, piece.childIndex]));
         else if (piece.text !== "") {
           const textId = nextId();
           const textProps: Record<string, unknown> = { text: piece.text };

@@ -271,7 +271,7 @@ export async function measureAll(sizes) {
   results.push(await measureHistory(1_000, sizes.length > 2 ? 2_000 : 300));
   if (sizes.length > 2) results.push(await measureHistory(10_000, 300));
   results.push(await measureImport(Math.min(20_000, sizes.at(-1))));
-  results.push(await measureWriteBack(250));
+  results.push(await measureWriteBack(1_000), await measureWriteBack(4_000));
   return { platform: platform(), results };
 }
 
