@@ -482,6 +482,10 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   const lockOverride = acquireLock(files.lock, lockRecord, options.breakStaleLock);
   try {
     unchanged();
+    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, replayed } = readVerifiedProject(projectDir, migrations);
+    // Repairs are written only once every check has passed, so an open refused as newer or
+    // corrupt leaves the project's files as it found them (#241), leftovers included.
+    unchanged();
     // An interrupted atomic write leaves an unreferenced temporary next to its target; the
     // target itself still holds the last durable content. Clear them under the lock.
     const staleTemporaryFiles = removeStaleTemporaries(projectDir, (target) => [PROJECT_FILES.manifest, PROJECT_FILES.snapshot, PROJECT_FILES.journal].includes(target))
@@ -489,9 +493,6 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       // A lock override renames the stale lock aside before reading it; a crash in between
       // leaves that renamed copy behind. The previous holder is already in the override record.
       + removeStaleFiles(projectDir, (name) => LEFTOVER_LOCK.test(name));
-    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, replayed } = readVerifiedProject(projectDir, migrations);
-    // Repairs are written only once every check has passed, so an open refused as newer or
-    // corrupt leaves the project's files as it found them.
     if (migratedFrom !== null) {
       unchanged();
       atomicWrite(files.manifest, canonicalJson(manifest), "manifest");
