@@ -28,7 +28,7 @@ Ninerr stores a project under `<root>/.ninerr`. This page describes:
 
 **Golden fixtures.**
 
-- `tests/fixtures/projects/v2-basic` is the golden project of this release, and this release must regenerate it byte for byte.
+- `tests/fixtures/projects/v2-basic` is the golden project of this release, and this release must regenerate it byte for byte. It is written as a crash leaves a project: the snapshot stands at tx-2 and the journal goes on past it, so opening it replays three entries of every kind. A clean close would have checkpointed at the journal's end (#239).
 - `tests/fixtures/projects/v1-basic` is the same history written before the rename. It is frozen as the legacy migration corpus.
 
 ## Versions
