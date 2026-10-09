@@ -417,11 +417,10 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
   if (classProp && classProp.literal.kind === "string") {
     symbol.classTokens = classProp.literal.value.split(/\s+/u).filter((entry) => entry !== "");
   }
+  // Each child pushed itself when it was parsed; pushing it again here counted every
+  // nested element twice against maxSymbols (#250).
   state.symbols.push(symbol);
-  for (const child of children) {
-    state.symbols.push(child);
-    state.relations.push({ from: id, to: child.id, kind: "renders" });
-  }
+  for (const child of children) state.relations.push({ from: id, to: child.id, kind: "renders" });
   return symbol;
 }
 
