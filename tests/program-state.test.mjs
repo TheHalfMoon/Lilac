@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
 // The program state before the rename (docs/evidence/PROGRAM_STATE_2026-10-09.md) must record
 // every P06, PC and P07 gate its master plan (docs/evidence/MASTER_PLAN_2026-10-09.md) defines,
