@@ -46,17 +46,18 @@ The desktop app redistributes Electron's official release archive, changed only 
 - each shipped archive's SHA-256, as the release publishes it;
 - the Electron version, with its git commit and tree, which carries Electron's patches to Chromium;
 - the Chromium version Electron pins, with Chromium's commit and tree;
-- the ffmpeg revision Chromium pins;
+- the ffmpeg revision Chromium pins, with Electron's patch to ffmpeg's build file;
 - the licenses.
 
 Git commit and tree ids are content addresses, so they identify the source exactly. Electron publishes no source archive, and no official Chromium source tarball exists for this Chromium release, so the record names repositories and commits.
 
 `node scripts/desktop/corresponding-source.mjs --check` resolves every link live and compares it with the record. The release workflow runs it before it builds anything. Packaging refuses a record that does not match the pinned runtime, and each package manifest names the record's SHA-256 and the commits it binds. The record ships in the bundle with the other provenance records.
 
-How a binary release offers this source to recipients is a release-gate decision. The choices are:
-- mirroring the source with the release;
-- a written offer in the project owner's name;
-- relying on the public repositories at the recorded commits.
+How a binary release offers this source to recipients is a release-gate decision. LGPL-2.1 section 6 permits two routes:
+- mirroring the source with the release, or offering it from the same place;
+- a written offer, valid for at least three years, in the project owner's name.
+
+Pointing at the public repositories at the recorded commits is not one of its methods, and would be a risk the owner accepts.
 
 It is recorded in `docs/evidence/N0_G7B_ELECTRON_SOURCE_2026-10-09.md`.
 

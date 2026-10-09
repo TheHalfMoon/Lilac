@@ -44,6 +44,8 @@ test("DEPS variables are read whether the value is on the same line or the next"
   assert.equal(depsVariable(deps, "chromium_version"), "152.0.7977.130");
   assert.equal(depsVariable(deps, "node_version"), "v24.21.0");
   assert.throws(() => depsVariable(deps, "ffmpeg_revision"), /DEPS has no ffmpeg_revision/u);
+  // A commented-out key is not the value.
+  assert.equal(depsVariable("  # 'ffmpeg_revision': 'old',\n  'ffmpeg_revision': 'new',", "ffmpeg_revision"), "new");
 });
 
 test("the record ships in the release bundle with the other provenance records", async () => {

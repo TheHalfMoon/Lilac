@@ -48,7 +48,7 @@ const gitilesFile = (url) => fetchText(`${url}?format=TEXT`).then((text) => Buff
 
 /** The DEPS variable `name` (a quoted string, possibly on the next line). */
 export function depsVariable(deps, name) {
-  const match = new RegExp(`'${name}':\\s*'([^']+)'`, "u").exec(deps);
+  const match = new RegExp(`^\\s*'${name}':\\s*'([^']+)'`, "mu").exec(deps);
   if (match === null) throw new Error(`DEPS has no ${name}`);
   return match[1];
 }
@@ -88,12 +88,12 @@ export async function resolveCorrespondingSource() {
     chromium: {
       version: chromiumVersion,
       source: { repository: CHROMIUM_REPOSITORY, tag: chromiumVersion, commit: chromium.commit, tree: chromium.tree },
-      patches: "Electron's patches to Chromium are in the Electron source at the commit above (patches/chromium).",
+      patches: "Electron's patches, in the Electron source at the commit above (patches/, applied per patches/config.json): patches/chromium to Chromium, and others to Chromium's third-party components (v8, skia, ffmpeg and more).",
     },
     components: [
       { name: "Blink (WebKit)", license: "LGPL-2.0+/LGPL-2.1+ and BSD", linkage: "statically linked into the Electron executable", source: "Chromium at the commit above, third_party/blink, with Electron's patches" },
-      { name: "ffmpeg", license: "LGPL-2.1+", linkage: "the separately linked libffmpeg, replaceable", source: { repository: FFMPEG_REPOSITORY, commit: ffmpegRevision, pinnedBy: "Chromium DEPS ffmpeg_revision" } },
-      { name: "Node.js", license: "MIT", linkage: "built into the Electron executable", source: { repository: "https://github.com/nodejs/node", tag: nodeVersion, pinnedBy: "Electron DEPS node_version" } },
+      { name: "ffmpeg", license: "LGPL-2.1+", linkage: "the separately linked libffmpeg, replaceable", source: { repository: FFMPEG_REPOSITORY, commit: ffmpegRevision, pinnedBy: "Chromium DEPS ffmpeg_revision", patches: "Electron's patches/ffmpeg at the Electron commit above (it changes the build file that installs libffmpeg), which is part of the corresponding source" } },
+      { name: "Node.js", license: "MIT", linkage: "built into the Electron executable", source: { repository: "https://github.com/nodejs/node", tag: nodeVersion, pinnedBy: "Electron DEPS node_version", patches: "Electron's patches/node at the Electron commit above" } },
     ],
     build: "Electron's documented source build (gclient sync of the Electron commit above, which checks out Chromium at its pinned version) reproduces the runtime; https://www.electronjs.org/docs/latest/development/build-instructions-gn",
   };

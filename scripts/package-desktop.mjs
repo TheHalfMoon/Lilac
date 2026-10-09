@@ -108,6 +108,11 @@ function outputFolder(args) {
 async function main() {
   const out = outputFolder(process.argv.slice(2));
   const target = currentTarget();
+  // The runtime's exact corresponding source (N0-G7b): a package is built only from a record
+  // that matches the pinned runtime, and names the record and the commits it binds.
+  const source = readRecord();
+  const sourceProblems = validateRecord(source);
+  if (sourceProblems.length > 0) throw new Error(`${RECORD_PATH}: ${sourceProblems.join("; ")}`);
   await fetchElectron(target, { log });
   const name = `Ninerr-${target}`;
   const staging = join(out, name);
@@ -167,11 +172,6 @@ async function main() {
   if (target.startsWith("darwin-")) run("codesign", ["--force", "--deep", "--sign", "-", join(staging, "Ninerr.app")]);
 
   const commit = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim() || null;
-  // The runtime's exact corresponding source (N0-G7b): a package is built only from a record
-  // that matches the pinned runtime, and names the record and the commits it binds.
-  const source = readRecord();
-  const sourceProblems = validateRecord(source);
-  if (sourceProblems.length > 0) throw new Error(`${RECORD_PATH}: ${sourceProblems.join("; ")}`);
   const manifest = {
     product: "Ninerr",
     target,
