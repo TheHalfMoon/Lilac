@@ -87,18 +87,21 @@ test("Ninerr killed mid-session recovers through the editor, with every committe
         revision = (await response.json()).revision;
       }
     })();
+    let settled = false;
+    burst.finally(() => { settled = true; });
     // Kill only once the host has confirmed part of the burst, so a slow runner cannot kill it
     // before the first edit lands; the rest of the burst is still in flight.
-    for (const deadline = Date.now() + 10_000; revision <= 4 && Date.now() < deadline;) await new Promise((resolve) => setTimeout(resolve, 10));
+    const deadline = Date.now() + 10_000;
+    while (revision <= 4 && !settled && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(await ninerr.kill(), "SIGKILL");
     await burst;
+    assert.ok(revision > 4, `some of the burst was committed (revision ${revision})`);
     attempts.push(...attemptsIn(ninerr.output.stderr), ...tab.foreign);
     assertOnlyLockedConflict(tab.errors, { killed: true });
     await tab.page.context().close();
     const journal = join(projects, "work", PROJECT_FILES.directory, "journal.log");
     const committed = readFileSync(journal, "utf8").trim().split("\n").length;
     appendFileSync(journal, '{"seq":999,"entry":{"transaction":{"id":"torn');
-    assert.ok(revision > 4, `some of the burst was committed (revision ${revision})`);
 
     ninerr = await startNinerr(projects);
     tab = await openTab(browser, ninerr.origin, ninerr.first);
