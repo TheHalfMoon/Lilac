@@ -2,6 +2,9 @@
 // host as the editor and an agent use it. Measurements only: the budgets are proposed from
 // them in docs/evidence, for the founder to accept at the P08 exit gate.
 //   node tests/support/scale.mjs [sizes, default 1000,10000,25000,50000] [--json <file>]
+// The full run also measures a crash after 2,000 edits on 1,000 layers and after 300 edits on
+// 10,000. "p95" is the nearest-rank 95th percentile: with 10 or 15 samples it is the largest,
+// with 30 the second largest.
 // prints a Markdown report; tests/scale-report.test.mjs runs the same workloads at CI size.
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -19,9 +22,10 @@ let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 10, 12, 0, 0) + clock++ * 1000).toISOString();
 
 const ms = (start) => Number(process.hrtime.bigint() - start) / 1e6;
+/** The nearest-rank quantile: the smallest sample with at least `q` of them at or below it. */
 const quantile = (values, q) => {
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+  return sorted[Math.max(0, Math.ceil(q * sorted.length) - 1)];
 };
 const timed = async (task) => {
   const start = process.hrtime.bigint();
@@ -166,17 +170,23 @@ export async function measureDeep(depth) {
 
 /** A host in a child process, so it can be killed outright. */
 async function startChild(projects) {
-  const child = spawn(process.execPath, [HOST_CHILD, projects], { stdio: ["ignore", "pipe", "pipe"] });
-  let out = "";
-  child.stdout.on("data", (chunk) => { out += chunk; });
-  for (let tries = 0; tries < 500 && !out.includes("\n"); tries += 1) await new Promise((resolve) => setTimeout(resolve, 20));
-  if (!out.includes("\n")) {
-    child.kill("SIGKILL");
-    throw new Error("the host printed no address");
-  }
-  const info = JSON.parse(out.split("\n")[0]);
+  // Its errors go to this process's stderr: a pipe nobody reads could fill and stall it.
+  const child = spawn(process.execPath, [HOST_CHILD, projects], { stdio: ["ignore", "pipe", "inherit"] });
   const exited = new Promise((resolve) => child.on("close", resolve));
-  return { child, call: client(info.url, info.token), kill: async () => { child.kill("SIGKILL"); await exited; } };
+  const kill = async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await exited;
+  };
+  try {
+    let out = "";
+    child.stdout.on("data", (chunk) => { out += chunk; });
+    for (let tries = 0; tries < 500 && !out.includes("\n") && child.exitCode === null; tries += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+    const info = JSON.parse(out.split("\n")[0]);
+    return { child, call: client(info.url, info.token), kill };
+  } catch (error) {
+    await kill();
+    throw new Error(`the host did not start: ${error.message}`);
+  }
 }
 
 /** A long history: `edits` one-operation edits on a `nodes`-layer project, then a crash and a reopen that replays them. */
@@ -220,7 +230,7 @@ export async function measureImport(nodes) {
   }
 }
 
-/** A source file near the 256 KiB limit: connect, scan, bring in, preview and write back. */
+/** A source file of `elements` paragraphs, within what code import accepts (#250): connect, scan, bring in, preview and write back. */
 export async function measureWriteBack(elements) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-scale-code-")));
   const projects = join(root, "projects");
@@ -250,15 +260,19 @@ export async function measureWriteBack(elements) {
   }
 }
 
+/** The platform the numbers were taken on. */
+export const platform = () => `${process.platform} ${process.arch}, ${cpus()[0]?.model ?? "unknown CPU"} × ${cpus().length}, Node ${process.versions.node}`;
+
 /** Every workload at the given flat sizes. */
 export async function measureAll(sizes) {
   const results = [];
   for (const nodes of sizes) results.push(await measureFlat(nodes));
   results.push(await measureDeep(1_000));
   results.push(await measureHistory(1_000, sizes.length > 2 ? 2_000 : 300));
+  if (sizes.length > 2) results.push(await measureHistory(10_000, 300));
   results.push(await measureImport(Math.min(20_000, sizes.at(-1))));
   results.push(await measureWriteBack(250));
-  return { platform: `${process.platform} ${process.arch}, ${cpus()[0]?.model ?? "unknown CPU"} × ${cpus().length}, Node ${process.versions.node}`, results };
+  return { platform: platform(), results };
 }
 
 /** The report as Markdown. */

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { markdown, measureDeep, measureFlat, measureHistory, measureImport, measureWriteBack } from "./support/scale.mjs";
+import { markdown, measureDeep, measureFlat, measureHistory, measureImport, measureWriteBack, platform } from "./support/scale.mjs";
 
 // P08-G4 (#230, founder section P08.4): large projects, measured through the studio host at CI
 // size, so every CI run reports what they cost on its platform (the full sizes run with
@@ -19,7 +19,7 @@ test("large projects through the host: measured and reported", { timeout: 600_00
   const imported = await measureImport(8_000);
   const writeBack = await measureWriteBack(250);
   results.push(flat1k, flat10k, deep, history, imported, writeBack);
-  t.diagnostic(`\n${markdown({ platform: `${process.platform} ${process.arch}, Node ${process.versions.node}`, results })}`);
+  t.diagnostic(`\n${markdown({ platform: platform(), results })}`);
 
   // Ceilings at about ten times the times measured on Windows (docs/evidence/P08_G4_SCALE_2026-10-10.md).
   assert.ok(flat1k.editMs.p95 < 500, `an edit on 1,000 layers: p95 ${flat1k.editMs.p95} ms`);
