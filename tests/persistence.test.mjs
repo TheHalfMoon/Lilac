@@ -209,14 +209,14 @@ test("a journal entry that does not apply is refused by its number (#251)", () =
   assert.equal(store.checkpoint().journalSeq, 1);
   store.close();
   // After a snapshot at entry 1, entries are still named by their own numbers.
-  const three = encodeJournalLine({ seq: 2, revision: 2, transaction: transaction("tx-3", 2, [{ type: "set-props", nodeId: "node-1", set: { title: "Three" } }]) }, one.digest);
-  const four = encodeJournalLine({ seq: 3, revision: 3, transaction: transaction("tx-4", 3, [{ type: "remove-node", nodeId: "missing" }]) }, three.digest);
-  appendFileSync(file(root, PROJECT_FILES.journal), three.line + four.line);
+  const second = encodeJournalLine({ seq: 2, revision: 2, transaction: transaction("tx-3", 2, [{ type: "set-props", nodeId: "node-1", set: { title: "Three" } }]) }, one.digest);
+  const third = encodeJournalLine({ seq: 3, revision: 3, transaction: transaction("tx-4", 3, [{ type: "remove-node", nodeId: "missing" }]) }, second.digest);
+  appendFileSync(file(root, PROJECT_FILES.journal), second.line + third.line);
   assert.throws(() => open(root), (error) => error instanceof PersistenceCorruptionError && /^journal entry 3 does not apply/u.test(error.message));
   // Entries that each apply but leave an invalid document are refused together.
   const orphan = [{ type: "restore-subtree", rootId: "r", parentId: null, index: 0, nodes: [{ id: "r", type: "frame" }, { id: "orphan", type: "frame" }] }];
-  const invalid = encodeJournalLine({ seq: 3, revision: 3, transaction: transaction("tx-5", 3, orphan) }, three.digest);
-  writeFileSync(file(root, PROJECT_FILES.journal), one.line + three.line + invalid.line);
+  const invalid = encodeJournalLine({ seq: 3, revision: 3, transaction: transaction("tx-5", 3, orphan) }, second.digest);
+  writeFileSync(file(root, PROJECT_FILES.journal), one.line + second.line + invalid.line);
   assert.throws(() => open(root), (error) => error instanceof PersistenceCorruptionError && /^journal entries 2 to 3 do not apply/u.test(error.message));
 }));
 
