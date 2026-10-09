@@ -14,7 +14,7 @@ A Ninerr release is a tagged commit together with its signed release files: the 
 **Local web mode** is the tagged source itself. Run it with Node 22.18 or later, and no network beyond loopback once the dependencies are installed:
 
 ```sh
-git clone --branch <tag> https://github.com/TheHalfMoon/Lilac.git && cd Lilac
+git clone --branch <tag> https://github.com/TheHalfMoon/Ninerr.git && cd Ninerr
 npm ci --ignore-scripts
 npm start
 ```
@@ -88,9 +88,9 @@ The attestations are stored with the repository and outlive the artifact. After 
 **A desktop archive** (or any other release file). Check that this repository's release workflow signed it, for that tag, then check it against `SHA256SUMS`:
 
 ```sh
-gh attestation verify Ninerr-linux-x64.tar.gz --repo TheHalfMoon/Lilac \
+gh attestation verify Ninerr-linux-x64.tar.gz --repo TheHalfMoon/Ninerr \
   --source-ref refs/tags/<tag> \
-  --signer-workflow TheHalfMoon/Lilac/.github/workflows/release.yml
+  --signer-workflow TheHalfMoon/Ninerr/.github/workflows/release.yml
 sha256sum --check --ignore-missing SHA256SUMS
 ```
 
@@ -104,9 +104,9 @@ The trust anchor is the attestation on `MANIFEST.json`. `--verify` only checks t
 2. Check that the manifest was signed by this repository's release workflow, for that tag:
 
    ```sh
-   gh attestation verify <bundle dir>/MANIFEST.json --repo TheHalfMoon/Lilac \
+   gh attestation verify <bundle dir>/MANIFEST.json --repo TheHalfMoon/Ninerr \
      --source-ref refs/tags/<tag> \
-     --signer-workflow TheHalfMoon/Lilac/.github/workflows/release.yml \
+     --signer-workflow TheHalfMoon/Ninerr/.github/workflows/release.yml \
      --source-digest "$(git rev-list -n1 <tag>)"
    ```
 3. Check that `sourceCommit` in `MANIFEST.json` is that same commit. Then check every file against the manifest:
