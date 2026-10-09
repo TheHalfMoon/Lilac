@@ -113,7 +113,7 @@ Exit criteria:
 
 Goal: preserve the useful shipped capabilities of the donor baseline while intentionally rejecting dead or service-bound assumptions.
 
-Use `docs/PARITY_MATRIX.md` as the canonical capability ledger (retired in N0-G8b: `docs/evidence/PARITY_MATRIX_2026-10-06.md`). Each row must end in one of:
+As planned then: use `docs/PARITY_MATRIX.md` as the canonical capability ledger. (Historical: N0-G8b retired it to `docs/evidence/PARITY_MATRIX_2026-10-06.md`, and the architecture catalog is the ledger now.) Each row must end in one of:
 - PARITY_PROVEN;
 - REPLACED_PROVEN;
 - INTENTIONALLY_DROPPED with rationale;

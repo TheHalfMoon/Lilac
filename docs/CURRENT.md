@@ -10,9 +10,9 @@ Status: **N0 ACTIVE.** Before N0, grains 1–9, P03, P04, the P05 slices, all 11
 
 ## Canonical main
 
-`6a6e2b7342cd42f4fa85b01b3bed467dcf92fe8c`
+`be0b0b5aa93a45ca11b7c3fb93483338df97d7b3`
 
-This is the normal merge commit for PR #217 (N0-G7b, the Electron runtime's corresponding source), the last N0 grain whose post-merge run was verified when this page was updated. Post-merge Foundation checks completed `SUCCESS` on that exact SHA (769/769 tests). The Desktop package runs for Linux x64, macOS arm64 and Windows x64 each succeeded, including the release-candidate journey. Later N0 grains record their own post-merge runs in their PRs.
+This is the normal merge commit for PR #218 (N0-G8a, the product documentation), the last N0 grain whose post-merge run was verified when this page was updated. Post-merge Foundation checks completed `SUCCESS` on that exact SHA (769/769 tests). The Desktop package runs for Linux x64, macOS arm64 and Windows x64 each succeeded, including the release-candidate journey. Later N0 grains record their own post-merge runs in their PRs.
 
 Before N0, the canonical main was `8b5a74f3c333811b7af70cc8b3bd91a10cad18db`, the merge of PR #184 (PC11b), which closed the PC Product Completion phase (umbrella #146) with 721/721 tests and an 18/18 journey on each platform.
 
