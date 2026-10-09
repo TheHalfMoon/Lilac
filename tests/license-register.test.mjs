@@ -158,13 +158,43 @@ test("Ninerr is declared Apache-2.0 only once every entry is resolved, and then 
   }
 });
 
+test("third-party text reproduced in the notices stays verbatim", () => {
+  // Each blockquote reproduces an upstream text: Impeccable's NOTICE.md at its pinned revision and
+  // Unreal Agent's MIT license. They are pinned so a later edit cannot weaken them silently.
+  const runs = [];
+  let current = null;
+  for (const line of read("THIRD_PARTY_NOTICES.md").split("\n")) {
+    if (line.startsWith(">")) {
+      if (current === null) runs.push((current = []));
+      current.push(line);
+    } else current = null;
+  }
+  const digests = runs.map((lines) => createHash("sha256").update(lines.join("\n")).digest("hex"));
+  assert.deepEqual(digests, [
+    "2b9acf6954f04950ccc09cde5346acc636fd9036855f26bd22436d0f3b3cea88",
+    "6e828a293093470fc7cc28767e36b38fdb671b3528f20892cde9d78b1f534042",
+  ]);
+});
+
 test("vendored third-party files match the register and are named in the notices", () => {
   const notices = read("THIRD_PARTY_NOTICES.md");
   for (const entry of register.entries) {
     for (const [path, digest] of Object.entries(entry.vendored ?? {})) {
       assert.equal(createHash("sha256").update(readFileSync(join(ROOT, path))).digest("hex"), digest, path);
     }
-    assert.ok(notices.includes(`\`${entry.id}`), `${entry.id} is named in THIRD_PARTY_NOTICES.md`);
+    // The notices carry what Ninerr owes: every category B entry, and the license notices of
+    // category A code donors whose concepts were ported into Ninerr's source (the 2026-10-03
+    // attestation keeps upstream license notices). A category A project nothing was copied
+    // from is recorded here and in provenance, not in the notices (N0-G7a3).
+    const owed = entry.category === "B" || entry.kind === "code-donor";
+    // An authorized project may still be named as the upstream of a category B dependency whose
+    // notice the file reproduces (the impeccable package names pbakaus/impeccable).
+    const upstreamOfDependency = register.entries.some((other) => other.category === "B" && other.kind === "dependency" && other.evidence.includes(`upstream ${entry.id}@`));
+    // Named exactly: `paper-design/paper` must not match `paper-design/paper-mono`.
+    const named = notices.includes(`\`${entry.id}\``) || notices.includes(`\`${entry.id}@`);
+    if (entry.notices === "THIRD_PARTY_NOTICES.md") assert.ok(named || upstreamOfDependency, `${entry.id} points at THIRD_PARTY_NOTICES.md, which names it`);
+    if (owed) assert.ok(named, `${entry.id} is named in THIRD_PARTY_NOTICES.md`);
+    else if (!upstreamOfDependency) assert.ok(!named, `${entry.id} is not named in THIRD_PARTY_NOTICES.md`);
   }
   // Every vendored skill directory is covered by a registered license file.
   for (const name of readdirSync(join(ROOT, ".claude", "skills"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name)) {
