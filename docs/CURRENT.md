@@ -33,7 +33,7 @@ This is the normal merge commit for PR #220, which fixed a race in the local run
 
 ## Canonical facts
 - Product: **Ninerr**, licensed under Apache-2.0. The repository is `TheHalfMoon/Lilac` until N0-G10 renames it.
-- Ninerr does not depend on Paper or on any donor's identity (`docs/evidence/N0_G6_COHERENCE_AUDIT_2026-10-09.md`). The audited register of every source is `docs/provenance/LICENSE_REGISTER.json`.
+- Ninerr does not depend on any donor product or any donor's identity (`docs/evidence/N0_G6_COHERENCE_AUDIT_2026-10-09.md`). The audited register of every source is `docs/provenance/LICENSE_REGISTER.json`.
 - The full suite fails some tests on Windows, which CI does not run (#192).
 
 ## The program before the rename
