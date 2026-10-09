@@ -84,12 +84,23 @@ export function settleWriteBacks(document: any, folder: string): { operations: u
 export class CodebaseLinks {
   readonly #path: string;
   #links: Record<string, string>;
+  /** Set when the links file was written by a newer Ninerr: it is read as empty and never written. */
+  readonly #newer: StudioError | null;
 
   constructor(projectsRoot: string) {
     this.#path = join(projectsRoot, ".ninerr-codebases.json");
     // The links file from before the rename (legacy.ts) is read when there is no Ninerr
     // file yet, and left as it was; the next change saves the Ninerr file.
-    this.#links = readLinks(registrySource(projectsRoot, ".ninerr-codebases.json", LEGACY_CODEBASE_LINKS_FILE).path);
+    const source = registrySource(projectsRoot, ".ninerr-codebases.json", LEGACY_CODEBASE_LINKS_FILE);
+    const read = readLinks(source.path);
+    this.#links = read.links;
+    // A legacy file is never written by a newer Ninerr, so a "newer" one is only ignored.
+    this.#newer = read.newer === null || source.legacy ? null : new StudioError(409, "codebases-newer", `the codebase links were saved by a newer version of Ninerr (links version ${read.newer}); they are left unchanged until that version is used`);
+  }
+
+  /** Why the links could not be used, or null. */
+  get problem(): string | null {
+    return this.#newer?.message ?? null;
   }
 
   get(project: string): string | null {
@@ -97,6 +108,8 @@ export class CodebaseLinks {
   }
 
   set(project: string, folder: string | null): void {
+    // A newer Ninerr's links are left as they are, so that version still finds them.
+    if (this.#newer !== null) throw this.#newer;
     const next = { ...this.#links };
     if (folder === null) delete next[project];
     else next[project] = folder;
@@ -104,7 +117,7 @@ export class CodebaseLinks {
     try {
       const fd = openSync(temporary, "wx", 0o600);
       try {
-        writeSync(fd, `${JSON.stringify({ version: 1, links: next }, null, 2)}\n`);
+        writeSync(fd, `${JSON.stringify({ version: LINKS_VERSION, links: next }, null, 2)}\n`);
         fsyncSync(fd);
       } finally {
         closeSync(fd);
@@ -119,22 +132,28 @@ export class CodebaseLinks {
   }
 }
 
-function readLinks(path: string): Record<string, string> {
+/** The links format this version writes; a newer one is refused and never changed. */
+const LINKS_VERSION = 1;
+
+function readLinks(path: string): { links: Record<string, string>; newer: number | null } {
+  const none = { links: {}, newer: null };
   let entry;
   try {
     entry = lstatSync(path);
   } catch {
-    return {};
+    return none;
   }
   // Only a small regular file this user owns, and no one else can write, is trusted.
-  if (!entry.isFile() || entry.size > 64 * 1024) return {};
-  if (typeof process.getuid === "function" && (entry.uid !== process.getuid() || (entry.mode & 0o022) !== 0)) return {};
+  if (!entry.isFile() || entry.size > 64 * 1024) return none;
+  if (typeof process.getuid === "function" && (entry.uid !== process.getuid() || (entry.mode & 0o022) !== 0)) return none;
   try {
-    const links = JSON.parse(readFileSync(path, "utf8"))?.links;
-    if (links === null || typeof links !== "object" || Array.isArray(links)) return {};
-    return Object.fromEntries(Object.entries(links).filter(([project, folder]) => typeof folder === "string" && isAbsolute(folder) && project.length <= 64));
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    if (Number.isInteger(parsed?.version) && parsed.version > LINKS_VERSION) return { links: {}, newer: parsed.version };
+    const links = parsed?.links;
+    if (links === null || typeof links !== "object" || Array.isArray(links)) return none;
+    return { links: Object.fromEntries(Object.entries(links).filter(([project, folder]) => typeof folder === "string" && isAbsolute(folder) && project.length <= 64)), newer: null };
   } catch {
-    return {};
+    return none;
   }
 }
 
