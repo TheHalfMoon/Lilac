@@ -180,8 +180,13 @@ test("lockfile shapes beyond today's are handled, and unsafe shapes fail closed"
     "node_modules/ok": pkg("MIT", { dependencies: { inner: "^1" } }),
     "node_modules/ok/node_modules/inner": { version: "1.0.0", license: "MIT", inBundle: true },
   } });
-  const workspaceEdges = Object.fromEntries(buildSbom(workspace, policy).dependencies.map((entry) => [entry.ref, entry.dependsOn]));
+  const workspaceSbom = buildSbom(workspace, policy);
+  const workspaceEdges = Object.fromEntries(workspaceSbom.dependencies.map((entry) => [entry.ref, entry.dependsOn]));
   assert.deepEqual(workspaceEdges["workspace:w"], ["pkg:npm/ok@1.0.0"]);
+  // A first-party package that declares no license is recorded as such, never guessed.
+  const undeclared = workspaceSbom.components.find((component) => component["bom-ref"] === "workspace:w");
+  assert.equal(undeclared.licenses, undefined);
+  assert.deepEqual(undeclared.properties, [{ name: "ninerr:first-party", value: "true" }, { name: "ninerr:license", value: "NOASSERTION" }]);
   assert.deepEqual(checkPolicy(workspace, policy, "`ok@1.0.0` `inner@1.0.0`", { nodeModules: join(ROOT, "no-such-dir") }), []);
   // inBundle does not excuse a missing hash at the top level, or under an unhashed parent.
   const claims = (packages) => checkPolicy(lockWith(packages), policy, "`x@1.0.0` `p@1.0.0`", { nodeModules: join(ROOT, "no-such-dir") }).join("\n");
