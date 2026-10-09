@@ -25,7 +25,7 @@ P08 tests complete end-to-end journeys repeatedly and adds property and state-ma
 
 `97f3a37218bbe14fbf4fff335136b6be87bb8692`
 
-This is the normal merge commit for PR #229, which made the agent registry and the codebase links refuse a newer version. It is the latest commit whose post-merge run was verified when this page was updated. Post-merge Foundation checks completed `SUCCESS` on that exact SHA (776/776 tests). A build-only release workflow run succeeded on `666632e`; #229 changes nothing on the release path. The Desktop package runs for Linux x64, macOS arm64 and Windows x64 each succeeded, including the release-candidate journey.
+This is the normal merge commit for PR #229, which made the agent registry and the codebase links refuse a newer version. It is the latest commit whose post-merge run was verified when this page was updated. Post-merge Foundation checks completed `SUCCESS` on that exact SHA (776/776 tests). A build-only release workflow run succeeded on `666632e`. #229 changes no file on the release path as `release.yml` defines it, and the Desktop run on `97f3a37` packaged and smoke-tested all three archives. The Desktop package runs for Linux x64, macOS arm64 and Windows x64 each succeeded, including the release-candidate journey.
 
 ## Before the v1 tag
 1. **License.** Resolved: Ninerr is Apache-2.0 (`LICENSE`), after the A/B source-rights audit (`docs/evidence/N0_G7A_LICENSE_2026-10-09.md`).
