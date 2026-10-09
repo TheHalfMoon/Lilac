@@ -84,7 +84,7 @@ Every other entry is category B: an independent third party whose own license ap
 - development tooling;
 - public repositories that were studied but are outside the authorized set.
 
-The set includes the public `paper-design/*` repositories. Each carries its own public license, and `docs/DONORS.md` does not treat them as the Paper product source. Reading the Paper.design authorization as covering them would claim a reach the attestation does not state. This reading is cautious, and only the founder can widen it. Today it changes nothing: they are reference-only, and nothing is copied from them.
+The set includes the other public `paper-design/*` repositories, that is every one except `paper-design/paper`, the Paper product monorepo, which is category A. Each carries its own public license, and `docs/DONORS.md` does not treat them as the Paper product source. Reading the Paper.design authorization as covering them would claim a reach the attestation does not state. This reading is cautious, and only the founder can widen it. Today it changes nothing: they are reference-only, and nothing is copied from them.
 
 The 2026-10-03 attestation also says it "does not replace upstream license/NOTICE preservation". The founder's 2026-10-08 permission to remove donor-facing material applies only "where covered by those authorizations". So a license or NOTICE file that ships with copied category A code is kept unless that rule is superseded explicitly. Today no category A source is vendored.
 
