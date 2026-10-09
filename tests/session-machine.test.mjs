@@ -78,12 +78,13 @@ function agentOperations(model, name, args, result) {
 }
 
 /** A generated agent tool call against the model's document. */
-function agentCall(prng, model) {
+function agentCall(prng, model, prefer) {
   const ids = Object.keys(model.doc.nodes);
+  const preferred = prefer.filter((id) => Object.hasOwn(model.doc.nodes, id));
   const leaves = ids.filter((id) => model.doc.nodes[id].children.length === 0);
-  const kinds = ids.length === 0 ? ["create_frame"] : ["create_frame", "set_text", "rename_layers", "set_styles", "move_layers", "duplicate_layers", "delete_layers"];
+  const kinds = ids.length === 0 ? ["create_frame"] : ["create_frame", "set_text", "rename_layers", "set_styles", "move_layers", "duplicate_layers", "delete_layers", "delete_layers"];
   const name = prng.pick(kinds);
-  const any = () => prng.pick(ids);
+  const any = () => (preferred.length > 0 && prng.next() < 0.5 ? prng.pick(preferred) : prng.pick(ids));
   switch (name) {
     case "create_frame":
       return { name, args: { name: `Agent ${prng.int(0, 999)}`, width: prng.int(10, 900), height: prng.int(10, 900) } };
@@ -115,6 +116,13 @@ async function runMachine(seed, root, pool) {
   const start = await ok(running.call("GET", "/api/document"), "document");
   const model = createModel(start.document, start.revision);
   const counter = { next: 0, prefix: "p" };
+  // What each actor changed last, so the other's next change often meets it.
+  const touched = { person: [], agent: [] };
+  const touch = (actor, ids) => {
+    touched[actor] = [...ids, ...touched[actor]].slice(0, 8);
+  };
+  // The agent's changes from before a reopen, which can no longer be reverted.
+  const lost = [];
   const tally = {};
   const count = (what) => {
     tally[what] = (tally[what] ?? 0) + 1;
@@ -131,13 +139,14 @@ async function runMachine(seed, root, pool) {
   };
 
   for (let step = 0; step < STEPS; step += 1) {
-    const roll = prng.next();
+    // With something to redo, the person often redoes it, after whatever the agent did meanwhile.
+    const roll = model.person.redo.length > 0 && prng.next() < 0.25 ? 0.45 : prng.next();
     let action;
-    if (roll < 0.28) {
+    if (roll < 0.24) {
       // The person edits.
       action = "edit";
       const { revision, document } = await ok(running.call("GET", "/api/document"), "document");
-      const edit = generatedEdit(prng, document, counter);
+      const edit = generatedEdit(prng, document, counter, touched.agent);
       const expected = applyOperations(model.doc, edit.operations);
       const result = await running.call("POST", "/api/edit", { baseRevision: revision, ...edit });
       assert.equal(result.status, expected === null ? 400 : 200, `${edit.intent}: ${JSON.stringify(result.json)}`);
@@ -148,8 +157,9 @@ async function runMachine(seed, root, pool) {
         model.revision += 1;
         push(model.person.undo, { transactionId: result.json.transactionId, operations: edit.operations, inverse: expected.inverse });
         model.person.redo = [];
+        touch("person", result.json.affectedNodeIds);
       }
-    } else if (roll < 0.44) {
+    } else if (roll < 0.40) {
       // The person undoes their last change, or finds another actor's change has made it inapplicable.
       action = "undo";
       const entry = model.person.undo.at(-1);
@@ -169,8 +179,9 @@ async function runMachine(seed, root, pool) {
         model.revision += 1;
         model.person.undo.pop();
         push(model.person.redo, entry);
+        touch("person", result.json.affectedNodeIds);
       }
-    } else if (roll < 0.53) {
+    } else if (roll < 0.52) {
       action = "redo";
       const entry = model.person.redo.at(-1);
       const expected = entry === undefined ? null : applyOperations(model.doc, entry.operations);
@@ -189,17 +200,19 @@ async function runMachine(seed, root, pool) {
         model.revision += 1;
         model.person.redo.pop();
         push(model.person.undo, { transactionId: result.json.transactionId, operations: entry.operations, inverse: expected.inverse });
+        touch("person", result.json.affectedNodeIds);
       }
     } else if (roll < 0.83) {
       // The agent calls a tool; a deletion waits for the person, who approves or declines it.
-      const { name, args } = agentCall(prng, model);
+      const { name, args } = agentCall(prng, model, touched.person);
       action = `agent ${name}`;
       let decision = null;
       const pending = agent.tool(name, args);
+      pending.catch(() => {}); // awaited below; a failed assertion first must not leave it unhandled
       if (name === "delete_layers") {
         decision = prng.next() < 0.7;
         let waiting = [];
-        for (let tries = 0; tries < 300 && waiting.length === 0; tries += 1) {
+        for (const deadline = Date.now() + 10_000; waiting.length === 0 && Date.now() < deadline;) {
           ({ pending: waiting } = await ok(running.call("GET", "/api/confirmations"), "confirmations"));
           if (waiting.length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
         }
@@ -216,9 +229,12 @@ async function runMachine(seed, root, pool) {
         const operations = result.isError ? null : agentOperations(model, name, args, result);
         const expected = operations === null ? null : applyOperations(model.doc, operations);
         if (result.isError) {
-          // Refused: the model must refuse what the tool would have done, too.
-          const would = name === "create_frame" || name === "duplicate_layers" ? null : applyOperations(model.doc, agentOperations(model, name, args, { structuredContent: {} }));
-          assert.equal(would, null, `${name} ${JSON.stringify(args)} was refused: ${result.content[0].text}`);
+          // Refused: the model must refuse what the tool would have done, too. The model
+          // accepts every frame and copy, and generates only moves that can be refused.
+          assert.ok(name !== "create_frame" && name !== "duplicate_layers", `${name} ${JSON.stringify(args)} was refused: ${result.content[0].text}`);
+          assert.equal(applyOperations(model.doc, agentOperations(model, name, args, { structuredContent: {} })), null, `${name} ${JSON.stringify(args)} was refused: ${result.content[0].text}`);
+          assert.equal(name, "move_layers", `only a move is refused: ${result.content[0].text}`);
+          assert.match(result.content[0].text, /subtree|index/u, "refused for the reason the model refuses it");
           count(`agent ${name} refused`);
         } else {
           assert.notEqual(expected, null, `${name} ${JSON.stringify(args)} was accepted, but the model refuses it`);
@@ -226,6 +242,7 @@ async function runMachine(seed, root, pool) {
           model.doc = expected.model;
           model.revision += 1;
           push(model.agent.undo, { transactionId: result.structuredContent.transactionId, operations, inverse: expected.inverse });
+          touch("agent", result.structuredContent.affectedNodeIds);
         }
       }
     } else if (roll < 0.91) {
@@ -252,7 +269,13 @@ async function runMachine(seed, root, pool) {
           model.agent.undo.pop();
           push(model.person.undo, { transactionId: result.json.transactionId, operations: latest.inverse, inverse: expected.inverse });
           model.person.redo = [];
+          touch("person", result.json.affectedNodeIds);
         }
+      } else if (lost.length > 0) {
+        // Nothing of the agent's in this session: one from before the reopen is refused (#231).
+        const refused = await running.call("POST", "/api/revert", { transactionId: prng.pick(lost) });
+        assert.deepEqual([refused.status, refused.json.error.code], [409, "not-revertible"]);
+        count("revert from before a reopen refused");
       } else {
         count("revert, nothing to revert");
       }
@@ -276,6 +299,7 @@ async function runMachine(seed, root, pool) {
       await ok(running.call("POST", "/api/projects/open", { name: "machine" }), "reopen");
       agent = mcpClient(running.host.mcpUrl, token);
       await agent.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "machine", version: "1" } });
+      lost.push(...model.agent.undo.map((entry) => entry.transactionId));
       model.person = { undo: [], redo: [] };
       model.agent = { undo: [] };
       count("reopen");
@@ -287,7 +311,8 @@ async function runMachine(seed, root, pool) {
 
 test("the session as a state machine: a person and an agent, undo, redo, revert, checkpoints and reopens agree with a reference model", async (t) => {
   const totals = {};
-  for (const seed of propertySeeds(RUNS)) {
+  const seeds = propertySeeds(RUNS);
+  for (const seed of seeds) {
     await t.test(`seed ${seed}`, async () => {
       const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-machine-")));
       const pool = hostPool(now);
@@ -302,8 +327,9 @@ test("the session as a state machine: a person and an agent, undo, redo, revert,
   }
   // The generated sessions reached the states that matter, not only the easy ones.
   t.diagnostic(`transitions: ${JSON.stringify(totals)}`);
-  if (RUNS >= 4 && STEPS >= 120) {
-    for (const what of ["edit", "edit refused", "undo", "redo", "agent create_frame", "agent delete_layers", "agent deletion declined", "revert", "reopen", "checkpoint"]) {
+  // Only for a full run, not a replayed seed.
+  if (seeds.length >= 4 && STEPS >= 120) {
+    for (const what of ["edit", "edit refused", "undo", "undo conflict", "redo", "redo conflict", "agent create_frame", "agent move_layers refused", "agent delete_layers", "agent deletion declined", "revert", "revert conflict", "revert of an earlier change refused", "revert from before a reopen refused", "stale edit refused", "reopen", "checkpoint"]) {
       assert.ok((totals[what] ?? 0) > 0, `the sessions include at least one ${what}`);
     }
   }

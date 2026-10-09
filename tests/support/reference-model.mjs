@@ -105,8 +105,12 @@ function applyOne(model, operation) {
   }
 }
 
-/** A generated edit against `document`: insert, rename, unname, retext, restyle, move or remove. */
-export function generatedEdit(prng, document, counter) {
+/**
+ * A generated edit against `document`: insert, rename, unname, retext, restyle, move or remove.
+ * Half the time it targets one of `prefer` that still exists (for example what another actor
+ * just changed), so actors' changes meet.
+ */
+export function generatedEdit(prng, document, counter, prefer = []) {
   const ids = Object.keys(document.nodes);
   const kind = ids.length < 3 ? "insert" : prng.pick(["insert", "insert", "rename", "unname", "text", "style", "move", "remove"]);
   const anyParent = () => (ids.length === 0 || prng.next() < 0.3 ? null : prng.pick(ids));
@@ -117,7 +121,8 @@ export function generatedEdit(prng, document, counter) {
       : { id, type: "text", props: { name: `Text ${id}`, tag: prng.pick(["p", "h1", "span"]), text: prng.pick(["Hello", "Prix: 12 €", "مرحبا", "שלום", "é", "😀 ok", ""]) } };
     return { intent: `Insert ${id}`, operations: [{ type: "insert-node", node, parentId: anyParent(), index: prng.pick([undefined, 0, 99]) }] };
   }
-  const nodeId = prng.pick(ids);
+  const preferred = prefer.filter((id) => Object.hasOwn(document.nodes, id));
+  const nodeId = preferred.length > 0 && prng.next() < 0.5 ? prng.pick(preferred) : prng.pick(ids);
   if (kind === "rename") return { intent: `Rename ${nodeId}`, operations: [{ type: "set-props", nodeId, set: { name: `Renamed ${prng.int(0, 999)}` } }] };
   if (kind === "unname") return { intent: `Unname ${nodeId}`, operations: [{ type: "set-props", nodeId, set: {}, unset: ["name"] }] };
   if (kind === "text") return { intent: `Text ${nodeId}`, operations: [{ type: "set-props", nodeId, set: { text: prng.pick(["One", "Two\nlines", "‮bidi", "  spaced  "]) } }] };
