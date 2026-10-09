@@ -430,13 +430,15 @@ test("local process stop waits for an owned child that exited before stop to fin
     },
   }, { stopTimeoutMs: 3000, pollMs: 5 });
   try {
-    assert.equal((await adapter.launch({
+    // The child exits 25 ms after it starts, so on a loaded machine launch can already see it
+    // gone. Either report is true; what this test proves is that stop then waits for the close.
+    assert.ok(["alive", "dead"].includes((await adapter.launch({
       taskId: "task-self-exit",
       runtimeProfileId: "once",
       worktreePath: root,
       endpoint,
       supervisorGenerationId: "generation-a",
-    })).state, "alive");
+    })).state));
     let observed = await adapter.inspect(endpoint);
     for (let index = 0; index < 200 && observed.state === "alive"; index += 1) {
       await new Promise((resolve) => setTimeout(resolve, 5));
