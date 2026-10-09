@@ -8,15 +8,16 @@ import { fileURLToPath } from "node:url";
 
 import { parseDocument, serializeDocument, validateDocument } from "../packages/document-model/src/index.mjs";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
-import { startStudioHost } from "../packages/studio-host/src/index.ts";
 import { createPrng, propertySeeds } from "./support/prng.mjs";
+import { client, hostPool, mcpClient, ok } from "./support/host-api.mjs";
+import { applyOperations, generatedEdit, shape } from "./support/reference-model.mjs";
 
 // P08-G1 (#230): the five end-to-end journeys of the founder's P08.1, each run once per seed
 // with generated content, through the studio host's own API, as the editor and an MCP agent
 // use it. "Exact state" is the canonical serialization of the document together with every
 // file of the project's store but the lock: after a close and a reopen in a new host, it must
 // be byte-identical. The generated sessions (journeys A and E) also keep a reference model
-// written in this file, sharing no code with the host, so a change the host dropped, altered or
+// (tests/support/reference-model.mjs), sharing no code with the host, so a change the host dropped, altered or
 // wrongly refused cannot pass. The
 // history panel lists only the changes since the project was opened (#231), so it is not part
 // of the persisted state. Each seed is its own subtest; replay one with
@@ -29,48 +30,6 @@ const HOST_CHILD = fileURLToPath(new URL("./support/host-child.mjs", import.meta
 let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 9, 12, 0, 0) + clock++ * 1000).toISOString();
 const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), "ninerr-journey-")));
-
-function client(base, token) {
-  return async (method, path, body) => {
-    const response = await fetch(`${base}${path}`, {
-      method,
-      headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { "content-type": "application/json" }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const json = await response.json().catch(() => null);
-    return { status: response.status, json };
-  };
-}
-
-function mcpClient(mcpUrl, token) {
-  let id = 0;
-  const rpc = async (method, params) => {
-    const response = await fetch(mcpUrl, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) });
-    return (await response.json()).result;
-  };
-  return { rpc, tool: (name, args) => rpc("tools/call", { name, arguments: args }) };
-}
-
-/** Every host a seed starts, so its `finally` closes them all, whatever failed. */
-function hostPool() {
-  const hosts = [];
-  return {
-    async open(root) {
-      const host = await startStudioHost({ projectsRoot: root, now });
-      hosts.push(host);
-      return { host, call: client(host.url, host.token) };
-    },
-    async closeAll() {
-      for (const host of hosts.splice(0)) await host.close().catch(() => {});
-    },
-  };
-}
-
-async function ok(promise, what) {
-  const result = await promise;
-  assert.equal(result.status, 200, `${what}: ${JSON.stringify(result.json)}`);
-  return result.json;
-}
 
 const content = (document) => serializeDocument({ ...document, revision: 0 });
 
@@ -93,79 +52,6 @@ async function reopen(pool, running, root, project) {
   await running.host.close();
   const next = await pool.open(root);
   await ok(next.call("POST", "/api/projects/open", { name: project }), "reopen");
-  return next;
-}
-
-/** A generated edit against the current document: insert, rename, retext, restyle, move or remove. */
-function generatedEdit(prng, document, counter) {
-  const ids = Object.keys(document.nodes);
-  const kind = ids.length < 3 ? "insert" : prng.pick(["insert", "insert", "rename", "text", "style", "move", "remove"]);
-  const anyParent = () => (ids.length === 0 || prng.next() < 0.3 ? null : prng.pick(ids));
-  if (kind === "insert") {
-    const id = `n${counter.next++}`;
-    const node = prng.next() < 0.5
-      ? { id, type: "frame", props: { name: `Frame ${id}`, tag: "div", style: { width: `${prng.int(10, 400)}px` } } }
-      : { id, type: "text", props: { name: `Text ${id}`, tag: prng.pick(["p", "h1", "span"]), text: prng.pick(["Hello", "Prix: 12 €", "مرحبا", "שלום", "é", "😀 ok", ""]) } };
-    return { intent: `Insert ${id}`, operations: [{ type: "insert-node", node, parentId: anyParent(), index: prng.pick([undefined, 0, 99]) }] };
-  }
-  const nodeId = prng.pick(ids);
-  if (kind === "rename") return { intent: `Rename ${nodeId}`, operations: [{ type: "set-props", nodeId, set: { name: `Renamed ${prng.int(0, 999)}` } }] };
-  if (kind === "text") return { intent: `Text ${nodeId}`, operations: [{ type: "set-props", nodeId, set: { text: prng.pick(["One", "Two\nlines", "‮bidi", "  spaced  "]) } }] };
-  if (kind === "style") return { intent: `Style ${nodeId}`, operations: [{ type: "set-props", nodeId, set: { style: { color: prng.pick(["#112233", "red", "rgb(1, 2, 3)"]), padding: `${prng.int(0, 32)}px` } } }] };
-  if (kind === "move") return { intent: `Move ${nodeId}`, operations: [{ type: "move-node", nodeId, parentId: anyParent(), index: prng.pick([undefined, 0, 1]) }] };
-  return { intent: `Remove ${nodeId}`, operations: [{ type: "remove-node", nodeId }] };
-}
-
-/** The tree and props of a document: what the reference model below tracks. */
-const shape = (document) => ({
-  rootIds: [...document.rootIds],
-  nodes: Object.fromEntries(Object.entries(document.nodes).map(([id, node]) => [id, { type: node.type, parentId: node.parentId, children: [...node.children], props: structuredClone(node.props) }])),
-});
-
-/**
- * A reference model of the generated operations, written here from their documented meaning
- * and sharing no code with the host (which applies edits with @ninerr/history). It returns the
- * next shape, or null for an edit the host must refuse: a move into the node's own subtree, or
- * an index past the end of the siblings.
- */
-function modelApply(current, operations) {
-  const next = structuredClone(current);
-  const siblings = (parentId) => (parentId === null ? next.rootIds : next.nodes[parentId].children);
-  const place = (id, parentId, index) => {
-    const list = siblings(parentId);
-    const at = index ?? list.length;
-    if (at > list.length) return false;
-    list.splice(at, 0, id);
-    next.nodes[id].parentId = parentId;
-    return true;
-  };
-  const unlink = (id) => {
-    const list = siblings(next.nodes[id].parentId);
-    list.splice(list.indexOf(id), 1);
-  };
-  for (const operation of operations) {
-    if (operation.type === "insert-node") {
-      const { id, type, props } = operation.node;
-      next.nodes[id] = { type, parentId: null, children: [], props: structuredClone(props) };
-      if (!place(id, operation.parentId ?? null, operation.index)) return null;
-    } else if (operation.type === "set-props") {
-      Object.assign(next.nodes[operation.nodeId].props, structuredClone(operation.set));
-    } else if (operation.type === "move-node") {
-      const target = operation.parentId ?? null;
-      for (let at = target; at !== null; at = next.nodes[at].parentId) if (at === operation.nodeId) return null;
-      unlink(operation.nodeId);
-      if (!place(operation.nodeId, target, operation.index)) return null;
-    } else if (operation.type === "remove-node") {
-      unlink(operation.nodeId);
-      const drop = (id) => {
-        for (const child of next.nodes[id].children) drop(child);
-        delete next.nodes[id];
-      };
-      drop(operation.nodeId);
-    } else {
-      throw new Error(`the model has no ${operation.type}`);
-    }
-  }
   return next;
 }
 
@@ -198,7 +84,7 @@ async function generatedSession(call, prng, steps) {
     const { revision, document } = await ok(call("GET", "/api/document"), "document");
     assert.deepEqual(shape(document), tally.model, "the host's document has the reference model's shape before each edit");
     const edit = generatedEdit(prng, document, counter);
-    const expected = modelApply(tally.model, edit.operations);
+    const expected = applyOperations(tally.model, edit.operations)?.model ?? null;
     const result = await call("POST", "/api/edit", { baseRevision: revision, ...edit });
     assert.equal(result.status, expected === null ? 400 : 200, `${edit.intent}: ${JSON.stringify(result.json)}`);
     if (expected === null) {
@@ -220,7 +106,7 @@ function perSeed(name, journey) {
     for (const seed of propertySeeds(RUNS)) {
       await t.test(`seed ${seed}`, async () => {
         const root = scratch();
-        const pool = hostPool();
+        const pool = hostPool(now);
         try {
           await journey({ seed, prng: createPrng(seed), root, pool });
         } finally {
