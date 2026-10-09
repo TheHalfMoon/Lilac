@@ -1,8 +1,14 @@
-# Ninerr Target Architecture
+# Ninerr Architecture
 
-This document defines the target boundaries. The packages in this repository do not follow the tree below one for one; the architecture catalog in `packages/architecture` names each subsystem's actual owner and records which subsystems are implemented, which are stubs (a delivered slice with planned work), and which are planned.
+This document defines Ninerr's architectural boundaries.
 
-## Product surfaces
+## Packages today
+
+The repository has 26 packages under `packages/`: `agent-events`, `agent-runtime`, `agent-supervisor`, `agent-workspace`, `architecture`, `canvas`, `code-ir`, `collaboration`, `decision-assurance`, `decision-router`, `delivery-governance`, `design-assurance`, `design-components`, `design-method`, `desktop`, `document-model`, `history`, `import-stack`, `intake`, `mcp-protocol`, `network-policy`, `persistence`, `renderer`, `studio-host`, `studio-web`, `visual-git`. `README.md` groups them by role.
+
+## Target layout
+
+The packages do not follow the target tree below one for one; the architecture catalog in `packages/architecture` names each subsystem's actual owner and records which subsystems are implemented, which are stubs (a delivered slice with planned work), and which are planned.
 
 ```text
 apps/
@@ -118,7 +124,7 @@ Required controls:
 
 Persistence is adapter-based.
 
-Local mode should support durable, zero-service project storage. Desktop may use a local database/filesystem; browser mode may use browser-native durable storage. Collaboration may add an optional server database, but local editing must not depend on it.
+Local mode stores each project as files in its folder, with no service (`docs/MIGRATION.md`). A server database for collaboration would be optional, and local editing must not depend on it.
 
 Document files include:
 - schema version;
@@ -130,7 +136,7 @@ Document files include:
 
 ## Collaboration
 
-Do not choose a CRDT library until the donor baseline is inspected. The contract must support:
+`packages/collaboration` has no CRDT library yet. Whatever transport is chosen must support:
 - concurrent node edits;
 - presence/cursors;
 - offline queue/reconnect;
@@ -140,20 +146,19 @@ Do not choose a CRDT library until the donor baseline is inspected. The contract
 
 ## Studio host
 
-The PC phase adds one Node studio host (`@ninerr/studio-host`). It composes persistence, history, collaboration and network-policy, and is the single writer of an open project. It serves the editor and a loopback-only API (127.0.0.1, a per-launch token, Host and Origin checks), and it hosts the MCP endpoint and its stdio relay. Hosting MCP here keeps the persistence single-writer lock intact.
+Ninerr has one Node studio host (`@ninerr/studio-host`). It composes persistence, history, collaboration and network-policy, and is the single writer of an open project. It serves the editor and a loopback-only API (127.0.0.1, a per-launch token, Host and Origin checks), and it hosts the MCP endpoint and its stdio relay. Hosting MCP here keeps the persistence single-writer lock intact.
 
 Local web mode runs the host directly. The desktop shell starts the same host and owns its lifecycle, which is how the shell's "local MCP lifecycle" below is met.
 
 ## Desktop boundary
 
-The desktop shell owns privileged operations:
-- local filesystem/repository access;
-- local MCP lifecycle;
-- browser/webview bridge;
-- local fonts;
-- secure credential storage;
-- native menus/shortcuts;
-- update mechanism.
+The desktop shell owns privileged operations. Today it owns:
+- local filesystem and repository access, through the studio host it starts;
+- the local MCP lifecycle;
+- the bridge between the window and the host;
+- native menus and their shortcuts.
+
+Planned: local fonts, secure credential storage and an update mechanism.
 
 Web content must not receive unrestricted native capabilities.
 
@@ -170,12 +175,12 @@ Every crossing requires an explicit interface and capability decision. Imported 
 
 ## Architecture acceptance tests
 
-- deterministic serialization fixture;
-- 10,000-node edit/render benchmark;
-- undo/redo transaction property test;
-- malicious import fixture suite;
-- design → code → design round-trip fixtures;
-- agent transaction attribution test;
-- offline persistence/recovery test;
-- source patch non-interference test;
-- collaboration convergence test once collaboration implementation is selected.
+- deterministic serialization (`tests/document-serialization.test.mjs`);
+- the 10,000-node edit and render budget (`tests/editor-performance.test.mjs`, `tests/performance-budgets.test.mjs`);
+- undo and redo transaction properties (`tests/history-properties.test.mjs`);
+- the malicious import corpus (`tests/malicious-corpus.test.mjs`);
+- design to code to design round trips (`tests/code-ir.test.mjs`, `tests/code-workflow.test.mjs`);
+- agent transaction attribution (`tests/mcp-server.test.mjs`);
+- offline persistence and recovery (`tests/crash-recovery.test.mjs`, `tests/offline-guarantee.test.mjs`);
+- source patch non-interference (`tests/codebase.test.mjs`);
+- a collaboration convergence test, once a collaboration transport is chosen.

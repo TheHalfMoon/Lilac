@@ -127,16 +127,16 @@
     {
       "id": "provenance-history",
       "category": "IMMUTABLE_HISTORICAL_FACT",
-      "path": "^(docs/DONOR_DEEP_STUDY_2026-10-03\\.md|docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03\\.md|docs/provenance/PAPER_AUTHORIZATION\\.md|docs/provenance/RETIRED_PAPER_RECORDS\\.md)$",
+      "path": "^(docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03\\.md|docs/provenance/PAPER_AUTHORIZATION\\.md|docs/provenance/RETIRED_PAPER_RECORDS\\.md)$",
       "terms": [
         "lilac"
       ],
-      "reason": "Dated provenance and the owner's authorization records name the project as it was when they were made."
+      "reason": "The owner's authorization records name the project as it was when they were made."
     },
     {
       "id": "donor-provenance-records",
       "category": "IMMUTABLE_HISTORICAL_FACT",
-      "path": "^(docs/DONORS\\.md|docs/DONOR_INTEGRATION_MAP\\.md|docs/DONOR_DEEP_STUDY_2026-10-03\\.md|docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03\\.md|docs/provenance/FOUNDER_AUTHORIZATION_2026-10-08\\.md|docs/provenance/PAPER_AUTHORIZATION\\.md|docs/provenance/RETIRED_PAPER_RECORDS\\.md|packages/agent-supervisor/NOTICE\\.md|packages/(collaboration|decision-router|delivery-governance|design-method|import-stack)/src/provenance\\.ts)$",
+      "path": "^(docs/DONORS\\.md|docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03\\.md|docs/provenance/FOUNDER_AUTHORIZATION_2026-10-08\\.md|docs/provenance/PAPER_AUTHORIZATION\\.md|docs/provenance/RETIRED_PAPER_RECORDS\\.md|packages/agent-supervisor/NOTICE\\.md|packages/(collaboration|decision-router|delivery-governance|design-method|import-stack)/src/provenance\\.ts)$",
       "reason": "Provenance ledgers and per-package provenance records name the sources studied or adapted (N0-G5, N0-G7). They name Ninerr itself as Ninerr.",
       "terms": [
         "firstmate",

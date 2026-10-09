@@ -1,7 +1,7 @@
 {
   "schema": "identity-census-summary/1",
-  "filesScanned": 532,
-  "filesWithFindings": 141,
+  "filesScanned": 533,
+  "filesWithFindings": 142,
   "gatedFindings": 0,
   "byCategory": {
     "ACTIVE_PRODUCT_IDENTITY": 0,
@@ -11,15 +11,15 @@
     "LEGACY_COMPATIBILITY": 66,
     "TEST_FIXTURE": 0,
     "THIRD_PARTY_INDEPENDENT_OBLIGATION": 254,
-    "IMMUTABLE_HISTORICAL_FACT": 973,
+    "IMMUTABLE_HISTORICAL_FACT": 977,
     "REMOVE_ENTIRELY": 0
   },
   "byTerm": {
     "lilac": 479,
-    "paper": 228,
+    "paper": 231,
     "firstmate": 32,
     "no-mistakes": 23,
-    "doop": 30,
+    "doop": 31,
     "classifier-dev": 23,
     "jev-search": 10,
     "unreal-agent": 31,
@@ -32,8 +32,8 @@
     "ui-tars": 31
   },
   "byRule": {
-    "dated-evidence": 657,
-    "donor-provenance-records": 221,
+    "dated-evidence": 797,
+    "donor-provenance-records": 122,
     "independent-runtime-docling": 93,
     "independent-runtime-impeccable": 82,
     "independent-runtime-tests": 13,
@@ -47,7 +47,7 @@
     "provenance-agent-supervisor-firstmate": 2,
     "provenance-agent-supervisor-readme-firstmate": 1,
     "provenance-design-method-appllama": 1,
-    "provenance-history": 42,
+    "provenance-history": 5,
     "provenance-import-stack-firecrawl": 1,
     "provenance-test-agent-events": 2,
     "provenance-test-agent-runtime": 2,
@@ -61,5 +61,5 @@
     "public-env": 1,
     "third-party-notices": 66
   },
-  "censusSha256": "06b2a831fa57d5ca33a1c8709de9b82230f7e2ca6da84b040d95167e9e4a7ec0"
+  "censusSha256": "daed56b15e9880dd5079f6bc2be27ac31dd9185cd041d57ce98a20629e3484f1"
 }
