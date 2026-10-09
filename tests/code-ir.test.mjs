@@ -207,13 +207,14 @@ test("bounds and malformed inputs fail closed", () => {
   // Every token is at least one character, so the token budget covers any source the size limit lets through.
   assert.ok(CODE_IR_HARD_LIMITS.maxTokens >= CODE_IR_HARD_LIMITS.maxSourceBytes);
   assert.throws(() => parseJsxFile("E.jsx", "<div>" + "b".repeat(5000) + "</div>"), /exceeds 4096/u);
+  assert.equal(Object.keys(buildCodeIr([{ path: "E.jsx", content: "<i />".repeat(CODE_IR_HARD_LIMITS.maxSymbols) }]).symbols).length, CODE_IR_HARD_LIMITS.maxSymbols);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<i />".repeat(CODE_IR_HARD_LIMITS.maxSymbols + 1) }]), /maxSymbols/u);
   // Nested elements count once against maxSymbols (#250): 1,600 cards of three elements each.
   const cards = Array.from({ length: 1600 }, (_, index) => `<section><h2>Card ${index}</h2><p>Text ${index}</p></section>`).join("");
   assert.equal(Object.keys(buildCodeIr([{ path: "E.jsx", content: `<main>${cards}</main>` }]).symbols).length, 4801);
   const wide = (children) => `<ul>${"<li />".repeat(children)}</ul>`;
   assert.equal(Object.keys(buildCodeIr([{ path: "E.jsx", content: wide(CODE_IR_HARD_LIMITS.maxChildrenPerSymbol) }]).symbols).length, CODE_IR_HARD_LIMITS.maxChildrenPerSymbol + 1);
-  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: wide(CODE_IR_HARD_LIMITS.maxChildrenPerSymbol + 1) }]), /maxChildrenPerSymbol|no supported elements/u);
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: wide(CODE_IR_HARD_LIMITS.maxChildrenPerSymbol + 1) }]), /maxChildrenPerSymbol/u);
   const hugeNumber = "<div n={" + "9".repeat(400) + "} />";
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: hugeNumber }]), /finite|no supported elements/u);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: '<div a="1" a="2" />' }]), /duplicate props/u);

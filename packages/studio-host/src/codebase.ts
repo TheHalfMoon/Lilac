@@ -396,8 +396,8 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
   } catch (error) {
     throw new StudioError(409, "source-unreadable", `${file} can no longer be read as code: ${error instanceof Error ? error.message.slice(0, 200) : "unreadable"}`);
   }
-  const symbols = Object.values(ir.symbols) as any[];
-  const definition = symbols.find((symbol) => symbol.kind === "component" && symbol.name === component && symbol.children.length > 0 && ir.rootIds.includes(symbol.children[0]));
+  const roots = new Set(ir.rootIds);
+  const definition = (Object.values(ir.symbols) as any[]).find((symbol) => symbol.kind === "component" && symbol.name === component && symbol.children.length > 0 && roots.has(symbol.children[0]));
   if (!definition) throw new StudioError(409, "component-gone", `${component} is no longer an exported component of ${file}`);
   const symbolAt = (path: string) => {
     let symbol = ir.symbols[definition.children[0]];
@@ -614,7 +614,8 @@ function readBackFailures(file: string, content: string, component: string, chec
   } catch {
     return checks.map((check) => `${check.nodeId}:${check.field}`);
   }
-  const definition = (Object.values(ir.symbols) as any[]).find((symbol) => symbol.kind === "component" && symbol.name === component && symbol.children.length > 0 && ir.rootIds.includes(symbol.children[0]));
+  const roots = new Set(ir.rootIds);
+  const definition = (Object.values(ir.symbols) as any[]).find((symbol) => symbol.kind === "component" && symbol.name === component && symbol.children.length > 0 && roots.has(symbol.children[0]));
   if (!definition || ir.unsupported.length > 0) return checks.map((check) => `${check.nodeId}:${check.field}`);
   const at = (path: string) => {
     let symbol = ir.symbols[definition.children[0]];
