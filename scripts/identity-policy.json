@@ -60,13 +60,19 @@
       "id": "legacy-project-fixture",
       "category": "LEGACY_COMPATIBILITY",
       "path": "^tests/fixtures/projects/v1-[a-z0-9-]+/\\.lilac/",
-      "reason": "Golden projects in the legacy format: the migration corpus that proves old projects still open."
+      "reason": "Golden projects in the legacy format: the migration corpus that proves old projects still open.",
+      "terms": [
+        "lilac"
+      ]
     },
     {
       "id": "legacy-identity-readers",
       "category": "LEGACY_COMPATIBILITY",
       "path": "^(packages/persistence/src/legacy\\.ts|packages/studio-host/src/legacy\\.ts|tests/legacy-(migration|host)\\.test\\.mjs)$",
-      "reason": "The one module per package that recognizes pre-rename identity (read only, never written), and the tests that prove it (N0-G2)."
+      "reason": "The one module per package that recognizes pre-rename identity (read only, never written), and the tests that prove it (N0-G2).",
+      "terms": [
+        "lilac"
+      ]
     },
     {
       "id": "third-party-notices",
@@ -130,7 +136,7 @@
     {
       "id": "donor-provenance-records",
       "category": "IMMUTABLE_HISTORICAL_FACT",
-      "path": "^(packages/[a-z-]+/src/provenance\\.(ts|mjs)|packages/agent-supervisor/NOTICE\\.md|docs/DONORS\\.md|docs/DONOR_INTEGRATION_MAP\\.md|docs/DONOR_DEEP_STUDY_2026-10-03\\.md|docs/provenance/[A-Za-z0-9_.-]+)$",
+      "path": "^(docs/DONORS\\.md|docs/DONOR_INTEGRATION_MAP\\.md|docs/DONOR_DEEP_STUDY_2026-10-03\\.md|docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03\\.md|docs/provenance/FOUNDER_AUTHORIZATION_2026-10-08\\.md|docs/provenance/PAPER_AUTHORIZATION\\.md|docs/provenance/RETIRED_PAPER_RECORDS\\.md|packages/agent-supervisor/NOTICE\\.md|packages/(collaboration|decision-router|delivery-governance|design-method|import-stack)/src/provenance\\.ts)$",
       "reason": "Provenance ledgers and per-package provenance records name the sources studied or adapted (N0-G5, N0-G7). They name Ninerr itself as Ninerr.",
       "terms": [
         "firstmate",
@@ -152,7 +158,7 @@
     {
       "id": "provenance-agent-events-ui-tars",
       "category": "IMMUTABLE_HISTORICAL_FACT",
-      "path": "^packages/agent-events/src/index.ts$",
+      "path": "^packages/agent-events/src/index\\.ts$",
       "terms": [
         "ui-tars"
       ],
@@ -161,7 +167,7 @@
     {
       "id": "provenance-agent-runtime-unreal-agent",
       "category": "IMMUTABLE_HISTORICAL_FACT",
-      "path": "^packages/agent-runtime/src/operation.ts$",
+      "path": "^packages/agent-runtime/src/operation\\.ts$",
       "terms": [
         "unreal-agent"
       ],
@@ -170,7 +176,7 @@
     {
       "id": "provenance-agent-supervisor-firstmate",
       "category": "IMMUTABLE_HISTORICAL_FACT",
-      "path": "^packages/agent-supervisor/src/index.ts$",
+      "path": "^packages/agent-supervisor/src/index\\.ts$",
       "terms": [
         "firstmate"
       ],
@@ -179,7 +185,7 @@
     {
       "id": "provenance-agent-supervisor-readme-firstmate",
       "category": "IMMUTABLE_HISTORICAL_FACT",
-      "path": "^packages/agent-supervisor/README.md$",
+      "path": "^packages/agent-supervisor/README\\.md$",
       "terms": [
         "firstmate"
       ],
@@ -188,7 +194,7 @@
     {
       "id": "provenance-design-method-appllama",
       "category": "IMMUTABLE_HISTORICAL_FACT",
-      "path": "^packages/design-method/src/packs.ts$",
+      "path": "^packages/design-method/src/packs\\.ts$",
       "terms": [
         "appllama"
       ],
@@ -197,7 +203,7 @@
     {
       "id": "provenance-import-stack-firecrawl",
       "category": "IMMUTABLE_HISTORICAL_FACT",
-      "path": "^packages/import-stack/src/connectors.ts$",
+      "path": "^packages/import-stack/src/connectors\\.ts$",
       "terms": [
         "firecrawl"
       ],
@@ -220,7 +226,7 @@
       "terms": [
         "lilac"
       ],
-      "line": "^(?:@[Ll]ilac/|data-lilac|DATA-LILAC|lilac-project\\b|lilac-journal-genesis\\b|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$",
+      "line": "^(?:(?<![\\w-])@[Ll]ilac/|(?<![\\w-])data-lilac|(?<![\\w-])DATA-LILAC|(?<![\\w-])lilac-project\\b|(?<![\\w-])lilac-journal-genesis\\b|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$",
       "reason": "Tests that the old scope, attribute prefix and project format are refused or migrated."
     },
     {
@@ -231,7 +237,7 @@
         "lilac"
       ],
       "reason": "The migration guide names the pre-rename project directory, format and journal genesis; every mention of the old name on the line must be one of them.",
-      "line": "^(?:\\.lilac\\b|lilac-project\\b|lilac-journal-genesis\\b|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$"
+      "line": "^(?:(?<![\\w.])\\.lilac\\b|(?<![\\w-])lilac-project\\b|(?<![\\w-])lilac-journal-genesis\\b|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$"
     },
     {
       "id": "repository-url",
@@ -239,8 +245,9 @@
       "terms": [
         "lilac"
       ],
-      "line": "^(?:TheHalfMoon/Lilac\\b|cd Lilac\\b|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$",
-      "reason": "The repository's own URL and clone directory until N0-G10 renames the repository; every mention of the old name on the line must be one of them."
+      "line": "^(?:TheHalfMoon/Lilac(?:\\.git)?(?![\\w-])|cd Lilac(?![\\w-])|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$",
+      "reason": "The repository's own URL and clone directory until N0-G10 renames the repository; every mention of the old name on the line must be one of them.",
+      "path": "^(docs/(CURRENT|RELEASE)\\.md|tests/license-register\\.test\\.mjs)$"
     },
     {
       "id": "provenance-test-agent-events",
@@ -344,8 +351,7 @@
       "category": "THIRD_PARTY_INDEPENDENT_OBLIGATION",
       "path": "^tests/(browser-proxy|release-bundle|sandbox-network|sbom)\\.test\\.mjs$|^tests/support/argv-echo\\.mjs$",
       "terms": [
-        "impeccable",
-        "docling"
+        "impeccable"
       ],
       "reason": "Tests of the independently licensed runtimes Ninerr invokes (Impeccable's scanner and browser wrapper, its package in the SBOM and bundle)."
     },

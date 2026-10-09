@@ -18,16 +18,17 @@ Every rule that admits the old product name, Paper or a donor name is narrow, ha
 - `legacy-refusals-in-code` covers the four constructs that recognize the old identity in code. These are the `@(?:ninerr|lilac)` scope refusal in the packaged resolver and in packaging, the renderer's `startsWith("data-lilac")` refusal, and the history view's `(?:ninerr|lilac):` recognition.
 - `legacy-identity-tests` covers the old scope, attribute prefix, project format and journal genesis in the four tests that prove they are refused or migrated.
 - `legacy-identity-docs` covers the old project directory, format and genesis in `docs/MIGRATION.md` only.
-- `public-env` covers the old variable names and the old folder name in `docs/DESKTOP.md` only. Code reads them only in the legacy modules (`legacy-identity-readers`).
-- `repository-url` covers only the repository's own URL and clone directory, until N0-G10 renames the repository.
+- `public-env` covers the old variable names and the old folder name in `docs/DESKTOP.md` only. Code reads them only in the legacy modules. It moved from the gated public-API category to legacy compatibility, because the variables are now read only as a fallback.
+- `legacy-identity-readers` and `legacy-project-fixture` admit the old product name only, never Paper or a donor name.
+- `repository-url` covers only the repository's own URL and clone directory, as whole tokens, in the three files that cite them: `docs/CURRENT.md`, `docs/RELEASE.md` and the license register's test. It lasts until N0-G10 renames the repository.
 
 **Provenance and obligations name Ninerr as Ninerr.**
 - `third-party-notices` admits donor and Paper names in the notices, the register, the license policy and Electron's license, but not the old product name.
-- `donor-provenance-records` covers the provenance ledgers and the per-package provenance files, listed by path rather than by pattern. It too admits donor and Paper names only.
+- `donor-provenance-records` covers the provenance ledgers, the provenance records under `docs/provenance` and five per-package provenance modules. Each file is listed by name, so a new file is not admitted. It too admits donor and Paper names only.
 - `provenance-history` admits the old name only in the four records made under it: the dated donor study and donor expansion, and the owner's Paper authorization and retired-records list.
 - Six `provenance-*` rules each admit one donor in one package module that keeps its own provenance.
 - Nine `provenance-test-*` rules each admit only the names of the records that test holds to their facts.
-- The `independent-runtime-*` rules cover Impeccable and Docling, which Ninerr invokes, and the tests of them.
+- The `independent-runtime-*` rules cover Impeccable and Docling, which Ninerr invokes, and the tests of Impeccable.
 
 **No living document is exempt.** The program record before the rename is dated evidence (N0-G9a1). `docs/CURRENT.md` and `docs/MASTER_PLAN.md` hold only the current program (N0-G9a2), and the gate checks them like any other file.
 
@@ -40,6 +41,7 @@ Every rule that admits the old product name, Paper or a donor name is narrow, ha
 - **A provenance test** naming the old product or another source.
 
 ## History of this grain
+- **The second review** found three more openings. `repository-url` had no path limit. The legacy readers admitted any term. The provenance records were matched by pattern. All three are closed, and each has a probe.
 - **The first allowlist** matched a line rule anywhere in the line, admitted the old variables from any file, and exempted whole files: the program pages, the ledgers and the register. That hid about 80 present-tense uses of the old name. The N0-G9 review found it and showed every opening.
 - **N0-G9a1 and N0-G9a2** moved the record before the rename, renamed the living records and restored slim program pages. This grain tightened the rules as described above.
 

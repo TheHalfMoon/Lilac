@@ -105,6 +105,19 @@ test("the allowlist is narrow: a new occurrence beside an allowed one is still g
   assert.ok(gated("docs/CURRENT.md", "lilac", "- Lilac is the current product name."), "the old name in the program state");
   assert.ok(gated("docs/MASTER_PLAN.md", "paper", "N0 next: depend on Paper's renderer."), "Paper in the plan");
   assert.equal(rule("docs/evidence/PROGRAM_STATE_2026-10-09.md", "lilac", "Product name: **Lilac**."), "dated-evidence");
+  // The repository URL is admitted only where it is cited, and only as the URL (N0-G9 review, cycle 2).
+  assert.equal(rule("docs/RELEASE.md", "lilac", "git clone --branch <tag> https://github.com/TheHalfMoon/Lilac.git && cd Lilac"), "repository-url");
+  assert.ok(gated("packages/studio-web/src/app.mjs", "lilac", "<h1>Welcome to TheHalfMoon/Lilac</h1>"), "the URL form in product code");
+  assert.ok(gated("README.md", "lilac", "TheHalfMoon/Lilac Studio is great"), "the URL in a file that does not cite it");
+  assert.ok(gated("docs/RELEASE.md", "lilac", "see TheHalfMoon/Lilac-studio"), "a longer name built on the URL");
+  // The legacy modules and fixture recognize the old product name only.
+  assert.ok(gated("packages/persistence/src/legacy.ts", "paper", "export const BRAND = 'Lilac'; // Paper"), "Paper in a legacy module");
+  assert.ok(gated("tests/fixtures/projects/v1-basic/.lilac/project.json", "paper", "{\"name\":\"Paper\"}"), "Paper in the legacy fixture");
+  // The provenance records are listed by path; a new file is not admitted.
+  assert.ok(gated("docs/provenance/NEW_RECORD.md", "paper", "Ninerr is Paper."), "a new provenance file");
+  assert.ok(gated("packages/canvas/src/provenance.ts", "paper", "brand = 'Paper'"), "a new provenance module");
+  // Short legacy forms do not match inside another word.
+  assert.ok(gated("docs/MIGRATION.md", "lilac", "the.lilac product"), "a legacy form inside another word");
   // Provenance tests admit only their own records' names.
   assert.ok(gated("tests/collaboration.test.mjs", "lilac", "test(\"Lilac collaboration works\")"), "the old name in a provenance test");
   assert.ok(gated("tests/agent-events.test.mjs", "paper", "Paper"), "another source in a provenance test");
