@@ -98,13 +98,17 @@ function buildProject(prng, root) {
 const JSON_FILES = [PROJECT_FILES.manifest, PROJECT_FILES.snapshot];
 const TEXT_KINDS = ["bom", "crlf", "utf16", "lone-surrogate"];
 
-/** Damage the store at `root` in one way; returns what was done, for the failure message. */
-function damage(prng, root) {
-  const files = Object.keys(snapshotFiles(root)).filter((name) => snapshotFiles(root)[name] !== "<directory>");
+/**
+ * Damage the store at `root` in one way; returns what was done, for the failure message. With
+ * `filesOnly`, only a file is damaged (the second damage beside leftovers).
+ */
+function damage(prng, root, { filesOnly = false } = {}) {
+  const entries = snapshotFiles(root);
+  const files = Object.keys(entries).filter((name) => entries[name] !== "<directory>");
   const objects = files.filter((name) => name.startsWith(`${PROJECT_FILES.objects}/`));
   const used = JSON.parse(readFileSync(join(store(root), PROJECT_FILES.snapshot), "utf8")).documentObject;
   const referenced = objects.filter((name) => name === objectPath(used));
-  const scope = prng.pick(["file", "file", "file", "file", "file", "store"]);
+  const scope = filesOnly ? "file" : prng.pick(["file", "file", "file", "file", "file", "store"]);
   if (scope === "store") {
     // The shape of the store itself.
     const kind = prng.pick(["foreign-lock", "extra-file", "missing-fan-out", "leftovers", "leftovers"]);
@@ -115,7 +119,7 @@ function damage(prng, root) {
       const uuid = () => `${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}`;
       writeFileSync(join(store(root), `${PROJECT_FILES.snapshot}.tmp-4242-${uuid()}`), "an interrupted write");
       writeFileSync(join(store(root), `${PROJECT_FILES.lock}.broken-${uuid()}`), "{}");
-      return `leftovers, and ${damage(prng, root)}`;
+      return `leftovers, and ${damage(prng, root, { filesOnly: true })}`;
     }
     if (kind === "foreign-lock") writeFileSync(join(store(root), PROJECT_FILES.lock), FOREIGN_LOCK);
     else if (kind === "extra-file") writeFileSync(join(store(root), prng.pick(["notes.txt", "journal.log.bak", ".DS_Store"])), "unrelated");
@@ -177,7 +181,7 @@ function damage(prng, root) {
     case "oversize": {
       // Past the store's limit for this kind of file: a journal line, or a manifest or snapshot.
       const limit = target === PROJECT_FILES.journal ? PERSISTENCE_LIMITS.maxEntryBytes : JSON_FILES.includes(target) ? PERSISTENCE_LIMITS.maxManifestBytes : null;
-      if (limit === null) return damage(prng, root);
+      if (limit === null) return damage(prng, root, { filesOnly });
       next = target === PROJECT_FILES.journal
         ? Buffer.concat([bytes, Buffer.from(`{"seq":999,"digest":"${"0".repeat(64)}","entry":{"pad":"${"x".repeat(limit)}"}}\n`, "utf8")])
         : Buffer.concat([bytes, Buffer.alloc(limit + 1, 0x20)]);
@@ -186,7 +190,7 @@ function damage(prng, root) {
     case "line-value": {
       const lines = bytes.toString("utf8").split("\n");
       const candidates = lines.map((line, index) => [line, index]).filter(([line]) => line.includes('"name":"'));
-      if (candidates.length === 0) return damage(prng, root);
+      if (candidates.length === 0) return damage(prng, root, { filesOnly });
       const [line, index] = prng.pick(candidates);
       const name = line.indexOf('"name":"') + 8;
       lines[index] = `${line.slice(0, name)}X${line.slice(name)}`;
@@ -196,7 +200,7 @@ function damage(prng, root) {
     case "object-value": {
       const text = bytes.toString("utf8");
       const name = text.indexOf('"name":"');
-      if (name < 0) return damage(prng, root);
+      if (name < 0) return damage(prng, root, { filesOnly });
       next = Buffer.from(`${text.slice(0, name + 8)}X${text.slice(name + 8)}`, "utf8");
       break;
     }
@@ -212,7 +216,7 @@ function damage(prng, root) {
     case "repeat-line":
     case "drop-line": {
       const lines = bytes.toString("utf8").split("\n").filter((line) => line !== "");
-      if (lines.length < 2) return damage(prng, root);
+      if (lines.length < 2) return damage(prng, root, { filesOnly });
       const a = prng.int(0, lines.length - 1);
       const b = (a + prng.int(1, lines.length - 1)) % lines.length;
       if (kind === "swap-lines") [lines[a], lines[b]] = [lines[b], lines[a]];
@@ -232,7 +236,7 @@ function damage(prng, root) {
     }
   }
   // Damage that changes nothing is no damage: draw another.
-  if (next.equals(bytes)) return damage(prng, root);
+  if (next.equals(bytes)) return damage(prng, root, { filesOnly });
   writeFileSync(path, next);
   return `${kind} in ${target}${["flip", "insert", "remove", "truncate", "lone-surrogate"].includes(kind) ? ` at ${at}` : ""}`;
 }
@@ -258,7 +262,7 @@ test("the store under generated damage fails closed: refused unchanged, or exact
           const copy = join(base, `case-${index}`);
           cpSync(original, copy, { recursive: true });
           const what = damage(prng, copy);
-          const lockedByOther = what.endsWith("foreign-lock");
+          const lockedByOther = what === "foreign-lock";
           const damaged = snapshotFiles(copy, { withLock: lockedByOther });
           const where = `seed ${seed}, case ${index}: ${what}`;
           // Through the host, on a copy of the damaged project: a typed answer that changes

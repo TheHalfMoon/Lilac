@@ -14,7 +14,7 @@ Then, for each case, it copies the project, damages it, and opens the copy.
 **The damage:**
 - **Any file:** bytes flipped, inserted (newline, brace, quote, NUL, a multi-byte character, a fake entry), removed or truncated; text appended; the file emptied, deleted, or replaced by a directory.
 - **Encodings:** a UTF-8 byte-order mark, CRLF line endings, a UTF-16 re-encoding, an encoded lone surrogate.
-- **Sizes:** a journal line of 4 MiB or more; a manifest or snapshot reference over 64 KiB.
+- **Sizes:** a journal line of 4 MiB or more; a manifest or snapshot reference over 64 KiB. The manifest and snapshot are padded with whitespace, which JSON allows, so only their size limit can refuse them. The oversize journal line is also malformed, so it shows that a huge line is refused without a crash or a hang, not that the size limit alone refuses it.
 - **The journal:** lines swapped, repeated or dropped; a byte flipped inside the last line only (what a crash mid-append can leave); a name inside one line changed, with the line still valid JSON.
 - **The manifest and snapshot reference:** a value changed or removed, or a key added (`extra`, `__proto__`, `createdBy`), with the file still valid JSON.
 - **An object, including the one the snapshot uses:** a name inside it changed, still valid canonical JSON.
@@ -22,7 +22,7 @@ Then, for each case, it copies the project, damages it, and opens the copy.
   - an extra unknown file;
   - the snapshot object's fan-out directory removed;
   - a lock held by someone else;
-  - the leftovers of an interrupted write and an interrupted lock override, beside one more damage.
+  - the leftovers of an interrupted write and an interrupted lock override, beside one more damage to a file.
 
 The changed name in a journal line and in the snapshot's object are there because only the hash chain or the object's content hash can tell them from the original.
 
@@ -43,15 +43,15 @@ The changed name in a journal line and in the snapshot's object are there becaus
 
 ## Results
 **Locally (Windows 11, Node 24):**
-- **The default 4 seeds × 60 cases pass in 40 s, identically on two runs:**
-  - 196 refused (164 as corrupt, 19 as invalid, 12 as locked, 1 as a version the store does not know), each with nothing changed;
-  - 40 opened at the latest state;
-  - 3 opened at an earlier state after a cut through a line, repaired and reported;
+- **The default 4 seeds × 60 cases pass in 20 s, identically on two runs:**
+  - 195 refused (169 as corrupt, 15 as invalid, 8 as locked, 3 as a version the store does not know), each with nothing changed;
+  - 43 opened at the latest state;
+  - 1 opened at an earlier state after a cut through a line, repaired and reported;
   - 1 opened at an earlier state after a cut between lines (#239);
-  - through the host: 36 refused with 422, 2 with 409, and 10 opened at the store's document.
-- **12 seeds × 60 cases pass in 112 s:**
-  - 590 refused;
-  - 118 opened at the latest state, 8 after a repaired cut and 4 after a cut between lines;
+  - through the host: 35 refused with 422, 1 with 409, and 12 opened at the store's document.
+- **12 seeds × 60 cases pass in 56 s:**
+  - 599 refused;
+  - 112 opened at the latest state, 6 after a repaired cut and 3 after a cut between lines;
   - through the host: 119 refused and 25 opened.
 
 No damaged project ever opened as a document it did not hold. None made the host answer 500, and no refusal changed a file.
