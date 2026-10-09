@@ -452,8 +452,9 @@ function readVerifiedProject(projectDir: string, migrations: Readonly<Record<num
       document = replayTransactions(document, pending.map(({ entry }) => entry.transaction)) as ProjectDocument;
     } catch (error) {
       const index = (error as { index?: number }).index;
-      const which = index === undefined ? `journal entries ${pending[0].entry.seq} to ${pending.at(-1)!.entry.seq}` : `journal entry ${pending[index].entry.seq}`;
-      throw new PersistenceCorruptionError(`${which} do${index === undefined ? "" : "es"} not apply: ${(error as Error).message.slice(0, 200)}`);
+      const reason = (error as Error).message.slice(0, 200);
+      if (index !== undefined) throw new PersistenceCorruptionError(`journal entry ${pending[index].entry.seq} does not apply: ${reason}`);
+      throw new PersistenceCorruptionError(`journal entries ${pending[0].entry.seq} to ${pending[pending.length - 1].entry.seq} do not apply: ${reason}`);
     }
   }
   const replayed = pending.length;

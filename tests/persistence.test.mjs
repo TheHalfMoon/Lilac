@@ -195,7 +195,7 @@ test("a durable journal entry not yet reflected in memory is replayed on reopen"
   store.close();
 }));
 
-test("a journal entry that does not apply is refused by its number, and replay is one pass (#251)", () => withProject((root) => {
+test("a journal entry that does not apply is refused by its number (#251)", () => withProject((root) => {
   const genesis = genesisDigest("proj-1", JOURNAL_GENESIS);
   const transaction = (id, revision, operations) => ({ id, actor: "user-1", baseRevision: revision - 1, intent: null, tool: null, timestamp: null, metadata: {}, operations });
   const one = encodeJournalLine({ seq: 1, revision: 1, transaction: transaction("tx-1", 1, [{ type: "set-props", nodeId: "node-1", set: { title: "One" } }]) }, genesis);
@@ -206,7 +206,18 @@ test("a journal entry that does not apply is refused by its number, and replay i
   writeFileSync(file(root, PROJECT_FILES.journal), one.line);
   const store = open(root);
   assert.deepEqual([store.revision, store.recovery.replayedEntries, store.document.nodes["node-1"].props.title], [1, 1, "One"]);
+  assert.equal(store.checkpoint().journalSeq, 1);
   store.close();
+  // After a snapshot at entry 1, entries are still named by their own numbers.
+  const three = encodeJournalLine({ seq: 2, revision: 2, transaction: transaction("tx-3", 2, [{ type: "set-props", nodeId: "node-1", set: { title: "Three" } }]) }, one.digest);
+  const four = encodeJournalLine({ seq: 3, revision: 3, transaction: transaction("tx-4", 3, [{ type: "remove-node", nodeId: "missing" }]) }, three.digest);
+  appendFileSync(file(root, PROJECT_FILES.journal), three.line + four.line);
+  assert.throws(() => open(root), (error) => error instanceof PersistenceCorruptionError && /^journal entry 3 does not apply/u.test(error.message));
+  // Entries that each apply but leave an invalid document are refused together.
+  const orphan = [{ type: "restore-subtree", rootId: "r", parentId: null, index: 0, nodes: [{ id: "r", type: "frame" }, { id: "orphan", type: "frame" }] }];
+  const invalid = encodeJournalLine({ seq: 3, revision: 3, transaction: transaction("tx-5", 3, orphan) }, three.digest);
+  writeFileSync(file(root, PROJECT_FILES.journal), one.line + three.line + invalid.line);
+  assert.throws(() => open(root), (error) => error instanceof PersistenceCorruptionError && /^journal entries 2 to 3 do not apply/u.test(error.message));
 }));
 
 test("second writers are refused until the first closes", () => withProject((root) => {
