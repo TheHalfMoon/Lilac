@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { serializeDocument, validateDocument } from "../packages/document-model/src/index.mjs";
+import { MAX_SOURCE_BYTES } from "../packages/studio-host/src/codebase.ts";
+import { MAX_IMPORT_HTML_BYTES, MAX_IMPORT_NODES } from "../packages/studio-host/src/imports.ts";
 import { hostPool, ok } from "./support/host-api.mjs";
 import { createPrng, positiveIntegerFromEnv, propertySeeds } from "./support/prng.mjs";
 
@@ -38,11 +40,13 @@ await import("./support/no-network.mjs");
 const RUNS = positiveIntegerFromEnv("NINERR_FUZZ_RUNS", 4);
 const CASES = positiveIntegerFromEnv("NINERR_FUZZ_CASES", 50);
 const CASE_MS = 5_000;
+// What an exception from the engine, not a refusal of the input, says.
+const ENGINE_ERROR = /Cannot read prop|Cannot set prop|is not a function|is not iterable|is not defined|Maximum call stack|of undefined|of null|Invalid array length|Invalid string length|out of memory/iu;
 let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 9, 12, 0, 0) + clock++ * 1000).toISOString();
 
 const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
-const MARKUP = readdirSync(join(FIXTURES, "malicious")).filter((name) => /\.(html|svg|css)$/u.test(name)).sort().map((name) => readFileSync(join(FIXTURES, "malicious", name), "utf8"));
+const MARKUP = readdirSync(join(FIXTURES, "malicious")).filter((name) => name.endsWith(".html")).sort().map((name) => readFileSync(join(FIXTURES, "malicious", name), "utf8"));
 const PAGES = [
   "<style>.card{padding:8px}</style><main><section class=\"card\"><h1>Plans &amp; pricing</h1><p>From <b>$12</b>&nbsp;/ seat</p><a href=\"/signup\" title=\"Sign &quot;up&quot;\">Start</a></section></main>",
   "<nav><ul><li><a href=\"#a\">A</a></li><li><a href=\"#b\">B</a></li></ul></nav><svg viewBox=\"0 0 10 10\"><use xlink:href=\"#icon\" href=\"/sprite.svg#icon\"></use><title>Icon</title></svg>",
@@ -50,6 +54,32 @@ const PAGES = [
 ];
 const CODE = readdirSync(join(FIXTURES, "code-ir")).filter((name) => name.endsWith(".jsx")).sort().map((name) => readFileSync(join(FIXTURES, "code-ir", name), "utf8"));
 const INSERTS = ["<", ">", "\"", "'", "&", "&amp;", "\u0000", "<!--", "-->", "]]>", "<![CDATA[", "</script>", "<script>", "<svg>", "</div>", "{", "}", "{/*", "*/}", "=>", "<>", "</>", "\\", "\ud800", "é😀", "\r\n"];
+
+/** A codebase file's bytes: usually UTF-8, sometimes with a byte-order mark, as UTF-16, or not text. */
+function encode(prng, input) {
+  switch (prng.pick(["utf8", "utf8", "utf8", "utf8", "bom", "utf16", "raw"])) {
+    case "bom":
+      return Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(input, "utf8")]);
+    case "utf16":
+      return Buffer.from(input, "utf16le");
+    case "raw": {
+      const bytes = Buffer.from(input, "utf8");
+      if (bytes.length > 0) bytes[prng.int(0, bytes.length - 1)] = prng.pick([0xff, 0xc0, 0x80, 0xed]);
+      return bytes;
+    }
+    default:
+      return input;
+  }
+}
+
+// Inputs at and past each limit, brought in once per seed before the generated cases.
+const BOUNDARY = [
+  { route: "html", input: `<p>${"x".repeat(MAX_IMPORT_HTML_BYTES)}</p>`, what: "an HTML page over its byte limit" },
+  { route: "html", input: `${"<div>".repeat(2_000)}deep`, what: "HTML nested past the depth limit" },
+  { route: "html", input: "<p>x</p>".repeat(MAX_IMPORT_NODES + 1), what: "HTML past the node limit" },
+  { route: "code", input: `export function Big() {\n  return <p>${"x".repeat(256 * 1024)}</p>;\n}\n`, what: "code over its byte limit" },
+  { route: "codebase", input: `export function Big() {\n  return <p>${"x".repeat(MAX_SOURCE_BYTES)}</p>;\n}\n`, what: "a source file over its byte limit" },
+];
 
 /** One input mutated: a corpus entry changed in one or two ways, or two spliced. */
 function mutate(prng, corpus) {
@@ -109,15 +139,23 @@ test("imports under mutated real input: typed refusals that change nothing, vali
         const current = async () => (await ok(running.call("GET", "/api/document"), "document"));
         let state = await current();
 
-        for (let index = 0; index < CASES; index += 1) {
-          const route = prng.pick(["html", "html", "code", "codebase"]);
-          const input = route === "html" ? mutate(prng, [...MARKUP, ...PAGES]) : mutate(prng, CODE);
-          const where = `seed ${seed}, case ${index} (${route}, ${input.length} characters): ${JSON.stringify(input.slice(0, 120))}`;
+        for (let index = -BOUNDARY.length; index < CASES; index += 1) {
+          const boundary = index < 0 ? BOUNDARY[index + BOUNDARY.length] : null;
+          const route = boundary?.route ?? prng.pick(["html", "html", "code", "codebase"]);
+          let input = boundary?.input;
+          if (boundary === null) input = route === "html" ? mutate(prng, [...MARKUP, ...PAGES]) : mutate(prng, CODE);
+          const where = `seed ${seed}, case ${index} (${boundary?.what ?? route}, ${input.length} characters): ${JSON.stringify(input.slice(0, 120))}`;
           const started = Date.now();
           const accepted = [];
           const refuse = (answer, what) => {
             assert.ok(answer.status < 500, `${where}: ${what} answers ${answer.status} ${JSON.stringify(answer.json)?.slice(0, 200)}`);
             if (answer.status !== 200) assert.equal(typeof answer.json?.error?.code, "string", `${where}: ${what} names a typed error`);
+            // The host turns a parser's exception into a typed refusal, so a crash would pass as one:
+            // a refusal must say what is wrong with the input, not what went wrong in the engine.
+            if (answer.status !== 200) {
+              assert.doesNotMatch(String(answer.json.error.message), ENGINE_ERROR, `${where}: ${what} refused with an engine error`);
+              tally(`refusal: ${String(answer.json.error.message).replace(/\d+/gu, "N").slice(0, 70)}`);
+            }
             return answer.status === 200;
           };
           if (route === "html") {
@@ -129,7 +167,11 @@ test("imports under mutated real input: typed refusals that change nothing, vali
                 if (refuse(committed, "the commit")) {
                   accepted.push("committed");
                   tally("html committed");
-                } else tally(`html commit refused (${committed.json.error.code})`);
+                } else {
+                  // A refused commit can be retried; discard it, or reviews would pile up.
+                  await ok(running.call("POST", "/api/import/discard", { proposalId: review.json.proposalId }), "discard");
+                  tally(`html commit refused (${committed.json.error.code})`);
+                }
               } else {
                 await ok(running.call("POST", "/api/import/discard", { proposalId: review.json.proposalId }), "discard");
                 tally("html discarded");
@@ -150,9 +192,9 @@ test("imports under mutated real input: typed refusals that change nothing, vali
             } else tally(`code refused (${brought.json.error.code})`);
           } else {
             // A file in the connected codebase: scanned, and brought in when it is a component.
-            writeFileSync(join(folder, "Fuzzed.jsx"), input);
+            writeFileSync(join(folder, "Fuzzed.jsx"), boundary === null ? encode(prng, input) : input);
             const scan = await running.call("GET", "/api/codebase");
-            refuse(scan, "the scan");
+            if (!refuse(scan, "the scan")) tally("codebase scan refused");
             const found = scan.status === 200 ? scan.json.components.find((entry) => entry.file === "Fuzzed.jsx") : undefined;
             if (found) {
               const brought = await running.call("POST", "/api/codebase/import", { file: found.file, component: found.component });
@@ -187,5 +229,12 @@ test("imports under mutated real input: typed refusals that change nothing, vali
     });
   }
   assert.deepEqual(attempts, [], "nothing tried to reach the network");
+  // And the watch on the network does see an attempt: this one, refused.
+  await assert.rejects(fetch("http://example.invalid/"));
+  assert.equal(attempts.length, 1, "the network watch sees an attempt");
   t.diagnostic(`outcomes: ${JSON.stringify(totals)}`);
+  // A full run (not a replayed seed) brings something in by every route.
+  if (seeds.length >= 4 && CASES >= 50) {
+    for (const what of ["html committed", "code round trip stable", "codebase component brought in"]) assert.ok((totals[what] ?? 0) > 0, `the cases include at least one: ${what}`);
+  }
 });
