@@ -37,7 +37,7 @@ Then, in a generated order, the host receives the following input.
 - **A refusal changes nothing.** The project stays open; its document, its revision, the agents and the connected codebase stay exactly as they were. The same holds for an MCP call answered with a JSON-RPC error or a tool error.
 - **After every request,** the host still answers, and the open document is valid.
 - **A request that is accepted and switches or closes the project, or disconnects the codebase,** is followed by reopening or reconnecting it, which must work.
-- **At the end,** closing and reopening the project in a new host gives back exactly the document the session held. The connected source file is byte for byte as written.
+- **At the end,** closing and reopening the project in a new host gives back exactly the document the session held. The connected source file is byte for byte as written, unless a write-back with a preview the host gave out landed, which is legitimate; then the host must still read the file as the component.
 
 ## Results
 **Locally (Windows 11, Node 24):** the default 4 seeds × 120 requests pass in 50 s.

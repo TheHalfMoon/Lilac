@@ -179,7 +179,7 @@ test("the host under generated hostile requests and MCP calls never fails open: 
         await ok(running.call("POST", "/api/codebase/connect", { folder }), "connect");
         await ok(running.call("POST", "/api/codebase/import", { file: "Card.jsx", component: "PriceCard" }), "bring in");
         const { token: agentToken } = await ok(running.call("POST", "/api/agents/create", { name: "Fuzz agent" }), "agent");
-        const context = { revision: 0, ids: [], folder, missingFolder: join(base, "missing"), tokens: [], proposals: [], transactions: [], confirmations: [], agents: [] };
+        const context = { revision: 0, ids: [], folder, missingFolder: join(base, "missing"), tokens: [], proposals: [], transactions: [], confirmations: [], agents: [], landed: 0 };
         // What a refusal must leave as it was, besides the document.
         const surroundings = async () => JSON.stringify([(await running.call("GET", "/api/agents")).json?.agents, (await running.call("GET", "/api/codebase")).json?.folder ?? null]);
         const current = async () => {
@@ -217,6 +217,11 @@ test("the host under generated hostile requests and MCP calls never fails open: 
             if (answer.status >= 400) assert.equal(typeof answer.json?.error?.code, "string", `${label}: a refusal names a typed error: ${answer.text.slice(0, 200)}`);
             changedOk = answer.status === 200;
             if (changedOk) remember(context, path, answer.json);
+            // A write with a preview the host gave out can land, legitimately.
+            if (changedOk && path === "/api/codebase/write" && answer.json.written > 0) {
+              context.landed += 1;
+              tally("write-back landed");
+            }
             tally(`${answer.status}`);
           }
           // The host stays healthy and the document valid.
@@ -253,7 +258,10 @@ test("the host under generated hostile requests and MCP calls never fails open: 
         running = await pool.open(projects);
         await ok(running.call("POST", "/api/projects/open", { name: "fuzz" }), "reopen");
         assert.equal(serializeDocument((await current()).document), held, "the reopened document is the one the session held");
-        assert.equal(readFileSync(join(folder, "Card.jsx"), "utf8"), CARD, "the connected source file is untouched");
+        // The source file is untouched, unless a write the person previewed landed; then it is
+        // still the component, as the host reads it.
+        if (context.landed === 0) assert.equal(readFileSync(join(folder, "Card.jsx"), "utf8"), CARD, "the connected source file is untouched");
+        else assert.deepEqual((await ok(running.call("GET", "/api/codebase"), "codebase")).components.map((component) => component.name), ["PriceCard"], "the written source file is still the component");
       } finally {
         await pool.closeAll();
         rmSync(base, { recursive: true, force: true });
