@@ -91,7 +91,7 @@ test("every upstream project named anywhere in package sources or the donor ledg
     }
   };
   walk(join(ROOT, "packages"));
-  files.push(join(ROOT, "docs", "DONORS.md"), join(ROOT, "docs", "DONOR_INTEGRATION_MAP.md"));
+  files.push(join(ROOT, "docs", "DONORS.md"), join(ROOT, "docs", "evidence", "DONOR_INTEGRATION_MAP_2026-10-09.md"));
   const named = new Set();
   for (const file of files) {
     const text = readFileSync(file, "utf8");

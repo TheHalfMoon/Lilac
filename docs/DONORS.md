@@ -10,19 +10,12 @@ Paper, Paper.design and the other names in this ledger belong to their owners. T
 
 - Role: **primary foundation / authorized donor**
 - Authorization basis: project owner explicitly states they have full permission to copy, modify, and use the Paper.design source code for this project.
-- Original private monorepo identified from shipped Desktop documentation: `paper-design/paper`.
-- Private monorepo access: **not available through connected GitHub sources**.
-- Shipped/public artifact intake state: **PARTIAL_RECOVERY_PROVEN**.
-- Current exact Desktop source: recovered from public/end-user-shipped Paper Desktop 0.5.14 packages.
-- Historical Desktop lineage: 21 observed public/shipped builds, with exact first-party source paths and historical source-map evidence.
-- Internal package source: exact embedded source independently verified for 16 TypeScript files plus `cli/package.json` across `models`, `assets`, `cli`, and `client-desktop-types`.
-- Web editor: production/lazy JavaScript bundles are publicly shipped to the browser; current original TS/TSX source maps have not been recovered.
-- Snapshot extension: official shipped CRX recovered and inventoried; current observed extension bundle does not include source maps.
-- Complete original product repository: **NOT RECOVERED**.
-- Rule: do not describe partial shipped-artifact recovery as a complete monorepo import, and do not represent public utility repositories as the complete Paper product source.
-- Public-repository boundary: Ninerr records metadata, hashes, paths, and compatibility evidence publicly; raw proprietary recovered source remains outside the public repository unless public redistribution rights are separately established.
+- Source access: the private product monorepo (`paper-design/paper`) was not available through connected GitHub sources, and the complete original repository was never recovered.
+- Recovery study: a partial recovery from publicly shipped Paper Desktop packages was studied (state `PARTIAL_RECOVERY_PROVEN`). N0-G5 retired that tooling and its records.
+- In Ninerr: no recovered Paper source was ever committed (`docs/provenance/LICENSE_REGISTER.json`, entry `paper-design/paper`).
+- Public-repository boundary: raw proprietary source stays out of the public repository unless public redistribution rights are separately established.
 
-Primary recovery evidence, retired from the tree in N0-G5 and pinned in `docs/provenance/RETIRED_PAPER_RECORDS.md`:
+The recovery records, retired from the tree in N0-G5 and pinned in `docs/provenance/RETIRED_PAPER_RECORDS.md`:
 
 - `PAPER_PUBLIC_SHIPPED_RECOVERY_CENSUS_2026-10-01.md`
 - `PAPER_DESKTOP_HISTORY_EXPANSION_2026-10-01.md`
@@ -35,9 +28,9 @@ Primary recovery evidence, retired from the tree in N0-G5 and pinned in `docs/pr
 | `paper-design/paper-mono` | Paper Mono font | SIL OFL 1.1 | reference only; nothing copied. Separately licensed (category B): incorporating any of it would bring its own license obligations |
 | `paper-design/opentype.js` | Paper fork of opentype.js | MIT | reference only; nothing copied. Separately licensed (category B): incorporating any of it would bring its own license obligations |
 | `paper-design/agent-plugins` | agent harness integration | no license conclusion recorded here | architecture/reference only; a separately licensed public repository, outside the founder-authorized set (see `docs/provenance/FOUNDER_AUTHORIZATION_2026-10-08.md`) |
-| `paper-design/google-fonts-scripts` | font metadata/build scripts | pending exact license check | tooling/reference |
-| `paper-design/liquid-logo` | shader demo/application | pending exact license check | reference only unless intentionally imported |
-| `paper-design/webmcp-agent-example` | WebMCP example harness | pending exact license check | MCP integration reference |
+| `paper-design/google-fonts-scripts` | font metadata/build scripts | no license file at the upstream root (2026-10-07) | reference only; nothing copied |
+| `paper-design/liquid-logo` | shader demo/application | PolyForm Shield 1.0.0, source-available (2026-10-07) | reference only; nothing copied |
+| `paper-design/webmcp-agent-example` | WebMCP example harness | no license file at the upstream root (2026-10-07) | reference only; nothing copied |
 
 ## External MIT donor/reference: `vcashwin/paper-snapshot`
 
@@ -51,18 +44,20 @@ Primary recovery evidence, retired from the tree in N0-G5 and pinned in `docs/pr
   - `@paper-snapshot/react` — React capture UI/hook surface;
   - `@paper-snapshot/electron` — Electron clipboard and guest/webview capture support.
 - High-value source paths include `packages/core/src/capture.ts`, `picker.ts`, `serialize-node.ts`, `serialize.ts`, `styles.ts`, `text.ts`, `types.ts`, and Electron/React adapters.
-- Intended Ninerr use: donor/reference for Ninerr's website/app intake and snapshot subsystem, subject to preserving the MIT copyright and permission notice in substantial copied portions.
+- Use in Ninerr: reference only; nothing copied, and no package refers to it (`docs/provenance/LICENSE_REGISTER.json`). Copying any substantial portion would require keeping its MIT copyright and permission notice.
 - Provenance rule: any code imported from this repository must retain its own donor record and must never be mislabeled as recovered proprietary Paper source.
 
 ## Authorized external donor expansion — 2026-10-03
 
 The project owner explicitly states that they have permission to use, copy, modify, combine, and adapt source code from the following projects for this project. The governing attestation is recorded in `docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03.md`.
 
+The middle column is the use intended at intake. What each donor actually contributed, its category and its license are in `docs/provenance/LICENSE_REGISTER.json`.
+
 | Donor | Intended Ninerr use | Intake note |
 |---|---|---|
 | `kunchenguid/firstmate` | multi-agent orchestration, isolated worktrees, supervision, restart reconciliation | bounded extraction; do not import product identity |
 | `kunchenguid/no-mistakes` | guarded review/test/PR delivery state machine | adapt pipeline concepts to Ninerr governance; no automatic force-push policy |
-| `kgoedecke/doop` | multiplayer canvas, MCP collaboration, comments/activity, presence | authorized donor; public repo identifies AGPL-3.0, so preserve license/provenance and record any separate permission basis |
+| `kgoedecke/doop` | multiplayer canvas, MCP collaboration, comments/activity, presence | reference only: its public license is AGPL-3.0, and no Doop code is in Ninerr (`packages/collaboration/src/provenance.ts`, `importedCode: false`) |
 | `classifier.dev` public surfaces | decision/classification routing, retrieval pruning, uncertainty-aware escalation | hosted use optional only; core Ninerr must not require paid service |
 | `caio0452/jev_search` | code/directory candidate search and decision-based filtering | upstream warns it is AI-generated/not production-ready; ideas require hardening/tests |
 | `unreallabsai/unreal-agent` | durable async agent sessions, idempotency, serializable operations, recovery/forks | high-value agent-runtime donor |
@@ -74,7 +69,7 @@ The project owner explicitly states that they have permission to use, copy, modi
 | `pbakaus/impeccable` | deterministic design detectors and critique/polish/harden workflows | design-quality/decision-assurance donor |
 | `bytedance/UI-TARS-desktop` | multimodal GUI/browser operator, event stream, local/remote operator architecture | visual fallback and computer-use architecture donor |
 
-The integration allocation and sequence are defined in `docs/DONOR_INTEGRATION_MAP.md`.
+The integration plan that allocated these donors to grains 1 to 9 has been carried out. It is recorded in `docs/evidence/DONOR_INTEGRATION_MAP_2026-10-09.md`, with the study behind it in `docs/evidence/DONOR_DEEP_STUDY_2026-10-03.md`.
 
 ### Authorization does not erase upstream obligations
 
