@@ -219,7 +219,7 @@ test("bounds and malformed inputs fail closed", () => {
   const runs = buildCodeIr([{ path: "E.jsx", content: `<ul>${"a<li />".repeat(CODE_IR_HARD_LIMITS.maxChildrenPerSymbol)}a</ul>` }]);
   assert.equal(Object.values(runs.symbols).find((symbol) => symbol.name === "ul").texts.length, CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: `<p>${"{\"a\"}".repeat(CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol + 1)}</p>` }]), /p has more than 4097 runs of text/u);
-  // One patch carries at most maxPatchOps edits, and says how many it had.
+  // One patch carries at most maxPatchOps changed fields, and says how many it had.
   assert.throws(() => applyPatch(buildCodeIr([{ path: "E.jsx", content: "<p>a</p>" }]), [{ path: "E.jsx", content: "<p>a</p>" }], Array.from({ length: CODE_IR_HARD_LIMITS.maxPatchOps + 1 }, () => ({}))), /5001 changed fields, more than the 5000 one write-back can carry/u);
   const hugeNumber = "<div n={" + "9".repeat(400) + "} />";
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: hugeNumber }]), /finite|no supported elements/u);

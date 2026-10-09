@@ -405,7 +405,9 @@ test("one write-back carries many changed fields, and too many are refused by co
     assert.equal(refused.json.error.code, "patch-refused");
     assert.match(refused.json.error.message, /5002 changed fields, more than the 5000 one write-back can carry/u);
     const write = await call("POST", "/api/codebase/write", { nodeId: long.section.id, token: "0".repeat(64) });
+    // Writing plans the change again before it checks the token, so the count refuses it too.
     assert.equal(write.status, 409, JSON.stringify(write.json));
+    assert.equal(write.json.error.code, "patch-refused");
     assert.equal(readFileSync(join(code, "Long.jsx"), "utf8"), before);
     assert.deepEqual(readdirSync(code).sort(), ["List.jsx", "Long.jsx"], "no temporary file is left");
   } finally {
