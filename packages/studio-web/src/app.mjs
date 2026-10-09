@@ -518,6 +518,15 @@ async function openCodeDialog() {
   });
 }
 
+/** The first line of a write-back plan's review: what writing it would do. */
+function planSummary(plan) {
+  if (plan.changes.length > 0) return `${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} to ${plan.file}:`;
+  const one = plan.matched.length === 1;
+  if (plan.matched.length > 0) return `Nothing needs writing: ${plan.matched.length} field${one ? " has" : "s have"} the same value here and in the file. Mark ${one ? "it" : "them"} as matching, so a later change to ${one ? "it is" : "them is"} written back rather than seen as a conflict.`;
+  if (plan.conflicts.length > 0) return "There is nothing to write back.";
+  return "There is nothing to write back: the file already has these values.";
+}
+
 // The Code dialog's codebase section: connect a local folder, bring its components in,
 // and write a component's edits back to its file after previewing them (PC11).
 function buildCodebasePart({ codebase, codebaseError, boundNode, close, error }) {
@@ -610,10 +619,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
       const plan = await state.client.post("/api/codebase/preview", { nodeId: boundNode.id });
       const items = (entries, render) => (entries.length === 0 ? [] : [el("ul", {}, entries.map((entry) => el("li", {}, render(entry))))]);
       preview.replaceChildren(
-        plan.changes.length > 0 ? el("p", {}, `${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} to ${plan.file}:`)
-          : plan.matched.length > 0 ? el("p", {}, `Nothing needs writing: ${plan.matched.length} field${plan.matched.length === 1 ? " has" : "s have"} the same value here and in the file. Mark ${plan.matched.length === 1 ? "it" : "them"} as matching, so a later change ${plan.matched.length === 1 ? "to it is" : "to them is"} written back rather than seen as a conflict.`)
-          : plan.conflicts.length > 0 ? el("p", {}, "There is nothing to write back.")
-          : el("p", {}, "There is nothing to write back: the file already has these values."),
+        el("p", {}, planSummary(plan)),
         ...(plan.diff === "" ? [] : [el("pre", { class: "diff", id: "codebase-diff", tabindex: "0", "aria-label": `Changes to ${plan.file}` }, plan.diff)]),
         ...(plan.conflicts.length === 0 ? [] : [el("p", {}, "Changed both here and in the file, so not written:")]),
         ...items(plan.conflicts, (conflict) => `${conflict.field}: ${conflict.reason}`),
