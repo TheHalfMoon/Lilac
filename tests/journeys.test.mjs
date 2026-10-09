@@ -196,6 +196,7 @@ async function generatedSession(call, prng, steps) {
       continue;
     }
     const { revision, document } = await ok(call("GET", "/api/document"), "document");
+    assert.deepEqual(shape(document), tally.model, "the host's document has the reference model's shape before each edit");
     const edit = generatedEdit(prng, document, counter);
     const expected = modelApply(tally.model, edit.operations);
     const result = await call("POST", "/api/edit", { baseRevision: revision, ...edit });
@@ -231,7 +232,7 @@ function perSeed(name, journey) {
   });
 }
 
-perSeed("Journey A: create, edit, save, close and reopen; the exact state survives, and matches an independent model", async ({ prng, root, pool }) => {
+perSeed("Journey A: create, edit, save, close and reopen; the exact state survives, and matches a reference model", async ({ prng, root, pool }) => {
   let running = await pool.open(root);
   await ok(running.call("POST", "/api/projects/create", { name: "work", title: "Work" }), "create");
   const tally = await generatedSession(running.call, prng, 40);
@@ -359,6 +360,7 @@ perSeed("Journey C: connect a codebase, bring a component in, edit, review the d
   assert.deepEqual(preview.conflicts.map((conflict) => [conflict.nodeId, conflict.field]), [[h2.id, "text"]], "the conflict names the heading's text");
   assert.deepEqual(preview.matched, []);
   // Inspect it: Ninerr's text, the text both last agreed on, and the file's are all different.
+  // (The conflict itself carries only a reason, not these values: #236.)
   assert.equal(preview.conflicts[0].reason, "changed both here and in the file");
   ({ document } = await ok(running.call("GET", "/api/document"), "document"));
   assert.deepEqual([document.nodes[h2.id].props.text, document.nodes[h2.id].props.codeSource.base.text], [`${heading} Plus`, heading]);
@@ -469,8 +471,10 @@ perSeed("Journey D: an agent over MCP inspects and edits; the person reviews, ac
   const journal = new Map(before.files[PROJECT_FILES.journal].trim().split("\n").map((line) => JSON.parse(line).entry.transaction).map((entry) => [entry.id, entry]));
   assert.deepEqual([journal.get(deletion.transactionId).actor, journal.get(deletion.transactionId).tool], [deletion.actor, "delete_layers"]);
   assert.notEqual(deletion.actor, reverted.actor);
-  for (const [event, tool] of [[reverted, "ninerr:revert"], [undone, "ninerr:undo"], [redone, "ninerr:redo"]]) {
-    assert.deepEqual([journal.get(event.transactionId).actor, journal.get(event.transactionId).tool], [reverted.actor, tool]);
+  // So do the links: the revert names the deletion, and the undo and the redo name the revert.
+  for (const [event, tool, link, of] of [[reverted, "ninerr:revert", "revertOf", deletion], [undone, "ninerr:undo", "undoOf", reverted], [redone, "ninerr:redo", "redoOf", reverted]]) {
+    const entry = journal.get(event.transactionId);
+    assert.deepEqual([entry.actor, entry.tool, entry.metadata.ninerr[link]], [reverted.actor, tool, of.transactionId]);
   }
   agent = mcpClient(running.host.mcpUrl, token);
   assert.equal((await agent.tool("layer_details", { nodeId: "title" })).structuredContent.props.text, agentText, "the agent reads its own change");
