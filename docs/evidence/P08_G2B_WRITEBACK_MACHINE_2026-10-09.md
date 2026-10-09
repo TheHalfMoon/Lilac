@@ -13,7 +13,10 @@ The component has five source-linked fields:
 - the heading's text;
 - the paragraph's `title` and text.
 
-Their values include `&`, `"` and non-ASCII text. Two Ninerr-only texts, with `<` and `{`, can never be written as JSX text.
+**The values:**
+- they include `&`, `"` and non-ASCII text;
+- two Ninerr-only texts, with `<` and `{`, can never be written as JSX text;
+- the styles include two declarations, in either order. The component starts with one whose declarations are not in sorted order, so a write must keep the file's own order: the layer keeps its style keys sorted.
 
 The transitions:
 
@@ -41,7 +44,9 @@ It predicts each field of a preview:
 | Changed | Equals Ninerr's | **Matched**: marked as matching, and the base moves (#234) |
 | Changed | Changed differently | **Conflict**: never written |
 | Changed, text with `{ } < >` | Unchanged | **Not written** |
-| Changed | Unchanged | **Change**: written; the base and the file take Ninerr's value |
+| Changed | Unchanged | **Change**: written; the base and the file take Ninerr's value. A style is written in the file's own declaration order, with new declarations after |
+
+**Styles** are compared by their declarations, so the same declarations in another order are equal. On a match, the base takes the file's own text.
 
 After every step, three things must hold:
 - each layer's value and base are the model's;
@@ -50,6 +55,7 @@ After every step, three things must hold:
 
 A full run (at least 4 seeds of at least 80 steps; not a replayed seed) must reach every outcome:
 - a write, a mark as matching, and a write beside a conflict;
+- a style written or matched, and one written in the file's own order;
 - a refusal with only conflicts, and one with nothing to write;
 - a preview with a text not written;
 - both kinds of outdated plan, and a plan still current after a Ninerr edit;
@@ -58,23 +64,27 @@ A full run (at least 4 seeds of at least 80 steps; not a replayed seed) must rea
 ## Results
 **Locally (Windows 11, Node 24):**
 - **The default 4 seeds × 80 steps pass in 13 s, identically on two runs:**
-  - 66 Ninerr edits and 61 file edits;
-  - 28 writes, 2 marks as matching, and 6 writes beside a conflict;
-  - 23 refusals with only conflicts and 27 with nothing to write;
-  - 21 previews with a text not written;
-  - 21 plans outdated by the file and 9 by Ninerr, refused; one plan still current after a Ninerr edit, and written;
+  - 69 Ninerr edits and 61 file edits;
+  - 26 writes, 3 marks as matching, and 17 writes beside a conflict;
+  - 4 styles written or matched, one of them in the file's own order;
+  - 35 refusals with only conflicts and 16 with nothing to write;
+  - 45 previews with a text not written;
+  - 21 plans outdated by the file and 7 by Ninerr, refused; 4 plans still current after a Ninerr edit;
   - 21 undos, 14 redos and 14 reopens.
-- **12 seeds × 80 steps pass in 37 s:**
-  - 78 writes and 16 marks as matching;
-  - 26 writes beside a conflict and 66 refusals with only conflicts;
-  - 108 outdated plans refused, and 7 plans still current after a Ninerr edit;
+- **12 seeds × 80 steps pass in 34 s:**
+  - 77 writes and 14 marks as matching;
+  - 14 styles written or matched, 4 in the file's own order;
+  - 43 writes beside a conflict and 91 refusals with only conflicts;
+  - 106 outdated plans refused, and 9 plans still current after a Ninerr edit;
   - 43 reopens.
 
   Every outcome was the model's, and the file was always byte for byte as predicted.
 
 **Mutation checks** (each change made by hand to `packages/studio-host/src/codebase.ts`, the test run, the code restored):
-- **Without #234's text matching** (no matched entry for a text both sides agree on), 2 of 4 seeds fail: the host says there is nothing to write where the model marks the field as matching.
-- **When a text changed on both sides is no longer a conflict,** 3 of 4 seeds fail at "the changes".
+Each of these mutations makes the default run fail:
+- **Without #234's text matching** (no matched entry for a text both sides agree on): the host says there is nothing to write where the model marks the field as matching.
+- **When a text changed on both sides is no longer a conflict:** it fails at "the changes".
+- **When a style is written in the layer's order instead of the file's** (no `styleInSourceOrder`): it fails at "the base of style". No other test in the suite catches this one.
 
 **In CI:** the Foundation run at the PR's exact head gives the Linux result.
 
