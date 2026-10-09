@@ -518,6 +518,15 @@ async function openCodeDialog() {
   });
 }
 
+/** The first line of a write-back plan's review: what writing it would do. */
+function planSummary(plan) {
+  if (plan.changes.length > 0) return `${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} to ${plan.file}:`;
+  const one = plan.matched.length === 1;
+  if (plan.matched.length > 0) return `Nothing needs writing: ${plan.matched.length} field${one ? " has" : "s have"} the same value here and in the file. Mark ${one ? "it" : "them"} as matching, so a later change to ${one ? "it is" : "them is"} written back rather than seen as a conflict.`;
+  if (plan.conflicts.length > 0) return "There is nothing to write back.";
+  return "There is nothing to write back: the file already has these values.";
+}
+
 // The Code dialog's codebase section: connect a local folder, bring its components in,
 // and write a component's edits back to its file after previewing them (PC11).
 function buildCodebasePart({ codebase, codebaseError, boundNode, close, error }) {
@@ -610,15 +619,15 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
       const plan = await state.client.post("/api/codebase/preview", { nodeId: boundNode.id });
       const items = (entries, render) => (entries.length === 0 ? [] : [el("ul", {}, entries.map((entry) => el("li", {}, render(entry))))]);
       preview.replaceChildren(
-        plan.changes.length === 0 ? el("p", {}, "There is nothing to write back: the file already has these values.") : el("p", {}, `${plan.changes.length} change${plan.changes.length === 1 ? "" : "s"} to ${plan.file}:`),
+        el("p", {}, planSummary(plan)),
         ...(plan.diff === "" ? [] : [el("pre", { class: "diff", id: "codebase-diff", tabindex: "0", "aria-label": `Changes to ${plan.file}` }, plan.diff)]),
         ...(plan.conflicts.length === 0 ? [] : [el("p", {}, "Changed both here and in the file, so not written:")]),
         ...items(plan.conflicts, (conflict) => `${conflict.field}: ${conflict.reason}`),
         ...(plan.notWritten.length === 0 ? [] : [el("p", {}, "Not written back:")]),
         ...items(plan.notWritten, (entry) => entry.reason),
       );
-      if (plan.changes.length > 0) {
-        const write = el("button", { type: "button", class: "primary", id: "codebase-write" }, "Write to file");
+      if (plan.changes.length > 0 || plan.matched.length > 0) {
+        const write = el("button", { type: "button", class: "primary", id: "codebase-write" }, plan.changes.length > 0 ? "Write to file" : "Mark as matching");
         write.addEventListener("click", () => {
           error.textContent = "";
           write.disabled = true;
@@ -627,7 +636,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
               const result = await state.client.post("/api/codebase/write", { nodeId: boundNode.id, token: plan.token });
               close();
               applyChange(result);
-              setStatus(`Wrote ${result.written} change${result.written === 1 ? "" : "s"} to ${result.file}.`);
+              setStatus(result.written > 0 ? `Wrote ${result.written} change${result.written === 1 ? "" : "s"} to ${result.file}.` : `Marked ${result.matched} field${result.matched === 1 ? "" : "s"} as matching ${result.file}.`);
             } catch (failure) {
               write.disabled = false;
               if (failure instanceof HostError && failure.code === "project-needs-reopen") {

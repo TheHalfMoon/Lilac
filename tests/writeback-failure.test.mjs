@@ -150,6 +150,30 @@ test("#185: an external edit before the record is settled is a conflict, never o
   });
 });
 
+test("#185: marking a field as matching leaves another layer's unconfirmed record in place", async () => {
+  await withEditedCard(async (context) => {
+    const { call, cardPath, section, h2, p, previewNow, reopen, host } = context;
+    writeFailingConfirm(context);
+    // The heading's write has an unknown outcome (the file was changed back); the paragraph's
+    // title is then changed to the same value here and in the file.
+    writeFileSync(cardPath, CARD.replace('title="Plan"', 'title="Plan B"'));
+    await reopen();
+    await call("POST", "/api/edit", { baseRevision: host.session.revision, intent: "Retitle", operations: [{ type: "set-props", nodeId: p.id, set: { attributes: { title: "Plan B" } } }] });
+    // The heading is also given the file's text: it agrees with the file too, but its earlier
+    // write is unconfirmed, so it is never marked as matching.
+    await call("POST", "/api/edit", { baseRevision: host.session.revision, intent: "Heading", operations: [{ type: "set-props", nodeId: h2.id, set: { text: "Pro" } }] });
+    const preview = await previewNow();
+    assert.deepEqual(preview.matched.map((entry) => [entry.nodeId, entry.field]), [[p.id, "title"]], "only the paragraph's title, not the unconfirmed heading");
+    assert.deepEqual(preview.conflicts.map((conflict) => [conflict.nodeId, conflict.field]), [[h2.id, "write-back"]]);
+    const marked = await call("POST", "/api/codebase/write", { nodeId: section.id, token: preview.token });
+    assert.equal(marked.status, 200, JSON.stringify(marked.json));
+    assert.equal(marked.json.matched, 1);
+    assert.equal(host.session.document.nodes[p.id].props.codeSource.base.props.title, "Plan B", "the matched field's base moved");
+    assert.equal(host.session.document.nodes[h2.id].props.codeSource.pending.base.text, "Team", "the unconfirmed record stays");
+    assert.deepEqual((await previewNow()).conflicts.map((conflict) => conflict.field), ["write-back"], "and is still reported");
+  });
+});
+
 test("#185: a crash between recording and renaming is withdrawn from the leftover temporary", async () => {
   await withEditedCard(async ({ call, host, code, cardPath, section, h2, preview, sessionCommit, previewNow, reopen }) => {
     // The process stops right after the record is committed: the record is durable, the
