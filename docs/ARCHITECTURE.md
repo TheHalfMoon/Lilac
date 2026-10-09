@@ -4,7 +4,7 @@ This document defines Ninerr's architectural boundaries.
 
 ## Packages today
 
-The repository has 26 packages under `packages/`: `agent-events`, `agent-runtime`, `agent-supervisor`, `agent-workspace`, `architecture`, `canvas`, `code-ir`, `collaboration`, `decision-assurance`, `decision-router`, `delivery-governance`, `design-assurance`, `design-components`, `design-method`, `desktop`, `document-model`, `history`, `import-stack`, `intake`, `mcp-protocol`, `network-policy`, `persistence`, `renderer`, `studio-host`, `studio-web`, `visual-git`. `README.md` groups them by role.
+The repository has 26 packages under `packages/`: `agent-events`, `agent-runtime`, `agent-supervisor`, `agent-workspace`, `architecture`, `canvas`, `code-ir`, `collaboration`, `decision-assurance`, `decision-router`, `delivery-governance`, `design-assurance`, `design-components`, `design-method`, `desktop`, `document-model`, `history`, `import-stack`, `intake`, `mcp-protocol`, `network-policy`, `persistence`, `renderer`, `studio-host`, `studio-web`, `visual-git`. `README.md` describes the main subsystems, and the architecture catalog in `packages/architecture` records every one.
 
 ## Target layout
 
@@ -155,7 +155,7 @@ Local web mode runs the host directly. The desktop shell starts the same host an
 The desktop shell owns privileged operations. Today it owns:
 - local filesystem and repository access, through the studio host it starts;
 - the local MCP lifecycle;
-- the bridge between the window and the host;
+- the sandboxed window that loads the host's editor, with no IPC to it;
 - native menus and their shortcuts.
 
 Planned: local fonts, secure credential storage and an update mechanism.

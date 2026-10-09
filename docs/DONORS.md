@@ -10,9 +10,10 @@ Paper, Paper.design and the other names in this ledger belong to their owners. T
 
 - Role: **primary foundation / authorized donor**
 - Authorization basis: project owner explicitly states they have full permission to copy, modify, and use the Paper.design source code for this project.
-- Source access: the private product monorepo (`paper-design/paper`) was never available to this project, and the complete original repository was never recovered.
+- Source access: the private product monorepo (`paper-design/paper`) was not available through connected GitHub sources, and the complete original repository was never recovered.
 - Recovery study: a partial recovery from publicly shipped Paper Desktop packages was studied (state `PARTIAL_RECOVERY_PROVEN`). N0-G5 retired that tooling and its records.
 - In Ninerr: no recovered Paper source was ever committed (`docs/provenance/LICENSE_REGISTER.json`, entry `paper-design/paper`).
+- Public-repository boundary: raw proprietary source stays out of the public repository unless public redistribution rights are separately established.
 
 The recovery records, retired from the tree in N0-G5 and pinned in `docs/provenance/RETIRED_PAPER_RECORDS.md`:
 
