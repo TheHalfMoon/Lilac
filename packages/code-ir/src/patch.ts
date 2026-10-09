@@ -18,8 +18,11 @@ export function applyPatch(irInput: CodeIr, filesInput: PatchFileInput[], opsInp
   if (!Array.isArray(filesInput) || filesInput.length === 0) {
     throw new CodeIrConflictError("patch requires at least one source file");
   }
-  if (!Array.isArray(opsInput) || opsInput.length > CODE_IR_HARD_LIMITS.maxPatchOps) {
-    throw new CodeIrConflictError("patch operations exceed the bounded budget");
+  if (!Array.isArray(opsInput)) {
+    throw new CodeIrConflictError("patch operations must be an array");
+  }
+  if (opsInput.length > CODE_IR_HARD_LIMITS.maxPatchOps) {
+    throw new CodeIrConflictError(`${opsInput.length} changed fields, more than the ${CODE_IR_HARD_LIMITS.maxPatchOps} one write-back can carry`);
   }
   const ops = opsInput.map((op, index) => normalizePatchOp(op, index));
   const files = new Map<string, string>();

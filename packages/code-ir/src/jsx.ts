@@ -401,6 +401,9 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
   if (children.length > CODE_IR_HARD_LIMITS.maxChildrenPerSymbol) {
     throw new CodeIrValidationError(`JSX element ${name} exceeds maxChildrenPerSymbol`);
   }
+  if (texts.length > CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol) {
+    throw new CodeIrValidationError(`JSX element ${name} has more than ${CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol} runs of text`);
+  }
   const endOffset = state.tokens[state.position - 1].end;
   const kind = /^[A-Z]/u.test(name) ? "component" : "element";
   const id = symbolId(state.file, kind, name, open.start);
