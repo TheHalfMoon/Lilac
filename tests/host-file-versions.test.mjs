@@ -37,7 +37,7 @@ test("an agent registry from a newer Ninerr is refused, admits no agent, and is 
   }
 }));
 
-test("an agent registry without the current version is malformed and set aside, as before", () => withRoot((root) => {
+test("an agent registry without a version is malformed and set aside, like any damaged registry", () => withRoot((root) => {
   writeOwnerOnly(join(root, ".ninerr-agents.json"), `${JSON.stringify({ agents: [] })}\n`);
   const registry = new AgentRegistry(root, owner);
   assert.match(registry.problem ?? "", /malformed/u);
