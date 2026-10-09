@@ -128,7 +128,7 @@ Ninerr's `@ninerr/agent-supervisor` package ports and adapts bounded supervision
 
 ## Studied, not incorporated
 
-These independently licensed projects were studied only. No code from them is in Ninerr, and none may be copied without meeting their licenses.
+These independently licensed projects were studied only. No code from them is in Ninerr, and none may be copied unless its license is established and met.
 
 - `vcashwin/paper-snapshot` at `12920e03e5bd6758a5e5d20db92b68e0410b0fb0`, MIT.
 - Public Paper repositories, none incorporated:

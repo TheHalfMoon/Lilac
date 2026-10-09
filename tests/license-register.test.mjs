@@ -158,6 +158,24 @@ test("Ninerr is declared Apache-2.0 only once every entry is resolved, and then 
   }
 });
 
+test("third-party text reproduced in the notices stays verbatim", () => {
+  // Each blockquote reproduces an upstream text: Impeccable's NOTICE.md at its pinned revision and
+  // Unreal Agent's MIT license. They are pinned so a later edit cannot weaken them silently.
+  const runs = [];
+  let current = null;
+  for (const line of read("THIRD_PARTY_NOTICES.md").split("\n")) {
+    if (line.startsWith(">")) {
+      if (current === null) runs.push((current = []));
+      current.push(line);
+    } else current = null;
+  }
+  const digests = runs.map((lines) => createHash("sha256").update(lines.join("\n")).digest("hex"));
+  assert.deepEqual(digests, [
+    "2b9acf6954f04950ccc09cde5346acc636fd9036855f26bd22436d0f3b3cea88",
+    "6e828a293093470fc7cc28767e36b38fdb671b3528f20892cde9d78b1f534042",
+  ]);
+});
+
 test("vendored third-party files match the register and are named in the notices", () => {
   const notices = read("THIRD_PARTY_NOTICES.md");
   for (const entry of register.entries) {
