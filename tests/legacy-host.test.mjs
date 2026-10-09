@@ -95,6 +95,24 @@ test("legacy codebase links are read until the first change, which saves the Nin
   assert.equal(new CodebaseLinks(root).get("app"), "/home/someone/app");
 }));
 
+test("a legacy registry or links file claiming a newer version is ignored like a damaged one, and the Ninerr files work", () => withRoot((root) => {
+  const legacyAgents = `${JSON.stringify({ version: 2, agents: [] })}\n`;
+  const legacyLinks = `${JSON.stringify({ version: 2, links: { site: "/home/someone/site" } })}\n`;
+  writeOwnerOnly(join(root, ".lilac-agents.json"), legacyAgents);
+  writeOwnerOnly(join(root, ".lilac-codebases.json"), legacyLinks);
+  const registry = new AgentRegistry(root, owner);
+  assert.equal(registry.problemCode, null, "a legacy file does not block the registry");
+  const { token } = registry.create("Agent", AT);
+  assert.notEqual(new AgentRegistry(root, owner).authenticate(token), null);
+  const links = new CodebaseLinks(root);
+  assert.equal(links.problem, null);
+  assert.equal(links.get("site"), null, "the legacy file's links are not used");
+  links.set("app", "/home/someone/app");
+  assert.equal(new CodebaseLinks(root).get("app"), "/home/someone/app");
+  assert.equal(readFileSync(join(root, ".lilac-agents.json"), "utf8"), legacyAgents, "legacy files are never changed");
+  assert.equal(readFileSync(join(root, ".lilac-codebases.json"), "utf8"), legacyLinks);
+}));
+
 test("the projects folder: explicit, then NINERR_PROJECTS, then LILAC_PROJECTS, then the defaults", () => withRoot((home) => {
   const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, NINERR_PROJECTS: process.env.NINERR_PROJECTS, LILAC_PROJECTS: process.env.LILAC_PROJECTS };
   const set = (values) => {
