@@ -1,15 +1,15 @@
 # @ninerr/agent-supervisor
 
-Ninerr Grain 4 is the local worker/worktree supervision boundary. It preserves durable task and source identity across runtime loss while keeping runtime process identity replaceable.
+`@ninerr/agent-supervisor` is the local worker and worktree supervision boundary. It preserves durable task and source identity across runtime loss while keeping runtime process identity replaceable.
 
 ## Identity boundaries
 
 The supervisor keeps four identities separate:
 
-1. `taskId` ? durable worker/task identity.
-2. `source` ? repository identity, immutable branch, canonical worktree root, and creation HEAD.
-3. `lease` / supervisor generation ? the only generation allowed to mutate durable worker state.
-4. `endpoint` ? the current local runtime identity; it may be stopped, detached, or replaced without changing task/source identity.
+1. `taskId`: durable worker/task identity.
+2. `source`: repository identity, immutable branch, canonical worktree root, and creation HEAD.
+3. `lease` / supervisor generation: the only generation allowed to mutate durable worker state.
+4. `endpoint`: the current local runtime identity; it may be stopped, detached, or replaced without changing task/source identity.
 
 A runtime exit never deletes a worktree. Worktree cleanup is outside this package.
 
@@ -36,14 +36,14 @@ Task records are versioned, bounded, deterministic JSON. They contain the immuta
 
 The typed lifecycle surface is:
 
-- `startTask` ? reserve and launch a fresh worker in an already-proven worktree;
-- `inspectTask` ? read-only task/worktree/runtime inspection;
-- `interruptTask` ? allowlisted runtime interrupt/cancel request;
-- `stopTask` ? stop runtime while preserving source/worktree state;
-- `relaunchTask` ? journaled replacement in the exact recorded worktree;
-- `detachTask` ? detach only after the endpoint is positively agent-free;
-- `retireTask` ? explicit durable retirement without worktree cleanup;
-- `reconcileTask` ? restart-safe reconciliation without speculative respawn.
+- `startTask`: reserve and launch a fresh worker in an already-proven worktree;
+- `inspectTask`: read-only task/worktree/runtime inspection;
+- `interruptTask`: allowlisted runtime interrupt/cancel request;
+- `stopTask`: stop runtime while preserving source/worktree state;
+- `relaunchTask`: journaled replacement in the exact recorded worktree;
+- `detachTask`: detach only after the endpoint is positively agent-free;
+- `retireTask`: explicit durable retirement without worktree cleanup;
+- `reconcileTask`: restart-safe reconciliation without speculative respawn.
 
 `missing` and `unknown` are never treated as proof that a worker is gone.
 
@@ -57,7 +57,7 @@ Endpoint metadata is durable. A live PID observed by a fresh adapter instance is
 
 The durable wake queue has a single monotonically increasing acknowledgement cursor and rejects gaps. `settleDurableTaskWake` also publishes the accepted sequence to the task's `wakeCursor` before queue acknowledgement. If the process fails after task-cursor publication but before queue acknowledgement, replay skips the already-applied handler and only finishes the queue acknowledgement.
 
-Useful progress is independent from process liveness. Source HEAD/dirty fingerprints, event sequence, active operations, declared waits, and injected time windows drive deterministic stale/wedge classification. Classification emits bounded Grain 3 events but does not trigger destructive action by itself.
+Useful progress is independent from process liveness. Source HEAD/dirty fingerprints, event sequence, active operations, declared waits, and injected time windows drive deterministic stale/wedge classification. Classification emits bounded `@ninerr/agent-events` events but does not trigger destructive action by itself.
 
 ## Provenance
 

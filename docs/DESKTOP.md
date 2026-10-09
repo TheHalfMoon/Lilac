@@ -59,7 +59,7 @@ The window is isolated and sandboxed, with no Node, and its preload gives the pa
 - **No permissions:** it is granted none (camera, microphone, location, notifications, screen capture or clipboard reads).
 - **No requests elsewhere:** it can reach nothing but Ninerr's own host on 127.0.0.1.
 
-Chromium's own background requests are turned off too. The tests run the app behind a proxy that records every connection the browser side (pages and Chromium itself) makes off the computer, and require that there are none. Ninerr's host code, which runs in the app's main process, is the same as in local web mode, where a test (PC7) shows it makes no connection off the computer; the desktop smoke test does not watch the main process's own connections.
+Chromium's own background requests are turned off too. The tests run the app behind a proxy that records every connection the browser side (pages and Chromium itself) makes off the computer, and require that there are none. Ninerr's host code, which runs in the app's main process, is the same as in local web mode, where `tests/web-mode.test.mjs` shows it makes no connection off the computer; the desktop smoke test does not watch the main process's own connections.
 
 **What a local program can still do.** A program running as you can start Ninerr with Chromium switches, such as `--remote-debugging-port`, and take control of the editor. No fuse covers these. That program could already act as you, so it is outside what Ninerr defends against (see `SECURITY.md`).
 

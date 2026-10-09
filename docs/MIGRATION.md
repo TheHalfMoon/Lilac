@@ -9,8 +9,8 @@ Ninerr stores a project under `<root>/.ninerr`. This page describes:
 
 `packages/persistence` enforces this behaviour. Two suites check it:
 
-- `tests/migration-compatibility.test.mjs` (P06 gate 11);
-- `tests/legacy-migration.test.mjs` (N0-G2).
+- `tests/migration-compatibility.test.mjs`;
+- `tests/legacy-migration.test.mjs`.
 
 ## Layout
 

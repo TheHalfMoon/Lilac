@@ -19,25 +19,29 @@ Ninerr is a local-first design workspace for interfaces that are code. A design 
 Ninerr needs Node.js 22.18 or later. Installing fetches its dependencies; once installed, it needs no network or account.
 
 ```bash
-npm ci
+npm ci --ignore-scripts
 npm start
 ```
 
-`npm start` runs the studio host and prints a link to the editor. Projects live in a "Ninerr Projects" folder in your home folder unless `NINERR_PROJECTS` or `npm start -- --projects <folder>` names another. `docs/DESKTOP.md` covers the projects folder and settings from before the rename, and `docs/MIGRATION.md` covers converting older projects.
+`npm start` runs the studio host and prints a link to the editor. Projects live in a "Ninerr Projects" folder in your home folder unless `NINERR_PROJECTS` or `npm start -- --projects <folder>` names another. `docs/DESKTOP.md` covers the projects folder and settings from earlier versions, and `docs/MIGRATION.md` covers converting older projects.
 
 To connect an MCP client, run `npm run mcp`, with the agent credential Ninerr shows you set as `NINERR_MCP_TOKEN`.
 
 `npm test` runs the test suite, and `npm run smoke` runs the offline smoke workflow.
 
 ## Documentation
+- `docs/ARCHITECTURE.md`: the subsystems and how they fit together.
 - `docs/DESKTOP.md`: the desktop app, its packages and how it is protected.
 - `docs/MCP.md`: the MCP server, its tools and authorization.
-- `docs/MIGRATION.md`: project format versions, and migrating a project from before the rename.
+- `docs/MIGRATION.md`: project format versions, and migrating a project from an earlier version.
 - `docs/RELEASE.md`: what a release contains, how it is signed, and how to verify it.
 - `SECURITY.md`: reporting a vulnerability, and the security boundaries.
+- `CONTRIBUTING.md`: setting up, testing, and opening a pull request.
+- `docs/CURRENT.md` and `docs/MASTER_PLAN.md`: the current state of the program, and the plan.
 
 ## License
 Ninerr is licensed under the Apache License 2.0 (`LICENSE`).
 - `THIRD_PARTY_NOTICES.md` lists the third-party software Ninerr uses and the notices it carries.
 - `docs/provenance/LICENSE_REGISTER.json` is the audited register of every source and dependency.
+- `docs/DONORS.md` records the projects Ninerr studied or drew on, and what came from each.
 - `docs/provenance/ELECTRON_CORRESPONDING_SOURCE.json` binds the desktop app's Electron runtime to its exact corresponding source.

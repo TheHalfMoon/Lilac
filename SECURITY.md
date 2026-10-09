@@ -24,14 +24,14 @@ Ninerr is local-first. Its core needs no hosted service, model or account, and i
 
 | Boundary | Owner | Evidence |
 | --- | --- | --- |
-| Imported HTML, CSS and SVG keep no executable or fetch authority | `packages/import-stack`, `packages/intake` | `tests/malicious-corpus.test.mjs` (P06 gate 6), `tests/import-idempotence.test.mjs` (gate 7) |
+| Imported HTML, CSS and SVG keep no executable or fetch authority | `packages/import-stack`, `packages/intake` | `tests/malicious-corpus.test.mjs`, `tests/import-idempotence.test.mjs` |
 | Network access is default-deny, with decisions made before and after DNS | `packages/network-policy` | `tests/network-policy.test.mjs`, `tests/sandbox-network.test.mjs`, `tests/import-network-policy.test.mjs`, `tests/browser-proxy.test.mjs`, `tests/offline-guarantee.test.mjs` |
-| Filesystem confinement for projects, mirrors, worktrees and evidence stores (traversal, links, swapped directories) | `packages/persistence`, `packages/import-stack`, `packages/agent-supervisor`, `packages/delivery-governance`, `packages/collaboration` | `tests/sandbox-persistence.test.mjs`, `tests/sandbox-surfaces.test.mjs` (P06 gate 5) |
-| MCP tool calls are authorized per document, and consequential calls need a person's confirmation | `packages/mcp-protocol` | `tests/mcp-authorization.test.mjs` (P06 gate 8) |
-| Project files are integrity-checked (content-addressed objects, hash-chained journal, single-writer lock) and fail closed on damage or unknown versions | `packages/persistence` | `tests/persistence.test.mjs`, `tests/crash-recovery.test.mjs`, `tests/migration-compatibility.test.mjs` (gates 10 and 11) |
-| Dependencies have known licenses and pinned integrity hashes | `scripts/sbom.mjs`, `scripts/license-policy.json` | `tests/sbom.test.mjs` (gate 9) |
-| A connected codebase folder is used only by the person (never an agent): files are read and written only inside it (relative paths, no links, realpath-confined, bounded), and a write-back is the reviewed, three-way patch the person previewed, written atomically | `packages/studio-host/src/codebase.ts` | `tests/codebase.test.mjs` (PC11) |
-| The desktop window is isolated and sandboxed with no Node, may reach only Ninerr's host, and is granted no permission; the packaged runtime's fuses refuse running as Node, `NODE_OPTIONS` and `--inspect` | `packages/desktop`, `scripts/desktop/fuses.mjs` | `tests/desktop-shell.test.mjs`, `tests/desktop-package.test.mjs`, `scripts/smoke-desktop.mjs` (PC gates 5 and 15) |
+| Filesystem confinement for projects, mirrors, worktrees and evidence stores (traversal, links, swapped directories) | `packages/persistence`, `packages/import-stack`, `packages/agent-supervisor`, `packages/delivery-governance`, `packages/collaboration` | `tests/sandbox-persistence.test.mjs`, `tests/sandbox-surfaces.test.mjs` |
+| MCP tool calls are authorized per document, and consequential calls need a person's confirmation | `packages/mcp-protocol` | `tests/mcp-authorization.test.mjs` |
+| Project files are integrity-checked (content-addressed objects, hash-chained journal, single-writer lock) and fail closed on damage or unknown versions | `packages/persistence` | `tests/persistence.test.mjs`, `tests/crash-recovery.test.mjs`, `tests/migration-compatibility.test.mjs` |
+| Dependencies have known licenses and pinned integrity hashes | `scripts/sbom.mjs`, `scripts/license-policy.json` | `tests/sbom.test.mjs` |
+| A connected codebase folder is used only by the person (never an agent): files are read and written only inside it (relative paths, no links, realpath-confined, bounded), and a write-back is the reviewed, three-way patch the person previewed, written atomically | `packages/studio-host/src/codebase.ts` | `tests/codebase.test.mjs` |
+| The desktop window is isolated and sandboxed with no Node, may reach only Ninerr's host, and is granted no permission; the packaged runtime's fuses refuse running as Node, `NODE_OPTIONS` and `--inspect` | `packages/desktop`, `scripts/desktop/fuses.mjs` | `tests/desktop-shell.test.mjs`, `tests/desktop-package.test.mjs`, `scripts/smoke-desktop.mjs` |
 
 The following are in scope:
 - a way past any of these boundaries;
@@ -39,7 +39,7 @@ The following are in scope:
 - a way to make Ninerr contact the network when its policy says it must not.
 
 The following are out of scope:
-- **Optional connectors and reference-only donors.** This covers a hosted crawler or a model provider that a user configures.
+- **Optional connectors and third-party services.** This covers a hosted crawler or a model provider that a user configures.
 - **Third-party dependencies.** Report those upstream; tell us too if Ninerr's use makes the problem reachable.
 - **An attacker who already runs code locally,** in the same process or user account. This includes starting the desktop app with Chromium switches such as `--remote-debugging-port`, which no fuse covers and which give the starter control of the editor.
 
