@@ -52,6 +52,11 @@ export class AgentRegistry {
     return this.#problem;
   }
 
+  /** "agents-newer" while the registry belongs to a newer Ninerr; null otherwise. */
+  get problemCode(): string | null {
+    return this.#newer === null ? null : this.#newer.code;
+  }
+
   constructor(projectsRoot: string, owner: StudioActor) {
     this.#path = join(projectsRoot, REGISTRY_FILE);
     this.#owner = owner;
@@ -78,7 +83,9 @@ export class AgentRegistry {
     try {
       agents = readRegistry(source.path);
     } catch (error) {
-      if (error instanceof StudioError && error.code === "agents-newer") this.#newer = error;
+      // A newer Ninerr's registry is kept as it is. A legacy file is never written by a newer
+      // Ninerr, so a "newer" legacy registry is only ignored, like a damaged one.
+      if (error instanceof StudioError && error.code === "agents-newer" && !source.legacy) this.#newer = error;
       // A damaged registry must not stop Ninerr: it is set aside (kept for inspection) and
       // every agent has to be connected again. Failing closed means no agent gets access.
       // A damaged legacy registry is only ignored; it is not ours to move.

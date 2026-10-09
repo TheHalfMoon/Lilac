@@ -302,7 +302,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       selection = [...ids];
       return { selected: selection.length };
     },
-    "GET /api/agents": () => ({ agents: agents.list(), mcpUrl: `http://${LOOPBACK}:${port}/mcp`, ...(agents.problem ? { problem: agents.problem } : {}) }),
+    "GET /api/agents": () => ({ agents: agents.list(), mcpUrl: `http://${LOOPBACK}:${port}/mcp`, ...(agents.problem ? { problem: agents.problem, problemCode: agents.problemCode } : {}) }),
     "POST /api/agents/create": (body) => {
       const created = agents.create(body?.name, now());
       // The open project grants the new agent at once.

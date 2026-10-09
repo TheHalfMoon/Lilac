@@ -29,6 +29,7 @@ test("an agent registry from a newer Ninerr is refused, admits no agent, and is 
   for (const launch of [1, 2]) {
     const registry = new AgentRegistry(root, owner);
     assert.match(registry.problem ?? "", /newer version of Ninerr \(registry version 2\)/u, `launch ${launch}`);
+    assert.equal(registry.problemCode, "agents-newer");
     assert.deepEqual(registry.list(), []);
     assert.equal(registry.authenticate(`ninerr_agent_${"A".repeat(43)}`), null);
     assert.throws(() => registry.create("Agent", AT), (error) => error.code === "agents-newer" && error.status === 409);

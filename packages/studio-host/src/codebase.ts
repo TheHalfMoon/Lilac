@@ -91,9 +91,11 @@ export class CodebaseLinks {
     this.#path = join(projectsRoot, ".ninerr-codebases.json");
     // The links file from before the rename (legacy.ts) is read when there is no Ninerr
     // file yet, and left as it was; the next change saves the Ninerr file.
-    const read = readLinks(registrySource(projectsRoot, ".ninerr-codebases.json", LEGACY_CODEBASE_LINKS_FILE).path);
+    const source = registrySource(projectsRoot, ".ninerr-codebases.json", LEGACY_CODEBASE_LINKS_FILE);
+    const read = readLinks(source.path);
     this.#links = read.links;
-    this.#newer = read.newer === null ? null : new StudioError(409, "codebases-newer", `the codebase links were saved by a newer version of Ninerr (links version ${read.newer}); they are left unchanged until that version is used`);
+    // A legacy file is never written by a newer Ninerr, so a "newer" one is only ignored.
+    this.#newer = read.newer === null || source.legacy ? null : new StudioError(409, "codebases-newer", `the codebase links were saved by a newer version of Ninerr (links version ${read.newer}); they are left unchanged until that version is used`);
   }
 
   /** Why the links could not be used, or null. */
