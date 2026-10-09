@@ -18,7 +18,7 @@ CI runs the test suite on Linux only. Some tests fail on Windows (#192).
 
 ## Before opening a pull request
 - **Tests.** Add or update the tests that prove the change, and run the suite.
-- **The identity gate.** The product's former name, Paper and the donor projects' identities appear only where a reviewed rule in `scripts/identity-policy.json` admits them. `node scripts/identity-census.mjs --check` must report no gated findings. A deliberate new exception belongs in that policy as a narrow rule with a reason.
+- **The identity gate.** The product's former name and the identities of the donor projects appear only where a reviewed rule in `scripts/identity-policy.json` admits them. `node scripts/identity-census.mjs --check` must report no gated findings. A deliberate new exception belongs in that policy as a narrow rule with a reason.
 - **The census summary.** CI checks that `docs/evidence/N0_IDENTITY_CENSUS.json` is current. It changes whenever files are added or removed or findings change. Run `node scripts/identity-census.mjs --write` after staging the change.
 - **Sources and licenses.** Every dependency and every GitHub project the repository links to is recorded in `docs/provenance/LICENSE_REGISTER.json`, and the tests enforce it. If a change adds a third-party source, register it, and add its notices to `THIRD_PARTY_NOTICES.md` when its license requires them.
 - **Documentation.** Update the docs that describe the changed behavior. Write in English, and claim only what the tests or evidence show.
