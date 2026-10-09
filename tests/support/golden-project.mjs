@@ -3,9 +3,11 @@
 // to regenerate it; the compatibility suite checks that this release writes the same bytes.
 // tests/fixtures/projects/v1-basic is the same history written by the release before the
 // rename (schema 1); it is frozen as the legacy migration corpus and never regenerated.
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { createDocument } from "../../packages/document-model/src/index.mjs";
 import { pathToFileURL } from "node:url";
-import { createProject, openProject } from "../../packages/persistence/src/index.ts";
+import { PROJECT_FILES, createProject, openProject } from "../../packages/persistence/src/index.ts";
 
 export const GOLDEN_AT = "2026-10-07T12:00:00.000Z";
 
@@ -48,7 +50,10 @@ export function writeGoldenProject(root) {
       }],
     });
   } finally {
-    store.close();
+    // The writer stops without a clean close, as after a crash, its lock gone as after an
+    // override: the snapshot stays at the checkpoint, so opening the fixture replays three
+    // entries of every kind. A clean close would checkpoint at the journal's end (#239).
+    rmSync(join(root, PROJECT_FILES.directory, PROJECT_FILES.lock));
   }
 }
 
