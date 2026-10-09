@@ -251,6 +251,23 @@ test("the host under generated hostile requests and MCP calls never fails open: 
           around = await surroundings();
         }
 
+        // A write-back the person previews lands, where the fuzz left the heading writable, so
+        // the check after a landed write runs too.
+        const heading = Object.values(state.document.nodes).find((node) => node.props?.tag === "h2" && node.props?.codeSource);
+        const section = Object.values(state.document.nodes).find((node) => node.props?.tag === "section" && node.props?.codeSource);
+        if (heading && section) {
+          const edited = await running.call("POST", "/api/edit", { baseRevision: state.revision, intent: "Retitle", operations: [{ type: "set-props", nodeId: heading.id, set: { text: "Fuzzed" } }] });
+          const preview = edited.status === 200 ? await running.call("POST", "/api/codebase/preview", { nodeId: section.id }) : null;
+          if (preview?.status === 200 && preview.json.changes.length > 0) {
+            const written = await ok(running.call("POST", "/api/codebase/write", { nodeId: section.id, token: preview.json.token }), "write back");
+            if (written.written > 0) {
+              context.landed += 1;
+              tally("write-back landed");
+            }
+          }
+          state = await current();
+        }
+
         // Closing and reopening, in a new host, gives back exactly the document the session held.
         const held = serializeDocument(state.document);
         await ok(running.call("POST", "/api/projects/close"), "close");
@@ -261,7 +278,7 @@ test("the host under generated hostile requests and MCP calls never fails open: 
         // The source file is untouched, unless a write the person previewed landed; then it is
         // still the component, as the host reads it.
         if (context.landed === 0) assert.equal(readFileSync(join(folder, "Card.jsx"), "utf8"), CARD, "the connected source file is untouched");
-        else assert.deepEqual((await ok(running.call("GET", "/api/codebase"), "codebase")).components.map((component) => component.name), ["PriceCard"], "the written source file is still the component");
+        else assert.deepEqual((await ok(running.call("GET", "/api/codebase"), "codebase")).components.map(({ file, component }) => [file, component]), [["Card.jsx", "PriceCard"]], "the written source file is still the component");
       } finally {
         await pool.closeAll();
         rmSync(base, { recursive: true, force: true });
