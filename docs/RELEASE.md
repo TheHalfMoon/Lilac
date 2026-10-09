@@ -27,7 +27,7 @@ The evidence bundle's `MANIFEST.json` names that commit as `sourceCommit`, and i
 
 | Path | Contents |
 | --- | --- |
-| `sbom.cdx.json` | CycloneDX 1.5 SBOM generated from `package-lock.json` (P06 gate 9), plus the desktop app's Electron runtime, with the SHA-256 of each pinned release archive. It is produced only if the license policy check passes. |
+| `sbom.cdx.json` | CycloneDX 1.5 SBOM generated from `package-lock.json`, plus the desktop app's Electron runtime, with the SHA-256 of each pinned release archive. It is produced only if the license policy check passes. |
 | `licenses/<sha256>.txt` | Every license text that the dependencies ship, deduplicated by content. |
 | `licenses/index.json` | For each dependency, and for the Electron runtime (its MIT text is kept at `docs/provenance/ELECTRON_LICENSE.txt`): its purl, its license, and which license texts belong to it. A package covered by a policy override, such as a platform binary, is recorded through the override's license file and sha256. This keeps the index independent of the platform the bundle was built on. The bundle is refused unless every listed text is present. |
 | `THIRD_PARTY_NOTICES.md`, `scripts/license-policy.json` | Notices and the license allowlist with its overrides. |
@@ -53,13 +53,11 @@ Git commit and tree ids are content addresses, so they identify the source exact
 
 `node scripts/desktop/corresponding-source.mjs --check` resolves every link live and compares it with the record. The release workflow runs it before it builds anything. Packaging refuses a record that does not match the pinned runtime, and each package manifest names the record's SHA-256 and the commits it binds. The record ships in the bundle with the other provenance records.
 
-How a binary release offers this source to recipients is a release-gate decision. LGPL-2.1 section 6 permits two routes:
+Ninerr publishes no binary release yet. Before the first one, the project owner decides how it offers this source to recipients. LGPL-2.1 section 6 permits two routes:
 - mirroring the source with the release, or offering it from the same place;
 - a written offer, valid for at least three years, in the project owner's name.
 
-Pointing at the public repositories at the recorded commits is not one of its methods, and would be a risk the owner accepts.
-
-It is recorded in `docs/evidence/N0_G7B_ELECTRON_SOURCE_2026-10-09.md`.
+Pointing at the public repositories at the recorded commits is not one of those methods. The analysis is in `docs/evidence/N0_G7B_ELECTRON_SOURCE_2026-10-09.md`.
 
 ## How a release is signed
 
@@ -75,7 +73,7 @@ The `Release Evidence` workflow (`.github/workflows/release.yml`) has five jobs.
   1. downloads the bundle and the three archives with their manifests;
   2. checks each archive against the SHA-256 its manifest records;
   3. puts the bundle in one archive and writes `SHA256SUMS`;
-  4. uploads the seven files as `ninerr-release-<sha>`, kept for 90 days.
+  4. uploads the seven files and `SHA256SUMS` as `ninerr-release-<sha>`, kept for 90 days.
 - **`attest`** runs only for a pushed tag matching `v[0-9]*`. It downloads the bundle and the collected files and signs every file with `actions/attest-build-provenance`. These are keyless Sigstore attestations through GitHub OIDC, so no signing key is stored anywhere. It runs no repository or dependency code.
 - **`publish`** runs only for a pushed tag, after `attest`. It puts the collected files in a **draft** GitHub Release for that tag. It runs only `gh`. It cannot create a tag, because the release must name an existing one, and it leaves the draft unpublished: publishing it is the owner's decision. Running `publish` again makes another draft, which the owner can delete.
 
@@ -114,7 +112,7 @@ The trust anchor is the attestation on `MANIFEST.json`. `--verify` only checks t
    ```sh
    node scripts/release-bundle.mjs --verify <bundle dir>
    ```
-4. Rebuild from the tagged commit with Node 22 into a directory that does not exist yet, and compare. The two must be identical:
+4. Rebuild from the tagged commit with Node 22.18 or later into a directory that does not exist yet, and compare. The two must be identical:
 
    ```sh
    git checkout <tag> && npm ci --ignore-scripts
