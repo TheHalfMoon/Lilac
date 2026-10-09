@@ -185,6 +185,36 @@ test("an interrupted atomic write of the manifest, snapshot or journal recovers 
   }
 });
 
+test("an open refused as corrupt or newer keeps the leftovers an open would clear (#241)", () => {
+  const root = project(3, 2);
+  const damage = {
+    PersistenceCorruptionError: (copy) => writeFileSync(ninerr(copy, PROJECT_FILES.journal), "not a journal line\n"),
+    PersistenceVersionError: (copy) => {
+      const path = ninerr(copy, PROJECT_FILES.manifest);
+      writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, "utf8")), schemaVersion: 99 }));
+    },
+  };
+  try {
+    for (const [kind, make] of Object.entries(damage)) {
+      withCopy(root, (copy) => {
+        writeFileSync(ninerr(copy, temporaryName(PROJECT_FILES.snapshot)), "an interrupted write");
+        writeFileSync(ninerr(copy, `${PROJECT_FILES.lock}.broken-${randomUUID()}`), "{}");
+        // And an interrupted object write, in an object fan-out directory.
+        const fanOut = readdirSync(ninerr(copy, PROJECT_FILES.objects))[0];
+        writeFileSync(join(ninerr(copy, PROJECT_FILES.objects), fanOut, temporaryName("0".repeat(62))), "an interrupted object");
+        make(copy);
+      }, (copy) => {
+        const listing = () => readdirSync(join(copy, PROJECT_FILES.directory), { recursive: true }).map(String).sort();
+        const before = listing();
+        assert.match(String(outcome(copy).error), new RegExp(kind), `refused as ${kind}`);
+        assert.deepEqual(listing(), before, `${kind}: a refused open removes nothing`);
+      });
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a checkpoint interrupted before its snapshot reference moved, and an interrupted object write, recover", () => {
   const root = project(3);
   try {

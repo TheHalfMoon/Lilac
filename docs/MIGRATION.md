@@ -43,9 +43,8 @@ There are three version boundaries. Each is checked on open, before anything is 
 
 Every refusal above is a `PersistenceVersionError`. Its message names the boundary and, for the journal, the entry and field.
 
-**A refused open leaves the project's manifest, snapshot, journal and objects as it found them.** Torn-tail repair and manifest migration are written only after all checks pass. What an open does do before its checks, under the writer lock:
+**A refused open leaves the project's files as it found them:** the manifest, snapshot, journal and objects, and also the unreferenced temporaries of interrupted writes and leftover `lock.broken-*` copies. Torn-tail repair, manifest migration and the removal of those leftovers are done only after all checks pass (#241). What an open does do before its checks, under the writer lock:
 - It takes the lock and releases it again when the open is refused.
-- It removes unreferenced temporaries from interrupted writes, and leftover `lock.broken-*` copies from an earlier lock override.
 - With `breakStaleLock`, it replaces the old lock. If the open is then refused, the old lock is not restored and the override record is not kept.
 
 **Damage is reported differently from version mismatches.** It raises `PersistenceCorruptionError`. Damage includes:
