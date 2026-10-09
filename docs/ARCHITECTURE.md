@@ -1,6 +1,6 @@
-# Lilac Target Architecture
+# Ninerr Target Architecture
 
-This document defines the target boundaries. The authorized Paper source intake may use different names and structure; P03 maps inherited code into these contracts incrementally rather than forcing a rewrite.
+This document defines the target boundaries. The architecture catalog in `packages/architecture` records which subsystems are implemented, which are stubs (a delivered slice with planned work), and which are planned.
 
 ## Product surfaces
 
@@ -31,7 +31,7 @@ packages/
   importers/         DOM/URL/repository intake
   exporters/         code/image/video/document exports
   agents/            agent transactions, roles, attribution, policies
-  mcp-protocol/      Lilac MCP tools/resources
+  mcp-protocol/      Ninerr MCP tools/resources
   plugins/           capability/plugin contracts
   security/          sandbox, sanitization, capability policy
   visual-diff/       image/node/layout diff engine
@@ -78,7 +78,7 @@ The core loop is:
 ```text
 repository source
   → parser/AST adapter
-  → Lilac Code IR
+  → Ninerr Code IR
   → design graph/source bindings
   → visual edits
   → graph diff
@@ -159,7 +159,7 @@ Web content must not receive unrestricted native capabilities.
 
 ## Security zones
 
-1. Trusted Lilac application code.
+1. Trusted Ninerr application code.
 2. Imported/generated document content.
 3. Third-party plugin code.
 4. Agent clients.

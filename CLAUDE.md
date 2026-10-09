@@ -1,6 +1,6 @@
 # Claude Project Instructions
 
-Lilac repository governance and canonical evidence are authoritative. Read `AGENTS.md` and `docs/MASTER_PLAN.md` before changing product code. Do not restart completed phases or rewrite accepted architecture unless live evidence requires it.
+Ninerr repository governance and canonical evidence are authoritative. Read `AGENTS.md` and `docs/MASTER_PLAN.md` before changing product code. Do not restart completed phases or rewrite accepted architecture unless live evidence requires it.
 
 ## Cloud-ready project tooling
 

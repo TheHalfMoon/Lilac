@@ -1,6 +1,6 @@
 # Release evidence
 
-A Lilac release is a tagged commit together with its signed release files: the desktop app for each supported platform, and an evidence bundle. This page describes how they are produced, and how anyone can check them.
+A Ninerr release is a tagged commit together with its signed release files: the desktop app for each supported platform, and an evidence bundle. This page describes how they are produced, and how anyone can check them.
 
 ## What a release contains
 
