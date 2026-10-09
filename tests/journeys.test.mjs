@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseDocument, serializeDocument, validateDocument } from "../packages/document-model/src/index.mjs";
-import { commitTransaction, createHistoryState, redo, undo } from "../packages/history/src/index.mjs";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 import { startStudioHost } from "../packages/studio-host/src/index.ts";
 import { createPrng, propertySeeds } from "./support/prng.mjs";
@@ -16,8 +15,9 @@ import { createPrng, propertySeeds } from "./support/prng.mjs";
 // with generated content, through the studio host's own API, as the editor and an MCP agent
 // use it. "Exact state" is the canonical serialization of the document together with every
 // file of the project's store but the lock: after a close and a reopen in a new host, it must
-// be byte-identical. Journey A also keeps its own model of the document, built from the same
-// operations with @ninerr/history, so a change the host dropped or altered cannot pass. The
+// be byte-identical. The generated sessions (journeys A and E) also keep a reference model
+// written in this file, sharing no code with the host, so a change the host dropped, altered or
+// wrongly refused cannot pass. The
 // history panel lists only the changes since the project was opened (#231), so it is not part
 // of the persisted state. Each seed is its own subtest; replay one with
 // NINERR_PROPERTY_SEED=<seed>. NINERR_JOURNEY_RUNS sets how many seeds each journey runs.
@@ -116,35 +116,100 @@ function generatedEdit(prng, document, counter) {
   return { intent: `Remove ${nodeId}`, operations: [{ type: "remove-node", nodeId }] };
 }
 
+/** The tree and props of a document: what the reference model below tracks. */
+const shape = (document) => ({
+  rootIds: [...document.rootIds],
+  nodes: Object.fromEntries(Object.entries(document.nodes).map(([id, node]) => [id, { type: node.type, parentId: node.parentId, children: [...node.children], props: structuredClone(node.props) }])),
+});
+
 /**
- * Apply generated edits, undos and redos through the host, and the same to `model` (an
- * @ninerr/history state) when one is given. The host may refuse only an invalid edit (400, a
- * cycle) and an undo or redo with nothing to do (409); anything else fails the journey.
+ * A reference model of the generated operations, written here from their documented meaning
+ * and sharing no code with the host (which applies edits with @ninerr/history). It returns the
+ * next shape, or null for an edit the host must refuse: a move into the node's own subtree, or
+ * an index past the end of the siblings.
  */
-async function generatedSession(call, prng, steps, model = null) {
+function modelApply(current, operations) {
+  const next = structuredClone(current);
+  const siblings = (parentId) => (parentId === null ? next.rootIds : next.nodes[parentId].children);
+  const place = (id, parentId, index) => {
+    const list = siblings(parentId);
+    const at = index ?? list.length;
+    if (at > list.length) return false;
+    list.splice(at, 0, id);
+    next.nodes[id].parentId = parentId;
+    return true;
+  };
+  const unlink = (id) => {
+    const list = siblings(next.nodes[id].parentId);
+    list.splice(list.indexOf(id), 1);
+  };
+  for (const operation of operations) {
+    if (operation.type === "insert-node") {
+      const { id, type, props } = operation.node;
+      next.nodes[id] = { type, parentId: null, children: [], props: structuredClone(props) };
+      if (!place(id, operation.parentId ?? null, operation.index)) return null;
+    } else if (operation.type === "set-props") {
+      Object.assign(next.nodes[operation.nodeId].props, structuredClone(operation.set));
+    } else if (operation.type === "move-node") {
+      const target = operation.parentId ?? null;
+      for (let at = target; at !== null; at = next.nodes[at].parentId) if (at === operation.nodeId) return null;
+      unlink(operation.nodeId);
+      if (!place(operation.nodeId, target, operation.index)) return null;
+    } else if (operation.type === "remove-node") {
+      unlink(operation.nodeId);
+      const drop = (id) => {
+        for (const child of next.nodes[id].children) drop(child);
+        delete next.nodes[id];
+      };
+      drop(operation.nodeId);
+    } else {
+      throw new Error(`the model has no ${operation.type}`);
+    }
+  }
+  return next;
+}
+
+/**
+ * Apply generated edits, undos and redos through the host, and the same to the reference model,
+ * which starts from the host's starting shape. The host must accept exactly the edits the model
+ * accepts (refusing the others with 400), and undo or redo exactly when the model has something
+ * to undo or redo (409 otherwise); at the end its document must have the model's shape.
+ */
+async function generatedSession(call, prng, steps) {
   const counter = { next: 0 };
-  const tally = { edits: 0, undos: 0, redos: 0, model };
+  const start = (await ok(call("GET", "/api/document"), "document")).document;
+  const tally = { edits: 0, undos: 0, redos: 0, refused: 0, model: shape(start) };
+  const past = [];
+  const future = [];
   for (let step = 0; step < steps; step += 1) {
     const roll = prng.next();
     if (roll < 0.25) {
       const kind = roll < 0.15 ? "undo" : "redo";
+      const [from, to] = kind === "undo" ? [past, future] : [future, past];
       const result = await call("POST", `/api/${kind}`);
-      assert.ok(result.status === 200 || result.status === 409, `${kind}: ${JSON.stringify(result.json)}`);
+      assert.equal(result.status, from.length > 0 ? 200 : 409, `${kind}: ${JSON.stringify(result.json)}`);
       if (result.status === 200) {
         tally[`${kind}s`] += 1;
-        if (tally.model) tally.model = kind === "undo" ? undo(tally.model) : redo(tally.model);
+        to.push(tally.model);
+        tally.model = from.pop();
       }
       continue;
     }
     const { revision, document } = await ok(call("GET", "/api/document"), "document");
     const edit = generatedEdit(prng, document, counter);
+    const expected = modelApply(tally.model, edit.operations);
     const result = await call("POST", "/api/edit", { baseRevision: revision, ...edit });
-    assert.ok(result.status === 200 || result.status === 400, `only an invalid edit may be refused: ${JSON.stringify(result.json)}`);
-    if (result.status === 200) {
-      tally.edits += 1;
-      if (tally.model) tally.model = commitTransaction(tally.model, { id: result.json.transactionId, actor: "local-user", operations: edit.operations });
+    assert.equal(result.status, expected === null ? 400 : 200, `${edit.intent}: ${JSON.stringify(result.json)}`);
+    if (expected === null) {
+      tally.refused += 1;
+      continue;
     }
+    tally.edits += 1;
+    past.push(tally.model);
+    future.length = 0;
+    tally.model = expected;
   }
+  assert.deepEqual(shape((await ok(call("GET", "/api/document"), "document")).document), tally.model, "the host's document has the reference model's shape");
   return tally;
 }
 
@@ -169,16 +234,15 @@ function perSeed(name, journey) {
 perSeed("Journey A: create, edit, save, close and reopen; the exact state survives, and matches an independent model", async ({ prng, root, pool }) => {
   let running = await pool.open(root);
   await ok(running.call("POST", "/api/projects/create", { name: "work", title: "Work" }), "create");
-  const start = await ok(running.call("GET", "/api/document"), "document");
-  const tally = await generatedSession(running.call, prng, 40, createHistoryState(start.document));
+  const tally = await generatedSession(running.call, prng, 40);
   assert.ok(tally.edits > 10, "the session made real changes");
   const before = await exactState(running.call, root, "work");
-  // Every accepted edit, undo and redo is one revision; and the document is what the
-  // operations make, computed here independently of the host and its store.
+  // Every accepted edit, undo and redo is one revision, and none of the refused edits is.
   assert.equal(before.revision, tally.edits + tally.undos + tally.redos);
-  assert.equal(content(JSON.parse(before.document)), content(tally.model.document), "the host's document is the independent model's");
   running = await reopen(pool, running, root, "work");
   assert.deepEqual(await exactState(running.call, root, "work"), before, "the reopened state is exact");
+  // The reopened document is still the reference model's, read from the store this time.
+  assert.deepEqual(shape((await ok(running.call("GET", "/api/document"), "document")).document), tally.model, "the reopened document has the reference model's shape");
   running = await reopen(pool, running, root, "work");
   assert.deepEqual(await exactState(running.call, root, "work"), before, "a second reopen changes nothing");
   // The reopened project keeps working.
@@ -222,8 +286,9 @@ perSeed("Journey B: import a page, inspect, edit, save, reopen, export it as cod
   const exported = await ok(running.call("POST", "/api/code/export", { nodeId: pageId }), "export");
   assert.deepEqual(await ok(running.call("POST", "/api/code/export", { nodeId: pageId }), "export again"), exported, "export is deterministic");
   const code = exported.code;
-  assert.equal(typeof code, "string");
-  for (const text of [title, edited, "One", "Two"]) assert.ok(code.includes(text), `the export has ${JSON.stringify(text)}`);
+  // The page's texts, in order: its <title>, its heading, the edited paragraph and the list.
+  assert.deepEqual(textsUnder(document, pageId).filter((text) => text.trim() !== ""), [title, title, edited, "One", "Two"]);
+  for (const text of textsUnder(document, pageId)) assert.ok(code.includes(text), `the export has ${JSON.stringify(text)}`);
   assert.ok(!code.includes("First line"), "and not the replaced text");
   assert.match(code, /<h1\b/u);
   assert.match(code, /className="lead"/u);
@@ -293,6 +358,11 @@ perSeed("Journey C: connect a codebase, bring a component in, edit, review the d
   assert.deepEqual(preview.changes, [], "the conflicting field is not offered as a change");
   assert.deepEqual(preview.conflicts.map((conflict) => [conflict.nodeId, conflict.field]), [[h2.id, "text"]], "the conflict names the heading's text");
   assert.deepEqual(preview.matched, []);
+  // Inspect it: Ninerr's text, the text both last agreed on, and the file's are all different.
+  assert.equal(preview.conflicts[0].reason, "changed both here and in the file");
+  ({ document } = await ok(running.call("GET", "/api/document"), "document"));
+  assert.deepEqual([document.nodes[h2.id].props.text, document.nodes[h2.id].props.codeSource.base.text], [`${heading} Plus`, heading]);
+  assert.match(readFileSync(card, "utf8"), /<h2>Changed outside<\/h2>/u);
   const refused = await running.call("POST", "/api/codebase/write", { nodeId: section.id, token: preview.token });
   assert.equal(refused.status, 409, "with only a conflict there is nothing to write");
   assert.equal(refused.json.error.code, "nothing-to-write");
@@ -357,6 +427,7 @@ perSeed("Journey D: an agent over MCP inspects and edits; the person reviews, ac
   const withScratch = content(await documentNow());
   // A consequential call waits for the person, who sees exactly what it will do and accepts.
   const deleting = agent.tool("delete_layers", { nodeIds: ["scratch"] });
+  deleting.catch(() => {}); // awaited below; a failed assertion first must not leave it unhandled
   let pending = [];
   for (let tries = 0; tries < 200 && pending.length === 0; tries += 1) {
     ({ pending } = await ok(running.call("GET", "/api/confirmations"), "confirmations"));
@@ -393,6 +464,14 @@ perSeed("Journey D: an agent over MCP inspects and edits; the person reviews, ac
   running = await reopen(pool, running, root, "agentic");
   assert.deepEqual(await exactState(running.call, root, "agentic"), before, "the agent session reopens exactly");
   assert.equal(content(JSON.parse(before.document)), withScratch, "what persisted is the reverted document");
+  // Attribution persisted: the journal read back after the reopen names the agent and its tool
+  // for the deletion, and the person for the revert, the undo and the redo.
+  const journal = new Map(before.files[PROJECT_FILES.journal].trim().split("\n").map((line) => JSON.parse(line).entry.transaction).map((entry) => [entry.id, entry]));
+  assert.deepEqual([journal.get(deletion.transactionId).actor, journal.get(deletion.transactionId).tool], [deletion.actor, "delete_layers"]);
+  assert.notEqual(deletion.actor, reverted.actor);
+  for (const [event, tool] of [[reverted, "ninerr:revert"], [undone, "ninerr:undo"], [redone, "ninerr:redo"]]) {
+    assert.deepEqual([journal.get(event.transactionId).actor, journal.get(event.transactionId).tool], [reverted.actor, tool]);
+  }
   agent = mcpClient(running.host.mcpUrl, token);
   assert.equal((await agent.tool("layer_details", { nodeId: "title" })).structuredContent.props.text, agentText, "the agent reads its own change");
   // Undo and revert are per session (#231): after a reopen the agent's earlier change cannot
@@ -401,6 +480,8 @@ perSeed("Journey D: an agent over MCP inspects and edits; the person reviews, ac
   assert.equal(late.status, 409);
   assert.equal(late.json.error.code, "not-revertible");
 });
+
+const TORN = '{"seq":999999,"entry":{"transaction":{"id":"torn';
 
 /** A host in a child process, so it can be killed outright. Killed on any startup failure. */
 async function startChild(projects, children) {
@@ -455,14 +536,18 @@ test("Journey E: a crash during a burst of edits recovers every confirmed change
         assert.ok(confirmedBursts >= killAfter, `part of the burst was confirmed before the crash (${confirmedBursts})`);
         // The write the kill interrupted, left torn at the end of the journal.
         const journal = join(projects, "crashy", PROJECT_FILES.directory, PROJECT_FILES.journal);
-        const complete = readFileSync(journal, "utf8").trim().split("\n").length;
-        appendFileSync(journal, '{"seq":999999,"entry":{"transaction":{"id":"torn');
+        // Complete entries end in a newline; the kill itself may have torn the in-flight one.
+        const complete = (readFileSync(journal, "utf8").match(/\n/gu) ?? []).length;
+        appendFileSync(journal, TORN);
         // Restart: the dead session's lock is refused until it is taken over with a reason.
         host = await startChild(projects, children);
         const refused = await host.call("POST", "/api/projects/open", { name: "crashy" });
         assert.equal(refused.status, 409, JSON.stringify(refused.json));
         assert.match(refused.json.error.code, /lock/u);
-        await ok(host.call("POST", "/api/projects/open", { name: "crashy", breakStaleLock: { reason: "Journey E crash" } }), "recover");
+        const opened = await ok(host.call("POST", "/api/projects/open", { name: "crashy", breakStaleLock: { reason: "Journey E crash" } }), "recover");
+        // The reopen explains itself: the torn tail it dropped, and the lock taken over and why.
+        assert.ok(opened.recovery.tornTailBytes >= TORN.length, `the torn tail is reported (${opened.recovery.tornTailBytes} bytes)`);
+        assert.equal(opened.recovery.lockOverride.reason, "Journey E crash");
         const recovered = await exactState(host.call, projects, "crashy");
         assert.equal(recovered.revision, complete, "the recovered revision is every complete journal entry");
         assert.ok(recovered.revision >= confirmed, `every confirmed change survived (confirmed ${confirmed}, recovered ${recovered.revision})`);
