@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { validateDocument } from "../packages/document-model/src/index.mjs";
 import { hostPool, mcpClient, ok } from "./support/host-api.mjs";
-import { createPrng, propertySeeds } from "./support/prng.mjs";
+import { createPrng, positiveIntegerFromEnv, propertySeeds } from "./support/prng.mjs";
 import { applyOperations, generatedEdit, shape } from "./support/reference-model.mjs";
 
 // P08-G2a (#230, founder section P08.2): the studio session as a state machine. A person (the
@@ -20,13 +20,8 @@ import { applyOperations, generatedEdit, shape } from "./support/reference-model
 // or redo. NINERR_MACHINE_RUNS sets the number of seeds (default 4), NINERR_MACHINE_STEPS the
 // steps per seed (default 120); NINERR_PROPERTY_SEED=<seed> replays one.
 
-const positive = (name, fallback) => {
-  const text = process.env[name] ?? String(fallback);
-  if (!/^[1-9]\d*$/u.test(text)) throw new Error(`${name} must be a positive integer, got ${JSON.stringify(text)}`);
-  return Number(text);
-};
-const RUNS = positive("NINERR_MACHINE_RUNS", 4);
-const STEPS = positive("NINERR_MACHINE_STEPS", 120);
+const RUNS = positiveIntegerFromEnv("NINERR_MACHINE_RUNS", 4);
+const STEPS = positiveIntegerFromEnv("NINERR_MACHINE_STEPS", 120);
 const MAX_UNDO = 200; // the host's per-actor undo depth
 let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 9, 12, 0, 0) + clock++ * 1000).toISOString();
