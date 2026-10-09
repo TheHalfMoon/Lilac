@@ -47,16 +47,86 @@ test("rules classify by path, term and line", () => {
   assert.equal(rule("docs/evidence/GRAIN1_CLOSEOUT_2026-10-03.md", "lilac", "Lilac"), "dated-evidence");
   assert.equal(rule("docs/evidence/PAPER_DEEP_RECOVERY_2026-10-01.md", "paper", "Paper"), "paper-recovery-evidence");
   assert.equal(rule("docs/evidence/UNDATED_NOTES.md", "lilac", "Lilac"), "default-lilac", "only date-suffixed evidence is historical");
-  assert.equal(rule("THIRD_PARTY_NOTICES.md", "paper", "## Paper.design"), "default-paper", "Paper attribution in the notices stays gated");
-  assert.equal(rule("THIRD_PARTY_NOTICES.md", "unreal-agent", "## Unreal Agent"), "default-donor", "donor attribution in the notices stays gated");
+  // The notices carry only what Ninerr owes (N0-G7a3), so every name in them is an obligation.
+  assert.equal(rule("THIRD_PARTY_NOTICES.md", "unreal-agent", "## Unreal Agent"), "third-party-notices");
   assert.equal(rule("THIRD_PARTY_NOTICES.md", "impeccable", "## Impeccable"), "third-party-notices");
   assert.equal(rule("packages/design-assurance/src/rules.mjs", "impeccable", "impeccable"), "default-donor", "the Impeccable exemption is file-specific");
   assert.equal(rule("package-lock.json", "impeccable", "\"node_modules/impeccable\""), "independent-runtime-impeccable");
   assert.equal(rule("package-lock.json", "lilac", "\"@lilac/canvas\""), "default-lilac");
   assert.equal(rule("packages/persistence/src/legacy.ts", "lilac", "export const LEGACY_PROJECT_FORMAT = \"lilac-project\";"), "legacy-identity-readers");
   assert.equal(rule("packages/persistence/src/types.ts", "lilac", "export const PROJECT_FORMAT = \"lilac-project\";"), "default-lilac", "legacy identity outside the legacy module is gated");
-  assert.equal(rule("scripts/lilac-mcp.mjs", "lilac", "const token = process.env.LILAC_MCP_TOKEN;"), "public-env");
-  assert.equal(rule("packages/agent-runtime/src/operation.ts", "unreal-agent", "unreal-agent"), "default-donor");
+  // The old variables are read only in the legacy modules; the desktop guide names them.
+  assert.equal(rule("packages/studio-host/src/legacy.ts", "lilac", "export const LEGACY_MCP_TOKEN_ENV = \"LILAC_MCP_TOKEN\";"), "legacy-identity-readers");
+  assert.equal(rule("docs/DESKTOP.md", "lilac", "or an existing \"Lilac Projects\" folder, read through `LILAC_PROJECTS`"), "public-env");
+  assert.equal(rule("packages/agent-runtime/src/operation.ts", "unreal-agent", "  repository: \"unreallabsai/unreal-agent\","), "provenance-agent-runtime-unreal-agent");
+});
+
+// N0-G9: each rule that admits the old identity or a donor name is narrow. The construct it was
+// written for passes; anything else in the same file stays gated.
+test("the allowlist is narrow: a new occurrence beside an allowed one is still gated", () => {
+  const rule = (path, term, line) => classify(policy, path, term, line).id;
+  const gated = (path, term, line) => policy.gated.has(classify(policy, path, term, line).category);
+  // The four code constructs that recognize the old identity.
+  assert.equal(rule("packages/desktop/src/resolve.mjs", "lilac", "const IN_SCOPE = /^@(?:ninerr|lilac)\\//iu;"), "legacy-refusals-in-code");
+  assert.equal(rule("packages/renderer/src/index.mjs", "lilac", "  if (name.startsWith(\"on\") || name.startsWith(\"data-lilac\")) return null;"), "legacy-refusals-in-code");
+  assert.equal(rule("packages/studio-web/src/app.mjs", "lilac", "entry.tool && !/^(?:ninerr|lilac):/u.test(entry.tool)"), "legacy-refusals-in-code");
+  assert.ok(gated("packages/studio-web/src/app.mjs", "lilac", "showDialog(\"Welcome to Lilac\")"), "new product copy in the same file is gated");
+  assert.ok(gated("packages/renderer/src/index.mjs", "lilac", "// the Lilac renderer"), "a comment naming the old product is gated");
+  // Legacy tests admit only the legacy constructs.
+  assert.equal(rule("tests/desktop-package.test.mjs", "lilac", "  for (const specifier of [\"@lilac/history\"]) {"), "legacy-identity-tests");
+  assert.ok(gated("tests/desktop-package.test.mjs", "lilac", "test(\"Lilac packages the app\", () => {"), "a test title naming the old product is gated");
+  assert.ok(gated("tests/canvas-browser.test.mjs", "lilac", "test(\"the Lilac canvas\")"), "other tests are gated");
+  // Provenance constants admit only their files' donors.
+  assert.ok(gated("packages/agent-events/src/index.ts", "firecrawl", "firecrawl"), "another donor in a provenance module is gated");
+  assert.ok(gated("packages/canvas/src/index.mjs", "ui-tars", "UI-TARS"), "a donor name outside provenance is gated");
+  // The repository URL is admitted by its exact form until N0-G10.
+  assert.equal(rule("docs/RELEASE.md", "lilac", "gh attestation verify x --repo TheHalfMoon/Lilac"), "repository-url");
+  assert.ok(gated("docs/RELEASE.md", "lilac", "A Lilac release is a tagged commit"), "product prose in the same doc is gated");
+  // Paper outside a record is gated.
+  assert.ok(gated("docs/ARCHITECTURE.md", "paper", "Paper"), "Paper in a current doc is gated");
+  // Every mention of the old name on an allowed line must itself be allowed (N0-G9 review).
+  assert.ok(gated("packages/studio-web/src/app.mjs", "lilac", "/^(?:ninerr|lilac):/u.test(t); showDialog(\"Welcome to Lilac\");"), "copy on the same line as an allowed construct");
+  assert.ok(gated("docs/RELEASE.md", "lilac", "Lilac is the product; clone TheHalfMoon/Lilac"), "prose on the same line as the repository URL");
+  assert.ok(gated("tests/desktop-package.test.mjs", "lilac", "test(\"Lilac packages @lilac/history\")"), "a title on the same line as an allowed scope");
+  // The old variables are admitted only in the desktop guide's note, and only as their names.
+  assert.ok(gated("packages/studio-host/src/index.ts", "lilac", "process.env.LILAC_PROJECTS ?? join(home, \"Lilac Projects\")"), "reading an old variable outside the legacy module");
+  assert.ok(gated("tests/web-mode.test.mjs", "lilac", "const LILAC_PROJECTS = \"Lilac\";"), "an old variable in a test fixture");
+  assert.ok(gated("docs/DESKTOP.md", "lilac", "Welcome to Lilac, the design tool."), "new prose in the desktop guide");
+  assert.ok(gated("docs/MIGRATION.md", "lilac", "Lilac is still supported."), "new prose in the migration guide");
+  // The notices, the register and the provenance records name Ninerr as Ninerr.
+  assert.ok(gated("THIRD_PARTY_NOTICES.md", "lilac", "Lilac is distributed under Apache-2.0."), "the old name in the notices");
+  assert.ok(gated("docs/provenance/LICENSE_REGISTER.json", "lilac", "\"never shipped by Lilac\""), "the old name in the register");
+  assert.ok(gated("docs/DONORS.md", "lilac", "Lilac ships with its own product name"), "the old name in the living ledger");
+  assert.ok(gated("packages/canvas/src/provenance.mjs", "lilac", "export const NAME = \"Lilac\";"), "the old name in a provenance module");
+  assert.equal(rule("docs/provenance/PAPER_AUTHORIZATION.md", "lilac", "for the Lilac project."), "provenance-history", "the owner's dated attestation keeps the name it was given under");
+  // A new ledger file is not admitted by a pattern.
+  assert.ok(gated("docs/DONOR_NEW_PLAN.md", "paper", "Ninerr will embed Paper."), "a new donor document");
+  // The living program pages are not exempt; the record before the rename is dated evidence.
+  assert.ok(gated("docs/CURRENT.md", "lilac", "- Lilac is the current product name."), "the old name in the program state");
+  assert.ok(gated("docs/MASTER_PLAN.md", "paper", "N0 next: depend on Paper's renderer."), "Paper in the plan");
+  assert.equal(rule("docs/evidence/PROGRAM_STATE_2026-10-09.md", "lilac", "Product name: **Lilac**."), "dated-evidence");
+  // The repository URL is admitted only where it is cited, and only as the URL (N0-G9 review, cycle 2).
+  assert.equal(rule("docs/RELEASE.md", "lilac", "git clone --branch <tag> https://github.com/TheHalfMoon/Lilac.git && cd Lilac"), "repository-url");
+  assert.ok(gated("packages/studio-web/src/app.mjs", "lilac", "<h1>Welcome to TheHalfMoon/Lilac</h1>"), "the URL form in product code");
+  assert.ok(gated("README.md", "lilac", "TheHalfMoon/Lilac Studio is great"), "the URL in a file that does not cite it");
+  assert.ok(gated("docs/RELEASE.md", "lilac", "see TheHalfMoon/Lilac-studio"), "a longer name built on the URL");
+  // Both ends of every admitted form are guarded (N0-G9 review, cycle 3).
+  assert.ok(gated("docs/RELEASE.md", "lilac", "see TheHalfMoon/Lilac.studio"), "a dotted name built on the URL");
+  assert.ok(gated("docs/RELEASE.md", "lilac", "abcd Lilac"), "the clone directory inside another word");
+  assert.ok(gated("docs/DESKTOP.md", "lilac", "MY_LILAC_PROJECTS"), "an old variable inside a longer name");
+  assert.ok(gated("docs/MIGRATION.md", "lilac", "lilac-project-studio"), "a migration term inside a longer name");
+  assert.ok(gated("docs/MIGRATION.md", "lilac", ".lilac-studio"), "the project directory inside a longer name");
+  // The legacy modules and fixture recognize the old product name only.
+  assert.ok(gated("packages/persistence/src/legacy.ts", "paper", "export const BRAND = 'Lilac'; // Paper"), "Paper in a legacy module");
+  assert.ok(gated("tests/fixtures/projects/v1-basic/.lilac/project.json", "paper", "{\"name\":\"Paper\"}"), "Paper in the legacy fixture");
+  // The provenance records are listed by path; a new file is not admitted.
+  assert.ok(gated("docs/provenance/NEW_RECORD.md", "paper", "Ninerr is Paper."), "a new provenance file");
+  assert.ok(gated("packages/canvas/src/provenance.ts", "paper", "brand = 'Paper'"), "a new provenance module");
+  // Short legacy forms do not match inside another word.
+  assert.ok(gated("docs/MIGRATION.md", "lilac", "the.lilac product"), "a legacy form inside another word");
+  // Provenance tests admit only their own records' names.
+  assert.ok(gated("tests/collaboration.test.mjs", "lilac", "test(\"Lilac collaboration works\")"), "the old name in a provenance test");
+  assert.ok(gated("tests/agent-events.test.mjs", "paper", "Paper"), "another source in a provenance test");
 });
 
 test("the census is deterministic and the gate counts gated categories only", () => {
@@ -135,4 +205,13 @@ test("the command line gate exits 1 on gated findings and 0 without, and never s
   } finally {
     repo.dispose();
   }
+});
+
+// N0-G9: the repository itself passes the independence gate. A new old-product, Paper or donor
+// name outside the reviewed rules fails here and in CI's identity gate step.
+test("the repository passes the identity gate", () => {
+  const record = census(policy);
+  const gated = record.files.flatMap((file) => file.findings.filter((finding) => policy.gated.has(finding.category)).map((finding) => `${file.path} ${finding.term} (${finding.rule})`));
+  assert.deepEqual(gated, []);
+  assert.equal(record.gatedFindings, 0);
 });

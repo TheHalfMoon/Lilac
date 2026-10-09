@@ -32,6 +32,13 @@ jobs:
         # Ubuntu's AppArmor restricts unprivileged user namespaces, which Chromium's sandbox
         # uses; lift that for this job rather than run the desktop app unsandboxed.
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # The independence regression gate (N0-G9): the committed census summary must be current,
+      # and no tracked file may carry the old product name or a donor's identity outside the
+      # narrow, reviewed rules in scripts/identity-policy.json.
+      - name: Identity census is current
+        run: node scripts/identity-census.mjs --verify
+      - name: Identity gate (no unreviewed old or donor identity)
+        run: node scripts/identity-census.mjs --check
       - name: Run checks
         shell: bash
         run: |

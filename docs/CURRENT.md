@@ -11,7 +11,7 @@ Status: **N0 ACTIVE.** Each N0 grain landed through its own PR with exact-head C
 - the persisted-data and host migrations with backward compatibility (G2), and the #185 write-back fix;
 - the package scope, product, tooling, runtime and prose identity (G3);
 - Ninerr's own MCP surface (G4);
-- the retirement of all Paper recovery tooling and records (G5);
+- the retirement of all donor-product recovery tooling and records (G5);
 - the coherence audit (G6);
 - the A/B source-rights audit, the Apache-2.0 license, the notices and the Electron corresponding source (G7);
 - the documentation (G8).
@@ -33,7 +33,7 @@ This is the normal merge commit for PR #220, which fixed a race in the local run
 
 ## Canonical facts
 - Product: **Ninerr**, licensed under Apache-2.0. The repository is `TheHalfMoon/Lilac` until N0-G10 renames it.
-- Ninerr does not depend on Paper or on any donor's identity (`docs/evidence/N0_G6_COHERENCE_AUDIT_2026-10-09.md`). The audited register of every source is `docs/provenance/LICENSE_REGISTER.json`.
+- Ninerr does not depend on any donor product or any donor's identity (`docs/evidence/N0_G6_COHERENCE_AUDIT_2026-10-09.md`). The audited register of every source is `docs/provenance/LICENSE_REGISTER.json`.
 - The full suite fails some tests on Windows, which CI does not run (#192).
 
 ## The program before the rename

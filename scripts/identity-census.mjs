@@ -60,8 +60,10 @@ export function classify(policy, path, term, line) {
 }
 
 export function trackedFiles(root) {
-  return execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
-    .split("\0").filter((path) => path !== "" && !NOT_SCANNED.has(path)).sort(byCodeUnit);
+  // During a merge, git ls-files lists a conflicted path once per stage; count each path once.
+  const paths = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
+    .split("\0").filter((path) => path !== "" && !NOT_SCANNED.has(path));
+  return [...new Set(paths)].sort(byCodeUnit);
 }
 
 /** Scan `files` (paths relative to `root`) and return the census record. */

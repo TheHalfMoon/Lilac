@@ -17,8 +17,8 @@ Ninerr is an AI-native, web-semantic design environment where humans, software a
 
 ## Current program
 
-The founder set the order on 2026-10-08, when the product was renamed from Lilac to Ninerr:
-1. **N0: Ninerr independence and migration.** This covers the identity census and migration; backward compatibility for projects and setups from before the rename; independence from donor identity and Paper; the Apache-2.0 license with its source-rights audit; the Electron corresponding source; the documentation; the CI identity gate; and the repository rename. Issue #190 tracks it, and each grain's evidence is in `docs/evidence/N0_*`.
+The founder set the order on 2026-10-08, when the product was renamed to Ninerr:
+1. **N0: Ninerr independence and migration.** This covers the identity census and migration; backward compatibility for projects and setups from before the rename; independence from every donor's identity; the Apache-2.0 license with its source-rights audit; the Electron corresponding source; the documentation; the CI identity gate; and the repository rename. Issue #190 tracks it, and each grain's evidence is in `docs/evidence/N0_*`.
 2. **P08: deep qualification and dogfooding.**
 3. **P09: Ninerr UI and UX.**
 4. **P10: release candidate hardening.**
