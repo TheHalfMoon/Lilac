@@ -107,7 +107,16 @@ function damage(prng, root) {
   const scope = prng.pick(["file", "file", "file", "file", "file", "store"]);
   if (scope === "store") {
     // The shape of the store itself.
-    const kind = prng.pick(["foreign-lock", "extra-file", "missing-fan-out"]);
+    const kind = prng.pick(["foreign-lock", "extra-file", "missing-fan-out", "leftovers", "leftovers"]);
+    if (kind === "leftovers") {
+      // What an interrupted write and an interrupted lock override leave, beside other damage:
+      // a refused open must keep them (#241); an open that succeeds clears and counts them.
+      const hex = (length) => Array.from({ length }, () => prng.int(0, 15).toString(16)).join("");
+      const uuid = () => `${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}`;
+      writeFileSync(join(store(root), `${PROJECT_FILES.snapshot}.tmp-4242-${uuid()}`), "an interrupted write");
+      writeFileSync(join(store(root), `${PROJECT_FILES.lock}.broken-${uuid()}`), "{}");
+      return `leftovers, and ${damage(prng, root)}`;
+    }
     if (kind === "foreign-lock") writeFileSync(join(store(root), PROJECT_FILES.lock), FOREIGN_LOCK);
     else if (kind === "extra-file") writeFileSync(join(store(root), prng.pick(["notes.txt", "journal.log.bak", ".DS_Store"])), "unrelated");
     else rmSync(join(store(root), PROJECT_FILES.objects, used.slice(0, 2)), { recursive: true, force: true });
@@ -249,7 +258,7 @@ test("the store under generated damage fails closed: refused unchanged, or exact
           const copy = join(base, `case-${index}`);
           cpSync(original, copy, { recursive: true });
           const what = damage(prng, copy);
-          const lockedByOther = what === "foreign-lock";
+          const lockedByOther = what.endsWith("foreign-lock");
           const damaged = snapshotFiles(copy, { withLock: lockedByOther });
           const where = `seed ${seed}, case ${index}: ${what}`;
           // Through the host, on a copy of the damaged project: a typed answer that changes
@@ -285,6 +294,7 @@ test("the store under generated damage fails closed: refused unchanged, or exact
           }
           let text;
           try {
+            if (what.startsWith("leftovers")) assert.equal(project.recovery.staleTemporaryFiles, 2, `${where}: the leftovers are cleared and counted`);
             const document = project.document;
             validateDocument(document);
             text = serializeDocument(document);
