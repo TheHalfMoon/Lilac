@@ -18,6 +18,9 @@ on:
       - scripts/release-bundle.mjs
       - scripts/package-desktop.mjs
       - scripts/fetch-electron.mjs
+      - scripts/desktop/electron.mjs
+      - scripts/desktop/corresponding-source.mjs
+      - docs/provenance/ELECTRON_CORRESPONDING_SOURCE.json
 
 permissions:
   contents: read
@@ -42,6 +45,12 @@ jobs:
           key: electron-${{ runner.os }}-${{ hashFiles('scripts/desktop/electron.mjs') }}
       - name: Fetch the pinned Electron runtime (SHA-256 verified)
         run: node scripts/fetch-electron.mjs
+      # The runtime's exact corresponding source (N0-G7b): the release's published digests, the
+      # Electron, Chromium and ffmpeg commits, all resolved live and compared with the record.
+      - name: Verify the Electron corresponding source against the live sources
+        run: node scripts/desktop/corresponding-source.mjs --check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Allow Chromium's sandbox (unprivileged user namespaces)
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run checks

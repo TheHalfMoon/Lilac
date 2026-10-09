@@ -26,7 +26,7 @@ const NOT_PERMISSIVE = new Set(["LGPL", "GPL", "MPL", "EPL", "CDDL", "AGPL"]);
 // is acceptable for an Apache-2.0 Ninerr that redistributes the runtime changed only in
 // Electron's fuse bytes.
 export const REVIEWED = Object.freeze({
-  WebKit: "LGPL-2.0+/LGPL-2.1+ and BSD files in Blink (from WebKit and KHTML), statically linked into the Electron binary. Ninerr changes the binary only in Electron's documented fuse bytes (recorded in ninerr-package.json); its corresponding source is Electron v44.7.0, with Chromium at its pinned revision, plus those fuse settings. Ninerr's own code is a separate program the runtime loads, not linked into it. The LGPL source offer for a binary release is part of the release audit (PC-L, #139)",
+  WebKit: "LGPL-2.0+/LGPL-2.1+ and BSD files in Blink (from WebKit and KHTML), statically linked into the Electron binary. Ninerr changes the binary only in Electron's documented fuse bytes (recorded in ninerr-package.json); its corresponding source is Electron v44.7.0, with Chromium at its pinned revision, plus those fuse settings. Ninerr's own code is a separate program the runtime loads, not linked into it. The exact corresponding source (Electron, Chromium and ffmpeg commits) is bound in docs/provenance/ELECTRON_CORRESPONDING_SOURCE.json (N0-G7b); how a binary release offers it is a release-gate decision",
   // Apache-2.0 WITH LLVM-exception: its text names GPLv2 only to permit combining with it.
   "compiler-rt": "Apache-2.0 WITH LLVM-exception; GPLv2 is named only in the exception",
   libcxx: "Apache-2.0 WITH LLVM-exception; GPLv2 is named only in the exception",
