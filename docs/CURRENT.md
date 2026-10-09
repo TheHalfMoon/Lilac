@@ -18,6 +18,8 @@ Status: **N0 ACTIVE.** Each N0 grain landed through its own PR with exact-head C
 - the independence regression gate in CI, with a narrow, reviewed allowlist (G9);
 - the repository rename to `TheHalfMoon/Ninerr`, with its redirects verified (G10).
 
+Remaining in N0: the rest of the repository cleanup (the repository description and topics, and the issue and PR templates), then the close of #190. P08 follows.
+
 ## Canonical main
 
 `aabff884d402be7b22af3b66381a9f795ca4bb2a`

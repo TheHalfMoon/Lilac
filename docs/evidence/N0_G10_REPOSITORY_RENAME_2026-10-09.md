@@ -12,6 +12,13 @@ Before the rename, `GET /repos/TheHalfMoon/Ninerr` returned 404, so the name was
 ## The rename
 The rename used GitHub's own repository rename: `PATCH /repos/TheHalfMoon/Lilac` with `name=Ninerr`. GitHub returned `full_name` `TheHalfMoon/Ninerr` with the unchanged repository id `1398590642`. No history was rewritten. Commits, pull requests, issues and their numbers are unchanged.
 
+## Open work at the rename
+The founder asked that no active PR, branch or process break. This was checked right after the rename, not before it:
+- **Pull requests:** the only open one is this PR, which was opened after the rename. #221, the last one before it, had merged.
+- **Webhooks and Pages:** the repository has no webhooks, and Pages is off.
+- **Actions:** the first runs under the new name, on this PR's head, started and reported normally.
+- **Branches:** they are unaffected, since a rename keeps every ref.
+
 ## Redirects, verified after the rename
 - **API:** `GET /repos/TheHalfMoon/Lilac` resolves to `TheHalfMoon/Ninerr`, id `1398590642`.
 - **Web:** on github.com, the old repository page `TheHalfMoon/Lilac` and its `pull/221` page answer `301 Moved Permanently`, to `https://github.com/TheHalfMoon/Ninerr` and `.../pull/221`.
@@ -27,7 +34,7 @@ GitHub keeps the old name redirecting until a new repository takes the name `The
 - **`tests/license-register.test.mjs`** names this repository by its new name.
 - **The identity gate.** The `repository-url` rule is removed, so the old repository URL is gated in every current file. The probes written for that rule now assert that the old forms are gated. Dated evidence keeps the old URL where it records what was true then.
 
-No workflow or script names the repository; they use `github.repository`. The local clone's `origin` was set to the new URL.
+No workflow or script names the repository. Where one needs it, it reads `github.repository` (`jev-exact-head.yml`) or `$GITHUB_REPOSITORY` (`release.yml`). The local clone's `origin` was set to the new URL.
 
 ## CI after the rename
 This PR's exact-head CI is the first run under the new name. The PR's qualification record gives its results.
