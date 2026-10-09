@@ -6,6 +6,6 @@ Issue: #190 (N0 umbrella). This is a step toward N0-G9's narrow identity gate.
 - `docs/MASTER_PLAN.md` moves to `docs/evidence/MASTER_PLAN_2026-10-09.md`.
 - `docs/CURRENT.md` moves to `docs/evidence/PROGRAM_STATE_2026-10-09.md`.
 
-Git records both as pure renames. `tests/program-state.test.mjs` now checks the recorded P06, PC and P07 gates against the moved plan, and checks the record's cited paths.
+Git records both as pure renames. `tests/program-state.test.mjs` now checks the recorded P06, PC and P07 gates against the moved plan, and checks that the record still cites repository paths. Those paths may have moved since, as the test's comment says.
 
 N0-G9a2 restores `docs/CURRENT.md` and `docs/MASTER_PLAN.md` holding only the current program, with pointers to these records.
