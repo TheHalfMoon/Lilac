@@ -41,7 +41,23 @@ test("every entry is well formed and ids are unique", () => {
     for (const field of ["license", "evidence", "compatible", "obligations"]) assert.equal(typeof entry[field], "string", `${entry.id}.${field}`);
     assert.ok(["yes", "reference-only", "founder-confirmation-required"].includes(entry.compatible), `${entry.id} has a known conclusion`);
     if (entry.revision !== undefined) assert.match(entry.revision, /^[0-9a-f]{7,40}$/u, `${entry.id} revision`);
+    assert.ok(Object.hasOwn(register.categories, entry.category), `${entry.id} is category A or B`);
   }
+});
+
+// Category A is exactly the founder-authorized donor and source projects; everything else is B.
+test("category A is exactly the founder-authorized projects, and every other entry is B", () => {
+  const authorization = read("docs/provenance/FOUNDER_AUTHORIZATION_2026-10-08.md");
+  const expansion = read("docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03.md");
+  const paper = new Set(["paper.design", "paper-design/paper"]);
+  for (const entry of register.entries) {
+    // classifier.dev is recorded as a project, and its registered upstream is mrmps/classifier-dev.
+    const recorded = paper.has(entry.id) || expansion.includes(`\`${entry.id}\``) || (entry.id === "mrmps/classifier-dev" && expansion.includes("classifier.dev"));
+    assert.equal(entry.category, recorded ? "A" : "B", `${entry.id} is ${recorded ? "founder-authorized" : "an independent third party"}`);
+    if (entry.category === "A" && !paper.has(entry.id)) assert.ok(authorization.includes(entry.id) || entry.id === "mrmps/classifier-dev", `${entry.id} is named in the founder record's scope`);
+  }
+  // A dependency Ninerr ships is category B even when its upstream project is a donor.
+  for (const entry of register.entries.filter((item) => item.kind === "dependency" || item.kind === "bundled-runtime")) assert.equal(entry.category, "B", entry.id);
 });
 
 test("every lockfile package is registered as a dependency with its lockfile license", () => {
