@@ -13,6 +13,8 @@ import type { StudioActor } from "./session.ts";
 
 export const AGENT_CAPABILITIES = Object.freeze(["read", "document-write", "comments"]);
 const REGISTRY_FILE = ".ninerr-agents.json";
+/** The registry format this version writes; a newer one is refused and never changed. */
+const REGISTRY_VERSION = 1;
 const TOKEN_PREFIX = "ninerr_agent_";
 /** Present once the legacy registry has been imported; it is never imported again. */
 const IMPORTED_MARKER = ".ninerr-agents.imported";
@@ -40,6 +42,8 @@ export class AgentRegistry {
   #agents: AgentRecord[];
 
   #problem: string | null;
+  /** Set when the registry was written by a newer Ninerr: it is read as empty and never written. */
+  #newer: StudioError | null = null;
   /** Where to record the legacy import once the imported registry is saved; null when done. */
   #importMarker: string | null = null;
 
@@ -74,11 +78,12 @@ export class AgentRegistry {
     try {
       agents = readRegistry(source.path);
     } catch (error) {
+      if (error instanceof StudioError && error.code === "agents-newer") this.#newer = error;
       // A damaged registry must not stop Ninerr: it is set aside (kept for inspection) and
       // every agent has to be connected again. Failing closed means no agent gets access.
       // A damaged legacy registry is only ignored; it is not ours to move.
       problem = error instanceof StudioError ? error.message : "the agent registry could not be read";
-      if (!source.legacy) {
+      if (!source.legacy && this.#newer === null) {
         try {
           renameSync(this.#path, `${this.#path}.unreadable-${Date.now()}`);
         } catch {
@@ -89,7 +94,7 @@ export class AgentRegistry {
     this.#agents = agents;
     this.#problem = problem;
     // A set-aside registry is replaced by an empty one at once, so the next launch reads that.
-    if (problem !== null && !source.legacy) {
+    if (problem !== null && !source.legacy && this.#newer === null) {
       try {
         this.#writeRegistry([]);
       } catch {
@@ -149,6 +154,8 @@ export class AgentRegistry {
   }
 
   #save(next: AgentRecord[]): void {
+    // A newer Ninerr's registry is left as it is, so that version still finds its agents.
+    if (this.#newer !== null) throw this.#newer;
     this.#writeRegistry(next);
     this.#agents = next;
     this.#problem = null;
@@ -171,7 +178,7 @@ export class AgentRegistry {
     try {
       const fd = openSync(temporary, "wx", 0o600);
       try {
-        writeSync(fd, `${JSON.stringify({ version: 1, agents: next }, null, 2)}\n`);
+        writeSync(fd, `${JSON.stringify({ version: REGISTRY_VERSION, agents: next }, null, 2)}\n`);
         fsyncSync(fd);
       } finally {
         closeSync(fd);
@@ -204,6 +211,11 @@ function readRegistry(path: string): AgentRecord[] {
   } catch {
     throw new StudioError(500, "agents-unreadable", "the agent registry is not valid JSON");
   }
+  const version = (parsed as { version?: unknown })?.version;
+  if (Number.isInteger(version) && (version as number) > REGISTRY_VERSION) {
+    throw new StudioError(409, "agents-newer", `the agent registry was saved by a newer version of Ninerr (registry version ${version}); no agent can connect, and the registry is left unchanged, until that version is used`);
+  }
+  if (version !== REGISTRY_VERSION) throw new StudioError(500, "agents-unreadable", "the agent registry is malformed");
   const agents = (parsed as { agents?: unknown })?.agents;
   if (!Array.isArray(agents) || agents.length > MAX_AGENTS) throw new StudioError(500, "agents-unreadable", "the agent registry is malformed");
   return agents.map((agent: any) => {

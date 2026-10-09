@@ -247,7 +247,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     "GET /api/codebase": () => {
       const current = requireSession();
       const folder = codebases.get(current.name);
-      if (folder === null) return { folder: null, components: [] };
+      if (folder === null) return { folder: null, components: [], ...(codebases.problem ? { problem: codebases.problem } : {}) };
       return { folder, ...scanComponents(assertFolder(folder, projectsRoot)) };
     },
     "POST /api/codebase/connect": (body) => {
