@@ -1,21 +1,34 @@
-# Lilac Master Plan
+# Ninerr Master Plan
 
 ## Mission
 
-Lilac is an AI-native, web-semantic design environment where humans, software agents, production code, and design systems operate on one shared model. Paper.design is an authorized foundation/donor, but Lilac must become an independently branded product with a stronger architecture for round-trip code synchronization, local/private operation, multi-agent work, visual review, and deterministic export.
+Ninerr is an AI-native, web-semantic design environment where humans, software agents, production code, and design systems operate on one shared model. It is one coherent, independently identifiable product with a stronger architecture for round-trip code synchronization, local/private operation, multi-agent work, visual review, and deterministic export.
 
 ## Non-negotiable principles
 
 1. **Evidence before claims.** Every imported donor snapshot, build, test, parity claim, and release must bind to an exact revision and reproducible evidence.
 2. **Preserve donor provenance.** Authorized use does not erase third-party notices, dependency licenses, or attribution requirements.
-3. **Independent identity.** Remove Paper names, marks, endpoints, IDs, telemetry, service assumptions, and visual branding from the shipped Lilac product unless explicitly required for attribution.
+3. **Independent identity.** No donor's names, marks, endpoints, IDs, telemetry, service assumptions or visual branding ship in Ninerr unless an obligation requires attribution.
 4. **Web semantics first.** HTML/CSS concepts are the canonical bridge between canvas and production code.
-5. **Round-trip safety.** Import/export is not enough. Lilac must preserve intent when code becomes design and design becomes code again.
+5. **Round-trip safety.** Import/export is not enough. Ninerr must preserve intent when code becomes design and design becomes code again.
 6. **Local/private first.** Core creation, agent control, source inspection, and project persistence must work without a paid cloud dependency.
 7. **Agents are collaborators, not hidden automation.** Agent mutations are attributable, reviewable, cancellable, and reversible.
 8. **No destructive source normalization.** The first authorized-source intake is an immutable snapshot; transformation happens in later commits.
 
+## Current program
+
+The founder set the order on 2026-10-08, when the product was renamed from Lilac to Ninerr:
+1. **N0: Ninerr independence and migration.** This covers the identity census and migration; backward compatibility for projects and setups from before the rename; independence from donor identity and Paper; the Apache-2.0 license with its source-rights audit; the Electron corresponding source; the documentation; the CI identity gate; and the repository rename. Issue #190 tracks it, and each grain's evidence is in `docs/evidence/N0_*`.
+2. **P08: deep qualification and dogfooding.**
+3. **P09: Ninerr UI and UX.**
+4. **P10: release candidate hardening.**
+5. **The founder release gate,** then v1.0.0.
+
+v1.0.0 is not authorized. No release tag is created, and nothing is published, until the founder release gate passes.
+
 ## Program structure
+
+Phases P00 to P07 and PC below are the program as it was set before the rename. They are kept as the record of what was planned and delivered. P00, P01 and P04 planned around an authorized Paper source intake that never received source, and around parity with Paper. N0 retired both: the intake in N0-G5, and the Paper tool surface in N0-G4. The architecture catalog in `packages/architecture` is now the capability ledger.
 
 ### P00 — Foundation and source intake
 
@@ -100,7 +113,7 @@ Exit criteria:
 
 Goal: preserve the useful shipped capabilities of the donor baseline while intentionally rejecting dead or service-bound assumptions.
 
-Use `docs/PARITY_MATRIX.md` as the canonical capability ledger. Each row must end in one of:
+As planned then: use `docs/PARITY_MATRIX.md` as the canonical capability ledger. (Historical: N0-G8b retired it to `docs/evidence/PARITY_MATRIX_2026-10-06.md`, and the architecture catalog is the ledger now.) Each row must end in one of:
 - PARITY_PROVEN;
 - REPLACED_PROVEN;
 - INTENTIONALLY_DROPPED with rationale;
@@ -260,7 +273,7 @@ Required artifacts:
 
 ## Definition of genuinely complete
 
-Lilac is not complete merely because the UI launches. Completion requires:
+Ninerr is not complete merely because the UI launches. Completion requires:
 
 1. the authorized donor baseline is traceable;
 2. the shipped product has independent identity;

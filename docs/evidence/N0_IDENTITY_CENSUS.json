@@ -1,22 +1,22 @@
 {
   "schema": "identity-census-summary/1",
-  "filesScanned": 525,
-  "filesWithFindings": 138,
-  "gatedFindings": 51,
+  "filesScanned": 526,
+  "filesWithFindings": 140,
+  "gatedFindings": 1,
   "byCategory": {
-    "ACTIVE_PRODUCT_IDENTITY": 50,
-    "ACTIVE_INTERNAL_IDENTITY": 1,
+    "ACTIVE_PRODUCT_IDENTITY": 1,
+    "ACTIVE_INTERNAL_IDENTITY": 0,
     "PUBLIC_API": 0,
     "PERSISTED_DATA": 0,
     "LEGACY_COMPATIBILITY": 73,
     "TEST_FIXTURE": 0,
     "THIRD_PARTY_INDEPENDENT_OBLIGATION": 264,
-    "IMMUTABLE_HISTORICAL_FACT": 932,
+    "IMMUTABLE_HISTORICAL_FACT": 982,
     "REMOVE_ENTIRELY": 0
   },
   "byTerm": {
-    "lilac": 519,
-    "paper": 217,
+    "lilac": 514,
+    "paper": 222,
     "firstmate": 32,
     "no-mistakes": 23,
     "doop": 30,
@@ -32,10 +32,8 @@
     "ui-tars": 31
   },
   "byRule": {
-    "dated-evidence": 535,
-    "default-donor": 1,
-    "default-lilac": 39,
-    "default-paper": 11,
+    "dated-evidence": 590,
+    "default-paper": 1,
     "donor-provenance-records": 290,
     "independent-runtime-docling": 93,
     "independent-runtime-impeccable": 82,
@@ -45,7 +43,7 @@
     "legacy-identity-tests": 7,
     "legacy-project-fixture": 7,
     "legacy-refusals-in-code": 4,
-    "program-history": 54,
+    "program-history": 49,
     "provenance-agent-events-ui-tars": 1,
     "provenance-agent-runtime-unreal-agent": 1,
     "provenance-agent-supervisor-firstmate": 2,
@@ -57,5 +55,5 @@
     "repository-url": 7,
     "third-party-notices": 76
   },
-  "censusSha256": "e7934730cbb5568818d59d5ec5b4d96cdad27947c56b92c39cfe2fe52cef706b"
+  "censusSha256": "3874c1d824d2b80016ce2da7ca5327cac38d2ff456e1bd965654cded071442a9"
 }
