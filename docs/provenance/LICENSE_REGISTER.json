@@ -10,7 +10,7 @@
     "reference-only": "Studied only; nothing copied and nothing may be copied.",
     "optional-runtime": "Invoked at runtime only if the user installed it; never shipped by Ninerr.",
     "dev-tooling": "Used to build or review Ninerr; not part of the product.",
-    "proprietary-authorized": "Proprietary source the owner attests Ninerr is authorized to use; raw source is kept out of the repository.",
+    "proprietary-authorized": "Proprietary source the owner attests this project is authorized to use; raw source is kept out of the repository.",
     "bundled-runtime": "A pinned binary runtime fetched outside npm, verified by SHA-256 before it is unpacked, and redistributed with the desktop app."
   },
   "entries": [

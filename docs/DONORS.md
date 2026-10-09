@@ -1,6 +1,6 @@
 # Ninerr Donor and Provenance Ledger
 
-This ledger tracks code, design, architecture, and behavior sources considered by Ninerr. It is not a substitute for legal advice or the original authorization documents. The A/B classification of every source is in `docs/provenance/LICENSE_REGISTER.json`, and the founder's authorization is in `docs/provenance/FOUNDER_AUTHORIZATION_2026-10-08.md`.
+This ledger tracks code, design, architecture, and behavior sources considered by Ninerr. The project was renamed in 2026-10 (N0); the authorization records cited below use its earlier name. It is not a substitute for legal advice or the original authorization documents. The A/B classification of every source is in `docs/provenance/LICENSE_REGISTER.json`, and the founder's authorization is in `docs/provenance/FOUNDER_AUTHORIZATION_2026-10-08.md`.
 
 Paper, Paper.design and the other names in this ledger belong to their owners. They are named here as provenance only, and none of them is Ninerr's identity.
 

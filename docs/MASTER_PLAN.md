@@ -13,6 +13,7 @@ Ninerr is an AI-native, web-semantic design environment where humans, software a
 5. **Round-trip safety.** Import/export is not enough. Ninerr must preserve intent when code becomes design and design becomes code again.
 6. **Local/private first.** Core creation, agent control, source inspection, and project persistence must work without a paid cloud dependency.
 7. **Agents are collaborators, not hidden automation.** Agent mutations are attributable, reviewable, cancellable, and reversible.
+8. **No destructive source normalization.** The first authorized-source intake is an immutable snapshot; transformation happens in later commits. (No authorized-source intake ever received source, and N0-G5 retired the intake.)
 
 ## Current program
 
@@ -31,7 +32,7 @@ Ninerr is not complete merely because the UI launches. Completion requires:
 
 1. the authorized donor baseline is traceable;
 2. the shipped product has independent identity;
-3. the capabilities the architecture catalog (`packages/architecture`) records as implemented have acceptance evidence;
+3. required parity rows are proven or intentionally dispositioned (the rows are in the parity matrix, retired in N0-G8b to `docs/evidence/PARITY_MATRIX_2026-10-06.md`; the architecture catalog in `packages/architecture` records each subsystem's status);
 4. differentiators D1–D7 have acceptance evidence;
 5. security, accessibility, performance, persistence, recovery, and license gates pass;
 6. a fresh user can install, create/edit, use an agent, connect a codebase, round-trip a component, and export without hidden paid infrastructure.

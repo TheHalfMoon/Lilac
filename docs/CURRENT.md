@@ -37,4 +37,4 @@ This is the normal merge commit for PR #220, which fixed a race in the local run
 - The full suite fails some tests on Windows, which CI does not run (#192).
 
 ## The program before the rename
-The state of every phase, grain and gate up to N0 (P00 to P07 and PC, all `CLOSED_CANONICAL` except P07 Release) is recorded unchanged in `docs/evidence/PROGRAM_STATE_2026-10-09.md`.
+The state of every phase, grain and gate up to N0 is recorded unchanged in `docs/evidence/PROGRAM_STATE_2026-10-09.md`. There, grains 1 to 9, P03, P04, the P05 slices, P06 and PC are `CLOSED_CANONICAL`, P07 Release is active, and P00's gates have the states the record gives them.

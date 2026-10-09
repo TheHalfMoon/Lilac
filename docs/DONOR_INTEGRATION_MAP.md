@@ -39,7 +39,7 @@ Use Impeccable revision `e103efe779e2dd01274dabae83531fef00bf2563` as the primar
 Deliver:
 - pinned detector integration boundary;
 - source-text, static-HTML, and browser/snapshot check interfaces;
-- namespaced `LilacRulePack` seam;
+- namespaced `RulePack` seam;
 - findings normalized into Ninerr severity/evidence/fixability records;
 - deterministic rule execution with no model/provider requirement;
 - oracle/golden tests for stable behavior;

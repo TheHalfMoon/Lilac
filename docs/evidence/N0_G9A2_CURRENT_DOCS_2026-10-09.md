@@ -9,12 +9,13 @@ Issue: #190 (N0 umbrella). This follows N0-G9a1, which moved the program record 
   - the current facts;
   - a pointer to `docs/evidence/PROGRAM_STATE_2026-10-09.md`.
 - **`docs/MASTER_PLAN.md`** holds the mission, the principles, the current program, the definition of complete and a pointer to `docs/evidence/MASTER_PLAN_2026-10-09.md`.
-  - Principle 8, about an authorized-source intake that never received source, is left out.
-  - The definition of complete asks for acceptance evidence for the implemented catalog in place of the retired parity rows.
+  - The principles and the definition of complete are the founder's and are kept verbatim. Principle 8 and the definition's parity item each gain a pointer: the source intake never received source and was retired in N0-G5, and the parity rows are in the retired matrix. (The first draft had dropped principle 8 and reworded the parity item. The N0-G9a2 review caught that both are founder-set criteria.)
 - **`CLAUDE.md`** names the current program. It had said the next phase was P06.
 - **The living records name Ninerr:** the license register's kinds and entries, `docs/DONORS.md` and `docs/DONOR_INTEGRATION_MAP.md`. Where they record the owner's attestation, they say "this project", the same project, rather than putting the new name in the owner's words.
 - **`tests/program-state.test.mjs`** checks two things:
   - every path the current page cites exists;
   - both current pages point to the records they replaced.
+
+The identity census summary is regenerated.
 
 All of this was raised by the N0-G9 review: #221's allowlist must not exempt living documents.
