@@ -38,10 +38,14 @@ It computes its own inverse for every operation: insert ↔ remove, remove ↔ r
 - whether the person can undo and redo;
 - that the document is valid.
 
-**How the actors' changes meet.** The changes have to meet, or conflicts would be rare:
+**How the actors' changes meet.** The changes have to meet, or conflicts would be rare. The scheduler steers toward where conflicts come from:
 - each actor's next change targets, half the time, a layer the other actor just changed (or undid, or redid);
-- the agent's deletions are weighted up;
-- with something to redo, the person redoes it a quarter of the time, after whatever the agent did meanwhile.
+- the agent's deletions are weighted up; right after the person undoes, the agent often deletes a layer that undo changed;
+- right after the agent changed what the person just changed, the person often redoes or undoes;
+- now and then the person removes a layer the agent's latest change made or changed, and right after the person changed what the agent just changed, the person often reverts the agent's change;
+- with something to redo, the person sometimes redoes it after whatever the agent did meanwhile.
+
+**Deterministic.** A seed decides its whole run: the test picks layers in the model's order, not the host's, because the host sorts layers by id and the agent's ids are random. Two runs of the default seeds give identical transition counts.
 
 **Coverage gate.** A full run (at least 4 seeds of at least 120 steps; not a replayed seed) must reach every transition that matters:
 - edits accepted and refused;
@@ -55,29 +59,29 @@ The journeys of P08-G1 use the same model and generator; they were moved to `tes
 
 ## Results
 **Locally (Windows 11, Node 24):**
-- **The default 4 seeds × 120 steps pass in 22 s.** Every gated transition is reached:
-  - 78 edits accepted and 16 refused;
-  - 61 undos, 28 redos and 21 reverts;
-  - 2 undo conflicts, 1 redo conflict and 1 revert conflict;
-  - 12 deletions and 11 declined;
-  - 5 refused moves;
-  - 5 reverts of an earlier change and 4 from before a reopen, refused;
-  - 23 stale edits refused;
-  - 15 checkpoints and 15 reopens.
-- **12 seeds × 120 steps pass in 70 s:**
-  - 248 edits accepted and 45 refused;
-  - 192 undos, 91 redos and 76 reverts;
-  - 12 undo conflicts, 3 redo conflicts and 2 revert conflicts;
-  - 68 deletions and 33 declined;
-  - 27 refused moves;
-  - 65 stale edits refused;
-  - 39 checkpoints and 33 reopens.
+- **The default 4 seeds × 120 steps pass in 22 s, identically on two runs.** Every gated transition is reached:
+  - 47 edits accepted and 19 refused;
+  - 47 undos, 24 redos and 32 reverts;
+  - 13 undo conflicts, 8 redo conflicts and 6 revert conflicts;
+  - 25 deletions and 11 declined;
+  - 6 refused moves;
+  - 9 reverts of an earlier change and 2 from before a reopen, refused;
+  - 30 stale edits refused;
+  - 18 checkpoints and 12 reopens.
+- **12 seeds × 120 steps pass in 66 s:**
+  - 144 edits accepted and 62 refused;
+  - 165 undos, 82 redos and 95 reverts;
+  - 45 undo conflicts, 26 redo conflicts and 10 revert conflicts;
+  - 92 deletions and 42 declined;
+  - 33 refused moves;
+  - 81 stale edits refused;
+  - 43 checkpoints and 29 reopens.
 
   Every outcome was the model's.
 
 **Mutation checks** (each change made by hand, the test run, the code restored):
-- **When an edit stops clearing the person's redo stack,** every seed fails at "what the person can undo and redo".
-- **When a revert leaves the agent's change on the agent's stack,** 3 of 4 seeds fail. The 4th never reverts twice in a row.
+- **When an edit stops clearing the person's redo stack,** the default run fails (1 of 4 seeds, at "what the person can undo and redo").
+- **When a revert leaves the agent's change on the agent's stack,** all 4 seeds fail.
 
 **In CI:** the Foundation run at the PR's exact head gives the Linux result with the default seeds.
 

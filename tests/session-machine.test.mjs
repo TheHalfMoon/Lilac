@@ -118,11 +118,18 @@ async function runMachine(seed, root, pool) {
   const counter = { next: 0, prefix: "p" };
   // What each actor changed last, so the other's next change often meets it.
   const touched = { person: [], agent: [] };
+  // Kept in the model's order: the host sorts layers by id, and the agent's ids are random, so
+  // picking in the host's order would make a seed's run differ from one run to the next.
   const touch = (actor, ids) => {
-    touched[actor] = [...ids, ...touched[actor]].slice(0, 8);
+    const changed = new Set(ids);
+    touched[actor] = [...Object.keys(model.doc.nodes).filter((id) => changed.has(id)), ...touched[actor]].slice(0, 8);
   };
   // The agent's changes from before a reopen, which can no longer be reverted.
   const lost = [];
+  let agentMetPerson = false;
+  let personMetAgent = false;
+  // Layers the person's last undo changed: the agent sometimes deletes one, which a redo then meets.
+  let undone = [];
   const tally = {};
   const count = (what) => {
     tally[what] = (tally[what] ?? 0) + 1;
@@ -139,14 +146,27 @@ async function runMachine(seed, root, pool) {
   };
 
   for (let step = 0; step < STEPS; step += 1) {
-    // With something to redo, the person often redoes it, after whatever the agent did meanwhile.
-    const roll = model.person.redo.length > 0 && prng.next() < 0.25 ? 0.45 : prng.next();
+    // Where conflicts come from, steered toward: right after the agent changed what the person
+    // just changed (or undid), the person often redoes or undoes; right after the person changed
+    // what the agent just changed, the person often reverts the agent's change.
+    let roll = prng.next();
+    if (agentMetPerson && model.person.redo.length > 0 && roll < 0.3) roll = 0.45;
+    else if (agentMetPerson && model.person.undo.length > 0 && roll < 0.5) roll = 0.3;
+    else if (personMetAgent && model.agent.undo.length > 0 && roll < 0.4) roll = 0.85;
+    else if (model.person.redo.length > 0 && roll < 0.15) roll = 0.45;
+    agentMetPerson = false;
+    personMetAgent = false;
     let action;
     if (roll < 0.24) {
       // The person edits.
       action = "edit";
-      const { revision, document } = await ok(running.call("GET", "/api/document"), "document");
-      const edit = generatedEdit(prng, document, counter, touched.agent);
+      const { revision } = await ok(running.call("GET", "/api/document"), "document");
+      // Generated from the model (the same document, as check() asserts), in its order. Now and
+      // then it removes a layer the agent's latest change made or changed, which a revert meets.
+      const latest = (model.agent.undo.at(-1)?.affected ?? []).filter((id) => Object.hasOwn(model.doc.nodes, id));
+      const edit = latest.length > 0 && prng.next() < 0.15
+        ? { intent: "Remove the agent's layer", operations: [{ type: "remove-node", nodeId: prng.pick(latest) }] }
+        : generatedEdit(prng, { nodes: model.doc.nodes }, counter, touched.agent);
       const expected = applyOperations(model.doc, edit.operations);
       const result = await running.call("POST", "/api/edit", { baseRevision: revision, ...edit });
       assert.equal(result.status, expected === null ? 400 : 200, `${edit.intent}: ${JSON.stringify(result.json)}`);
@@ -157,6 +177,7 @@ async function runMachine(seed, root, pool) {
         model.revision += 1;
         push(model.person.undo, { transactionId: result.json.transactionId, operations: edit.operations, inverse: expected.inverse });
         model.person.redo = [];
+        personMetAgent = result.json.affectedNodeIds.some((id) => touched.agent.includes(id));
         touch("person", result.json.affectedNodeIds);
       }
     } else if (roll < 0.40) {
@@ -180,6 +201,7 @@ async function runMachine(seed, root, pool) {
         model.person.undo.pop();
         push(model.person.redo, entry);
         touch("person", result.json.affectedNodeIds);
+        undone = Object.keys(model.doc.nodes).filter((id) => result.json.affectedNodeIds.includes(id));
       }
     } else if (roll < 0.52) {
       action = "redo";
@@ -204,7 +226,9 @@ async function runMachine(seed, root, pool) {
       }
     } else if (roll < 0.83) {
       // The agent calls a tool; a deletion waits for the person, who approves or declines it.
-      const { name, args } = agentCall(prng, model, touched.person);
+      const stillThere = undone.filter((id) => Object.hasOwn(model.doc.nodes, id));
+      const { name, args } = stillThere.length > 0 && prng.next() < 0.5 ? { name: "delete_layers", args: { nodeIds: [prng.pick(stillThere)] } } : agentCall(prng, model, touched.person);
+      undone = [];
       action = `agent ${name}`;
       let decision = null;
       const pending = agent.tool(name, args);
@@ -241,7 +265,9 @@ async function runMachine(seed, root, pool) {
           count(`agent ${name}`);
           model.doc = expected.model;
           model.revision += 1;
-          push(model.agent.undo, { transactionId: result.structuredContent.transactionId, operations, inverse: expected.inverse });
+          const affected = Object.keys(expected.model.nodes).filter((id) => result.structuredContent.affectedNodeIds.includes(id));
+          push(model.agent.undo, { transactionId: result.structuredContent.transactionId, operations, inverse: expected.inverse, affected });
+          agentMetPerson = result.structuredContent.affectedNodeIds.some((id) => touched.person.includes(id));
           touch("agent", result.structuredContent.affectedNodeIds);
         }
       }
