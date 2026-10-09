@@ -240,6 +240,17 @@ test("the host refuses a projects root that is not a directory", async () => {
   await assert.rejects(() => startStudioHost({ projectsRoot: join(tmpdir(), "ninerr-missing-root-for-test") }), /projectsRoot/u);
 });
 
+test("a project opens only by its exact name, and a name differing only by case is taken (#247)", () => withHost(async (host) => {
+  await api(host, "POST", "/api/projects/create", { name: "site" });
+  await api(host, "POST", "/api/projects/close");
+  for (const name of ["SITE", "Site"]) {
+    const other = await api(host, "POST", "/api/projects/open", { name });
+    assert.deepEqual([other.status, other.json.error?.code], [404, "project-not-found"], `${name} is not site`);
+  }
+  assert.equal((await api(host, "POST", "/api/projects/create", { name: "Site" })).json.error.code, "project-exists", "nor can it be created beside site, on any disk");
+  assert.equal((await api(host, "POST", "/api/projects/open", { name: "site" })).json.project, "site");
+}));
+
 test("a failed open or create keeps the current project, and failures have specific codes", () => withHost(async (host, root) => {
   await api(host, "POST", "/api/projects/create", { name: "keep" });
   const missing = await api(host, "POST", "/api/projects/open", { name: "nope" });
