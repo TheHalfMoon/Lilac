@@ -240,16 +240,6 @@
       "line": "^(?:(?<![\\w.])\\.lilac(?![\\w-])|(?<![\\w-])lilac-project(?![\\w-])|(?<![\\w-])lilac-journal-genesis(?![\\w-])|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$"
     },
     {
-      "id": "repository-url",
-      "category": "LEGACY_COMPATIBILITY",
-      "terms": [
-        "lilac"
-      ],
-      "line": "^(?:(?<![\\w-])TheHalfMoon/Lilac(?:\\.git)?(?![\\w-]|\\.\\w)|(?<![\\w-])cd Lilac(?![\\w-]|\\.\\w)|(?![Ll][Ii][Ll][Aa][Cc])[\\s\\S])*$",
-      "reason": "The repository's own URL and clone directory until N0-G10 renames the repository; every mention of the old name on the line must be one of them.",
-      "path": "^(docs/(CURRENT|RELEASE)\\.md|tests/license-register\\.test\\.mjs)$"
-    },
-    {
       "id": "provenance-test-agent-events",
       "category": "IMMUTABLE_HISTORICAL_FACT",
       "path": "^tests/agent-events\\.test\\.mjs$",

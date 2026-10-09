@@ -79,8 +79,8 @@ test("the allowlist is narrow: a new occurrence beside an allowed one is still g
   // Provenance constants admit only their files' donors.
   assert.ok(gated("packages/agent-events/src/index.ts", "firecrawl", "firecrawl"), "another donor in a provenance module is gated");
   assert.ok(gated("packages/canvas/src/index.mjs", "ui-tars", "UI-TARS"), "a donor name outside provenance is gated");
-  // The repository URL is admitted by its exact form until N0-G10.
-  assert.equal(rule("docs/RELEASE.md", "lilac", "gh attestation verify x --repo TheHalfMoon/Lilac"), "repository-url");
+  // The repository is TheHalfMoon/Ninerr (N0-G10): the old URL is no longer admitted anywhere current.
+  assert.ok(gated("docs/RELEASE.md", "lilac", "gh attestation verify x --repo TheHalfMoon/Lilac"), "the old repository URL");
   assert.ok(gated("docs/RELEASE.md", "lilac", "A Lilac release is a tagged commit"), "product prose in the same doc is gated");
   // Paper outside a record is gated.
   assert.ok(gated("docs/ARCHITECTURE.md", "paper", "Paper"), "Paper in a current doc is gated");
@@ -105,12 +105,12 @@ test("the allowlist is narrow: a new occurrence beside an allowed one is still g
   assert.ok(gated("docs/CURRENT.md", "lilac", "- Lilac is the current product name."), "the old name in the program state");
   assert.ok(gated("docs/MASTER_PLAN.md", "paper", "N0 next: depend on Paper's renderer."), "Paper in the plan");
   assert.equal(rule("docs/evidence/PROGRAM_STATE_2026-10-09.md", "lilac", "Product name: **Lilac**."), "dated-evidence");
-  // The repository URL is admitted only where it is cited, and only as the URL (N0-G9 review, cycle 2).
-  assert.equal(rule("docs/RELEASE.md", "lilac", "git clone --branch <tag> https://github.com/TheHalfMoon/Lilac.git && cd Lilac"), "repository-url");
+  // Former repository-url probes (N0-G9 review, cycles 2 and 3) stay gated after the rule's removal.
+  assert.ok(gated("docs/RELEASE.md", "lilac", "gh repo clone TheHalfMoon/Lilac && cd Lilac"), "the old clone command");
   assert.ok(gated("packages/studio-web/src/app.mjs", "lilac", "<h1>Welcome to TheHalfMoon/Lilac</h1>"), "the URL form in product code");
   assert.ok(gated("README.md", "lilac", "TheHalfMoon/Lilac Studio is great"), "the URL in a file that does not cite it");
   assert.ok(gated("docs/RELEASE.md", "lilac", "see TheHalfMoon/Lilac-studio"), "a longer name built on the URL");
-  // Both ends of every admitted form are guarded (N0-G9 review, cycle 3).
+  // Edge cases of the removed rule (N0-G9 review, cycle 3) stay gated; the migration and variable forms are still admitted with both ends guarded.
   assert.ok(gated("docs/RELEASE.md", "lilac", "see TheHalfMoon/Lilac.studio"), "a dotted name built on the URL");
   assert.ok(gated("docs/RELEASE.md", "lilac", "abcd Lilac"), "the clone directory inside another word");
   assert.ok(gated("docs/DESKTOP.md", "lilac", "MY_LILAC_PROJECTS"), "an old variable inside a longer name");

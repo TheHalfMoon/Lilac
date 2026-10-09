@@ -14,15 +14,17 @@ Status: **N0 ACTIVE.** Each N0 grain landed through its own PR with exact-head C
 - the retirement of all donor-product recovery tooling and records (G5);
 - the coherence audit (G6);
 - the A/B source-rights audit, the Apache-2.0 license, the notices and the Electron corresponding source (G7);
-- the documentation (G8).
+- the documentation (G8);
+- the independence regression gate in CI, with a narrow, reviewed allowlist (G9);
+- the repository rename to `TheHalfMoon/Ninerr`, with its redirects verified (G10).
 
-The independence gate (G9) and the repository rename (G10) remain.
+Remaining in N0: the rest of the repository cleanup (the repository description and topics, and the issue and PR templates), then the close of #190. P08 follows.
 
 ## Canonical main
 
-`679429f0c1e33c1fd382745bcfea99607f034977`
+`aabff884d402be7b22af3b66381a9f795ca4bb2a`
 
-This is the normal merge commit for PR #220, which fixed a race in the local runtime test. It is the latest commit whose post-merge run was verified when this page was updated. Post-merge Foundation checks completed `SUCCESS` on that exact SHA (769/769 tests). The Desktop package runs for Linux x64, macOS arm64 and Windows x64 each succeeded, including the release-candidate journey.
+This is the normal merge commit for PR #221, the independence regression gate. It is the latest commit whose post-merge run was verified when this page was updated. Post-merge Foundation checks completed `SUCCESS` on that exact SHA (771/771 tests). The Desktop package runs for Linux x64, macOS arm64 and Windows x64 each succeeded, including the release-candidate journey.
 
 ## Before the v1 tag
 1. **License.** Resolved: Ninerr is Apache-2.0 (`LICENSE`), after the A/B source-rights audit (`docs/evidence/N0_G7A_LICENSE_2026-10-09.md`).
@@ -32,7 +34,7 @@ This is the normal merge commit for PR #220, which fixed a race in the local run
 5. **The tag.** Not authorized. No release tag is created until the founder release gate passes.
 
 ## Canonical facts
-- Product: **Ninerr**, licensed under Apache-2.0. The repository is `TheHalfMoon/Lilac` until N0-G10 renames it.
+- Product: **Ninerr**, licensed under Apache-2.0. The repository is `TheHalfMoon/Ninerr`.
 - Ninerr does not depend on any donor product or any donor's identity (`docs/evidence/N0_G6_COHERENCE_AUDIT_2026-10-09.md`). The audited register of every source is `docs/provenance/LICENSE_REGISTER.json`.
 - The full suite fails some tests on Windows, which CI does not run (#192).
 

@@ -29,7 +29,7 @@ const distributedOrPermissive = (entry) => PERMISSIVE.has(entry.license) || (NOT
 // Node.js is built into the Electron runtime, which carries its license; the corresponding-source
 // record links its source.
 const URL_ALIASES = { "inikulin/parse5": "parse5", "fb55/entities": "entities", "microsoft/playwright": "playwright-core", "nodejs/node": "electron/electron" };
-const URL_NOT_INCORPORATED = new Set(["ehmo/platform-design-skills", "trailhq/Graft", "owner/repo", "TheHalfMoon/Lilac"]); // owner/repo: the placeholder in docs; TheHalfMoon/Lilac: this repository (its clone URL in docs/RELEASE.md)
+const URL_NOT_INCORPORATED = new Set(["ehmo/platform-design-skills", "trailhq/Graft", "owner/repo", "TheHalfMoon/Ninerr"]); // owner/repo: the placeholder in docs; TheHalfMoon/Ninerr: this repository (its clone URL in docs/RELEASE.md)
 // owner/name literals that are not upstream projects: rule ids, MIME types, Ninerr paths, and
 // MCP JSON-RPC method names (tools/list).
 const NOT_DONORS = /^(a11y|ninerr-mobile-method|application|text|packages|internal|NinerrImportStack|tools|notifications|resources|prompts|completion|logging|sampling|roots)\//u;
