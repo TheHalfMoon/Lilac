@@ -141,6 +141,11 @@ async function runMachine(seed, root, pool) {
     model.fields[key].mine = value;
   };
   const fieldOf = (entry) => Object.keys(FIELDS).find((key) => layer[FIELDS[key].tag] === entry.nodeId && FIELDS[key].field === entry.field);
+  /** The text field an entry not written is about, or its reason when it is anything else. */
+  const notWrittenField = (entry) => {
+    if (!/\{ \} < or >/u.test(entry.reason)) return entry.reason;
+    return entry.nodeId === layer.h2 ? "h2" : "p";
+  };
   /** Preview: exactly the plan the model predicts, and nothing written. */
   const previewChecked = async (step) => {
     const plan = await ok(running.call("POST", "/api/codebase/preview", { nodeId: layer.section }), "preview");
@@ -149,7 +154,7 @@ async function runMachine(seed, root, pool) {
     assert.deepEqual(named(plan.changes), [...expected.changes].sort(), `step ${step}: the changes`);
     assert.deepEqual(named(plan.matched), [...expected.matched].sort(), `step ${step}: the matched fields`);
     assert.deepEqual(named(plan.conflicts), [...expected.conflicts].sort(), `step ${step}: the conflicts`);
-    assert.deepEqual(plan.notWritten.map((entry) => (/\{ \} < or >/u.test(entry.reason) ? (entry.nodeId === layer.h2 ? "h2" : "p") : entry.reason)).sort(), [...expected.notWritten].sort(), `step ${step}: what is not written, and why`);
+    assert.deepEqual(plan.notWritten.map(notWrittenField).sort(), [...expected.notWritten].sort(), `step ${step}: what is not written, and why`);
     assert.equal(plan.diff === "", expected.changes.length === 0, `step ${step}: a diff exactly when there are changes`);
     assert.equal(readFileSync(card, "utf8"), render(fileValues()), "previewing writes nothing");
     if (expected.notWritten.length > 0) count("preview with a text not written");
