@@ -27,12 +27,12 @@ export function mcpClient(mcpUrl, token) {
   return { rpc, tool: (name, args) => rpc("tools/call", { name, arguments: args }) };
 }
 
-/** Every host a test starts, so its `finally` closes them all, whatever failed. */
-export function hostPool(now) {
+/** Every host a test starts, so its `finally` closes them all, whatever failed. `options` go to each host. */
+export function hostPool(now, options = {}) {
   const hosts = [];
   return {
     async open(root) {
-      const host = await startStudioHost({ projectsRoot: root, now });
+      const host = await startStudioHost({ projectsRoot: root, now, ...options });
       hosts.push(host);
       return { host, call: client(host.url, host.token) };
     },
