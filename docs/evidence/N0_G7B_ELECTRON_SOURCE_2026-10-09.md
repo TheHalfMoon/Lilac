@@ -34,4 +34,6 @@ The binding says exactly which source corresponds to the binary. How a binary re
 
 Pointing recipients at the public repositories at the recorded commits is not one of section 6's methods. An offer limited to ffmpeg would also leave Blink, which is statically linked LGPL code, uncovered. Either would be a risk only the owner can choose to accept.
 
+One nuance remains for the owner. `libffmpeg` is a copy of an LGPL library itself. If it is distributed on its own, LGPL-2.1 section 4 governs it, and section 4 allows only the accompanying or same-place routes, with no written offer. A written offer rests on reading Electron and its `libffmpeg` as one combined work under section 6. That is the usual reading, but the accompanying or same-place route avoids depending on it. (Raised by the N0-G7b review.)
+
 No release has been made, and `v1.0.0` is not authorized. The founder release gate decides this before any binary is distributed.
