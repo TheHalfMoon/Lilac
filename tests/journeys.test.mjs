@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { parseDocument, serializeDocument, validateDocument } from "../packages/document-model/src/index.mjs";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
-import { createPrng, propertySeeds } from "./support/prng.mjs";
+import { createPrng, positiveIntegerFromEnv, propertySeeds } from "./support/prng.mjs";
 import { client, hostPool, mcpClient, ok } from "./support/host-api.mjs";
 import { applyOperations, generatedEdit, shape } from "./support/reference-model.mjs";
 
@@ -23,9 +23,7 @@ import { applyOperations, generatedEdit, shape } from "./support/reference-model
 // of the persisted state. Each seed is its own subtest; replay one with
 // NINERR_PROPERTY_SEED=<seed>. NINERR_JOURNEY_RUNS sets how many seeds each journey runs.
 
-const runsText = process.env.NINERR_JOURNEY_RUNS ?? "3";
-if (!/^[1-9]\d*$/u.test(runsText)) throw new Error(`NINERR_JOURNEY_RUNS must be a positive integer, got ${JSON.stringify(runsText)}`);
-const RUNS = Number(runsText);
+const RUNS = positiveIntegerFromEnv("NINERR_JOURNEY_RUNS", 3);
 const HOST_CHILD = fileURLToPath(new URL("./support/host-child.mjs", import.meta.url));
 let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 9, 12, 0, 0) + clock++ * 1000).toISOString();

@@ -22,6 +22,13 @@ export function createPrng(seed) {
   return { next, int, pick, shuffle };
 }
 
+/** A positive integer from the environment variable `name`, or `fallback` when it is unset. */
+export function positiveIntegerFromEnv(name, fallback) {
+  const text = process.env[name] ?? String(fallback);
+  if (!/^[1-9]\d*$/u.test(text)) throw new Error(`${name} must be a positive integer, got ${JSON.stringify(text)}`);
+  return Number(text);
+}
+
 // Seeds come from NINERR_PROPERTY_SEED (to replay one failure) or a fixed list.
 export function propertySeeds(count) {
   const pinned = process.env.NINERR_PROPERTY_SEED;
