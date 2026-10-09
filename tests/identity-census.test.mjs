@@ -162,3 +162,12 @@ test("the command line gate exits 1 on gated findings and 0 without, and never s
     repo.dispose();
   }
 });
+
+// N0-G9: the repository itself passes the independence gate. A new old-product, Paper or donor
+// name outside the reviewed rules fails here and in CI's identity gate step.
+test("the repository passes the identity gate", () => {
+  const record = census(policy);
+  const gated = record.files.flatMap((file) => file.findings.filter((finding) => policy.gated.has(finding.category)).map((finding) => `${file.path} ${finding.term} (${finding.rule})`));
+  assert.deepEqual(gated, []);
+  assert.equal(record.gatedFindings, 0);
+});
