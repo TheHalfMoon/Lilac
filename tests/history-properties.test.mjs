@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createDocument, parseDocument, serializeDocument, validateDocument } from "../packages/document-model/src/index.mjs";
-import { canRedo, canUndo, commitTransaction, createHistoryState, redo, undo } from "../packages/history/src/index.mjs";
+import { canRedo, canUndo, commitTransaction, createHistoryState, redo, replayTransactions, undo } from "../packages/history/src/index.mjs";
 import { createPrng, propertySeeds } from "./support/prng.mjs";
 
 // Generated undo/redo properties over every history operation type. A failure
@@ -198,4 +198,31 @@ test("reserved-looking node ids are ordinary nodes through insert, remove and un
     assert.equal(Object.getPrototypeOf(history.document.nodes), Object.prototype);
   }
   assert.equal(createDocument({ id: "doc-1", nodes: [{ id: "__proto__", type: "frame" }] }).nodes.__proto__.id, "__proto__");
+});
+
+test("replaying committed transactions in one batch gives exactly what applying them one by one gives (#251)", () => {
+  for (const seed of propertySeeds(100)) {
+    const prng = createPrng(seed);
+    const counter = { next: 0 };
+    let history = createHistoryState(initialDocument());
+    const committed = [];
+    for (let step = 0; step < 25; step += 1) {
+      const transaction = randomTransaction(prng, history, counter, step);
+      try {
+        history = commitTransaction(history, transaction);
+        committed.push(transaction);
+      } catch {
+        // A generated transaction that does not apply is not committed, as in a journal.
+      }
+    }
+    assert.equal(serializeDocument(replayTransactions(initialDocument(), committed)), serializeDocument(history.document), `seed ${seed}`);
+  }
+  const start = initialDocument();
+  const first = { id: "t1", actor: "u", baseRevision: 0, operations: [{ type: "set-props", nodeId: "a", set: { x: 2 } }] };
+  // A transaction that does not apply, or comes on the wrong revision, is named by its index.
+  assert.throws(() => replayTransactions(start, [first, { id: "t2", actor: "u", baseRevision: 1, operations: [{ type: "remove-node", nodeId: "missing" }] }]), (error) => error.index === 1);
+  assert.throws(() => replayTransactions(start, [first, { id: "t3", actor: "u", baseRevision: 0, operations: [{ type: "set-props", nodeId: "a", set: { x: 3 } }] }]), (error) => error.index === 1 && /Stale/u.test(error.message));
+  // A result that is not a valid document is refused as a whole.
+  assert.throws(() => replayTransactions(start, [first, { id: "t4", actor: "u", baseRevision: 1, operations: [{ type: "insert-node", node: { id: "bad", type: "not-a-type", props: {} }, parentId: null }] }]));
+  assert.equal(serializeDocument(start), serializeDocument(initialDocument()), "the input is not changed");
 });

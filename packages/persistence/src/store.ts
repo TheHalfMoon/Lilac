@@ -2,7 +2,7 @@ import { createHash, randomUUID, type Hash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { DOCUMENT_FIELDS, DOCUMENT_SCHEMA_VERSION, NODE_FIELDS, cloneDocument, normalizeDocument, validateDocument } from "@ninerr/document-model";
-import { applyTransaction, createTransaction } from "@ninerr/history";
+import { applyTransaction, createTransaction, replayTransactions } from "@ninerr/history";
 import { canonicalJson } from "./canonical.ts";
 import { PersistenceCorruptionError, PersistenceLockError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
 import {
@@ -440,18 +440,23 @@ function readVerifiedProject(projectDir: string, migrations: Readonly<Record<num
   const anchor = snapshot.journalSeq === 0 ? genesis : parsed.entries[snapshot.journalSeq - 1].digest;
   if (anchor !== snapshot.chainDigest) throw new PersistenceCorruptionError("snapshot reference does not match the journal chain");
 
-  let replayed = 0;
-  for (const { entry } of parsed.entries.slice(snapshot.journalSeq)) {
-    let next: ProjectDocument;
+  // Each entry adds one revision; check that before replaying, then replay them all on one
+  // copy of the document, so recovery costs the document plus the entries, not their
+  // product (#251).
+  const pending = parsed.entries.slice(snapshot.journalSeq);
+  pending.forEach(({ entry }, index) => {
+    if (entry.revision !== document.revision + index + 1) throw new PersistenceCorruptionError(`journal entry ${entry.seq} revision mismatch`);
+  });
+  if (pending.length > 0) {
     try {
-      next = applyTransaction(document, entry.transaction).document as ProjectDocument;
+      document = replayTransactions(document, pending.map(({ entry }) => entry.transaction)) as ProjectDocument;
     } catch (error) {
-      throw new PersistenceCorruptionError(`journal entry ${entry.seq} does not apply: ${(error as Error).message.slice(0, 200)}`);
+      const index = (error as { index?: number }).index;
+      const which = index === undefined ? `journal entries ${pending[0].entry.seq} to ${pending.at(-1)!.entry.seq}` : `journal entry ${pending[index].entry.seq}`;
+      throw new PersistenceCorruptionError(`${which} do${index === undefined ? "" : "es"} not apply: ${(error as Error).message.slice(0, 200)}`);
     }
-    if (next.revision !== entry.revision) throw new PersistenceCorruptionError(`journal entry ${entry.seq} revision mismatch`);
-    document = next;
-    replayed += 1;
   }
+  const replayed = pending.length;
   return { manifest, migratedFrom, document, journalBytes, parsed, genesis, snapshot, replayed };
 }
 

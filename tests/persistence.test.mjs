@@ -195,6 +195,20 @@ test("a durable journal entry not yet reflected in memory is replayed on reopen"
   store.close();
 }));
 
+test("a journal entry that does not apply is refused by its number, and replay is one pass (#251)", () => withProject((root) => {
+  const genesis = genesisDigest("proj-1", JOURNAL_GENESIS);
+  const transaction = (id, revision, operations) => ({ id, actor: "user-1", baseRevision: revision - 1, intent: null, tool: null, timestamp: null, metadata: {}, operations });
+  const one = encodeJournalLine({ seq: 1, revision: 1, transaction: transaction("tx-1", 1, [{ type: "set-props", nodeId: "node-1", set: { title: "One" } }]) }, genesis);
+  const two = encodeJournalLine({ seq: 2, revision: 2, transaction: transaction("tx-2", 2, [{ type: "remove-node", nodeId: "missing" }]) }, one.digest);
+  appendFileSync(file(root, PROJECT_FILES.journal), one.line + two.line);
+  assert.throws(() => open(root), (error) => error instanceof PersistenceCorruptionError && /^journal entry 2 does not apply/u.test(error.message));
+  // Without the bad entry, the good one replays.
+  writeFileSync(file(root, PROJECT_FILES.journal), one.line);
+  const store = open(root);
+  assert.deepEqual([store.revision, store.recovery.replayedEntries, store.document.nodes["node-1"].props.title], [1, 1, "One"]);
+  store.close();
+}));
+
 test("second writers are refused until the first closes", () => withProject((root) => {
   const first = open(root);
   assert.throws(() => open(root, { owner: "writer-2" }), PersistenceLockError);
