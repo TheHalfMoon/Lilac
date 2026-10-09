@@ -1,10 +1,10 @@
 {
   "schema": "identity-census-summary/1",
   "filesScanned": 538,
-  "filesWithFindings": 141,
-  "gatedFindings": 0,
+  "filesWithFindings": 142,
+  "gatedFindings": 1,
   "byCategory": {
-    "ACTIVE_PRODUCT_IDENTITY": 0,
+    "ACTIVE_PRODUCT_IDENTITY": 1,
     "ACTIVE_INTERNAL_IDENTITY": 0,
     "PUBLIC_API": 0,
     "PERSISTED_DATA": 0,
@@ -16,7 +16,7 @@
   },
   "byTerm": {
     "lilac": 479,
-    "paper": 228,
+    "paper": 229,
     "firstmate": 32,
     "no-mistakes": 23,
     "doop": 30,
@@ -33,6 +33,7 @@
   },
   "byRule": {
     "dated-evidence": 657,
+    "default-paper": 1,
     "donor-provenance-records": 221,
     "independent-runtime-docling": 93,
     "independent-runtime-impeccable": 82,
@@ -61,5 +62,5 @@
     "public-env": 1,
     "third-party-notices": 66
   },
-  "censusSha256": "c6d08a3fd3b1d6368c7076f9a15a3a96980eb317c4ca79ddeb9f521d8225e264"
+  "censusSha256": "0679447eef6363b361f24485185487471c46b6e5ee99eabc924c3d20f9db1ece"
 }

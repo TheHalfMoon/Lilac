@@ -9,7 +9,7 @@ Issue: #190 (N0 umbrella). The founder asked for a professional repository clean
 It also meant removing filler, internal language, stale planning, unnecessary donor references, duplicated docs, marketing language and unproven claims.
 
 ## The audit
-A read-only audit covered the README, SECURITY, CONTRIBUTING, the GitHub templates, the docs in `docs/` other than the dated records, and the package READMEs. It found 7 must-fix items, 24 should-fix items and 10 optional ones. The audit also checked a sample of concrete claims against the code and found them true:
+A read-only audit covered the README, SECURITY, the docs in `docs/` other than the dated records, and the package READMEs. It found no contributing guide and no GitHub templates. Its findings were ranked must-fix (false or broken facts), should-fix (internal language, stale wording, donor names) and optional. Most of them are listed below as fixes; the audit itself is not kept as a file. It also checked a sample of concrete claims against the code and found them true:
 - the commands, environment variables and test files the docs cite;
 - the MCP tool counts and waiting times;
 - the schema versions;
@@ -31,7 +31,7 @@ This grain applies the fixes to the public entry points. N0-G11b covers the dono
   - The release job uploads seven files and `SHA256SUMS`, not seven files.
   - The rebuild needs Node 22.18 or later.
   - The LGPL source paragraph says plainly that no binary release is published yet, and that the owner decides the route before the first one.
-- **`docs/MIGRATION.md` and `docs/DESKTOP.md`.** Internal grain and phase labels are replaced with the tests they stood for.
+- **`docs/MIGRATION.md` and `docs/DESKTOP.md`.** Internal grain and phase labels are removed. In `docs/MIGRATION.md` the tests were already named. In `docs/DESKTOP.md` the label is replaced with the test it stood for.
 - **`packages/agent-supervisor/README.md`.** Em dashes lost to `?` in an ASCII conversion are restored as colons. The internal names "Grain 4" and "Grain 3" become the package names.
 - **`docs/CURRENT.md`.** Canonical main is updated to `e320c10` (#225), with its post-merge results, and the remaining N0 work is named.
 
