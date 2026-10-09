@@ -215,6 +215,12 @@ test("bounds and malformed inputs fail closed", () => {
   const wide = (children) => `<ul>${"<li />".repeat(children)}</ul>`;
   assert.equal(Object.keys(buildCodeIr([{ path: "E.jsx", content: wide(CODE_IR_HARD_LIMITS.maxChildrenPerSymbol) }]).symbols).length, CODE_IR_HARD_LIMITS.maxChildrenPerSymbol + 1);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: wide(CODE_IR_HARD_LIMITS.maxChildrenPerSymbol + 1) }]), /maxChildrenPerSymbol/u);
+  // Runs of text around the most children an element may have fit (#256); more are refused by name.
+  const runs = buildCodeIr([{ path: "E.jsx", content: `<ul>${"a<li />".repeat(CODE_IR_HARD_LIMITS.maxChildrenPerSymbol)}a</ul>` }]);
+  assert.equal(Object.values(runs.symbols).find((symbol) => symbol.name === "ul").texts.length, CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol);
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: `<p>${"{\"a\"}".repeat(CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol + 1)}</p>` }]), /p has more than 4097 runs of text/u);
+  // One patch carries at most maxPatchOps edits, and says how many it had.
+  assert.throws(() => applyPatch(buildCodeIr([{ path: "E.jsx", content: "<p>a</p>" }]), [{ path: "E.jsx", content: "<p>a</p>" }], Array.from({ length: CODE_IR_HARD_LIMITS.maxPatchOps + 1 }, () => ({}))), /this change has 5001 edits, more than the 5000 one write-back can carry/u);
   const hugeNumber = "<div n={" + "9".repeat(400) + "} />";
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: hugeNumber }]), /finite|no supported elements/u);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: '<div a="1" a="2" />' }]), /duplicate props/u);

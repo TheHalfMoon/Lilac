@@ -151,7 +151,7 @@ export function normalizeSymbol(value: unknown, label: string): SourceSymbol {
   }
   for (const child of value.children) assertBoundedString(child, `${label}.child`, 256);
   if (!Array.isArray(value.texts)) throw new CodeIrValidationError(`${label}.texts must be an array`);
-  if (value.texts.length > CODE_IR_HARD_LIMITS.maxChildrenPerSymbol) {
+  if (value.texts.length > CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol) {
     throw new CodeIrValidationError(`${label}.texts exceeds its bounded budget`);
   }
   const texts = (value.texts as unknown[]).map((entry, index) => {

@@ -359,3 +359,53 @@ test("runs of text: an expression is left alone, moved or removed runs are liste
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("one write-back carries many changed fields, and too many are refused by count (#256)", async () => {
+  const root = scratch();
+  const projects = join(root, "projects");
+  const code = join(root, "code");
+  mkdirSync(projects);
+  mkdirSync(code);
+  const list = (items) => `export function List() {\n  return (\n    <section>\n${Array.from({ length: items }, (_, index) => `      <p title="Title ${index}">Item ${index}</p>`).join("\n")}\n    </section>\n  );\n}\n`;
+  const host = await startStudioHost({ projectsRoot: projects, now });
+  const call = async (method, path, body) => {
+    const response = await fetch(`${host.url}${path}`, { method, headers: { authorization: `Bearer ${host.token}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    return { status: response.status, json: await response.json() };
+  };
+  // Bring the list in, change the text of its first `changed` items (and their titles too
+  // with `titles`) in one edit, and preview writing the section back.
+  const changeAndPreview = async (file, changed, titles) => {
+    assert.equal((await call("POST", "/api/codebase/import", { file, component: "List" })).status, 200);
+    // The session hands out a fresh copy of the document on each read: read it once.
+    const { document } = host.session;
+    const section = Object.values(document.nodes).find((node) => node.props.tag === "section" && node.props.codeSource?.file === file);
+    const items = section.children.map((id) => document.nodes[id]).slice(0, changed);
+    const set = (node) => (titles ? { text: `Changed ${node.props.text}`, attributes: { ...node.props.attributes, title: `New ${node.props.attributes.title}` } } : { text: `Changed ${node.props.text}` });
+    const edit = await call("POST", "/api/edit", { baseRevision: host.session.revision, intent: "Retext", operations: items.map((node) => ({ type: "set-props", nodeId: node.id, set: set(node) })) });
+    assert.equal(edit.status, 200, JSON.stringify(edit.json));
+    return { section, preview: await call("POST", "/api/codebase/preview", { nodeId: section.id }) };
+  };
+  try {
+    await call("POST", "/api/projects/create", { name: "lists" });
+    writeFileSync(join(code, "List.jsx"), list(300));
+    writeFileSync(join(code, "Long.jsx"), list(2_501));
+    assert.equal((await call("POST", "/api/codebase/connect", { folder: code })).status, 200);
+    // 300 changed texts: more than the 128 one write-back used to carry.
+    const { section, preview } = await changeAndPreview("List.jsx", 300, false);
+    assert.equal(preview.status, 200, JSON.stringify(preview.json).slice(0, 300));
+    const written = await call("POST", "/api/codebase/write", { nodeId: section.id, token: preview.json.token });
+    assert.equal(written.status, 200, JSON.stringify(written.json).slice(0, 300));
+    const after = readFileSync(join(code, "List.jsx"), "utf8");
+    for (let index = 0; index < 300; index += 1) assert.ok(after.includes(`<p title="Title ${index}">Changed Item ${index}</p>`), `item ${index}`);
+    // 2,501 texts and titles are 5,002 changed fields: refused by count, and the file is untouched.
+    const before = readFileSync(join(code, "Long.jsx"), "utf8");
+    const refused = (await changeAndPreview("Long.jsx", 2_501, true)).preview;
+    assert.equal(refused.status, 409);
+    assert.equal(refused.json.error.code, "patch-refused");
+    assert.match(refused.json.error.message, /this change has 5002 edits, more than the 5000 one write-back can carry/u);
+    assert.equal(readFileSync(join(code, "Long.jsx"), "utf8"), before);
+  } finally {
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
