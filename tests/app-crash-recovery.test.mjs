@@ -87,7 +87,9 @@ test("Ninerr killed mid-session recovers through the editor, with every committe
         revision = (await response.json()).revision;
       }
     })();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    // Kill only once the host has confirmed part of the burst, so a slow runner cannot kill it
+    // before the first edit lands; the rest of the burst is still in flight.
+    for (const deadline = Date.now() + 10_000; revision <= 4 && Date.now() < deadline;) await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(await ninerr.kill(), "SIGKILL");
     await burst;
     attempts.push(...attemptsIn(ninerr.output.stderr), ...tab.foreign);
