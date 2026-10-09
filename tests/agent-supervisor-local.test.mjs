@@ -425,20 +425,23 @@ test("local process stop waits for an owned child that exited before stop to fin
   const adapter = new LocalProcessRuntimeAdapter(runtimeDir, {
     once: {
       executable: process.execPath,
-      args: ["-e", "setTimeout(() => process.exit(0), 25)"],
+      // The child records that it ran, so a child that died on startup cannot pass for this one.
+      args: ["-e", "require('node:fs').writeFileSync('ran', 'yes'); setTimeout(() => process.exit(0), 25)"],
       environment: {},
     },
   }, { stopTimeoutMs: 3000, pollMs: 5 });
   try {
     // The child exits 25 ms after it starts, so on a loaded machine launch can already see it
     // gone. Either report is true; what this test proves is that stop then waits for the close.
-    assert.ok(["alive", "dead"].includes((await adapter.launch({
+    const launched = await adapter.launch({
       taskId: "task-self-exit",
       runtimeProfileId: "once",
       worktreePath: root,
       endpoint,
       supervisorGenerationId: "generation-a",
-    })).state));
+    });
+    assert.ok(["alive", "dead"].includes(launched.state), `launch state ${launched.state}`);
+    assert.equal(launched.endpointId, endpoint.endpointId, "launch recorded the endpoint");
     let observed = await adapter.inspect(endpoint);
     for (let index = 0; index < 200 && observed.state === "alive"; index += 1) {
       await new Promise((resolve) => setTimeout(resolve, 5));
@@ -447,6 +450,7 @@ test("local process stop waits for an owned child that exited before stop to fin
     assert.notEqual(observed.state, "alive");
     const stopped = await adapter.stop(endpoint);
     assert.equal(stopped.state, "dead");
+    assert.equal(await readFile(join(root, "ran"), "utf8"), "yes", "the child ran its script before it exited");
   } finally {
     try { await adapter.stop(endpoint); } catch { /* test cleanup only */ }
     await rm(root, { recursive: true, force: true });
