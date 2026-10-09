@@ -180,8 +180,8 @@ function damage(prng, root, { filesOnly = false } = {}) {
       break;
     case "oversize": {
       // Past the store's limit for this kind of file: a journal line, or a manifest or snapshot.
-      const limit = target === PROJECT_FILES.journal ? PERSISTENCE_LIMITS.maxEntryBytes : JSON_FILES.includes(target) ? PERSISTENCE_LIMITS.maxManifestBytes : null;
-      if (limit === null) return damage(prng, root, { filesOnly });
+      if (target !== PROJECT_FILES.journal && !JSON_FILES.includes(target)) return damage(prng, root, { filesOnly });
+      const limit = target === PROJECT_FILES.journal ? PERSISTENCE_LIMITS.maxEntryBytes : PERSISTENCE_LIMITS.maxManifestBytes;
       next = target === PROJECT_FILES.journal
         ? Buffer.concat([bytes, Buffer.from(`{"seq":999,"digest":"${"0".repeat(64)}","entry":{"pad":"${"x".repeat(limit)}"}}\n`, "utf8")])
         : Buffer.concat([bytes, Buffer.alloc(limit + 1, 0x20)]);
