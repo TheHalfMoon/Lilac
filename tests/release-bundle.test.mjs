@@ -41,7 +41,7 @@ test("two builds of the same commit are byte-identical and verify", () => withBu
   assert.deepEqual(tree(second), tree(first));
   assert.deepEqual(verifyReleaseBundle(first), []);
   assert.equal(manifest.sourceCommit, COMMIT);
-  assert.equal(manifest.projectLicense, "NOASSERTION", "no project license is declared, and none is guessed");
+  assert.equal(manifest.projectLicense, "Apache-2.0", "the project license is the one package.json declares");
   for (const path of [...BUNDLED_DOCUMENTS, "sbom.cdx.json", "licenses/index.json", "smoke-report.json"]) assert.ok(Object.hasOwn(manifest.files, path), path);
   assert.equal(readFileSync(join(first, "smoke-report.json"), "utf8"), readFileSync(new URL("./fixtures/smoke/expected-report.json", import.meta.url), "utf8"));
 }));

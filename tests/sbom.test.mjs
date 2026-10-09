@@ -63,7 +63,8 @@ test("the SBOM has the CycloneDX 1.5 shape, correct purls, hashes, scopes and gr
   const parse5 = sbom.dependencies.find((item) => item.ref === "pkg:npm/parse5@8.0.1");
   assert.deepEqual(parse5.dependsOn, ["pkg:npm/entities@8.0.0"]);
   // Ninerr's own license is not asserted until the project chooses one.
-  assert.deepEqual(sbom.metadata.component.properties, [{ name: "ninerr:license", value: "NOASSERTION" }]);
+  assert.deepEqual(sbom.metadata.component.licenses, [{ expression: "Apache-2.0" }], "the declared project license, not a guess");
+  assert.equal(sbom.metadata.component.properties, undefined);
 });
 
 // Synthetic lockfiles for each failure mode.

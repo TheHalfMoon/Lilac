@@ -38,7 +38,7 @@ The evidence bundle's `MANIFEST.json` names that commit as `sourceCommit`, and i
 
 **Determinism.** Two builds of the same commit and lockfile are byte-identical. Nothing in the bundle depends on host paths, time, or which platform binary npm installed. `tests/release-bundle.test.mjs` checks both, the second by building with another platform's binary in place. The bundled text files are checked out with LF line endings on every platform (`.gitattributes`), so a Windows checkout produces the same bytes.
 
-**Project license.** No project license has been declared yet, so `MANIFEST.json` records `projectLicense: "NOASSERTION"` (see #139).
+**Project license.** Ninerr is licensed under Apache-2.0 (`LICENSE`), and `MANIFEST.json` records `projectLicense: "Apache-2.0"` from `package.json`. The bundle and the desktop app ship `LICENSE` with the third-party notices. The source-rights audit behind the declaration is in `docs/evidence/N0_G7A1_SOURCE_CATEGORIES_2026-10-09.md` and `docs/evidence/N0_G7A_LICENSE_2026-10-09.md`.
 
 ## How a release is signed
 

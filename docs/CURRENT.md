@@ -61,7 +61,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (721/721 test
 | 3 | MCP documentation | DELIVERED | #140 → #141 (`9bca91b`, 620/620), `docs/MCP.md` |
 | 4 | Migration docs | DELIVERED | #140 → #141 (`9bca91b`), `docs/MIGRATION.md` |
 | 5 | Security policy | DELIVERED | #140 → #141 (`9bca91b`), `SECURITY.md`. Private vulnerability reporting is still off (prerequisite 2) |
-| 6 | SBOM and attribution bundle | DELIVERED | #144 → #145 (`e702f58`, 630/630), `scripts/release-bundle.mjs`. The project license is `NOASSERTION` until prerequisite 1 |
+| 6 | SBOM and attribution bundle | DELIVERED | #144 → #145 (`e702f58`, 630/630), `scripts/release-bundle.mjs`. The project license was `NOASSERTION` until N0-G7a declared Apache-2.0 |
 | 7 | Signed release evidence | DELIVERED | #144 → #145 (`e702f58`); P07d (`df894bc`) signs the desktop archives too and makes a draft release. It signs on the first pushed `v*` tag |
 | 8 | Reproducible smoke test | DELIVERED | #142 → #143 (`285df27`, 625/625), `npm run smoke` |
 

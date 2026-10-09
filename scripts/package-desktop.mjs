@@ -157,8 +157,9 @@ async function main() {
   const dependencies = runtimeDependencies();
   for (const dependency of dependencies) cpSync(join(ROOT, dependency.path), join(app, dependency.path), { recursive: true, dereference: true });
   const root = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
-  writeFileSync(join(app, "package.json"), `${JSON.stringify({ name: "ninerr", productName: "Ninerr", version: root.version, private: true, type: "module", main: "packages/desktop/src/bootstrap.mjs" }, null, 2)}\n`);
-  for (const file of ["THIRD_PARTY_NOTICES.md", "SECURITY.md"]) cpSync(join(ROOT, file), join(app, file));
+  writeFileSync(join(app, "package.json"), `${JSON.stringify({ name: "ninerr", productName: "Ninerr", version: root.version, license: root.license, private: true, type: "module", main: "packages/desktop/src/bootstrap.mjs" }, null, 2)}\n`);
+  // Ninerr's own license sits in the app folder; Electron's stays beside the executable.
+  for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.md", "SECURITY.md"]) cpSync(join(ROOT, file), join(app, file));
 
   // macOS needs a valid signature to run on arm64; patching the fuses broke Electron's. An
   // ad-hoc signature lets it run; a release signature needs the owner's certificate (#139).

@@ -122,11 +122,17 @@ test("every GitHub project linked from any tracked file is registered", () => {
 test("only permissively licensed material is ever treated as compatible code", () => {
   for (const entry of register.entries) {
     if (entry.compatible !== "yes") continue;
+    if (entry.kind === "proprietary-authorized") {
+      assert.equal(entry.category, "A", `${entry.id} is compatible only as a founder-authorized source`);
+      assert.match(entry.resolution ?? "", /FOUNDER_AUTHORIZATION_2026-10-08\.md/u, `${entry.id} cites the founder authorization`);
+      assert.match(entry.obligations, /No Paper material is distributed/u, `${entry.id} distributes nothing`);
+      continue;
+    }
     assert.ok(distributedOrPermissive(entry), `${entry.id} is compatible only under a permissive license (has ${entry.license})`);
   }
   for (const entry of register.entries.filter((item) => !distributedOrPermissive(item))) {
     assert.ok(["reference-only", "proprietary-authorized"].includes(entry.kind), `${entry.id} (${entry.license}) is reference-only or proprietary`);
-    assert.notEqual(entry.compatible, "yes", `${entry.id} is not declared compatible`);
+    if (entry.kind !== "proprietary-authorized") assert.notEqual(entry.compatible, "yes", `${entry.id} is not declared compatible`);
   }
   // The provenance records of reference-only donors must say no code was imported.
   for (const [repo, file] of [["kgoedecke/doop", "packages/collaboration/src/provenance.ts"], ["firecrawl/firecrawl", "packages/import-stack/src/provenance.ts"]]) {
@@ -139,14 +145,16 @@ test("only permissively licensed material is ever treated as compatible code", (
   assert.equal(existsSync(join(ROOT, "imports")), false);
 });
 
-test("the Apache-2.0 declaration stays blocked until every entry is resolved", () => {
+test("Ninerr is declared Apache-2.0 only once every entry is resolved, and then everywhere", () => {
   const pending = register.entries.filter((entry) => entry.compatible === "founder-confirmation-required").map((entry) => entry.id);
-  const pkg = JSON.parse(read("package.json"));
-  if (pending.length > 0) {
-    assert.equal(pkg.license, undefined, `no project license may be declared while ${pending.join(", ")} await confirmation`);
-    assert.equal(existsSync(join(ROOT, "LICENSE")), false);
-  } else {
-    assert.equal(pkg.license, register.targetProjectLicense);
+  assert.deepEqual(pending, [], "no entry awaits founder confirmation");
+  // The canonical text published by the ASF (https://www.apache.org/licenses/LICENSE-2.0.txt).
+  assert.equal(createHash("sha256").update(readFileSync(join(ROOT, "LICENSE"))).digest("hex"), "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30");
+  const lock = JSON.parse(read("package-lock.json"));
+  for (const dir of ["", ...readdirSync(join(ROOT, "packages")).map((name) => `packages/${name}`)]) {
+    const pkg = JSON.parse(read(join(dir, "package.json")));
+    assert.equal(pkg.license, register.targetProjectLicense, `${pkg.name} declares the project license`);
+    assert.equal(lock.packages[dir].license, register.targetProjectLicense, `the lockfile records ${pkg.name}'s license`);
   }
 });
 
