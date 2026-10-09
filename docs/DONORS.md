@@ -1,6 +1,6 @@
 # Ninerr Donor and Provenance Ledger
 
-This ledger tracks code, design, architecture, and behavior sources considered by Ninerr, which was called Lilac until the 2026-10 rename (N0). It is not a substitute for legal advice or the original authorization documents. The A/B classification of every source is in `docs/provenance/LICENSE_REGISTER.json`, and the founder's authorization is in `docs/provenance/FOUNDER_AUTHORIZATION_2026-10-08.md`.
+This ledger tracks code, design, architecture, and behavior sources considered by Ninerr. The project was renamed in 2026-10 (N0); the authorization records cited below use its earlier name. It is not a substitute for legal advice or the original authorization documents. The A/B classification of every source is in `docs/provenance/LICENSE_REGISTER.json`, and the founder's authorization is in `docs/provenance/FOUNDER_AUTHORIZATION_2026-10-08.md`.
 
 Paper, Paper.design and the other names in this ledger belong to their owners. They are named here as provenance only, and none of them is Ninerr's identity.
 
@@ -9,7 +9,7 @@ Paper, Paper.design and the other names in this ledger belong to their owners. T
 ### Paper.design product source
 
 - Role: **primary foundation / authorized donor**
-- Authorization basis: project owner explicitly states they have full permission to copy, modify, and use the Paper.design source code for Lilac.
+- Authorization basis: project owner explicitly states they have full permission to copy, modify, and use the Paper.design source code for this project.
 - Original private monorepo identified from shipped Desktop documentation: `paper-design/paper`.
 - Private monorepo access: **not available through connected GitHub sources**.
 - Shipped/public artifact intake state: **PARTIAL_RECOVERY_PROVEN**.
@@ -20,7 +20,7 @@ Paper, Paper.design and the other names in this ledger belong to their owners. T
 - Snapshot extension: official shipped CRX recovered and inventoried; current observed extension bundle does not include source maps.
 - Complete original product repository: **NOT RECOVERED**.
 - Rule: do not describe partial shipped-artifact recovery as a complete monorepo import, and do not represent public utility repositories as the complete Paper product source.
-- Public-repository boundary: Lilac records metadata, hashes, paths, and compatibility evidence publicly; raw proprietary recovered source remains outside the public repository unless public redistribution rights are separately established.
+- Public-repository boundary: Ninerr records metadata, hashes, paths, and compatibility evidence publicly; raw proprietary recovered source remains outside the public repository unless public redistribution rights are separately established.
 
 Primary recovery evidence, retired from the tree in N0-G5 and pinned in `docs/provenance/RETIRED_PAPER_RECORDS.md`:
 
@@ -29,7 +29,7 @@ Primary recovery evidence, retired from the tree in N0-G5 and pinned in `docs/pr
 
 ### Public Paper repositories observed
 
-| Repository | Observed purpose | Public license observed | Intended Lilac use |
+| Repository | Observed purpose | Public license observed | Intended Ninerr use |
 |---|---|---|---|
 | `paper-design/shaders` | zero-dependency canvas shaders | Apache-2.0 | reference only; nothing copied. Separately licensed (category B): incorporating any of it would bring its own license obligations |
 | `paper-design/paper-mono` | Paper Mono font | SIL OFL 1.1 | reference only; nothing copied. Separately licensed (category B): incorporating any of it would bring its own license obligations |
@@ -51,19 +51,19 @@ Primary recovery evidence, retired from the tree in N0-G5 and pinned in `docs/pr
   - `@paper-snapshot/react` — React capture UI/hook surface;
   - `@paper-snapshot/electron` — Electron clipboard and guest/webview capture support.
 - High-value source paths include `packages/core/src/capture.ts`, `picker.ts`, `serialize-node.ts`, `serialize.ts`, `styles.ts`, `text.ts`, `types.ts`, and Electron/React adapters.
-- Intended Lilac use: donor/reference for Lilac's website/app intake and snapshot subsystem, subject to preserving the MIT copyright and permission notice in substantial copied portions.
+- Intended Ninerr use: donor/reference for Ninerr's website/app intake and snapshot subsystem, subject to preserving the MIT copyright and permission notice in substantial copied portions.
 - Provenance rule: any code imported from this repository must retain its own donor record and must never be mislabeled as recovered proprietary Paper source.
 
 ## Authorized external donor expansion — 2026-10-03
 
-The project owner explicitly states that they have permission to use, copy, modify, combine, and adapt source code from the following projects for Lilac. The governing attestation is recorded in `docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03.md`.
+The project owner explicitly states that they have permission to use, copy, modify, combine, and adapt source code from the following projects for this project. The governing attestation is recorded in `docs/provenance/AUTHORIZED_DONOR_EXPANSION_2026-10-03.md`.
 
-| Donor | Intended Lilac use | Intake note |
+| Donor | Intended Ninerr use | Intake note |
 |---|---|---|
 | `kunchenguid/firstmate` | multi-agent orchestration, isolated worktrees, supervision, restart reconciliation | bounded extraction; do not import product identity |
-| `kunchenguid/no-mistakes` | guarded review/test/PR delivery state machine | adapt pipeline concepts to Lilac governance; no automatic force-push policy |
+| `kunchenguid/no-mistakes` | guarded review/test/PR delivery state machine | adapt pipeline concepts to Ninerr governance; no automatic force-push policy |
 | `kgoedecke/doop` | multiplayer canvas, MCP collaboration, comments/activity, presence | authorized donor; public repo identifies AGPL-3.0, so preserve license/provenance and record any separate permission basis |
-| `classifier.dev` public surfaces | decision/classification routing, retrieval pruning, uncertainty-aware escalation | hosted use optional only; core Lilac must not require paid service |
+| `classifier.dev` public surfaces | decision/classification routing, retrieval pruning, uncertainty-aware escalation | hosted use optional only; core Ninerr must not require paid service |
 | `caio0452/jev_search` | code/directory candidate search and decision-based filtering | upstream warns it is AI-generated/not production-ready; ideas require hardening/tests |
 | `unreallabsai/unreal-agent` | durable async agent sessions, idempotency, serializable operations, recovery/forks | high-value agent-runtime donor |
 | `AhmadIbrahiim/Website-downloader` | recursive website/asset capture fallback | sandbox, quotas, SSRF/network policy required |
@@ -78,13 +78,13 @@ The integration allocation and sequence are defined in `docs/DONOR_INTEGRATION_M
 
 ### Authorization does not erase upstream obligations
 
-Owner authorization permits Lilac project use but does not automatically redefine third-party dependency licenses, contributor rights, trademark rights, or attribution requirements. Before importing code from any donor:
+Owner authorization permits this project's use but does not automatically redefine third-party dependency licenses, contributor rights, trademark rights, or attribution requirements. Before importing code from any donor:
 
 - pin the exact revision;
 - preserve license/NOTICE/copyright files applicable to the imported portion;
 - inventory material third-party dependencies;
 - record any separate permission basis when it differs from the public license;
-- keep donor branding and hosted-service credentials out of Lilac identity.
+- keep donor branding and hosted-service credentials out of Ninerr identity.
 
 ## Intake requirements for every donor snapshot
 
@@ -100,4 +100,4 @@ Record:
 
 ## Branding rule
 
-Authorization to use source code does not imply ownership of names, logos, or trademarks. Lilac ships with its own product name, identifiers, visual identity, domains, update channels, and service endpoints. Required attribution remains in legal/provenance surfaces rather than masquerading as Paper.
+Authorization to use source code does not imply ownership of names, logos, or trademarks. Ninerr ships with its own product name, identifiers, visual identity, domains, update channels, and service endpoints. Required attribution remains in legal/provenance surfaces rather than masquerading as Paper.

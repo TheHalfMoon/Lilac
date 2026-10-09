@@ -1,4 +1,4 @@
-# Lilac Donor Integration Map
+# Ninerr Donor Integration Map
 
 This document is the execution map derived from `docs/DONOR_DEEP_STUDY_2026-10-03.md`. The deep-study document owns the evidence and source-by-source rationale; this file owns implementation sequence and subsystem boundaries.
 
@@ -7,16 +7,16 @@ This document is the execution map derived from `docs/DONOR_DEEP_STUDY_2026-10-0
 - Never bulk-copy a donor repository.
 - Pin every imported/adapted source snapshot to an exact revision.
 - Preserve applicable license/NOTICE text and third-party provenance.
-- Lilac `document-model` + `history` remain the only canvas mutation authority.
+- Ninerr `document-model` + `history` remain the only canvas mutation authority.
 - Deterministic validation runs before probabilistic/model judgment.
-- Core Lilac must work without mandatory paid cloud services.
-- Doop and Firecrawl public AGPL code are reference/optional-connector inputs by default; no AGPL code enters Lilac core without a separately documented rights/licensing decision for the exact subset.
+- Core Ninerr must work without mandatory paid cloud services.
+- Doop and Firecrawl public AGPL code are reference/optional-connector inputs by default; no AGPL code enters Ninerr core without a separately documented rights/licensing decision for the exact subset.
 
 ## Final priority map
 
-| Priority | Donor | Posture | Lilac target |
+| Priority | Donor | Posture | Ninerr target |
 |---:|---|---|---|
-| 1 | `pbakaus/impeccable` | INTEGRATE + ADAPT | deterministic design assurance, WASM/browser/static checks, Lilac rule packs |
+| 1 | `pbakaus/impeccable` | INTEGRATE + ADAPT | deterministic design assurance, WASM/browser/static checks, Ninerr rule packs |
 | 2 | `unreallabsai/unreal-agent` | PORT | durable agent session/operation kernel |
 | 3 | `bytedance/UI-TARS-desktop` | ADAPT | typed agent event stream and optional DOM/visual operator |
 | 4 | `kunchenguid/firstmate` | PORT + ADAPT | worker/worktree supervision and restart reconciliation |
@@ -39,11 +39,11 @@ Use Impeccable revision `e103efe779e2dd01274dabae83531fef00bf2563` as the primar
 Deliver:
 - pinned detector integration boundary;
 - source-text, static-HTML, and browser/snapshot check interfaces;
-- namespaced `LilacRulePack` seam;
-- findings normalized into Lilac severity/evidence/fixability records;
+- namespaced `RulePack` seam;
+- findings normalized into Ninerr severity/evidence/fixability records;
 - deterministic rule execution with no model/provider requirement;
 - oracle/golden tests for stable behavior;
-- initial Lilac rules for document/source-binding and design-system invariants.
+- initial Ninerr rules for document/source-binding and design-system invariants.
 
 Do not import provider-specific generated skill folders or Impeccable product UX.
 
@@ -62,7 +62,7 @@ Deliver:
 - validated operation state transitions;
 - atomic tool-call-status + operation registration;
 - pure tool-call translation boundary with no hidden I/O;
-- actor/intent/capability/Lilac transaction attribution for document-affecting work.
+- actor/intent/capability/Ninerr transaction attribution for document-affecting work.
 
 No multi-worker supervision in this grain.
 
@@ -70,7 +70,7 @@ No multi-worker supervision in this grain.
 
 Use UI-TARS revision `2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a` as an Apache-2.0 design/code donor for the event taxonomy.
 
-Deliver a Lilac-owned typed event stream covering:
+Deliver a Ninerr-owned typed event stream covering:
 - run lifecycle;
 - user/assistant/streaming messages;
 - tool-call deltas and final calls/results;
@@ -98,7 +98,7 @@ Do not import the whole shell distro, Relay, secondmate/SSH topology, or nautica
 
 ## Grain 5 — Collaboration
 
-Build Lilac-native collaboration from Paper evidence plus clean-room Doop behavioral study at `d99c8b157d5afd4192b356f89a2b19adc28c75a5`.
+Build Ninerr-native collaboration from Paper evidence plus clean-room Doop behavioral study at `d99c8b157d5afd4192b356f89a2b19adc28c75a5`.
 
 Deliver:
 - presence/cursors;
@@ -108,7 +108,7 @@ Deliver:
 - access-controlled realtime subscriptions;
 - local-first persistence path.
 
-Doop raw HTML frames do not replace the Lilac document graph.
+Doop raw HTML frames do not replace the Ninerr document graph.
 
 ## Grain 6 — Import Stack
 
@@ -162,14 +162,14 @@ The Appllama MCP is optional. Linked third-party resource assets retain their ow
 
 ## Retrieval helper boundary
 
-`caio0452/jev_search@ea073f6db48f5bff73ae4b9f2240d2d302fb9dc1` is reference-only. Reimplement useful criteria parsing, candidate prioritization, chunking, bounded concurrency, and progressive ranking in Lilac-owned code. Do not ship its upstream Python/OpenRouter implementation.
+`caio0452/jev_search@ea073f6db48f5bff73ae4b9f2240d2d302fb9dc1` is reference-only. Reimplement useful criteria parsing, candidate prioritization, chunking, bounded concurrency, and progressive ranking in Ninerr-owned code. Do not ship its upstream Python/OpenRouter implementation.
 
 ## Acceptance rules for every grain
 
 - exact donor revision recorded;
 - license/NOTICE/provenance preserved where applicable;
 - imported subset has a SHA-256 manifest when source is copied;
-- donor code isolated from Lilac-written code until qualified;
+- donor code isolated from Ninerr-written code until qualified;
 - no unintended telemetry/credentials/branding/hosted-service coupling;
 - focused tests prove the bounded capability and failure paths;
 - Jev qualification;
