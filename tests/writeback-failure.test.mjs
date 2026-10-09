@@ -159,8 +159,11 @@ test("#185: marking a field as matching leaves another layer's unconfirmed recor
     writeFileSync(cardPath, CARD.replace('title="Plan"', 'title="Plan B"'));
     await reopen();
     await call("POST", "/api/edit", { baseRevision: host.session.revision, intent: "Retitle", operations: [{ type: "set-props", nodeId: p.id, set: { attributes: { title: "Plan B" } } }] });
+    // The heading is also given the file's text: it agrees with the file too, but its earlier
+    // write is unconfirmed, so it is never marked as matching.
+    await call("POST", "/api/edit", { baseRevision: host.session.revision, intent: "Heading", operations: [{ type: "set-props", nodeId: h2.id, set: { text: "Pro" } }] });
     const preview = await previewNow();
-    assert.deepEqual(preview.matched.map((entry) => [entry.nodeId, entry.field]), [[p.id, "title"]]);
+    assert.deepEqual(preview.matched.map((entry) => [entry.nodeId, entry.field]), [[p.id, "title"]], "only the paragraph's title, not the unconfirmed heading");
     assert.deepEqual(preview.conflicts.map((conflict) => [conflict.nodeId, conflict.field]), [[h2.id, "write-back"]]);
     const marked = await call("POST", "/api/codebase/write", { nodeId: section.id, token: preview.token });
     assert.equal(marked.status, 200, JSON.stringify(marked.json));
