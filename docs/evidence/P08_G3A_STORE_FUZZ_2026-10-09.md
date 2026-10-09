@@ -66,7 +66,7 @@ No damaged project ever opened as a document it did not hold. None made the host
 - **Without the checkpoint a clean close makes (#239)** (`close()` in `store.ts`), the default run fails: a cleanly closed project's snapshot no longer stands at the journal's end.
 
 ## Found
-- **#239, fixed in the PR that closes it:** a journal cut between whole lines opened at an earlier state without saying so. Nothing recorded where the journal should end. A clean close after changes now checkpoints at the journal's last entry, so a cut while the project is closed is refused. After a crash, a cut between whole lines since the last checkpoint still cannot be detected. This is a limit of an append-only journal, and `docs/MIGRATION.md` states it.
+- **#239, fixed in the PR that closes it:** a journal cut between whole lines opened at an earlier state without saying so. Nothing recorded where the journal should end. A clean close after changes now checkpoints at the journal's last entry, so a cut while the project is closed is refused. After a crash, or a close that could not write (a lost lock, a failed write), a cut between whole lines since the last checkpoint still cannot be detected. This is a limit of an append-only journal, and `docs/MIGRATION.md` states it.
 - **#241, fixed in #242:** a refused open deleted the leftover temporaries and broken locks before verifying the project. Since #242, the fuzz checks that a refused open keeps them.
 
 ## Not covered here

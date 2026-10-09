@@ -59,7 +59,8 @@ The only damage that is repaired automatically is an unterminated last journal l
 
 **A clean close after changes moves the snapshot to the journal's last entry (#239).** It writes a checkpoint, so the snapshot reference records where the journal ends. A journal later cut while the project is closed, for example by a sync tool or a disk, then points the snapshot past its end, and the open is refused as damage. It is never opened at an earlier state without a word.
 - **After a crash** there is no clean close, so the snapshot stays where the last checkpoint put it. A cut through the last line is the torn tail above; whole lines lost after the checkpoint cannot be told from changes never made.
-- **Opening and closing without a change** writes nothing.
+- **A close that cannot write** leaves the project as after a crash. This happens when the store has lost its lock, its directory has moved, a journal write failed, or the checkpoint itself fails (a full disk, say). Close never throws for it.
+- **Opening and closing without a change** writes nothing. So a project opened after a crash and closed unchanged stays as the crash left it, until a session changes it.
 
 This release never writes anything a format-1 reader would refuse:
 - **History normalizes first.** It drops unknown transaction fields, and refuses an unknown operation type with `TransactionError`.

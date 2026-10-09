@@ -126,7 +126,9 @@ test("checkpoint moves the snapshot so reopen replays only later entries", () =>
   assert.equal(reopened.revision, 3);
   assert.equal(reopened.document.nodes["node-1"].props.title, "Three");
   reopened.close();
+  // The crashed writer no longer holds the lock: its close writes nothing (#239).
   store.close();
+  assert.equal(JSON.parse(readFileSync(file(root, PROJECT_FILES.snapshot), "utf8")).journalSeq, 2);
 }));
 
 test("a clean close moves the snapshot to the journal's end, so a later cut between whole lines is refused (#239)", () => withProject((root) => {
@@ -356,7 +358,10 @@ test("a failed journal write poisons the store until reopen", () => withProject(
   }
   assert.throws(() => store.commit(setTitle("tx-2", 1, "Two")), /reopened after a failed journal write/);
   assert.throws(() => store.checkpoint(), /reopened after a failed journal write/);
+  // A store whose journal write failed closes as it is: no checkpoint at close (#239).
+  const snapshot = readFileSync(file(root, PROJECT_FILES.snapshot));
   store.close();
+  assert.deepEqual(readFileSync(file(root, PROJECT_FILES.snapshot)), snapshot);
   const reopened = open(root);
   assert.equal(reopened.revision, 1);
   reopened.commit(setTitle("tx-2", 1, "Two"));
