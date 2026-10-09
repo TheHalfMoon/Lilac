@@ -1,6 +1,6 @@
 {
   "schema": "identity-census-summary/1",
-  "filesScanned": 544,
+  "filesScanned": 547,
   "filesWithFindings": 143,
   "gatedFindings": 0,
   "byCategory": {
@@ -61,5 +61,5 @@
     "public-env": 1,
     "third-party-notices": 66
   },
-  "censusSha256": "d164ec7e1453f843f62a12c419075cea951a570bb4344ab6f0701cfe9ced2e13"
+  "censusSha256": "abf1d4f81ab7173753664655a1b00552579a1a4875a3d87a134edf11f64e864b"
 }
