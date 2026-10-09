@@ -22,6 +22,7 @@ export const BUNDLE_SCHEMA = 1;
 
 // Repository files copied into the bundle, at the same relative path.
 export const BUNDLED_DOCUMENTS = Object.freeze([
+  "LICENSE",
   "THIRD_PARTY_NOTICES.md",
   "SECURITY.md",
   "docs/DESKTOP.md",
@@ -158,7 +159,7 @@ export function buildReleaseBundle(out, { sourceCommit, root = ROOT, nodeModules
     product: "Ninerr",
     sourceCommit,
     lockfileSha256: sha256(lockText),
-    // No project license has been declared; recorded as such rather than guessed.
+    // The license package.json declares; without one it is recorded as such, never guessed.
     projectLicense: typeof projectPackage.license === "string" ? projectPackage.license : "NOASSERTION",
     files: Object.fromEntries(listFiles(out).map((path) => [path, sha256(readFileSync(join(out, path)))])),
   };

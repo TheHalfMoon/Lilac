@@ -47,7 +47,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (721/721 test
 | 6 | Malicious HTML/CSS/SVG corpus | G6 #117 → #118 `d0cdc7f` (532/532) | `tests/fixtures/malicious/` |
 | 7 | Import/export differential tests | G7a #123 → #125 `d45c2bb` (568/568); G7b #126 → #127 `8e509d7` (588/588) | #132 parked |
 | 8 | MCP authorization tests | G8 #128 → #129 `b320820` (575/575) | obligations on the future server recorded on #82 |
-| 9 | Dependency/SBOM and license scan | G9 #130 → #131 `9160be2` (595/595) | `scripts/sbom.mjs`; #135 parked; project license is `NOASSERTION` pending a founder decision |
+| 9 | Dependency/SBOM and license scan | G9 #130 → #131 `9160be2` (595/595) | `scripts/sbom.mjs`; #135 parked; project license was `NOASSERTION` until N0-G7a2 declared Apache-2.0 |
 | 10 | Crash recovery | G10 #133 → #134 `94d6af7` (606/606) | `docs/evidence/P06_G10_CRASH_RECOVERY_2026-10-07.md` |
 | 11 | File migration/version compatibility | G11 #136 → #137 `c73c48e` (615/615) | `docs/evidence/P06_G11_VERSION_COMPATIBILITY_2026-10-07.md` |
 
@@ -61,7 +61,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (721/721 test
 | 3 | MCP documentation | DELIVERED | #140 → #141 (`9bca91b`, 620/620), `docs/MCP.md` |
 | 4 | Migration docs | DELIVERED | #140 → #141 (`9bca91b`), `docs/MIGRATION.md` |
 | 5 | Security policy | DELIVERED | #140 → #141 (`9bca91b`), `SECURITY.md`. Private vulnerability reporting is still off (prerequisite 2) |
-| 6 | SBOM and attribution bundle | DELIVERED | #144 → #145 (`e702f58`, 630/630), `scripts/release-bundle.mjs`. The project license is `NOASSERTION` until prerequisite 1 |
+| 6 | SBOM and attribution bundle | DELIVERED | #144 → #145 (`e702f58`, 630/630), `scripts/release-bundle.mjs`. The project license was `NOASSERTION` until N0-G7a declared Apache-2.0 |
 | 7 | Signed release evidence | DELIVERED | #144 → #145 (`e702f58`); P07d (`df894bc`) signs the desktop archives too and makes a draft release. It signs on the first pushed `v*` tag |
 | 8 | Reproducible smoke test | DELIVERED | #142 → #143 (`285df27`, 625/625), `npm run smoke` |
 
