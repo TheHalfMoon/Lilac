@@ -11,6 +11,7 @@ import { exportJsx, importJsx } from "./code.ts";
 import { CodebaseLinks, assertFolder, bringIn, planWriteBack, removeTemporary, scanComponents, settleWriteBacks, writeBack, type WriteBackPlan } from "./codebase.ts";
 import { ImportDesk, MAX_IMPORT_HTML_BYTES } from "./imports.ts";
 import { ConfirmationBroker, handleMcpMessage } from "./mcp.ts";
+import { listenOnBrowserPort } from "./ports.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
 
 export interface StudioHostOptions {
@@ -432,10 +433,10 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   server.headersTimeout = 10_000;
   server.requestTimeout = 30_000;
   server.keepAliveTimeout = 5_000;
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(options.port ?? 0, LOOPBACK, () => resolve());
-  });
+  // Never a port browsers refuse to open (ports.ts): the editor must load in every browser.
+  await listenOnBrowserPort(server, options.port ?? 0, LOOPBACK);
+  // An error after listening (a failed accept, for example) does not stop the host, as before.
+  server.on("error", () => {});
   const address = server.address();
   if (address === null || typeof address === "string" || !isLoopbackAddress(address.address)) {
     server.close();
