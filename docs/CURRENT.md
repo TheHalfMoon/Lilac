@@ -47,7 +47,7 @@ Post-merge Foundation checks completed `SUCCESS` on that exact SHA (721/721 test
 | 6 | Malicious HTML/CSS/SVG corpus | G6 #117 → #118 `d0cdc7f` (532/532) | `tests/fixtures/malicious/` |
 | 7 | Import/export differential tests | G7a #123 → #125 `d45c2bb` (568/568); G7b #126 → #127 `8e509d7` (588/588) | #132 parked |
 | 8 | MCP authorization tests | G8 #128 → #129 `b320820` (575/575) | obligations on the future server recorded on #82 |
-| 9 | Dependency/SBOM and license scan | G9 #130 → #131 `9160be2` (595/595) | `scripts/sbom.mjs`; #135 parked; project license is `NOASSERTION` pending a founder decision |
+| 9 | Dependency/SBOM and license scan | G9 #130 → #131 `9160be2` (595/595) | `scripts/sbom.mjs`; #135 parked; project license was `NOASSERTION` until N0-G7a2 declared Apache-2.0 |
 | 10 | Crash recovery | G10 #133 → #134 `94d6af7` (606/606) | `docs/evidence/P06_G10_CRASH_RECOVERY_2026-10-07.md` |
 | 11 | File migration/version compatibility | G11 #136 → #137 `c73c48e` (615/615) | `docs/evidence/P06_G11_VERSION_COMPATIBILITY_2026-10-07.md` |
 

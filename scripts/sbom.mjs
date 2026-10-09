@@ -119,9 +119,10 @@ export function buildSbom(lockText, policy) {
   const addEdges = (ref, refs) => { const set = graph.get(ref) ?? new Set(); for (const target of refs) set.add(target); graph.set(ref, set); };
   addEdges(rootRef, [...edgesFrom("", root), ...workspaces.map((pkg) => `workspace:${pkg.name}`)]);
   for (const pkg of workspaces) {
-    // Ninerr declares no license yet (a founder decision); an unknown license is recorded as
-    // a property, because CycloneDX license expressions must be SPDX.
-    components.set(`workspace:${pkg.name}`, { type: "library", "bom-ref": `workspace:${pkg.name}`, name: pkg.name, version: pkg.version ?? "0.0.0", properties: [{ name: "ninerr:first-party", value: "true" }, { name: "ninerr:license", value: "NOASSERTION" }] });
+    // The license the package declares; a package without one is recorded as such, as a
+    // property, because CycloneDX license expressions must be SPDX.
+    const declared = typeof packages[pkg.path]?.license === "string" ? packages[pkg.path].license : null;
+    components.set(`workspace:${pkg.name}`, { type: "library", "bom-ref": `workspace:${pkg.name}`, name: pkg.name, version: pkg.version ?? "0.0.0", ...(declared === null ? {} : { licenses: [{ expression: declared }] }), properties: [{ name: "ninerr:first-party", value: "true" }, ...(declared === null ? [{ name: "ninerr:license", value: "NOASSERTION" }] : [])] });
     addEdges(`workspace:${pkg.name}`, edgesFrom(pkg.path, packages[pkg.path]));
   }
   // The same name and version can be installed at several paths with different flags; the
