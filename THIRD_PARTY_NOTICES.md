@@ -135,7 +135,7 @@ These independently licensed projects were studied only. No code from them is in
   - `paper-design/shaders` (Apache-2.0);
   - `paper-design/paper-mono` (OFL-1.1);
   - `paper-design/opentype.js` (MIT);
-  - `paper-design/liquid-logo` (PolyForm Shield 1.0.0, not open source);
+  - `paper-design/liquid-logo` (PolyForm Shield 1.0.0, not open source; nothing from it may be copied at all);
   - `paper-design/agent-plugins`, `paper-design/google-fonts-scripts` and `paper-design/webmcp-agent-example` (no license observed).
 
 ## Optional runtime components
