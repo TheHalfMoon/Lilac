@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 // The program state before the rename (docs/evidence/PROGRAM_STATE_2026-10-09.md) must record
 // every P06, PC and P07 gate its master plan (docs/evidence/MASTER_PLAN_2026-10-09.md) defines,
@@ -29,11 +29,17 @@ test("the P06 record lists every master-plan gate in order", () => {
   assert.match(current, /\| P06 Product hardening \(11 gates\) \| CLOSED_CANONICAL \|/);
 });
 
-// A dated record may cite a path that has since moved, as other dated evidence does; the record
-// before the rename cites the plan at docs/MASTER_PLAN.md, which N0-G9a2 restores.
-test("the program record cites repository paths", () => {
-  const record = read("docs/evidence/PROGRAM_STATE_2026-10-09.md");
-  assert.ok([...record.matchAll(/`((?:docs|tests|scripts|packages)\/[^`\s]+)`/g)].length > 0);
+// The current state cites only paths that exist. The dated record may cite a path that has
+// since moved, as other dated evidence does, so it is checked for presence only.
+test("every repository path the current program state cites exists", () => {
+  const cites = (text) => [...text.matchAll(/`((?:docs|tests|scripts|packages)\/[^`\s]+)`/g)].map((match) => match[1]);
+  const current = cites(read("docs/CURRENT.md"));
+  assert.ok(current.length > 0);
+  for (const path of current) assert.ok(existsSync(new URL(`../${path}`, import.meta.url)), `${path} does not exist`);
+  assert.ok(cites(read("docs/evidence/PROGRAM_STATE_2026-10-09.md")).length > 0);
+  // The current pages point to the record they replaced.
+  assert.match(read("docs/CURRENT.md"), /docs\/evidence\/PROGRAM_STATE_2026-10-09\.md/u);
+  assert.match(read("docs/MASTER_PLAN.md"), /docs\/evidence\/MASTER_PLAN_2026-10-09\.md/u);
 });
 
 function productCompletionGates() {
