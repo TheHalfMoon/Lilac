@@ -1,6 +1,6 @@
 # Ninerr Target Architecture
 
-This document defines the target boundaries. The architecture catalog in `packages/architecture` records which subsystems are implemented, which are stubs (a delivered slice with planned work), and which are planned.
+This document defines the target boundaries. The packages in this repository do not follow the tree below one for one; the architecture catalog in `packages/architecture` names each subsystem's actual owner and records which subsystems are implemented, which are stubs (a delivered slice with planned work), and which are planned.
 
 ## Product surfaces
 

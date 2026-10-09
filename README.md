@@ -6,9 +6,9 @@ Ninerr is a local-first design workspace for interfaces that are code. A design 
 - **The studio host** (`packages/studio-host`) is the single writer of an open project. It serves the editor on a loopback-only HTTP API, keeps history with undo and redo, and hosts the MCP endpoint for agents.
 - **The editor** (`packages/studio-web`, `packages/canvas`, `packages/renderer`) is a browser editor with a layers tree, an inspector and live history. It renders the document in a script-free, sandboxed frame.
 - **The document model, history and persistence** (`packages/document-model`, `packages/history`, `packages/persistence`) store projects locally. They use content-addressed objects and a hash-chained, append-only journal, with crash recovery and versioned migrations.
-- **Design and code** (`packages/code-ir`, `packages/design-components`) cover:
-  - JSX, TSX, CSS and Tailwind import and export;
-  - components from a connected codebase brought in bound to their source;
+- **Design and code** (`packages/code-ir`, `packages/design-components`, and `packages/studio-host` for a connected codebase) cover:
+  - JSX and TSX components brought in as layers, and any layer exported as a JSX component, over bounded JSX/TSX, CSS and Tailwind adapters;
+  - components from a connected codebase folder brought in bound to their source;
   - reviewed edits written back to the files.
 - **Agents** (`packages/mcp-protocol`, `packages/agent-runtime`, `packages/collaboration`) work through Ninerr's own MCP tools. Every call is authorized per document, and a person confirms destructive changes. See `docs/MCP.md`.
 - **The desktop app** (`packages/desktop`) is Ninerr in its own sandboxed Electron window. See `docs/DESKTOP.md`.
@@ -16,14 +16,14 @@ Ninerr is a local-first design workspace for interfaces that are code. A design 
 `docs/ARCHITECTURE.md` describes the subsystems. The architecture catalog in `packages/architecture` records each one's status: implemented, stub (a delivered slice with planned work) or planned.
 
 ## Running it
-Ninerr needs Node.js 22.18 or later, and no network or account.
+Ninerr needs Node.js 22.18 or later. Installing fetches its dependencies; once installed, it needs no network or account.
 
 ```bash
 npm ci
 npm start
 ```
 
-`npm start` runs the studio host and prints a link to the editor. Projects live in a "Ninerr Projects" folder in your home folder.
+`npm start` runs the studio host and prints a link to the editor. Projects live in a "Ninerr Projects" folder in your home folder unless `NINERR_PROJECTS` or `--projects` names another; `docs/DESKTOP.md` and `docs/MIGRATION.md` cover a setup from before the rename.
 
 To connect an MCP client, run `npm run mcp`, with the agent credential Ninerr shows you set as `NINERR_MCP_TOKEN`.
 

@@ -15,4 +15,12 @@ Issue: #190 (N0 umbrella).
 - **`docs/DONORS.md`** names Ninerr, points to the A/B register and the founder's authorization, and says that Paper and the other named projects belong to their owners and are provenance only.
 - **The Electron source evidence** (`N0_G7B_ELECTRON_SOURCE_2026-10-09.md`) adds the LGPL-2.1 section 4 nuance for `libffmpeg` that the N0-G7b review raised, for the founder's release gate.
 
+The N0-G8a review corrected the README in these places:
+- export is JSX only, over bounded JSX/TSX, CSS and Tailwind adapters;
+- installing fetches dependencies;
+- the studio host owns the codebase connection;
+- the projects folder can be overridden.
+
+`docs/ARCHITECTURE.md` also says again that its tree is not one for one with the packages.
+
 The planning and status documents (`docs/PARITY_MATRIX.md`, `docs/MASTER_PLAN.md`, `docs/CURRENT.md`) follow in N0-G8b.
