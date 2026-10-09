@@ -4,9 +4,9 @@ Last updated: 2026-10-09
 
 ## Program
 
-**N0 — Ninerr independence and migration** (umbrella #190). The founder renamed the product to Ninerr on 2026-10-08 and set the order: N0, P08 deep qualification and dogfooding, P09 Ninerr UI and UX, P10 release candidate hardening, then the founder release gate (`docs/MASTER_PLAN.md`). v1.0.0 is not authorized.
+**P08 — Deep qualification and dogfooding.** N0, Ninerr independence and migration (umbrella #190), is `CLOSED_CANONICAL`. The founder renamed the product to Ninerr on 2026-10-08 and set the order: N0, P08 deep qualification and dogfooding, P09 Ninerr UI and UX, P10 release candidate hardening, then the founder release gate (`docs/MASTER_PLAN.md`). v1.0.0 is not authorized.
 
-Status: **N0 ACTIVE.** Each N0 grain landed through its own PR with exact-head CI, Jev qualification and review, and its evidence is in the `N0_*` records under docs/evidence. Delivered so far:
+Status: **P08 ACTIVE.** N0 closed on 2026-10-09, with every exit criterion verified (`docs/evidence/N0_CLOSE_2026-10-09.md`). Each N0 grain landed through its own PR with exact-head CI, Jev qualification and review, and its evidence is in the `N0_*` records under docs/evidence. N0 delivered:
 - the identity census (G1);
 - the persisted-data and host migrations with backward compatibility (G2), and the #185 write-back fix;
 - the package scope, product, tooling, runtime and prose identity (G3);
@@ -16,15 +16,16 @@ Status: **N0 ACTIVE.** Each N0 grain landed through its own PR with exact-head C
 - the A/B source-rights audit, the Apache-2.0 license, the notices and the Electron corresponding source (G7);
 - the documentation (G8);
 - the independence regression gate in CI, with a narrow, reviewed allowlist (G9);
-- the repository rename to `TheHalfMoon/Ninerr`, with its redirects verified (G10).
+- the repository rename to `TheHalfMoon/Ninerr`, with its redirects verified (G10);
+- the repository cleanup: a contributing guide, issue and PR templates, the repository description and topics, and the public docs (G11).
 
-Remaining in N0: the rest of the repository cleanup (N0-G11), then the close of #190. P08 follows.
+P08 tests complete end-to-end journeys repeatedly and adds property and state-machine coverage, before any final UI design (P09).
 
 ## Canonical main
 
-`e320c10c2ba873c984dfa1159638388b5f4ed55c`
+`666632e6205bb7bdfe974f0729746107179c44cc`
 
-This is the normal merge commit for PR #225, which fixed a timing race in the crash-recovery test. It is the latest commit whose post-merge run was verified when this page was updated. Post-merge Foundation checks completed `SUCCESS` on that exact SHA (771/771 tests). The Desktop package runs for Linux x64, macOS arm64 and Windows x64 each succeeded, including the release-candidate journey.
+This is the normal merge commit for PR #227, the last N0 grain. It is the latest commit whose post-merge run was verified when this page was updated. Post-merge Foundation checks completed `SUCCESS` on that exact SHA (771/771 tests), and a build-only release workflow run on it succeeded. The Desktop package runs for Linux x64, macOS arm64 and Windows x64 each succeeded, including the release-candidate journey.
 
 ## Before the v1 tag
 1. **License.** Resolved: Ninerr is Apache-2.0 (`LICENSE`), after the A/B source-rights audit (`docs/evidence/N0_G7A_LICENSE_2026-10-09.md`).
