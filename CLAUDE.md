@@ -64,4 +64,4 @@ Use normal merge commits. Do not squash, rebase, force-push, or rewrite history.
 
 ## Current program direction
 
-Continue from the live canonical frontier. The next unfinished program phase is P06 Product Hardening, followed by P07 Release. Treat the quality gates and required release artifacts in `docs/MASTER_PLAN.md` as the source of truth. Do not redo already closed work unless live evidence proves a regression.
+Continue from the live canonical frontier in `docs/CURRENT.md`. The current program is N0 (Ninerr independence and migration), then P08, P09, P10 and the founder release gate, as `docs/MASTER_PLAN.md` sets out. v1.0.0 is not authorized. Do not redo already closed work unless live evidence proves a regression.
