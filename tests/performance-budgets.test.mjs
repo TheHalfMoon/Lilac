@@ -47,6 +47,29 @@ function best(runs, fn) {
   return fastest;
 }
 
+/**
+ * The time one call of `fn` takes, for the scaling guard (#269): the best of five samples, each
+ * the mean of four calls in a row. One slow call (a GC pause, a busy CI runner) cannot set the
+ * figure, and at 10k nodes the sample stays well above the guard's 20 ms floor, where a single
+ * validation (about 20 ms) would sit at it and turn the ratio into a fixed time limit.
+ */
+function perCall(fn) {
+  return best(5, () => {
+    for (let call = 0; call < 4; call += 1) fn();
+  }) / 4;
+}
+
+/** validate, serialize and commit, as the scaling guard times them. */
+function scalingTimes(nodeCount) {
+  const document = largeDocument(nodeCount);
+  const history = createHistoryState(document);
+  return {
+    validate: perCall(() => validateDocument(document)),
+    serialize: perCall(() => serializeDocument(document)),
+    commit: perCall(() => commitTransaction(history, setProps("t1", document.revision, 9))),
+  };
+}
+
 const setProps = (id, revision, value) => ({ id, actor: "user-1", baseRevision: revision, operations: [{ type: "set-props", nodeId: "f0-0", set: { x: value } }] });
 
 function measureModel(nodeCount) {
@@ -68,16 +91,22 @@ function measureModel(nodeCount) {
 const MODEL_BUDGETS_50K = { validate: 500, serialize: 1500, parse: 3000, commit: 2000, undo: 2000, redo: 2000 };
 
 test("model and history operations on 50k nodes stay within budget and scale linearly", () => {
-  const small = measureModel(10_000);
   const large = measureModel(50_000);
   for (const [name, budget] of Object.entries(MODEL_BUDGETS_50K)) {
     assert.ok(large[name] <= budget, `${name} on 50k nodes took ${large[name].toFixed(0)} ms; budget ${budget} ms`);
   }
+  const smallScaling = scalingTimes(10_000);
+  const largeScaling = scalingTimes(50_000);
   for (const name of ["validate", "serialize", "commit"]) {
-    // 5x the nodes; linear work stays near 5x, quadratic work would be near 25x.
-    // The 20 ms floor keeps a GC pause in a very fast 10k run from tripping the guard.
-    const ratio = large[name] / Math.max(small[name], 20);
-    assert.ok(ratio <= 10, `${name} grew ${ratio.toFixed(1)}x from 10k to 50k nodes`);
+    // 5x the nodes; linear work stays near 5x (commit runs 7.6x to 9.0x), quadratic work would be
+    // near 25x. A limit of 15: at 10 the guard failed now and then on linear work (10.3x to 13.0x
+    // on macOS CI and in full local runs, #269). It catches a quadratic part about as large as
+    // the linear one at 10k nodes (an injected one measured 15.4x per call); a smaller one is left to the
+    // absolute budgets above, which that injected one also broke.
+    // The 20 ms floor, on a four-call sample (5 ms a call), keeps a GC pause in a very fast 10k
+    // run from tripping the guard.
+    const ratio = largeScaling[name] / Math.max(smallScaling[name], 5);
+    assert.ok(ratio <= 15, `${name} grew ${ratio.toFixed(1)}x from 10k to 50k nodes`);
   }
 });
 
