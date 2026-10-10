@@ -440,7 +440,7 @@ function componentDefinitions(program: AstNode): Array<{ name: string; jsx: AstN
     if (statement.type === "ExportDefaultDeclaration" && statement.declaration.type !== "FunctionDeclaration") {
       // export default memo(function Card() {…}): the wrapped function's own name.
       const fn = componentFunction(statement.declaration);
-      if (fn?.id && /^[A-Z]/u.test(fn.id.name)) definitions.push({ name: fn.id.name, jsx: returnedJsx(fn) });
+      if (fn?.id && /^[A-Z]/u.test(fn.id.name)) definitions.push({ name: fn.id.name, jsx: returnedJsx(fn), fn });
       return;
     }
     if (statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration") return visit(statement.declaration);
@@ -505,6 +505,9 @@ export function exportedComponents(file: string, source: string): string[] {
       const declaration = statement.declaration;
       if (declaration.type === "FunctionDeclaration" && declaration.id) exported.add(declaration.id.name);
       if (declaration.type === "Identifier") exported.add(declaration.name);
+      // export default memo(function Card() {…}): the wrapped function's own name.
+      const wrapped = declaration.type === "FunctionDeclaration" ? null : componentFunction(declaration);
+      if (wrapped?.id) exported.add(wrapped.id.name);
     }
   }
   // A component has JSX: export function Card() {} in a .js helper is not one.

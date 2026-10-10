@@ -33,6 +33,7 @@ export { Remote } from "./remote";
 `;
   assert.deepEqual(exportedComponents("all.tsx", source), ["Declared", "Defaulted", "Arrow", "Forwarded", "Memoized", "Listed", "Renamed"]);
   assert.deepEqual(exportedComponents("default.jsx", "function App() { return <main />; }\nexport default App;\n"), ["App"]);
+  assert.deepEqual(exportedComponents("memo.jsx", "export default memo(function Card() { return <p>card</p>; });\n"), ["Card"]);
   // A re-export names another file's component, even when this file has one of that name.
   assert.deepEqual(exportedComponents("shadow.jsx", "function Card() { return <p>local</p>; }\nexport { Card } from \"./card\";\n"), []);
   // A file Ninerr cannot read refuses, as reading it for its JSX does.
