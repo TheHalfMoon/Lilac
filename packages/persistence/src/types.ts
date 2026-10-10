@@ -1,6 +1,6 @@
 import { LEGACY_JOURNAL_GENESIS } from "./legacy.ts";
 
-export const PROJECT_SCHEMA_VERSION = 2;
+export const PROJECT_SCHEMA_VERSION = 3;
 export const PROJECT_FORMAT = "ninerr-project";
 /** The genesis domain a project created by this release chains its journal from. */
 export const JOURNAL_GENESIS = "ninerr-journal-genesis";
@@ -17,6 +17,10 @@ export const PERSISTENCE_LIMITS = {
   maxEntryBytes: 4 * 1024 * 1024,
   maxReplayEntries: 1_000_000,
   maxManifestBytes: 64 * 1024,
+  /** A checkpoint starts a new journal segment once the journal is larger than this (#258). */
+  journalSegmentBytes: 1024 * 1024,
+  /** An archived segment is stored in pieces of at most this size. */
+  archivePieceBytes: 32 * 1024 * 1024,
 } as const;
 
 /** Fixed names inside `<root>/.ninerr`. No path is ever derived from input. */
@@ -43,6 +47,17 @@ export interface SnapshotRef {
   documentObject: string;
   journalSeq: number;
   chainDigest: string;
+}
+
+/**
+ * The first line of a journal segment that continues an earlier one (project schema 3, #258):
+ * its entries follow entry `baseSeq`, whose chain digest is `anchor`, and the earlier segment's
+ * bytes are the objects in `archive`, in order.
+ */
+export interface JournalSegment {
+  baseSeq: number;
+  anchor: string;
+  archive: string[];
 }
 
 export interface JournalEntry {

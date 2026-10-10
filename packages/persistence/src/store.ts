@@ -18,12 +18,13 @@ import {
   isSameDirectory,
   projectDirectory,
   readBounded,
+  readPinned,
   removeFile,
   isFilesystemError,
   removeStaleFiles,
   removeStaleTemporaries,
 } from "./fsio.ts";
-import { assertJournalFormat, encodeJournalLine, genesisDigest, parseJournal, type ParsedJournal } from "./journal.ts";
+import { assertJournalFormat, encodeJournalLine, encodeSegmentHeader, genesisDigest, parseJournal, type ParsedJournal } from "./journal.ts";
 import { LEGACY_PROJECT_DIRECTORY } from "./legacy.ts";
 import { PROJECT_MIGRATIONS, migrateManifest, withBuiltInMigrations, type ManifestMigration } from "./migrations.ts";
 import { getObject, putObject } from "./objects.ts";
@@ -291,6 +292,12 @@ export interface OpenProjectOptions {
   at: string;
   breakStaleLock?: { reason: string };
   migrations?: Readonly<Record<number, ManifestMigration>>;
+  /**
+   * A checkpoint starts a new journal segment once the journal is larger than this many bytes,
+   * and a commit that takes it past this checkpoints (#258). Defaults to
+   * `PERSISTENCE_LIMITS.journalSegmentBytes`.
+   */
+  rotateJournalAt?: number;
 }
 
 function readLock(path: string): LockRecord | null {
@@ -432,18 +439,26 @@ function readVerifiedProject(projectDir: string, migrations: Readonly<Record<num
   if (journalBytes === null) throw new PersistenceCorruptionError("journal is missing");
   const genesis = genesisDigest(manifest.projectId, manifest.journalGenesis);
   const parsed = parseJournal(journalBytes, genesis);
+  // A segment header is schema 3's: in a journal of an earlier schema it is damage.
+  if (parsed.segment !== null && (rawManifest.schemaVersion as number) < 3) {
+    throw new PersistenceCorruptionError(`journal starts with a segment header, which project schema ${rawManifest.schemaVersion} does not have`);
+  }
   // Every entry must be journal format 1, including those the snapshot already covers.
   for (const { entry } of parsed.entries) assertJournalFormat(entry.transaction, `journal entry ${entry.seq}`, true);
-  if (snapshot.journalSeq > parsed.entries.length) {
+  // A segment starts after entry `base`: the snapshot must stand within it.
+  const base = parsed.segment?.baseSeq ?? 0;
+  if (snapshot.journalSeq < base) throw new PersistenceCorruptionError("snapshot reference points before the journal segment");
+  if (snapshot.journalSeq > base + parsed.entries.length) {
     throw new PersistenceCorruptionError("snapshot reference points past the end of the journal");
   }
-  const anchor = snapshot.journalSeq === 0 ? genesis : parsed.entries[snapshot.journalSeq - 1].digest;
+  const start = parsed.segment?.anchor ?? genesis;
+  const anchor = snapshot.journalSeq === base ? start : parsed.entries[snapshot.journalSeq - base - 1].digest;
   if (anchor !== snapshot.chainDigest) throw new PersistenceCorruptionError("snapshot reference does not match the journal chain");
 
   // Each entry adds one revision; check that before replaying, then replay them all on one
   // copy of the document, so recovery costs the document plus the entries, not their
   // product (#251).
-  const pending = parsed.entries.slice(snapshot.journalSeq);
+  const pending = parsed.entries.slice(snapshot.journalSeq - base);
   pending.forEach(({ entry }, index) => {
     if (entry.revision !== document.revision + index + 1) throw new PersistenceCorruptionError(`journal entry ${entry.seq} revision mismatch`);
   });
@@ -468,6 +483,10 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   assertTimestamp(options.at, "at");
   // Checked before the lock is taken: a refused call changes nothing on disk.
   const migrations = withBuiltInMigrations(options.migrations);
+  const rotateAt = options.rotateJournalAt ?? PERSISTENCE_LIMITS.journalSegmentBytes;
+  if (!Number.isSafeInteger(rotateAt) || rotateAt < 1 || rotateAt > PERSISTENCE_LIMITS.maxJournalBytes) {
+    throw new PersistenceValidationError(`rotateJournalAt must be a whole number of bytes from 1 to ${PERSISTENCE_LIMITS.maxJournalBytes}`);
+  }
   if (!assertNotSymlink(projectDir, "project directory")) {
     if (hasLegacyProject(projectDir)) {
       throw new PersistenceVersionError("this root holds a legacy project from before Ninerr; migrate it before opening");
@@ -510,8 +529,10 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
     const last = parsed.entries.at(-1);
     unchanged();
     return new ProjectStore(STORE_TOKEN, projectDir, manifest, document, {
-      seq: last?.entry.seq ?? 0,
-      digest: last?.digest ?? genesis,
+      seq: last?.entry.seq ?? parsed.segment?.baseSeq ?? 0,
+      digest: last?.digest ?? parsed.segment?.anchor ?? genesis,
+      segmentBase: parsed.segment?.baseSeq ?? 0,
+      rotateAt,
       journalBytes: parsed.validBytes,
       // Content pin: SHA-256 of exactly the bytes validated above (after any torn-tail truncation).
       // commit() extends it with each line it appends, and appendDurable compares the file to it
@@ -618,6 +639,9 @@ export function migrateLegacyProject(root: string, options: MigrateLegacyProject
 interface StoreState {
   seq: number;
   digest: string;
+  /** The entry the journal's current segment starts after (0 for the first segment). */
+  segmentBase: number;
+  rotateAt: number;
   journalBytes: number;
   journalContent: Hash;
   journalIdentity: FileIdentity;
@@ -645,6 +669,8 @@ export class ProjectStore {
   #directory: DirectoryIdentity;
   #snapshotSeq: number;
   #committed = false;
+  #segmentBase: number;
+  #rotateAt: number;
 
   constructor(token: symbol, projectDir: string, manifest: ProjectManifest, document: ProjectDocument, state: StoreState) {
     if (token !== STORE_TOKEN) throw new PersistenceValidationError("ProjectStore is created by openProject");
@@ -660,6 +686,8 @@ export class ProjectStore {
     this.#lock = state.lock;
     this.#directory = state.directory;
     this.#snapshotSeq = state.snapshotSeq;
+    this.#segmentBase = state.segmentBase;
+    this.#rotateAt = state.rotateAt;
   }
 
   #assertOpen(): void {
@@ -731,8 +759,12 @@ export class ProjectStore {
     const entry = { seq: this.#seq + 1, revision: next.revision, transaction: stored };
     const { line, digest } = encodeJournalLine(entry, this.#digest);
     const bytes = Buffer.byteLength(line, "utf8");
+    // A segment normally ends at a checkpoint long before either limit; these hold if checkpoints keep failing.
     if (this.#journalBytes + bytes > PERSISTENCE_LIMITS.maxJournalBytes) {
-      throw new PersistenceValidationError(`journal reached its ${PERSISTENCE_LIMITS.maxJournalBytes}-byte limit; journal rotation is not available in this release`);
+      throw new PersistenceValidationError(`journal segment reached its ${PERSISTENCE_LIMITS.maxJournalBytes}-byte limit and no checkpoint could start a new one`);
+    }
+    if (entry.seq - this.#segmentBase > PERSISTENCE_LIMITS.maxReplayEntries) {
+      throw new PersistenceValidationError(`journal segment holds the ${PERSISTENCE_LIMITS.maxReplayEntries} entries an open can replay and no checkpoint could start a new one`);
     }
     try {
       appendDurable(join(this.projectDir, PROJECT_FILES.journal), line, "journal", {
@@ -751,6 +783,16 @@ export class ProjectStore {
     this.#digest = digest;
     this.#journalBytes += bytes;
     this.#journalContent.update(line, "utf8");
+    // Past the segment size, checkpoint, which starts a new segment (#258). The change is
+    // already durable: a checkpoint that fails leaves the project as it is, and the next
+    // commit tries again.
+    if (this.#journalBytes > this.#rotateAt) {
+      try {
+        this.checkpoint();
+      } catch {
+        // See above.
+      }
+    }
     return { revision: next.revision, seq: entry.seq, transactionId: String(stored.id) };
   }
 
@@ -761,7 +803,30 @@ export class ProjectStore {
     const snapshot: SnapshotRef = { revision: this.#document.revision, documentObject, journalSeq: this.#seq, chainDigest: this.#digest };
     atomicWrite(join(this.projectDir, PROJECT_FILES.snapshot), canonicalJson(snapshot), "snapshot reference");
     this.#snapshotSeq = this.#seq;
+    if (this.#journalBytes > this.#rotateAt) this.#startSegment();
     return snapshot;
+  }
+
+  /**
+   * Archive the journal and start a new segment after the snapshot's entry (#258), so each
+   * append and each open reads only the work since the last segment. Called right after the
+   * snapshot moved to the journal's end. Order makes it crash safe: the archive is durable
+   * before the journal is replaced, and the replacement is atomic, so a crash leaves either
+   * the whole journal (which the snapshot still matches) or the new segment.
+   */
+  #startSegment(): void {
+    const path = join(this.projectDir, PROJECT_FILES.journal);
+    const previous = readPinned(path, "journal", { size: this.#journalBytes, identity: this.#journalIdentity, sha256: this.#journalContent.copy().digest("hex") });
+    const archive: string[] = [];
+    for (let offset = 0; offset < previous.length; offset += PERSISTENCE_LIMITS.archivePieceBytes) {
+      archive.push(putObject(this.projectDir, previous.subarray(offset, offset + PERSISTENCE_LIMITS.archivePieceBytes)));
+    }
+    const header = encodeSegmentHeader({ baseSeq: this.#seq, anchor: this.#digest, archive });
+    atomicWrite(path, header, "journal");
+    this.#journalIdentity = fileIdentity(path, "journal");
+    this.#journalBytes = Buffer.byteLength(header, "utf8");
+    this.#journalContent = createHash("sha256").update(header, "utf8");
+    this.#segmentBase = this.#seq;
   }
 
   putObject(bytes: Buffer): string {
