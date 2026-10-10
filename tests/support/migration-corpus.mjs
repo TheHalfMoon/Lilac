@@ -1,7 +1,7 @@
 // P08-G10 (#230, founder section P08.10): the durable migration corpus. Each case is a project
 // folder on disk, made once from the golden fixtures by a small, stated change, and committed:
-// historical (the format before the rename, schema 2), current (schema 3, with and without
-// segments), and recoverable damage (a torn tail, a stale temporary); future and corrupt
+// legacy (the format before the rename, schema 1), historical (schema 2), current (schema 3,
+// with and without segments), and recoverable damage (a torn tail, a stale temporary); future and corrupt
 // projects follow. Every case says what opening it must do. tests/migration-corpus.test.mjs opens each one through
 // the studio host and holds it to that.
 //
@@ -24,19 +24,30 @@ const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 /**
  * The cases. `from` is a golden fixture; `change(dir)` edits its store directory (`.ninerr`,
  * or the legacy directory for the format before the rename). `expect` is what opening it must do:
- * `{ opens: "golden" | "segments", writes }`, where `writes` says whether opening it may change
- * its files, or `{ refused, pattern }` with the host's error code and message.
+ * `{ opens: "golden" | "segments", writes, recovery }`, where `writes` says whether opening it
+ * may change its files and `recovery` is the whole report the host must give, or
+ * `{ refused, pattern }` with the host's error code and message. Each is written by hand from
+ * the fixture: the golden snapshot stands at entry 2 of 5, so an open replays 3 entries.
  */
 // The start of a journal line whose write was cut off.
 const TORN = "{\"digest\":\"0123";
 
 export const CASES = [
   // Historical and legacy: they open, migrated, to the same document as this release writes.
-  { name: "legacy-v1", category: "legacy", from: "v1-basic", what: "a project from before the rename (its own directory and format, schema 1)", expect: { opens: "golden", writes: true } },
-  { name: "historical-v2", category: "historical", from: "v2-basic", what: "project schema 2, from before journal segments", expect: { opens: "golden", writes: true } },
+  { name: "legacy-v1", category: "legacy", from: "v1-basic", what: "a project from before the rename (its own directory and format, schema 1)", expect: { opens: "golden", writes: true, recovery: { tornTailBytes: 0, staleTemporaryFiles: 0, replayedEntries: 3, migratedFrom: 1, lockOverride: null, legacyProject: true } } },
+  {
+    name: "legacy-v1-torn-tail",
+    category: "legacy",
+    from: "v1-basic",
+    what: "a project from before the rename whose last journal write was cut off (a crash of the earlier release)",
+    change: (dir) => writeFileSync(join(dir, "journal.log"), `${readFileSync(join(dir, "journal.log"), "utf8")}${TORN}`),
+    // The torn tail is carried into the Ninerr copy and repaired by its first open; the original keeps it.
+    expect: { opens: "golden", writes: true, recovery: { tornTailBytes: Buffer.byteLength(TORN), staleTemporaryFiles: 0, replayedEntries: 3, migratedFrom: 1, lockOverride: null, legacyProject: true } },
+  },
+  { name: "historical-v2", category: "historical", from: "v2-basic", what: "project schema 2, from before journal segments", expect: { opens: "golden", writes: true, recovery: { tornTailBytes: 0, staleTemporaryFiles: 0, replayedEntries: 3, migratedFrom: 2, lockOverride: null } } },
   // Current.
-  { name: "current-v3", category: "current", from: "v3-basic", what: "project schema 3", expect: { opens: "golden", writes: false } },
-  { name: "current-v3-segments", category: "current", from: "v3-segments", what: "project schema 3 with an archived journal segment", expect: { opens: "segments", writes: false } },
+  { name: "current-v3", category: "current", from: "v3-basic", what: "project schema 3", expect: { opens: "golden", writes: false, recovery: { tornTailBytes: 0, staleTemporaryFiles: 0, replayedEntries: 3, migratedFrom: null, lockOverride: null } } },
+  { name: "current-v3-segments", category: "current", from: "v3-segments", what: "project schema 3 with an archived journal segment", expect: { opens: "segments", writes: false, recovery: { tornTailBytes: 0, staleTemporaryFiles: 0, replayedEntries: 3, migratedFrom: null, lockOverride: null } } },
   // Damage the store repairs: the open succeeds and says what it did.
   {
     name: "recoverable-torn-tail",
@@ -44,7 +55,7 @@ export const CASES = [
     from: "v3-basic",
     what: "a journal whose last write was cut off",
     change: (dir) => writeFileSync(join(dir, "journal.log"), `${readFileSync(join(dir, "journal.log"), "utf8")}${TORN}`),
-    expect: { opens: "golden", writes: true, recovery: { tornTailBytes: Buffer.byteLength(TORN) } },
+    expect: { opens: "golden", writes: true, recovery: { tornTailBytes: Buffer.byteLength(TORN), staleTemporaryFiles: 0, replayedEntries: 3, migratedFrom: null, lockOverride: null } },
   },
   {
     name: "recoverable-stale-temporary",
@@ -52,7 +63,7 @@ export const CASES = [
     from: "v3-basic",
     what: "a temporary file left by an interrupted save",
     change: (dir) => writeFileSync(join(dir, "snapshot.json.tmp-4242-00000000-0000-4000-8000-000000000000"), "{\"half\":"),
-    expect: { opens: "golden", writes: true, recovery: { staleTemporaryFiles: 1 } },
+    expect: { opens: "golden", writes: true, recovery: { tornTailBytes: 0, staleTemporaryFiles: 1, replayedEntries: 3, migratedFrom: null, lockOverride: null } },
   },
 ];
 

@@ -8,7 +8,33 @@
       "what": "a project from before the rename (its own directory and format, schema 1)",
       "expect": {
         "opens": "golden",
-        "writes": true
+        "writes": true,
+        "recovery": {
+          "tornTailBytes": 0,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": 1,
+          "lockOverride": null,
+          "legacyProject": true
+        }
+      }
+    },
+    {
+      "name": "legacy-v1-torn-tail",
+      "category": "legacy",
+      "from": "v1-basic",
+      "what": "a project from before the rename whose last journal write was cut off (a crash of the earlier release)",
+      "expect": {
+        "opens": "golden",
+        "writes": true,
+        "recovery": {
+          "tornTailBytes": 15,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": 1,
+          "lockOverride": null,
+          "legacyProject": true
+        }
       }
     },
     {
@@ -18,7 +44,14 @@
       "what": "project schema 2, from before journal segments",
       "expect": {
         "opens": "golden",
-        "writes": true
+        "writes": true,
+        "recovery": {
+          "tornTailBytes": 0,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": 2,
+          "lockOverride": null
+        }
       }
     },
     {
@@ -28,7 +61,14 @@
       "what": "project schema 3",
       "expect": {
         "opens": "golden",
-        "writes": false
+        "writes": false,
+        "recovery": {
+          "tornTailBytes": 0,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": null,
+          "lockOverride": null
+        }
       }
     },
     {
@@ -38,7 +78,14 @@
       "what": "project schema 3 with an archived journal segment",
       "expect": {
         "opens": "segments",
-        "writes": false
+        "writes": false,
+        "recovery": {
+          "tornTailBytes": 0,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": null,
+          "lockOverride": null
+        }
       }
     },
     {
@@ -50,7 +97,11 @@
         "opens": "golden",
         "writes": true,
         "recovery": {
-          "tornTailBytes": 15
+          "tornTailBytes": 15,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": null,
+          "lockOverride": null
         }
       }
     },
@@ -63,10 +114,14 @@
         "opens": "golden",
         "writes": true,
         "recovery": {
-          "staleTemporaryFiles": 1
+          "tornTailBytes": 0,
+          "staleTemporaryFiles": 1,
+          "replayedEntries": 3,
+          "migratedFrom": null,
+          "lockOverride": null
         }
       }
     }
   ],
-  "treeSha256": "20700ba70a369bb5a4f996c404a9eb10536dc9be404fcedda20ab5df86f17e05"
+  "treeSha256": "28103132c5cad193e1d1281eef2523a85e1daf22372f8be3a32dc6a5c1290c90"
 }
