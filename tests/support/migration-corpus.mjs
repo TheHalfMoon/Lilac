@@ -1,9 +1,10 @@
 // P08-G10 (#230, founder section P08.10): the durable migration corpus. Each case is a project
 // folder on disk, made once from the golden fixtures by a small, stated change, and committed:
 // legacy (the format before the rename, schema 1), historical (schema 2), current (schema 3,
-// with and without segments), and recoverable damage (a torn tail, a stale temporary); future and corrupt
-// projects follow. Every case says what opening it must do. tests/migration-corpus.test.mjs opens each one through
-// the studio host and holds it to that.
+// with and without segments), future (a newer manifest, document or journal entry), corrupt
+// (each kind of damage the store detects), and recoverable damage (a torn tail, a stale
+// temporary). Every case says what opening it must do. tests/migration-corpus.test.mjs opens
+// each one through the studio host and holds it to that.
 //
 //   node tests/support/migration-corpus.mjs --write    regenerate tests/fixtures/corpus
 //
@@ -13,13 +14,32 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES } from "../../packages/persistence/src/index.ts";
+import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, encodeJournalLine } from "../../packages/persistence/src/index.ts";
 
 const FIXTURES = fileURLToPath(new URL("../fixtures/projects/", import.meta.url));
 export const CORPUS = fileURLToPath(new URL("../fixtures/corpus/", import.meta.url));
 export const MANIFEST = join(CORPUS, "corpus.json");
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+/** JSON with sorted keys, as the store writes its own files. */
+const canonical = (value) => JSON.stringify(value, (key, item) => (item !== null && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map((name) => [name, item[name]])) : item));
+const lines = (path) => readFileSync(path, "utf8").split("\n").filter((line) => line !== "");
+
+/** The document object a snapshot names, and its path. */
+function documentObject(dir) {
+  const { documentObject: digest } = JSON.parse(readFileSync(join(dir, "snapshot.json"), "utf8"));
+  return { digest, path: join(dir, "objects", digest.slice(0, 2), digest.slice(2)) };
+}
+
+/** Store `bytes` as an object and point the snapshot at it. */
+function replaceDocumentObject(dir, bytes) {
+  const digest = sha256(bytes);
+  mkdirSync(join(dir, "objects", digest.slice(0, 2)), { recursive: true });
+  writeFileSync(join(dir, "objects", digest.slice(0, 2), digest.slice(2)), bytes);
+  const snapshot = JSON.parse(readFileSync(join(dir, "snapshot.json"), "utf8"));
+  writeFileSync(join(dir, "snapshot.json"), canonical({ ...snapshot, documentObject: digest }));
+}
 
 /**
  * The cases. `from` is a golden fixture; `change(dir)` edits its store directory (`.ninerr`,
@@ -64,6 +84,88 @@ export const CASES = [
     what: "a temporary file left by an interrupted save",
     change: (dir) => writeFileSync(join(dir, "snapshot.json.tmp-4242-00000000-0000-4000-8000-000000000000"), "{\"half\":"),
     expect: { opens: "golden", writes: true, recovery: { tornTailBytes: 0, staleTemporaryFiles: 1, replayedEntries: 3, migratedFrom: null, lockOverride: null } },
+  },
+  // Future: from a newer Ninerr. Refused as a version problem, and never changed.
+  {
+    name: "future-manifest-schema",
+    category: "future",
+    from: "v3-basic",
+    what: "project schema 4",
+    change: (dir) => writeFileSync(join(dir, "project.json"), canonical({ ...JSON.parse(readFileSync(join(dir, "project.json"), "utf8")), schemaVersion: 4 })),
+    expect: { refused: "project-version", pattern: "schema" },
+  },
+  {
+    name: "future-document-schema",
+    category: "future",
+    from: "v3-basic",
+    what: "a document of document schema 2",
+    change: (dir) => replaceDocumentObject(dir, Buffer.from(canonical({ ...JSON.parse(readFileSync(documentObject(dir).path, "utf8")), schemaVersion: 2 }), "utf8")),
+    expect: { refused: "project-version", pattern: "document" },
+  },
+  {
+    name: "future-journal-operation",
+    category: "future",
+    from: "v3-basic",
+    what: "a correctly chained journal entry with an operation this release does not know",
+    change: (dir) => {
+      const journal = join(dir, "journal.log");
+      const last = JSON.parse(lines(journal).at(-1));
+      const entry = { seq: last.entry.seq + 1, revision: last.entry.revision + 1, transaction: { actor: "user-1", baseRevision: last.entry.revision, id: "tx-future", intent: null, metadata: {}, operations: [{ nodeId: "frame-1", type: "morph-node" }], timestamp: null, tool: null } };
+      writeFileSync(journal, `${readFileSync(journal, "utf8")}${encodeJournalLine(entry, last.digest).line}`);
+    },
+    expect: { refused: "project-version", pattern: "newer|format" },
+  },
+  // Corrupt: refused as unreadable, and never changed.
+  {
+    name: "corrupt-journal-chain",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a journal entry changed after it was written",
+    change: (dir) => writeFileSync(join(dir, "journal.log"), readFileSync(join(dir, "journal.log"), "utf8").replace('"intent":"rename"', '"intent":"renamE"')),
+    expect: { refused: "project-unreadable", pattern: "digest|chain" },
+  },
+  {
+    name: "corrupt-document-object",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a document object whose bytes no longer match its name",
+    change: (dir) => {
+      const { path } = documentObject(dir);
+      writeFileSync(path, readFileSync(path, "utf8").replace("doc-golden", "doc-golder"));
+    },
+    expect: { refused: "project-unreadable", pattern: "hash" },
+  },
+  {
+    name: "corrupt-missing-object",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a document object that is gone",
+    change: (dir) => rmSync(documentObject(dir).path),
+    expect: { refused: "project-unreadable", pattern: "missing" },
+  },
+  {
+    name: "corrupt-snapshot",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a snapshot reference that is not JSON",
+    change: (dir) => writeFileSync(join(dir, "snapshot.json"), "not json"),
+    expect: { refused: "project-unreadable", pattern: "snapshot" },
+  },
+  {
+    name: "corrupt-snapshot-past-end",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a snapshot reference past the end of the journal",
+    change: (dir) => writeFileSync(join(dir, "snapshot.json"), canonical({ ...JSON.parse(readFileSync(join(dir, "snapshot.json"), "utf8")), journalSeq: 9 })),
+    expect: { refused: "project-unreadable", pattern: "past the end" },
+  },
+  {
+    name: "corrupt-manifest",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a manifest that is not JSON",
+    change: (dir) => writeFileSync(join(dir, "project.json"), "{"),
+    expect: { refused: "project-unreadable", pattern: "manifest" },
   },
 ];
 

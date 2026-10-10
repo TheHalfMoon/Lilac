@@ -20,7 +20,8 @@ import { CASES, CORPUS, MANIFEST, filesUnder, treeDigest, writeCorpus } from "./
 //   why) kept as they were: semantics preserved;
 // - recoverable damage is repaired, and the whole recovery report is as expected;
 // - doing any of it twice gives the same bytes (deterministic).
-// Future and corrupt projects, refused without a byte changed, follow in part 2.
+// - future and corrupt projects are refused with the host's reason for each, and leave every
+//   byte as it was.
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const tree = (root) => Object.fromEntries(filesUnder(root).map((path) => [path, sha256(readFileSync(join(root, path)))]));
@@ -94,7 +95,7 @@ test("the corpus is frozen: every file is as recorded, and the generator still w
     rmSync(fresh, { recursive: true, force: true });
   }
   // Every category is there.
-  assert.deepEqual([...new Set(manifest.cases.map((item) => item.category))].sort(), ["current", "historical", "legacy", "recoverable"]);
+  assert.deepEqual([...new Set(manifest.cases.map((item) => item.category))].sort(), ["corrupt", "current", "future", "historical", "legacy", "recoverable"]);
   assert.deepEqual(manifest.cases.map((item) => item.name), CASES.map((item) => item.name));
   assert.equal(sha256(REFERENCE.golden.document), GOLDEN_DOCUMENT_SHA256, "the reference is the golden document");
   assert.equal(REFERENCE.segments.document, REFERENCE.golden.document, "the segmented history ends at the same document");

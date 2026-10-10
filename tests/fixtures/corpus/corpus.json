@@ -121,7 +121,97 @@
           "lockOverride": null
         }
       }
+    },
+    {
+      "name": "future-manifest-schema",
+      "category": "future",
+      "from": "v3-basic",
+      "what": "project schema 4",
+      "expect": {
+        "refused": "project-version",
+        "pattern": "schema"
+      }
+    },
+    {
+      "name": "future-document-schema",
+      "category": "future",
+      "from": "v3-basic",
+      "what": "a document of document schema 2",
+      "expect": {
+        "refused": "project-version",
+        "pattern": "document"
+      }
+    },
+    {
+      "name": "future-journal-operation",
+      "category": "future",
+      "from": "v3-basic",
+      "what": "a correctly chained journal entry with an operation this release does not know",
+      "expect": {
+        "refused": "project-version",
+        "pattern": "newer|format"
+      }
+    },
+    {
+      "name": "corrupt-journal-chain",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a journal entry changed after it was written",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "digest|chain"
+      }
+    },
+    {
+      "name": "corrupt-document-object",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a document object whose bytes no longer match its name",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "hash"
+      }
+    },
+    {
+      "name": "corrupt-missing-object",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a document object that is gone",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "missing"
+      }
+    },
+    {
+      "name": "corrupt-snapshot",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a snapshot reference that is not JSON",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "snapshot"
+      }
+    },
+    {
+      "name": "corrupt-snapshot-past-end",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a snapshot reference past the end of the journal",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "past the end"
+      }
+    },
+    {
+      "name": "corrupt-manifest",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a manifest that is not JSON",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "manifest"
+      }
     }
   ],
-  "treeSha256": "28103132c5cad193e1d1281eef2523a85e1daf22372f8be3a32dc6a5c1290c90"
+  "treeSha256": "04ed6a42c73731a21a298aa61374ffe73def65b19258e3f74a12cc1c7d1c3232"
 }
