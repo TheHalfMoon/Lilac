@@ -333,9 +333,32 @@ export function createDocument({
   return document;
 }
 
+/**
+ * A copy of data that validation accepted: plain objects, arrays and JSON values only (see
+ * jsonDataProblem). For such data it equals structuredClone's copy (own enumerable string
+ * keys in their order, "__proto__" kept as an own key, every object a plain one) at a quarter
+ * of its cost, which matters because every edit copies the whole document (#252). It is not
+ * for anything unvalidated: structuredClone's refusal of other values is part of those checks.
+ */
+export function cloneValidated(value) {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    const copy = new Array(value.length);
+    for (let index = 0; index < value.length; index += 1) copy[index] = cloneValidated(value[index]);
+    return copy;
+  }
+  const copy = {};
+  for (const key of Object.keys(value)) {
+    // Assigning "__proto__" would set the copy's prototype instead of an own key.
+    if (key === "__proto__") Object.defineProperty(copy, key, { value: cloneValidated(value[key]), enumerable: true, writable: true, configurable: true });
+    else copy[key] = cloneValidated(value[key]);
+  }
+  return copy;
+}
+
 export function cloneDocument(document) {
   validateDocument(document);
-  return cloneData(document);
+  return cloneValidated(document);
 }
 
 export function normalizeDocument(document) {
