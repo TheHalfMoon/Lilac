@@ -20,13 +20,7 @@ Issue: #230 (P08 umbrella), founder section P08.6: concurrency and races on the 
 | An edit is never rebased. 25 edits of one chain (each made at the revision the previous one makes) are sent at once in a shuffled order, so later links often reach the host first. Each applied edit lands at exactly the revision after the one it was made at. The applied edits are the chain's first links, with no gap. The later ones that arrived early are refused as stale, and the project holds exactly the applied edits. | `tests/concurrency.test.mjs` |
 | A single-use import review commits once, however many times it is sent at once. The others get `404 import-not-found`. | `tests/concurrency.test.mjs` |
 | A single-use write-back preview writes once, however many times it is sent at once. The others get `409 plan-changed`, and the file holds the one change. | `tests/concurrency.test.mjs` |
-| A person's edits, undos and redos and an agent's MCP changes, all at once over 16 rounds, each in a different seeded order, end only in known outcomes:
-- applied;
-- `409 stale-revision`;
-- `409 nothing-to-undo` or `409 nothing-to-redo`;
-- an agent told a layer no longer exists.
-
-An agent's internal error would fail the test. Some of the person's edits win their round. Every change reaches the editor's event stream, opened beforehand, once and in revision order. The project reopened in a new host is exactly the one shown. | `tests/concurrency.test.mjs` |
+| A person's edits, undos and redos and an agent's MCP changes, all at once over 16 rounds, each in a different seeded order, end only in known outcomes: applied; `409 stale-revision`; `409 nothing-to-undo` or `409 nothing-to-redo`; or an agent told a layer no longer exists. An agent's internal error would fail the test. Some of the person's edits win their round. Every change reaches the editor's event stream, opened beforehand, once and in revision order. The project reopened in a new host is exactly the one shown. | `tests/concurrency.test.mjs` |
 | An agent's deletion waiting for the person's approval changes nothing once the person opens another project. The request is withdrawn, the agent is told the open project changed (not that the person declined), the other project gets nothing, and the layer is still there. | `tests/concurrency.test.mjs` |
 | A change made for one project is never applied to another. Another tab opening a project, or one opened while a change's body is still arriving, leads to a refusal (`409 project-changed`). An agent changes only the project it last connected to or read. | `tests/project-scope.test.mjs` (#260, #263) |
 | A second host on a projects folder is refused (`409 projects-folder-in-use`), naming the first. A claim left by a crashed host is taken over. | `tests/folder-lock.test.mjs` (#261, #264) |
