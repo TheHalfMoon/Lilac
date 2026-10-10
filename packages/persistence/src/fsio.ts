@@ -246,32 +246,69 @@ function contentSha256(fd: number, size: number): string {
  * the expected SHA-256 (the bytes this writer validated and appended), so a foreign or stale
  * writer, an in-place rewrite, a replaced file, or a hard link out of the project is detected
  * before anything is written, independent of timestamp granularity. Cost is one read of the
- * journal per append (about 1.3 ms/MB measured; bounded by the journal size limit).
+ * journal per append (about 1.3 ms/MB measured), so the store keeps the journal to a segment
+ * of about `journalSegmentBytes` by starting a new one at a checkpoint (#258).
  */
-export function appendDurable(path: string, data: string, label: string, expected: { size: number; identity: FileIdentity; sha256: string }): void {
-  assertNotSymlink(path, label);
-  let fd: number;
+export function appendDurable(path: string, data: string, label: string, expected: PinnedContent): void {
+  const fd = openPinned(path, label, constants.O_RDWR | constants.O_APPEND);
   try {
-    fd = openSync(path, constants.O_RDWR | constants.O_APPEND | NOFOLLOW | NONBLOCK);
+    verifyPinned(fd, label, expected);
+    writeAll(fd, Buffer.from(data, "utf8"));
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** What a writer knows its file to hold: which file it is, its size, and the digest of its bytes. */
+export interface PinnedContent {
+  size: number;
+  identity: FileIdentity;
+  sha256: string;
+}
+
+function openPinned(path: string, label: string, flags: number): number {
+  assertNotSymlink(path, label);
+  try {
+    return openSync(path, flags | NOFOLLOW | NONBLOCK);
   } catch (error) {
     if (isMissing(error)) throw new PersistenceCorruptionError(`${label} is missing`);
     throw error;
   }
+}
+
+/** The pinned, regular, singly linked file of exactly the expected size and bytes, or a refusal. */
+function verifyPinned(fd: number, label: string, expected: PinnedContent): void {
+  const stat = fstatSync(fd, { bigint: true });
+  if (!stat.isFile()) throw new PersistenceValidationError(`${label} must be a regular file`);
+  if (stat.nlink > 1n) throw new PersistenceValidationError(`${label} must not be hard-linked`);
+  if (stat.dev !== expected.identity.dev || stat.ino !== expected.identity.ino) {
+    throw new PersistenceCorruptionError(`${label} was replaced or modified outside this writer`);
+  }
+  if (stat.size !== BigInt(expected.size)) {
+    throw new PersistenceCorruptionError(`${label} changed outside this writer (expected ${expected.size} bytes, found ${stat.size})`);
+  }
+  if (contentSha256(fd, expected.size) !== expected.sha256) {
+    throw new PersistenceCorruptionError(`${label} was replaced or modified outside this writer`);
+  }
+}
+
+/**
+ * Read a file this writer pinned, refusing it under the same checks as `appendDurable`:
+ * the bytes returned are exactly the ones the writer validated and appended.
+ */
+export function readPinned(path: string, label: string, expected: PinnedContent): Buffer {
+  const fd = openPinned(path, label, constants.O_RDONLY);
   try {
-    const stat = fstatSync(fd, { bigint: true });
-    if (!stat.isFile()) throw new PersistenceValidationError(`${label} must be a regular file`);
-    if (stat.nlink > 1n) throw new PersistenceValidationError(`${label} must not be hard-linked`);
-    if (stat.dev !== expected.identity.dev || stat.ino !== expected.identity.ino) {
-      throw new PersistenceCorruptionError(`${label} was replaced or modified outside this writer`);
+    verifyPinned(fd, label, expected);
+    const bytes = Buffer.alloc(expected.size);
+    let offset = 0;
+    while (offset < expected.size) {
+      const read = readSync(fd, bytes, offset, expected.size - offset, offset);
+      if (read === 0) throw new PersistenceCorruptionError(`${label} changed outside this writer while it was read`);
+      offset += read;
     }
-    if (stat.size !== BigInt(expected.size)) {
-      throw new PersistenceCorruptionError(`${label} changed outside this writer (expected ${expected.size} bytes, found ${stat.size})`);
-    }
-    if (contentSha256(fd, expected.size) !== expected.sha256) {
-      throw new PersistenceCorruptionError(`${label} was replaced or modified outside this writer`);
-    }
-    writeAll(fd, Buffer.from(data, "utf8"));
-    fsyncSync(fd);
+    return bytes;
   } finally {
     closeSync(fd);
   }

@@ -27,13 +27,13 @@ import { GOLDEN_AT } from "./support/golden-project.mjs";
 // N0-G2 (#190): projects written before the rename (`.lilac`, project schema 1) migrate into
 // `.ninerr` deterministically, keep their journal chain, and are never modified; a refused
 // migration creates nothing. tests/fixtures/projects/v1-basic is the frozen legacy corpus:
-// the same history as the v2 golden fixture, written by the earlier release.
+// the same history as the golden fixtures (v2-basic, v3-basic), written by the earlier release.
 
 const LEGACY = fileURLToPath(new URL("./fixtures/projects/v1-basic/", import.meta.url));
-const CURRENT = fileURLToPath(new URL("./fixtures/projects/v2-basic/", import.meta.url));
+const CURRENT = fileURLToPath(new URL("./fixtures/projects/v3-basic/", import.meta.url));
 // SHA-256 of the corpus as tree() reads it (relative path to base64 bytes, in path order).
 const LEGACY_CORPUS_SHA256 = "7927312c35d4321df2e70d4948693960170c815cb4dfee195a9afa7c3bee46c3";
-const MIGRATED_MANIFEST = '{"createdAt":"2026-10-07T12:00:00.000Z","documentId":"doc-golden","format":"ninerr-project","journalGenesis":"lilac-journal-genesis","projectId":"golden-v1","schemaVersion":2}';
+const MIGRATED_MANIFEST = '{"createdAt":"2026-10-07T12:00:00.000Z","documentId":"doc-golden","format":"ninerr-project","journalGenesis":"lilac-journal-genesis","projectId":"golden-v1","schemaVersion":3}';
 const actor = { owner: "migrator-1", at: GOLDEN_AT };
 
 function tree(root) {
@@ -154,8 +154,8 @@ test("refused migrations create nothing and leave the legacy project as it was",
   const cases = [
     ["a newer legacy schema", (root) => {
       const manifest = JSON.parse(readFileSync(legacyFile(root, PROJECT_FILES.manifest), "utf8"));
-      writeFileSync(legacyFile(root, PROJECT_FILES.manifest), JSON.stringify({ ...manifest, schemaVersion: 3 }));
-    }, PersistenceVersionError, /project schema 3 is newer than supported schema 2/],
+      writeFileSync(legacyFile(root, PROJECT_FILES.manifest), JSON.stringify({ ...manifest, schemaVersion: 4 }));
+    }, PersistenceVersionError, /project schema 4 is newer than supported schema 3/],
     ["a corrupt journal", (root) => {
       const lines = readFileSync(legacyFile(root, PROJECT_FILES.journal), "utf8").split("\n");
       lines[1] = lines[1].replace("World", "Earth");

@@ -16,6 +16,7 @@ export {
   PROJECT_SCHEMA_VERSION,
   type JournalEntry,
   type JournalGenesisDomain,
+  type JournalSegment,
   type LegacyMigrationReport,
   type LockOverride,
   type LockRecord,

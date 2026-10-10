@@ -90,7 +90,7 @@ test("the host reviews an import, then commits it as one attributed, undoable tr
     assert.equal((await call("POST", "/api/import/discard", { proposalId: discarded.proposalId })).status, 200);
     assert.equal((await call("POST", "/api/import/commit", { proposalId: discarded.proposalId })).status, 404);
     // The journal records what the import came from.
-    const journal = readFileSync(join(root, "site", PROJECT_FILES.directory, "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
+    const journal = readFileSync(join(root, "site", PROJECT_FILES.directory, "journal.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line)).filter((line) => line.segment === undefined).map((line) => line.entry.transaction);
     assert.equal(journal[0].metadata.ninerr.provenance.import.proposalId, review.proposalId);
     assert.equal(journal[0].metadata.ninerr.provenance.import.sourceKind, "html-snapshot");
     // Limits: the import stack's offline policy.

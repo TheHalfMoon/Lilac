@@ -1,7 +1,7 @@
 import { NODE_FIELDS } from "@ninerr/document-model";
 import { canonicalJson, sha256Hex } from "./canonical.ts";
 import { PersistenceCorruptionError, PersistenceValidationError, PersistenceVersionError } from "./errors.ts";
-import { JOURNAL_GENESIS_DOMAINS, PERSISTENCE_LIMITS, type JournalEntry, type JournalGenesisDomain } from "./types.ts";
+import { JOURNAL_GENESIS_DOMAINS, PERSISTENCE_LIMITS, type JournalEntry, type JournalGenesisDomain, type JournalSegment } from "./types.ts";
 
 // Journal format 1, the format project schema 1 writes: exactly these fields on a
 // transaction, an operation of each type, and a node record. History drops fields it does
@@ -74,7 +74,45 @@ export function encodeJournalLine(entry: JournalEntry, previousDigest: string): 
   return { line, digest };
 }
 
+/** The header line that starts a journal segment. */
+export function encodeSegmentHeader(segment: JournalSegment): string {
+  return `${canonicalJson({ segment: { anchor: segment.anchor, archive: [...segment.archive], baseSeq: segment.baseSeq } })}\n`;
+}
+
+const DIGEST = /^[0-9a-f]{64}$/u;
+
+/** Decode a segment header line, or null when `line` is not one (it is then an entry). */
+function readSegmentHeader(line: string): JournalSegment | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || !Object.hasOwn(parsed, "segment")) return null;
+  const segment = parsed.segment;
+  if (
+    Object.keys(parsed).length !== 1
+    || !isRecord(segment)
+    || !Number.isSafeInteger(segment.baseSeq)
+    || (segment.baseSeq as number) < 1
+    || typeof segment.anchor !== "string"
+    || !DIGEST.test(segment.anchor)
+    || !Array.isArray(segment.archive)
+    || segment.archive.length === 0
+    || segment.archive.length > Math.ceil(PERSISTENCE_LIMITS.maxJournalBytes / PERSISTENCE_LIMITS.archivePieceBytes)
+    || !segment.archive.every((digest) => typeof digest === "string" && DIGEST.test(digest))
+  ) {
+    throw new PersistenceCorruptionError("journal segment header is malformed");
+  }
+  const header: JournalSegment = { baseSeq: segment.baseSeq as number, anchor: segment.anchor, archive: segment.archive as string[] };
+  if (`${line}\n` !== encodeSegmentHeader(header)) throw new PersistenceCorruptionError("journal segment header is not in canonical form");
+  return header;
+}
+
 export interface ParsedJournal {
+  /** The segment this journal continues, or null for a journal that starts at the genesis. */
+  segment: JournalSegment | null;
   entries: Array<{ entry: JournalEntry; digest: string }>;
   tornTailBytes: number;
   validBytes: number;
@@ -122,6 +160,8 @@ function verifyLine(line: string, expectedSeq: number, previous: string, label: 
  * is acknowledged only after fsync covers both, so an unterminated final line can only be
  * an unacknowledged write interrupted by a crash: it is a torn tail, reported and removed,
  * even when its bytes happen to form a complete entry. Every other defect is corruption.
+ * A journal may start with a segment header (#258); its entries then chain from the header's
+ * anchor and are numbered on from its base.
  */
 export function parseJournal(bytes: Buffer, genesis: string): ParsedJournal {
   // Split on the last newline byte before decoding, so a tail torn inside a multi-byte
@@ -135,15 +175,23 @@ export function parseJournal(bytes: Buffer, genesis: string): ParsedJournal {
     throw new PersistenceCorruptionError("journal is not valid UTF-8");
   }
   const lines = complete === "" ? [] : complete.slice(0, -1).split("\n");
-  if (lines.length > PERSISTENCE_LIMITS.maxReplayEntries) {
+  if (lines.length > PERSISTENCE_LIMITS.maxReplayEntries + 1) {
     throw new PersistenceCorruptionError(`journal exceeds ${PERSISTENCE_LIMITS.maxReplayEntries} entries`);
   }
   const entries: ParsedJournal["entries"] = [];
-  let previous = genesis;
+  const segment = lines.length > 0 ? readSegmentHeader(lines[0]) : null;
+  // The header is not an entry: a segment of exactly the limit is what commit allows.
+  if (lines.length - (segment === null ? 0 : 1) > PERSISTENCE_LIMITS.maxReplayEntries) {
+    throw new PersistenceCorruptionError(`journal exceeds ${PERSISTENCE_LIMITS.maxReplayEntries} entries`);
+  }
+  const base = segment?.baseSeq ?? 0;
+  let previous = segment?.anchor ?? genesis;
   for (const [index, line] of lines.entries()) {
-    const verified = verifyLine(line, index + 1, previous, `journal line ${index + 1}`);
+    if (segment !== null && index === 0) continue;
+    const offset = segment === null ? index + 1 : index;
+    const verified = verifyLine(line, base + offset, previous, `journal line ${index + 1}`);
     entries.push(verified);
     previous = verified.digest;
   }
-  return { entries, tornTailBytes, validBytes };
+  return { segment, entries, tornTailBytes, validBytes };
 }

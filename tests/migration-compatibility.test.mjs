@@ -19,14 +19,20 @@ import {
 } from "../packages/persistence/src/index.ts";
 import { DocumentInvariantError, createDocument, validateDocument } from "../packages/document-model/src/index.mjs";
 import { TransactionError, applyTransaction } from "../packages/history/src/index.mjs";
-import { GOLDEN_AT, writeGoldenProject } from "./support/golden-project.mjs";
+import { GOLDEN_AT, writeGoldenProject, writeSegmentedGoldenProject } from "./support/golden-project.mjs";
 
-// P06 gate 11: version compatibility. A project written by this release (schema 2, journal
+// P06 gate 11: version compatibility. A project written by this release (schema 3, journal
 // format 1) must keep reopening byte-stably, and anything from another schema or format must
 // be refused as a version problem rather than replayed with its meaning lost or reported as
-// corruption.
+// corruption. v3-segments is the same history with its journal in segments (#258); v2-basic is
+// the frozen schema-2 corpus.
 
-const GOLDEN = fileURLToPath(new URL("./fixtures/projects/v2-basic/", import.meta.url));
+const GOLDEN = fileURLToPath(new URL("./fixtures/projects/v3-basic/", import.meta.url));
+const SEGMENTED = fileURLToPath(new URL("./fixtures/projects/v3-segments/", import.meta.url));
+const SCHEMA_2 = fileURLToPath(new URL("./fixtures/projects/v2-basic/", import.meta.url));
+// SHA-256 of the schema-2 corpus as tree() reads it, with "/" between path parts (relative path to
+// base64 bytes, in path order).
+const SCHEMA_2_SHA256 = "ae257ed12272c97939fb17f6009b5cce7f09f0b1d013b14e20ee8c74c7dc0634";
 
 function tempRoot() {
   return realpathSync(mkdtempSync(join(tmpdir(), "ninerr-compat-")));
@@ -45,14 +51,26 @@ function tree(root) {
   return out;
 }
 
-function withGolden(callback) {
+function withGolden(callback, fixture = GOLDEN) {
   const root = tempRoot();
   try {
-    cpSync(GOLDEN, root, { recursive: true });
+    cpSync(fixture, root, { recursive: true });
     return callback(root);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+}
+
+/** The golden document at revision 5, as every fixture of this history opens to it. */
+function assertGoldenDocument(store) {
+  assert.equal(store.revision, 5);
+  assert.equal(store.document.id, "doc-golden");
+  assert.deepEqual(store.document.nodes["frame-1"].children, ["text-1", "card"]);
+  assert.deepEqual(store.document.nodes.card.metadata, { sourceBinding: { file: "card.html" } });
+  assert.equal(store.document.nodes["card-title"].props.text, "Card");
+  assert.equal(store.document.nodes["frame-1"].props.title, "Plans");
+  assert.equal(store.document.nodes["text-1"].props.text, "Hi");
+  assert.equal(store.document.nodes["text-2"], undefined);
 }
 
 const file = (root, name) => join(root, PROJECT_FILES.directory, name);
@@ -93,15 +111,8 @@ function refused(root, ErrorType, pattern) {
 test("the golden project of this release reopens to its recorded state and close leaves it byte-identical", () => withGolden((root) => {
   const before = tree(root);
   const store = open(root);
-  assert.equal(store.revision, 5);
   assert.deepEqual(store.recovery, { tornTailBytes: 0, staleTemporaryFiles: 0, replayedEntries: 3, migratedFrom: null, lockOverride: null });
-  assert.equal(store.document.id, "doc-golden");
-  assert.deepEqual(store.document.nodes["frame-1"].children, ["text-1", "card"]);
-  assert.deepEqual(store.document.nodes.card.metadata, { sourceBinding: { file: "card.html" } });
-  assert.equal(store.document.nodes["card-title"].props.text, "Card");
-  assert.equal(store.document.nodes["frame-1"].props.title, "Plans");
-  assert.equal(store.document.nodes["text-1"].props.text, "Hi");
-  assert.equal(store.document.nodes["text-2"], undefined);
+  assertGoldenDocument(store);
   store.close();
   assert.deepEqual(tree(root), before, "opening and closing a current project rewrites nothing");
 
@@ -114,15 +125,17 @@ test("the golden project of this release reopens to its recorded state and close
   reopened.close();
 }));
 
-test("this release writes the golden fixture byte-for-byte, so the format has not drifted", () => {
-  const root = tempRoot();
-  try {
-    writeGoldenProject(root);
-    assert.deepEqual(tree(root), tree(GOLDEN));
-  } finally {
-    rmSync(root, { recursive: true, force: true });
+test("this release writes the golden fixtures byte-for-byte, so the format has not drifted", () => {
+  for (const [write, fixture] of [[writeGoldenProject, GOLDEN], [writeSegmentedGoldenProject, SEGMENTED]]) {
+    const root = tempRoot();
+    try {
+      write(root);
+      assert.deepEqual(tree(root), tree(fixture));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   }
-  for (const [path, bytes] of Object.entries(tree(GOLDEN))) {
+  for (const [path, bytes] of [...Object.entries(tree(GOLDEN)), ...Object.entries(tree(SEGMENTED))]) {
     if (!path.startsWith(join(PROJECT_FILES.directory, PROJECT_FILES.objects))) continue;
     const name = path.split(/[\\/]/).slice(-2).join("");
     assert.equal(createHash("sha256").update(Buffer.from(bytes, "base64")).digest("hex"), name, `${path} is content-addressed`);
@@ -135,10 +148,51 @@ test("the genesis digest needs a known domain, also from JavaScript", () => {
   assert.match(genesisDigest("p", "ninerr-journal-genesis"), /^[0-9a-f]{64}$/u);
 });
 
-test("project manifest versions: only schema 2 opens unless a registered step migrates it", () => {
-  assert.equal(PROJECT_SCHEMA_VERSION, 2);
+test("the segmented golden opens to the same document, and its archives hold the whole history (#258)", () => withGolden((root) => {
+  const before = tree(root);
+  const store = open(root);
+  assert.deepEqual(store.recovery, { tornTailBytes: 0, staleTemporaryFiles: 0, replayedEntries: 3, migratedFrom: null, lockOverride: null });
+  assertGoldenDocument(store);
+  // Follow the archives back to the genesis: every entry, in order, chained without a gap.
+  const manifest = readJson(root, PROJECT_FILES.manifest);
+  let lines = readFileSync(file(root, PROJECT_FILES.journal), "utf8").split("\n").filter(Boolean);
+  const seen = [];
+  for (;;) {
+    const first = JSON.parse(lines[0]);
+    const rest = first.segment === undefined ? lines : lines.slice(1);
+    seen.unshift(...rest.map((line) => JSON.parse(line).entry.seq));
+    if (first.segment === undefined) {
+      assert.equal(encodeJournalLine(JSON.parse(lines[0]).entry, genesisDigest(manifest.projectId, manifest.journalGenesis)).digest, first.digest, "the first archive chains from the genesis");
+      break;
+    }
+    const archived = Buffer.concat(first.segment.archive.map((digest) => store.getObject(digest))).toString("utf8").split("\n").filter(Boolean);
+    assert.equal(JSON.parse(archived.at(-1)).digest, first.segment.anchor, "a segment's anchor is the last digest of its archive");
+    assert.equal(JSON.parse(archived.at(-1)).entry.seq, first.segment.baseSeq);
+    lines = archived;
+  }
+  assert.deepEqual(seen, [1, 2, 3, 4, 5]);
+  store.close();
+  assert.deepEqual(tree(root), before, "opening and closing a current project rewrites nothing");
+}, SEGMENTED));
+
+test("the schema-2 golden is frozen, and opens migrated to schema 3 with its journal as it was", () => {
+  const frozen = Object.fromEntries(Object.entries(tree(SCHEMA_2)).map(([path, bytes]) => [path.split("\\").join("/"), bytes]));
+  assert.equal(createHash("sha256").update(JSON.stringify(frozen)).digest("hex"), SCHEMA_2_SHA256, "tests/fixtures/projects/v2-basic is frozen; never regenerate it");
+  withGolden((root) => {
+    const journal = readFileSync(file(root, PROJECT_FILES.journal));
+    const store = open(root);
+    assert.equal(store.recovery.migratedFrom, 2);
+    assertGoldenDocument(store);
+    store.close();
+    assert.equal(readJson(root, PROJECT_FILES.manifest).schemaVersion, 3);
+    assert.deepEqual(readFileSync(file(root, PROJECT_FILES.journal)), journal, "migration does not touch the journal");
+  }, SCHEMA_2);
+});
+
+test("project manifest versions: only schema 3 opens unless a registered step migrates it", () => {
+  assert.equal(PROJECT_SCHEMA_VERSION, 3);
   const cases = [
-    [3, /project schema 3 is newer than supported schema 2/],
+    [4, /project schema 4 is newer than supported schema 3/],
     [99, /newer than supported/],
     [0, /no migration from project schema 0/],
     [-1, /not a non-negative integer/],

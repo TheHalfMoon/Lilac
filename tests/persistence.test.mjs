@@ -280,8 +280,14 @@ test("mid-journal corruption, chain breaks, and bad objects or manifests fail cl
 test("schema versions: newer is refused, and older ones need a step that yields their real format", () => withProject((root) => {
   const manifestPath = file(root, PROJECT_FILES.manifest);
   const current = JSON.parse(readFileSync(manifestPath, "utf8"));
-  writeFileSync(manifestPath, JSON.stringify({ ...current, schemaVersion: 3 }));
+  writeFileSync(manifestPath, JSON.stringify({ ...current, schemaVersion: 4 }));
   assert.throws(() => open(root), PersistenceVersionError);
+  // Schema 2 becomes 3 as it stands (#258): its journal has no segment header.
+  writeFileSync(manifestPath, JSON.stringify({ ...current, schemaVersion: 2 }));
+  const upgraded = open(root);
+  assert.equal(upgraded.recovery.migratedFrom, 2);
+  upgraded.close();
+  assert.equal(JSON.parse(readFileSync(manifestPath, "utf8")).schemaVersion, 3);
 
   writeFileSync(manifestPath, JSON.stringify({ ...current, schemaVersion: 0 }));
   assert.throws(() => open(root), /no migration from project schema 0/);
@@ -631,4 +637,187 @@ test("metadata-only journal changes do not refuse commits", () => withProject((r
   const reopened = open(root);
   assert.equal(reopened.revision, 2);
   reopened.close();
+}));
+
+// #258: the journal in segments. A checkpoint past the segment size archives the journal as
+// objects and starts a new segment after the snapshot's entry, so an append and an open read
+// only the work since then, and no project grows into its journal limits.
+
+const lines = (root) => readFileSync(file(root, PROJECT_FILES.journal), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+
+test("a commit past the segment size checkpoints and starts a new segment; reopening is exact (#258)", () => withProject((root) => {
+  const store = open(root, { rotateJournalAt: 2048 });
+  const sizes = [];
+  for (let revision = 0; revision < 40; revision += 1) {
+    store.commit(setTitle(`tx-${revision + 1}`, revision, `Title ${revision + 1}`));
+    sizes.push(readFileSync(file(root, PROJECT_FILES.journal)).length);
+  }
+  // The journal never holds much more than one segment: the size, plus the entry that passed it.
+  assert.ok(Math.max(...sizes) < 2048 + 1024, `largest journal ${Math.max(...sizes)} bytes`);
+  const [header, ...entries] = lines(root);
+  assert.ok(header.segment.baseSeq > 0 && header.segment.baseSeq <= 40);
+  assert.deepEqual(entries.map((line) => line.entry.seq), Array.from({ length: 40 - header.segment.baseSeq }, (_, index) => header.segment.baseSeq + index + 1));
+  // The snapshot stood at the segment's start when it began.
+  const snapshot = JSON.parse(readFileSync(file(root, PROJECT_FILES.snapshot), "utf8"));
+  assert.ok(snapshot.journalSeq >= header.segment.baseSeq);
+  // The archive is the previous segment, ending at the anchor.
+  const archived = Buffer.concat(header.segment.archive.map((digest) => store.getObject(digest))).toString("utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  assert.deepEqual([archived.at(-1).entry.seq, archived.at(-1).digest], [header.segment.baseSeq, header.segment.anchor]);
+  // Following the archives leads back to the genesis through every segment: entries 1 to 40, once each.
+  const seqs = entries.map((line) => line.entry.seq);
+  let segment = header.segment;
+  let segments = 1;
+  while (segment !== undefined) {
+    const lines = Buffer.concat(segment.archive.map((digest) => store.getObject(digest))).toString("utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    segment = lines[0].segment;
+    seqs.unshift(...lines.filter((line) => line.segment === undefined).map((line) => line.entry.seq));
+    segments += 1;
+  }
+  assert.deepEqual(seqs, Array.from({ length: 40 }, (_, index) => index + 1));
+  assert.ok(segments > 2, `${segments} segments`);
+  const document = store.document;
+  store.close();
+  const reopened = open(root);
+  assert.deepEqual([reopened.revision, reopened.recovery.replayedEntries], [40, 0]);
+  assert.deepEqual(reopened.document, document);
+  // The chain goes on from the segment.
+  reopened.commit(setTitle("tx-41", 40, "After"));
+  reopened.close();
+  assert.equal(open(root).document.nodes["node-1"].props.title, "After");
+}));
+
+test("after a crash inside a segment, the entries since its start replay (#258)", () => withProject((root) => {
+  const store = open(root, { rotateJournalAt: 1 });
+  store.commit(setTitle("tx-1", 0, "One"));
+  // rotateJournalAt 1: every commit checkpoints, so turn rotation off for the rest by reopening.
+  store.close();
+  const writer = open(root);
+  writer.commit(setTitle("tx-2", 1, "Two"));
+  writer.commit(setTitle("tx-3", 2, "Three"));
+  // A crash: the lock is left behind and nothing is checkpointed.
+  const [header] = lines(root);
+  assert.equal(header.segment.baseSeq, 1);
+  const recovered = open(root, { owner: "writer-2", breakStaleLock: { reason: "the writer crashed" } });
+  assert.deepEqual([recovered.revision, recovered.recovery.replayedEntries, recovered.document.nodes["node-1"].props.title], [3, 2, "Three"]);
+  recovered.close();
+}));
+
+test("a damaged segment, or a snapshot outside it, is refused and changes nothing (#258)", () => {
+  const rotated = (callback) => withProject((root) => {
+    const store = open(root, { rotateJournalAt: 1 });
+    store.commit(setTitle("tx-1", 0, "One"));
+    store.commit(setTitle("tx-2", 1, "Two"));
+    store.close();
+    return callback(root);
+  });
+  const refuses = (root, pattern) => {
+    const before = readdirSync(join(root, PROJECT_FILES.directory)).sort();
+    const journal = readFileSync(file(root, PROJECT_FILES.journal));
+    assert.throws(() => open(root), (error) => error instanceof PersistenceCorruptionError && pattern.test(error.message), String(pattern));
+    assert.deepEqual(readdirSync(join(root, PROJECT_FILES.directory)).sort(), before);
+    assert.deepEqual(readFileSync(file(root, PROJECT_FILES.journal)), journal);
+  };
+  const rewriteHeader = (root, edit) => {
+    const [header, ...rest] = readFileSync(file(root, PROJECT_FILES.journal), "utf8").split("\n");
+    writeFileSync(file(root, PROJECT_FILES.journal), [edit(header), ...rest].join("\n"));
+  };
+  // A header that moves the segment or its anchor no longer chains to its entries.
+  rotated((root) => {
+    rewriteHeader(root, (header) => header.replace(/"baseSeq":2/u, '"baseSeq":1'));
+    refuses(root, /snapshot reference points past the end of the journal|hash chain|invalid sequence/u);
+  });
+  rotated((root) => {
+    rewriteHeader(root, (header) => header.replace(/"anchor":"[0-9a-f]/u, (match) => `${match.slice(0, -1)}${match.endsWith("0") ? "1" : "0"}`));
+    refuses(root, /does not match the journal chain/u);
+  });
+  // Not canonical, or malformed.
+  rotated((root) => {
+    rewriteHeader(root, (header) => header.replace('{"segment":', '{ "segment":'));
+    refuses(root, /segment header is not in canonical form/u);
+  });
+  rotated((root) => {
+    rewriteHeader(root, (header) => header.replace(/"archive":\[[^\]]*\]/u, '"archive":[]'));
+    refuses(root, /segment header is malformed/u);
+  });
+  // A snapshot from before the segment.
+  rotated((root) => {
+    const snapshot = JSON.parse(readFileSync(file(root, PROJECT_FILES.snapshot), "utf8"));
+    writeFileSync(file(root, PROJECT_FILES.snapshot), JSON.stringify({ ...snapshot, journalSeq: 1 }));
+    refuses(root, /snapshot reference points before the journal segment/u);
+  });
+  // A segment header in a project of schema 2, which had none.
+  rotated((root) => {
+    const manifest = JSON.parse(readFileSync(file(root, PROJECT_FILES.manifest), "utf8"));
+    writeFileSync(file(root, PROJECT_FILES.manifest), JSON.stringify({ ...manifest, schemaVersion: 2 }));
+    refuses(root, /segment header, which project schema 2 does not have/u);
+  });
+});
+
+test("when a segment cannot start, the project stays as it is, and the next try waits for another segment of growth (#258)", () => withProject((root) => {
+  const objects = () => readdirSync(join(root, PROJECT_FILES.directory, PROJECT_FILES.objects), { recursive: true }).filter((name) => /[0-9a-f]{62}$/u.test(name)).length;
+  const store = open(root, { rotateJournalAt: 2048 });
+  // A snapshot reference that cannot be replaced (here a folder in its place) fails every checkpoint.
+  const snapshotPath = file(root, PROJECT_FILES.snapshot);
+  const snapshot = readFileSync(snapshotPath);
+  unlinkSync(snapshotPath);
+  mkdirSync(snapshotPath);
+  const before = objects();
+  for (let revision = 0; revision < 60; revision += 1) store.commit(setTitle(`tx-${revision + 1}`, revision, `Title ${revision + 1}`));
+  const journal = readFileSync(file(root, PROJECT_FILES.journal)).length;
+  // Each failed try stores the document once; tries come once per 2 KiB of journal, not per commit.
+  assert.ok(objects() - before <= Math.ceil(journal / 2048), `${objects() - before} objects for a ${journal}-byte journal`);
+  assert.ok(!readFileSync(file(root, PROJECT_FILES.journal), "utf8").startsWith('{"segment"'), "no segment started");
+  // Once the cause is gone, the next try after another segment of growth starts one.
+  rmSync(snapshotPath, { recursive: true });
+  writeFileSync(snapshotPath, snapshot);
+  for (let revision = 60; revision < 90; revision += 1) store.commit(setTitle(`tx-${revision + 1}`, revision, `Title ${revision + 1}`));
+  assert.ok(readFileSync(file(root, PROJECT_FILES.journal), "utf8").startsWith('{"segment"'), "a segment started");
+  store.close();
+  const reopened = open(root);
+  assert.deepEqual([reopened.revision, reopened.document.nodes["node-1"].props.title], [90, "Title 90"]);
+  reopened.close();
+}));
+
+test("a document larger than the journal does not make every commit checkpoint (#258)", () => {
+  const root = tempRoot();
+  try {
+    // A 100 KB document, and commits that each add 1 KB to it: the document stays ahead of the journal.
+    const nodes = [{ id: "root", type: "frame", children: Array.from({ length: 100 }, (_, index) => `big-${index}`), props: {} }, ...Array.from({ length: 100 }, (_, index) => ({ id: `big-${index}`, type: "text", parentId: "root", props: { text: "x".repeat(1000) } }))];
+    createProject(root, { projectId: "proj-1", document: createDocument({ id: "doc-1", nodes }), createdAt: AT });
+    const objects = () => readdirSync(join(root, PROJECT_FILES.directory, PROJECT_FILES.objects), { recursive: true }).filter((name) => /[0-9a-f]{62}$/u.test(name)).length;
+    const before = objects();
+    const store = open(root, { rotateJournalAt: 2048 });
+    for (let revision = 0; revision < 200; revision += 1) {
+      store.commit({ id: `tx-${revision + 1}`, actor: "user-1", baseRevision: revision, operations: [{ type: "insert-node", node: { id: `n-${revision}`, type: "text", props: { text: "y".repeat(1000) } }, parentId: "root" }] });
+    }
+    const journal = readFileSync(file(root, PROJECT_FILES.journal)).length;
+    // A try stores the document; tries come once per segment of growth, not once per commit.
+    assert.ok(objects() - before <= 4, `${objects() - before} objects for a ${journal}-byte journal`);
+    store.close();
+    assert.equal(open(root).revision, 200);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a journal cut back to its segment header, with the snapshot past it, is refused (#239, #258)", () => withProject((root) => {
+  const store = open(root, { rotateJournalAt: 1 });
+  store.commit(setTitle("tx-1", 0, "One"));
+  store.close();
+  const writer = open(root);
+  writer.commit(setTitle("tx-2", 1, "Two"));
+  writer.commit(setTitle("tx-3", 2, "Three"));
+  writer.close();
+  const [header] = readFileSync(file(root, PROJECT_FILES.journal), "utf8").split("\n");
+  assert.ok(header.startsWith('{"segment"'));
+  // A clean close stood the snapshot at tx-3; a journal cut back to the header lost tx-2 and tx-3.
+  writeFileSync(file(root, PROJECT_FILES.journal), `${header}\n`);
+  assert.throws(() => open(root), (error) => error instanceof PersistenceCorruptionError && /points past the end of the journal/u.test(error.message));
+}));
+
+test("the segment size is a whole number of bytes, checked before anything is written (#258)", () => withProject((root) => {
+  for (const rotateJournalAt of [0, -1, 1.5, "1", PERSISTENCE_LIMITS.maxJournalBytes - PERSISTENCE_LIMITS.maxEntryBytes + 1]) {
+    assert.throws(() => open(root, { rotateJournalAt }), PersistenceValidationError);
+    assert.equal(existsSync(file(root, PROJECT_FILES.lock)), false);
+  }
 }));

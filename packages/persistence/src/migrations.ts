@@ -11,6 +11,10 @@ export type ManifestMigration = (manifest: Record<string, unknown>) => Record<st
  *
  * 1 -> 2: the product became Ninerr. The manifest takes the Ninerr format and records the
  * genesis domain its journal was chained from, so the existing chain keeps verifying.
+ *
+ * 2 -> 3: the journal may start with a segment header (#258). A schema-2 journal has none and
+ * is a valid schema-3 journal as it stands; the manifest changes only its version, so that a
+ * release that cannot read segment headers refuses the project as newer instead of misreading it.
  */
 export const PROJECT_MIGRATIONS: Readonly<Record<number, ManifestMigration>> = Object.freeze({
   1: (manifest: Record<string, unknown>) => {
@@ -18,6 +22,10 @@ export const PROJECT_MIGRATIONS: Readonly<Record<number, ManifestMigration>> = O
     // Schema 1 never had this field; one that claims it is damage, and is never overwritten.
     if (Object.hasOwn(manifest, "journalGenesis")) throw new PersistenceCorruptionError("a schema-1 manifest must not record a journal genesis");
     return { ...manifest, format: PROJECT_FORMAT, journalGenesis: LEGACY_JOURNAL_GENESIS };
+  },
+  2: (manifest: Record<string, unknown>) => {
+    if (manifest.format !== PROJECT_FORMAT) throw new PersistenceCorruptionError("a schema-2 manifest must have the Ninerr project format");
+    return manifest;
   },
 });
 
