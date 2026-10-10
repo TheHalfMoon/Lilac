@@ -146,12 +146,16 @@ test("hostile neighbours get nothing from a running Ninerr: a foreign page, a re
     const results = await evil.evaluate(() => window.results);
     for (const name of ["read session", "read projects", "read via localhost"]) assert.match(String(results[name]), /^refused/u, `${name}: ${results[name]}`);
     assert.equal(results.events, "refused");
-    // The form's post is a navigation of the sink frame: wait until Ninerr has answered it.
-    for (let tries = 0; tries < 100 && !answered.some((entry) => entry.path === "/api/projects/create" && entry.method === "POST" && answered.filter((other) => other.path === entry.path).length >= 2); tries += 1) await new Promise((resolve) => setTimeout(resolve, 100));
     // Ninerr itself refused every one, at its Origin check: not the browser, not a media type.
     const expected = ["GET /api/session", "GET /api/projects", "POST /api/undo", "POST /api/projects/close", "POST /api/checkpoint", "POST /api/projects/create", "POST /mcp", "GET /api/events"];
-    for (const request of expected) assert.ok(answered.some((entry) => `${entry.method} ${entry.path}` === request), `${request} reached Ninerr: ${JSON.stringify(answered)}`);
-    assert.equal(answered.filter((entry) => entry.path === "/api/projects/create").length, 2, "both the fetch and the form post reached Ninerr");
+    const seen = (request) => answered.some((entry) => `${entry.method} ${entry.path}` === request);
+    const creates = () => answered.filter((entry) => entry.path === "/api/projects/create").length;
+    // The page learns of a CORS refusal before Chromium reports the answer behind it, and the
+    // form's post is a later navigation of the sink frame: wait, up to 10 s, until Ninerr's
+    // answer to every one has been recorded.
+    for (let tries = 0; tries < 100 && !(expected.every(seen) && creates() >= 2); tries += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+    for (const request of expected) assert.ok(seen(request), `${request} reached Ninerr: ${JSON.stringify(answered)}`);
+    assert.equal(creates(), 2, "both the fetch and the form post reached Ninerr");
     assert.deepEqual(answered.filter((entry) => entry.status !== 403), [], "every request from the foreign page was refused for its origin (403)");
 
     // 2. A used launch link, from shell history say, opens nothing: Ninerr refuses the ticket.
