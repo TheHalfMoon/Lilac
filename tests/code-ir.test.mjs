@@ -121,6 +121,8 @@ test("a component is bound to the element it returns (P08-G11)", () => {
 }
 export const Badge = forwardRef((props, ref) => <b ref="r">badge</b>);
 export const Tag = React.memo(function Tag() { return <i>tag</i>; });
+export const Either = () => <em>either</em> || null;
+export default memo(function Wrapped() { return <u>wrapped</u>; });
 `;
   const ir = buildCodeIr([{ path: "Card.jsx", content: source }]);
   const rendered = (name) => {
@@ -130,6 +132,9 @@ export const Tag = React.memo(function Tag() { return <i>tag</i>; });
   assert.equal(rendered("Card"), "div");
   assert.equal(rendered("Badge"), "b");
   assert.equal(rendered("Tag"), "i");
+  assert.equal(rendered("Wrapped"), "u", "export default memo(function Wrapped …)");
+  // It returns an expression that starts with an element, not the element.
+  assert.equal(rendered("Either"), undefined);
 });
 
 test("CSS subset parses flat rules and reports at-rules", () => {
@@ -248,8 +253,9 @@ test("bounds and malformed inputs fail closed", () => {
   assert.throws(() => buildCodeIr([]), CodeIrUnsupportedError);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "" }]), CodeIrValidationError);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "x".repeat(300 * 1024) }]), /maxSourceBytes/u);
-  // Every token is at least one character, so the token budget covers any source the size limit lets through.
-  assert.ok(CODE_IR_HARD_LIMITS.maxTokens >= CODE_IR_HARD_LIMITS.maxSourceBytes);
+  // A tag name as long as the source allows (a member chain, read in a loop) is refused, not a stack overflow.
+  const chain = `const x = <${Array.from({ length: 20_000 }, () => "a").join(".")} />;`;
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: chain }]), (error) => error instanceof CodeIrValidationError && /JSX tag name longer than 256 characters/u.test(error.message));
   assert.throws(() => parseJsxFile("E.jsx", "<div>" + "b".repeat(5000) + "</div>"), /exceeds 4096/u);
   assert.equal(Object.keys(buildCodeIr([{ path: "E.jsx", content: "<i />;".repeat(CODE_IR_HARD_LIMITS.maxSymbols) }]).symbols).length, CODE_IR_HARD_LIMITS.maxSymbols);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<i />;".repeat(CODE_IR_HARD_LIMITS.maxSymbols + 1) }]), /maxSymbols/u);

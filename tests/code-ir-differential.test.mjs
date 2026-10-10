@@ -161,7 +161,7 @@ test("an element inside another is never promoted to a root", () => {
   }
 });
 
-test("component binding stays fast on unclosed parameter lists", () => {
+test("an unclosed parameter list is refused promptly", () => {
   const source = `${"const A=(".repeat(1500)}${"x".repeat(200_000)}\n<p>ok</p>`;
   const started = performance.now();
   assert.throws(() => buildCodeIr([{ path: "B.jsx", content: source }]), /could not be parsed/u);
