@@ -91,7 +91,6 @@ function measureModel(nodeCount) {
 const MODEL_BUDGETS_50K = { validate: 500, serialize: 1500, parse: 3000, commit: 2000, undo: 2000, redo: 2000 };
 
 test("model and history operations on 50k nodes stay within budget and scale linearly", () => {
-  const small = measureModel(10_000);
   const large = measureModel(50_000);
   for (const [name, budget] of Object.entries(MODEL_BUDGETS_50K)) {
     assert.ok(large[name] <= budget, `${name} on 50k nodes took ${large[name].toFixed(0)} ms; budget ${budget} ms`);
@@ -102,7 +101,7 @@ test("model and history operations on 50k nodes stay within budget and scale lin
     // 5x the nodes; linear work stays near 5x (commit runs 7.6x to 9.0x), quadratic work would be
     // near 25x. A limit of 15: at 10 the guard failed now and then on linear work (10.3x to 13.0x
     // on macOS CI and in full local runs, #269). It catches a quadratic part about as large as
-    // the linear one at 10k nodes (an injected one measured 16.1x); a smaller one is left to the
+    // the linear one at 10k nodes (an injected one measured 15.4x per call); a smaller one is left to the
     // absolute budgets above, which that injected one also broke.
     // The 20 ms floor, on a four-call sample (5 ms a call), keeps a GC pause in a very fast 10k
     // run from tripping the guard.
