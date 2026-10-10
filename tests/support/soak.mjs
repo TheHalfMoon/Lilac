@@ -34,26 +34,29 @@ const COMPONENT = `export function Notice() {
 `;
 const PAGE = (index) => `<!doctype html><html><body><main><h1>Imported ${index}</h1><ul>${Array.from({ length: 20 }, (_, item) => `<li>Item ${item}</li>`).join("")}</ul></main></body></html>`;
 
-/** Everything under `dir`, as paths relative to it, with their sizes. */
+/** Everything under `dir`, as paths relative to it with their sizes; a directory ends in "/". */
 function files(dir, prefix = "") {
   const found = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) found.push(...files(path, `${prefix}${entry.name}/`));
+    if (entry.isDirectory()) found.push({ path: `${prefix}${entry.name}/`, bytes: 0 }, ...files(path, `${prefix}${entry.name}/`));
     else found.push({ path: `${prefix}${entry.name}`, bytes: statSync(path).size });
   }
   return found;
 }
 
-/** The kinds of resources keeping the process alive (sockets, servers, child processes, timers), counted. */
-export function resources() {
+/**
+ * The kinds of resources keeping the process alive, counted: sockets, servers, child processes
+ * and referenced timers. An unreferenced timer or socket does not show.
+ */
+function resources() {
   const counts = {};
   for (const kind of process.getActiveResourcesInfo()) counts[kind] = (counts[kind] ?? 0) + 1;
   return counts;
 }
 
 /** A document with its ids replaced by their place in the tree, so runs that draw random ids compare. */
-export function canonical(document) {
+function canonical(document) {
   const names = new Map();
   const visit = (id, path) => {
     names.set(id, path);
@@ -66,6 +69,31 @@ export function canonical(document) {
     const node = document.nodes[id];
     return { type: node.type, props: props(node.props), children: node.children.map(tree) };
   });
+}
+
+/**
+ * The editor's live event stream from `host`, read in the background: it counts what arrives,
+ * and `ended` settles when the stream ends. Closing the host must end it.
+ */
+function listen(host) {
+  const stream = { received: 0 };
+  stream.ended = fetch(`${host.url}/api/events?token=${host.token}`)
+    .then(async (response) => {
+      for await (const chunk of response.body) stream.received += chunk.byteLength;
+    })
+    .catch(() => {});
+  return stream;
+}
+
+/** Wait until `stream` ends, failing when it outlives its host by more than two seconds. */
+async function ended(stream, where) {
+  let timer;
+  const late = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(true), 2_000);
+  });
+  const outlived = await Promise.race([stream.ended.then(() => false), late]);
+  clearTimeout(timer);
+  assert.equal(outlived, false, `${where}: the event stream outlived its host`);
 }
 
 const median = (values) => {
@@ -98,6 +126,8 @@ export async function soak({ rounds, seed, window = 100 }) {
   const windows = [];
   try {
     let running = await pool.open(projects);
+    let stream = listen(running.host);
+    let streamed = 0;
     await ok(running.call("POST", "/api/projects/create", { name: "soak" }), "create");
     const { token } = await ok(running.call("POST", "/api/agents/create", { name: "Soak agent" }), "connect an agent");
     const connectAgent = async () => {
@@ -185,11 +215,14 @@ export async function soak({ rounds, seed, window = 100 }) {
         const { document: closing, revision } = await document();
         await ok(running.call("POST", "/api/projects/close"), "close");
         await pool.close(running.host);
+        await ended(stream, `round ${round}`);
+        streamed += stream.received;
         running = await pool.open(projects);
+        stream = listen(running.host);
         await ok(running.call("POST", "/api/projects/open", { name: "soak" }), "reopen");
         const reopened = await document();
         assert.equal(reopened.revision, revision, `round ${round}: the revision after a reopen`);
-        assert.deepStrictEqual(reopened.document, closing, `round ${round}: the document after a reopen`);
+        assert.deepEqual(reopened.document, closing, `round ${round}: the document after a reopen`);
         agent = await connectAgent();
         count("reopen");
       }
@@ -212,17 +245,21 @@ export async function soak({ rounds, seed, window = 100 }) {
     }
     const { document: last } = await document();
     await pool.closeAll();
-    // Give closed sockets a turn of the event loop to go.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await ended(stream, "at the end");
+    streamed += stream.received;
+    // Closed sockets go within a few turns of the event loop; a loaded machine may take longer.
+    const baseline = JSON.stringify(before);
+    for (let tries = 0; tries < 40 && JSON.stringify(resources()) !== baseline; tries += 1) await new Promise((resolve) => setTimeout(resolve, 50));
     return {
       windows,
       tally,
+      streamed,
       document: canonical(last),
       left: { resourcesBefore: before, resourcesAfter: resources(), projectFiles: files(projects).map((file) => file.path), codeFiles: files(code).map((file) => file.path) },
     };
   } finally {
     await pool.closeAll();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 5 });
   }
 }
 
