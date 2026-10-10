@@ -1,8 +1,9 @@
 name: Desktop
 
 # PC gates 15 and 17: package the Ninerr desktop app on each supported platform's own
-# runner, smoke-test the packaged app, and run the release-candidate journey through it
-# (scripts/package-desktop.mjs, scripts/smoke-desktop.mjs, scripts/journey-desktop.mjs).
+# runner, smoke-test the packaged app, and run the release-candidate journey and the
+# resilience journey through it (scripts/package-desktop.mjs, scripts/smoke-desktop.mjs,
+# scripts/journey-desktop.mjs, scripts/resilience-desktop.mjs).
 # The release workflow calls it too (P07d), so a release's archives are built and tested
 # exactly as every pull request's are.
 on:
@@ -82,6 +83,19 @@ jobs:
           done
           node scripts/journey-desktop.mjs "$archive" 2>journey.err | tee journey.json
           exit "${PIPESTATUS[0]}"
+      - name: Resilience journey through the packaged app
+        id: resilience
+        # Run even when the journey failed: what a crash does is separate evidence.
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          archive=""
+          for candidate in dist/desktop/Ninerr-${{ matrix.target }}.tar.gz dist/desktop/Ninerr-${{ matrix.target }}.zip; do
+            if [ -f "$candidate" ]; then archive="$candidate"; fi
+          done
+          node scripts/resilience-desktop.mjs "$archive" 2>resilience.err | tee resilience.json
+          exit "${PIPESTATUS[0]}"
       - name: Annotate the evidence
         if: always()
         shell: bash
@@ -103,6 +117,7 @@ jobs:
           const manifest = read("dist/desktop/Ninerr-${{ matrix.target }}.json");
           const smoke = read("smoke.json", true);
           const journey = read("journey.json", true);
+          const resilience = read("resilience.json", true);
           const fuses = manifest ? Object.entries(manifest.fuses).map(([name, on]) => `${name}=${on === "removed" ? "r" : on ? 1 : 0}`).join(",") : "none";
           console.log(`::notice title=Desktop package evidence::${escape([
             `head=${head}`,
@@ -124,9 +139,16 @@ jobs:
             `steps=${journey === null ? 0 : journey.steps.filter((item) => item.ok).length}/${journey?.total ?? 0}`,
           ].join("; "))}`);
           if (journey !== null && !journey.ok) console.log(`::error title=Release-candidate journey failure::${escape(`head=${head} target=${{ matrix.target }} ${journey.error}`)}`);
+          console.log(`::notice title=Desktop resilience evidence::${escape([
+            `head=${head}`,
+            `target=${{ matrix.target }}`,
+            `resilience=${resilience === null ? "not run" : resilience.ok ? "ok" : "failed"}`,
+            `steps=${resilience === null ? 0 : resilience.steps.filter((item) => item.ok).length}/${resilience?.total ?? 0}`,
+          ].join("; "))}`);
+          if (resilience !== null && !resilience.ok) console.log(`::error title=Desktop resilience failure::${escape(`head=${head} target=${{ matrix.target }} ${resilience.error}`)}`);
           // Job logs are not always readable: the end of a failed step's output, as an annotation.
-          for (const [file, title] of [["package.log", "Desktop package output"], ["smoke.err", "Desktop smoke errors"], ["journey.err", "Release-candidate journey errors"]]) {
-            if ((manifest !== null && file === "package.log") || (file === "smoke.err" && smoke?.ok) || (file === "journey.err" && journey?.ok)) continue;
+          for (const [file, title] of [["package.log", "Desktop package output"], ["smoke.err", "Desktop smoke errors"], ["journey.err", "Release-candidate journey errors"], ["resilience.err", "Desktop resilience errors"]]) {
+            if ((manifest !== null && file === "package.log") || (file === "smoke.err" && smoke?.ok) || (file === "journey.err" && journey?.ok) || (file === "resilience.err" && resilience?.ok)) continue;
             try {
               const text = fs.readFileSync(file, "utf8").replace(/\x1b\[[0-9;]*m/g, "");
               console.log(`::warning title=${title}::${escape(`head=${head} target=${{ matrix.target }} ${text.slice(-900)}`)}`);

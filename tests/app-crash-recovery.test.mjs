@@ -12,20 +12,18 @@ import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 // PC8 (#168): crash and recovery through the actual app. Ninerr, started as a person starts
 // it (scripts/ninerr.mjs), is killed outright (SIGKILL) while it has a project open with an
 // editor attached, and once more in the middle of a burst of edits with a torn write left
-// at the end of the journal. Started again, the editor takes over the dead session's lock
-// with a reason, reports what recovery did, and every committed change is there. Closes PC
-// gate 14.
+// at the end of the journal. Started again, the editor opens the project: the lock is the
+// stopped Ninerr's own, so it is taken over without asking (P08-G8). The editor reports what
+// recovery did, and every committed change is there. Closes PC gate 14.
 
-// A restarted editor's one console error: the 409 when it first opens the locked project
-// (and, once Ninerr is killed under it, the connections it could no longer make).
+// A restarted editor logs no console error at all: no 409, since it is not asked about the
+// stopped Ninerr's lock (P08-G8). Once Ninerr is killed under it, it logs only the
+// connections it could no longer make.
 // How a browser reports connections to a Ninerr that is gone; Windows resets the ones a killed
 // process held open (P08-G7).
 const LOST_CONNECTION = /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_INCOMPLETE_CHUNKED_ENCODING/u;
-function assertOnlyLockedConflict(errors, { killed = false } = {}) {
-  if (killed) errors = errors.filter((message) => !LOST_CONNECTION.test(message));
-  const conflicts = errors.filter((message) => /status of 409 \(Conflict\)/u.test(message));
-  assert.equal(conflicts.length, 1, errors.join(" | "));
-  assert.deepEqual(errors.filter((message) => !conflicts.includes(message)), [], "only the expected 409 (project locked) is logged");
+function assertNoErrors(errors, { killed = false } = {}) {
+  assert.deepEqual(killed ? errors.filter((message) => !LOST_CONNECTION.test(message)) : errors, [], "the editor logs no error (only lost connections once Ninerr is killed)");
 }
 
 test("Ninerr killed mid-session recovers through the editor, with every committed change", browserTestOptions(), async () => {
@@ -62,16 +60,15 @@ test("Ninerr killed mid-session recovers through the editor, with every committe
     assert.deepEqual(tab.errors.filter((message) => !LOST_CONNECTION.test(message)), [], "the orphaned editor logs only the lost connection");
     await tab.page.context().close();
 
-    // Started again: the editor opens the project, finds the dead session's lock, takes over
-    // with a reason, and reports it. Everything committed before the crash is there.
+    // Started again: the editor opens the project. The lock is the stopped Ninerr's own, so it
+    // is taken over without asking, and the editor reports it (P08-G8). Everything committed
+    // before the crash is there.
     ninerr = await startNinerr(projects);
     tab = await openTab(browser, ninerr.origin, ninerr.first);
     await tab.page.locator("#dialog[open] [data-project=work]").click();
-    await tab.page.locator("#lock-reason").fill("Ninerr crashed");
-    await tab.page.keyboard.press("Enter");
     await tab.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Ninerr recovered this project");
     const report = await tab.page.locator("#dialog[open] ul.report li").allTextContents();
-    assert.ok(report.some((line) => /stale lock .* was taken over: Ninerr crashed/u.test(line)), report.join(" | "));
+    assert.ok(report.some((line) => /stale lock .* was taken over: Ninerr stopped without closing \(process \d+\)/u.test(line)), report.join(" | "));
     await tab.page.locator("#dialog[open] button.primary").click();
     await waitRevision(tab.page, 4);
     assert.equal(await layerCount(tab.page), before);
@@ -99,7 +96,7 @@ test("Ninerr killed mid-session recovers through the editor, with every committe
     await burst;
     assert.ok(revision > 4, `some of the burst was committed (revision ${revision})`);
     attempts.push(...attemptsIn(ninerr.output.stderr), ...tab.foreign);
-    assertOnlyLockedConflict(tab.errors, { killed: true });
+    assertNoErrors(tab.errors, { killed: true });
     await tab.page.context().close();
     const journal = join(projects, "work", PROJECT_FILES.directory, "journal.log");
     const committed = readFileSync(journal, "utf8").trim().split("\n").length;
@@ -108,12 +105,10 @@ test("Ninerr killed mid-session recovers through the editor, with every committe
     ninerr = await startNinerr(projects);
     tab = await openTab(browser, ninerr.origin, ninerr.first);
     await tab.page.locator("#dialog[open] [data-project=work]").click();
-    await tab.page.locator("#lock-reason").fill("Ninerr crashed again");
-    await tab.page.keyboard.press("Enter");
     await tab.page.waitForFunction(() => document.getElementById("dialog-title")?.textContent === "Ninerr recovered this project");
     const second = await tab.page.locator("#dialog[open] ul.report li").allTextContents();
     assert.ok(second.some((line) => /unfinished write .* was discarded/u.test(line)), second.join(" | "));
-    assert.ok(second.some((line) => /taken over: Ninerr crashed again/u.test(line)), second.join(" | "));
+    assert.ok(second.some((line) => /taken over: Ninerr stopped without closing \(process \d+\)/u.test(line)), second.join(" | "));
     await tab.page.locator("#dialog[open] button.primary").click();
     await waitRevision(tab.page, committed);
     // Every change the host confirmed before the kill is there, and nothing half-written is.
@@ -126,7 +121,7 @@ test("Ninerr killed mid-session recovers through the editor, with every committe
     await tab.page.locator("#action-insert-box").click();
     await waitRevision(tab.page, reopened + 1);
     attempts.push(...tab.foreign);
-    assertOnlyLockedConflict(tab.errors);
+    assertNoErrors(tab.errors);
   } finally {
     await browser.close();
     await ninerr.stop();

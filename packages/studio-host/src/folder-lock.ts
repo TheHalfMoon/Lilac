@@ -62,13 +62,23 @@ function runningUrl(projectsRoot: string): string | null {
   }
 }
 
+export interface FolderClaim {
+  /** Remove the claim, only while it is still this host's. */
+  release: () => void;
+  /**
+   * The process id of a host that stopped without releasing its claim (a crash) since this
+   * computer started, which this one took over; null otherwise. Project locks that process
+   * left are its own, and as stale as its claim (P08-G8).
+   */
+  stoppedPid: number | null;
+}
+
 /**
  * Claim `projectsRoot` for this host, or refuse with 409 `projects-folder-in-use` while another
- * running process holds it. Returns the release, which removes the claim only while it is
- * still this host's. A claim is left behind when its process stopped, or when it was made
- * before the computer last started (its process id may belong to another process by now).
+ * running process holds it. A claim is left behind when its process stopped, or when it was
+ * made before the computer last started (its process id may belong to another process by now).
  */
-export function claimProjectsFolder(projectsRoot: string, startedAt: string): () => void {
+export function claimProjectsFolder(projectsRoot: string, startedAt: string): FolderClaim {
   const path = join(projectsRoot, HOST_LOCK);
   const nonce = randomBytes(8).toString("hex");
   const content = `${JSON.stringify({ version: 1, pid: process.pid, nonce, startedAt, claimedAt: Date.now() })}\n`;
@@ -100,17 +110,21 @@ export function claimProjectsFolder(projectsRoot: string, startedAt: string): ()
       throw error;
     }
   };
+  // A claim this host took over from a process that stopped since the computer started.
+  let stoppedPid: number | null = null;
   try {
     writeFileSync(temporary, content, { mode: 0o600, flag: "wx" });
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      if (place()) return release;
+      if (place()) return { release, stoppedPid };
       const holder = readHolder(path);
       if (live(holder)) {
         const url = runningUrl(projectsRoot);
         throw new StudioError(409, "projects-folder-in-use", `Ninerr is already running for this projects folder (process ${holder.pid}${url === null ? "" : `, at ${url}`}). Use that Ninerr, or start this one with another projects folder. If no Ninerr is running, remove ${HOST_LOCK} from the projects folder.`);
       }
-      // Left by a process that has stopped: take it over, unless another host just did.
+      // Left by a process that has stopped: take it over, unless another host just did. Only a
+      // process that stopped since the computer started is named: an older id may be reused.
       if (readHolder(path)?.nonce === holder?.nonce) removeQuietly(path);
+      stoppedPid = holder !== null && holder.claimedAt >= bootedAt ? holder.pid : null;
     }
     throw new StudioError(409, "projects-folder-in-use", "another Ninerr claimed this projects folder while this one was starting");
   } finally {
