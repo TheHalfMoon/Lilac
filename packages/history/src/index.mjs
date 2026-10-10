@@ -319,8 +319,10 @@ export function getAffectedNodeIds(transaction) {
 /**
  * Apply `transaction` to a copy of `document`, validating both. `ownValidated` skips
  * validating the input, for a caller whose document was itself returned validated by this
- * module and has never been shared or changed since (a store's private state, #252): the
- * output is still fully validated, so a bad transaction cannot slip through.
+ * module and has never been shared or changed since (a store's private state, #252). The
+ * output is still fully validated, so a bad transaction is refused as before. A document that
+ * was changed after validation must not be passed with it: the copy is made for validated
+ * data, and would quietly turn a Map or a Date into {} rather than refuse it.
  */
 export function applyTransaction(document, transaction, { enforceBaseRevision = true, ownValidated = false } = {}) {
   if (!ownValidated) validateDocument(document);

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DocumentInvariantError, cloneDocument, cloneValidated, createDocument } from "../packages/document-model/src/index.mjs";
-import { TransactionError, applyTransaction } from "../packages/history/src/index.mjs";
+import { applyTransaction } from "../packages/history/src/index.mjs";
 import { createProject, openProject } from "../packages/persistence/src/index.ts";
 import { createPrng } from "./support/prng.mjs";
 
@@ -14,6 +14,19 @@ import { createPrng } from "./support/prng.mjs";
 // document. These tests hold both to doing exactly what they replaced.
 
 const AT = "2026-10-10T12:00:00.000Z";
+
+/**
+ * A transaction that passes every check made while its operation is applied, and leaves a
+ * document only the final validation refuses: a restored subtree carrying a node that no
+ * parent lists as a child.
+ */
+const ghost = (id, baseRevision) => ({
+  id,
+  actor: "u",
+  baseRevision,
+  operations: [{ type: "restore-subtree", rootId: "sub", parentId: "frame", nodes: [{ id: "sub", type: "frame", children: [], props: {} }, { id: "ghost", type: "element", parentId: "frame", props: {} }] }],
+});
+const ORPHAN = /must reference child ghost exactly once/u;
 
 /** structuredClone's copy and cloneValidated's must be the same, in values and key order. */
 function assertSameCopy(value) {
@@ -24,7 +37,7 @@ function assertSameCopy(value) {
   return ours;
 }
 
-test("a validated copy equals structuredClone's, including the cases a plain copy gets wrong (#252)", () => {
+test("for tree-shaped validated data, the copy equals structuredClone's, including the cases a plain copy gets wrong (#252)", () => {
   // "__proto__" as an own key must stay an own key, not become the copy's prototype.
   const tricky = JSON.parse('{"__proto__":{"polluted":true},"constructor":"c","b":1,"a":[1,{"x":-0}],"n":null,"z":"z"}');
   const copy = assertSameCopy(tricky);
@@ -42,7 +55,7 @@ test("a validated copy equals structuredClone's, including the cases a plain cop
   assert.equal(nested.a.b[0].c, 1);
 });
 
-test("random documents copy exactly as structuredClone copies them (#252)", () => {
+test("random tree-shaped documents copy as structuredClone copies them (#252)", () => {
   const random = createPrng(252);
   const value = (depth) => {
     const pick = random.int(depth > 3 ? 4 : 6);
@@ -67,17 +80,19 @@ test("random documents copy exactly as structuredClone copies them (#252)", () =
 
 test("skipping a store's own input check still validates what a transaction produces (#252)", () => {
   const document = createDocument({ id: "doc", nodes: [{ id: "frame", type: "frame", children: [], props: {} }] });
-  // A transaction whose result is invalid (a node under a parent that does not exist) is
-  // refused whether the input was checked or not.
-  const bad = { id: "t1", actor: "u", baseRevision: 0, operations: [{ type: "insert-node", node: { id: "orphan", type: "element", props: {} }, parentId: "missing" }] };
+  // Only the final validation refuses this one; it must run whether the input was checked or not.
   for (const ownValidated of [false, true]) {
-    assert.throws(() => applyTransaction(document, bad, { ownValidated }), (error) => error instanceof TransactionError || error instanceof DocumentInvariantError);
+    assert.throws(() => applyTransaction(document, ghost("t1", 0), { ownValidated }), (error) => error instanceof DocumentInvariantError && ORPHAN.test(error.message));
   }
-  // Without the option, an invalid input is still refused before anything is applied.
-  const broken = structuredClone(document);
-  broken.nodes.frame.parentId = "nowhere";
-  const good = { id: "t2", actor: "u", baseRevision: 0, operations: [{ type: "set-props", nodeId: "frame", set: { name: "x" } }] };
-  assert.throws(() => applyTransaction(broken, good), DocumentInvariantError);
+  // Without the option, an input holding values that are not JSON is refused before anything
+  // is applied. (The validated copy would turn a Map or a Date into {}: that is why only a
+  // caller whose document this module validated may skip the check.)
+  for (const value of [new Map([["k", 1]]), new Date(0)]) {
+    const broken = createDocument({ id: "doc", nodes: [{ id: "frame", type: "frame", children: [], props: {} }] });
+    broken.nodes.frame.props.bad = value;
+    const good = { id: "t2", actor: "u", baseRevision: 0, operations: [{ type: "set-props", nodeId: "frame", set: { name: "x" } }] };
+    assert.throws(() => applyTransaction(broken, good), (error) => error instanceof DocumentInvariantError && /non-plain object/u.test(error.message));
+  }
 });
 
 test("a store commits, reopens and refuses exactly as before with its own input check skipped (#252)", () => {
@@ -87,9 +102,10 @@ test("a store commits, reopens and refuses exactly as before with its own input 
     createProject(root, { projectId: "cost", document, createdAt: AT });
     const store = openProject(root, { owner: "w", at: AT });
     store.commit({ id: "t1", actor: "u", baseRevision: 0, operations: [{ type: "insert-node", node: { id: "text", type: "text", props: { text: "hi" } }, parentId: "frame" }] });
-    // A transaction that would make the document invalid is refused, and nothing is written.
+    // A transaction only the final validation refuses is refused, and nothing is written: the
+    // project still opens.
     const before = store.journalSeq;
-    assert.throws(() => store.commit({ id: "t2", actor: "u", baseRevision: 1, operations: [{ type: "insert-node", node: { id: "text", type: "text", props: {} }, parentId: "frame" }] }));
+    assert.throws(() => store.commit(ghost("t2", 1)), ORPHAN);
     assert.equal(store.journalSeq, before);
     // Changing what the getter returned changes nothing in the store.
     const copy = store.document;

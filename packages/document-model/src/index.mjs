@@ -335,10 +335,13 @@ export function createDocument({
 
 /**
  * A copy of data that validation accepted: plain objects, arrays and JSON values only (see
- * jsonDataProblem). For such data it equals structuredClone's copy (own enumerable string
- * keys in their order, "__proto__" kept as an own key, every object a plain one) at a quarter
- * of its cost, which matters because every edit copies the whole document (#252). It is not
- * for anything unvalidated: structuredClone's refusal of other values is part of those checks.
+ * jsonDataProblem). For tree-shaped data it equals structuredClone's copy (own enumerable
+ * string keys in their order, "__proto__" kept as an own key, every object a plain one) at a
+ * quarter of its cost, which matters because every edit copies the whole document (#252).
+ * Unlike structuredClone, an object reachable twice becomes two copies, and an array's
+ * non-index properties and a proxy's being a proxy are not kept; none of these survives
+ * serialization either. It is not for anything unvalidated: it would turn a Map or a Date
+ * into {}, where structuredClone keeps it for validation to refuse.
  */
 export function cloneValidated(value) {
   if (value === null || typeof value !== "object") return value;
