@@ -76,9 +76,10 @@ function canonical(document) {
  * and `ended` settles when the stream ends. Closing the host must end it.
  */
 function listen(host) {
-  const stream = { received: 0 };
+  const stream = { received: 0, opened: null };
   stream.ended = fetch(`${host.url}/api/events?token=${host.token}`)
     .then(async (response) => {
+      stream.opened = `${response.status} ${response.headers.get("content-type")}`;
       for await (const chunk of response.body) stream.received += chunk.byteLength;
     })
     .catch(() => {});
@@ -93,6 +94,7 @@ async function ended(stream, where) {
   });
   const outlived = await Promise.race([stream.ended.then(() => false), late]);
   clearTimeout(timer);
+  assert.equal(stream.opened, "200 text/event-stream; charset=utf-8", `${where}: the event stream opened`);
   assert.equal(outlived, false, `${where}: the event stream outlived its host`);
 }
 
