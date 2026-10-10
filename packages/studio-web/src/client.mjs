@@ -60,10 +60,19 @@ export function forgetToken(win = globalThis) {
 }
 
 export function createClient(token, win = globalThis) {
-  const call = async (method, path, body) => {
+  // The project this editor shows. Every request names it, so the host refuses a change made
+  // here once another tab has opened a different project (#260).
+  let project = () => null;
+  const call = async (method, path, body, options = {}) => {
+    // A dialog names the project it was opened for, so a click after a switch is refused too.
+    const named = options.project === undefined ? project() : options.project;
     const response = await win.fetch(path, {
       method,
-      headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(named === null ? {} : { "x-ninerr-project": encodeURIComponent(named) }),
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     let data = null;
@@ -76,8 +85,13 @@ export function createClient(token, win = globalThis) {
     return data;
   };
   return {
+    /** Name, in every request, the project `current()` returns (null: none). */
+    followProject: (current) => {
+      project = current;
+    },
     get: (path) => call("GET", path),
-    post: (path, body = {}) => call("POST", path, body),
+    /** `options.project`: the project this change is for, instead of the one followed. */
+    post: (path, body = {}, options = {}) => call("POST", path, body, options),
     events: () => new win.EventSource(`/api/events?token=${encodeURIComponent(token)}`),
   };
 }

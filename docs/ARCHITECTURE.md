@@ -148,6 +148,8 @@ Document files include:
 
 Ninerr has one Node studio host (`@ninerr/studio-host`). It composes persistence, history, collaboration and network-policy, and is the single writer of an open project. It serves the editor and a loopback-only API (127.0.0.1, a per-launch token, Host and Origin checks), and it hosts the MCP endpoint and its stdio relay. Hosting MCP here keeps the persistence single-writer lock intact.
 
+The host has one open project, and any tab or client can open another. The editor therefore names the project it shows in every request (`X-Ninerr-Project`, URI-encoded). The host refuses a change made for any other project with `409 project-changed` and writes nothing. It checks this when the change is applied, after its body has arrived (#260). An edit also carries the revision it was made at, and one made at an earlier revision is refused as `stale-revision`. Agents get the same protection through the rule in `docs/MCP.md`.
+
 Local web mode runs the host directly. The desktop shell starts the same host and owns its lifecycle, which is how the shell's "local MCP lifecycle" below is met.
 
 ## Desktop boundary

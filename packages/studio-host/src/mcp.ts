@@ -496,7 +496,16 @@ export interface McpContext {
   confirmations: ConfirmationBroker;
   now: () => string;
   confirmationWaitMs?: number;
+  /**
+   * The project each agent last connected to or read, by agent id. An agent's change is
+   * refused when another project is open now, so it never lands in a project the agent has
+   * not looked at (#260).
+   */
+  lastRead: Map<string, string>;
 }
+
+// Read tools that show the open project; reading one is what lets an agent change it.
+const PROJECT_READS = new Set(["project_info", "layer_tree", "layer_details", "layer_children", "find_layers", "selection", "layer_code"]);
 
 const rpcError = (id: Json, code: number, message: string) => ({ jsonrpc: "2.0", id, error: { code, message } });
 const toolResult = (value: Json, isError = false) => ({
@@ -514,6 +523,8 @@ export async function handleMcpMessage(context: McpContext, actor: StudioActor, 
   if (isNotification) return null; // notifications/initialized, cancellations: nothing to answer
   switch (method) {
     case "initialize": {
+      const open = context.session();
+      if (open !== null) context.lastRead.set(actor.actorId, open.name);
       const requested = params?.protocolVersion;
       const protocolVersion = MCP_PROTOCOL_VERSIONS.includes(requested) ? requested : MCP_PROTOCOL_VERSIONS[0];
       return { jsonrpc: "2.0", id, result: { protocolVersion, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO, instructions: "Ninerr design documents. Call guide first." } };
@@ -536,6 +547,16 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
   const session = context.session();
   if (session === null) return toolResult("No project is open in Ninerr. Ask the person to open one.", true);
   if (session.failure !== null) return toolResult("The project must be reopened in Ninerr before it can be used.", true);
+  const toolClass = classifyTool(toolName);
+  // An agent changes only the project it connected to or last read (#260); one it has never
+  // seen here (a host restarted under it, a client that did not initialize) reads first.
+  const notRead = (): string | null => {
+    if (toolClass !== "write" && toolClass !== "consequential") return null;
+    const lastRead = context.lastRead.get(actor.actorId);
+    if (lastRead === session.name) return null;
+    if (lastRead === undefined) return `Call project_info first: Ninerr changes only a project you have read, and ${JSON.stringify(session.name)} is open.`;
+    return `The open project in Ninerr is now ${JSON.stringify(session.name)}, not ${JSON.stringify(lastRead)}, the one you last read. Call project_info, and make sure you mean to change this project, before changing anything.`;
+  };
   const at = context.now();
   const call = { actor, toolName, arguments: args, at };
   // Authorize before anything else, including before a consequential call asks the person.
@@ -543,6 +564,9 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
     requireMCPToolCall(session.accessPolicy(), call);
   } catch (error) {
     if (!(error instanceof MCPAuthorizationError) || error.decision.outcome !== "confirmation-required") return refusal(error);
+    // Before the person is asked to confirm anything.
+    const unread = notRead();
+    if (unread !== null) return toolResult(unread, true);
     const confirmation = await confirm(context, session, actor, toolName, args, at);
     if (typeof confirmation === "string") return toolResult(confirmation, true);
     try {
@@ -551,6 +575,8 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
       return refusal(again);
     }
   }
+  const unread = notRead();
+  if (unread !== null) return toolResult(unread, true);
   const tool = TOOL_BY_NAME.get(toolName);
   // Unreachable while the server's tools are exactly the catalog (checked at load); fail closed.
   if (tool === undefined) return toolResult(`Ninerr has no tool ${toolName}.`, true);
@@ -567,6 +593,7 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
         return { revision: event.revision, transactionId: event.transactionId, affectedNodeIds: event.affectedNodeIds };
       },
     }, args);
+    if (PROJECT_READS.has(toolName) || toolClass === "write" || toolClass === "consequential") context.lastRead.set(actor.actorId, session.name);
     return toolResult(value);
   } catch (error) {
     if (error instanceof ToolError) return toolResult(error.message, true);

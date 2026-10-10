@@ -42,6 +42,11 @@ So the 9 read-only tools need only `read`.
   - `selection`: what the person has selected in the editor.
   - `layer_code`: a layer as a JSX component.
 - **Editing.** Every write is one history transaction, attributed to the agent. The person sees it live on the canvas and can undo it. `finish_task` changes nothing; it tells Ninerr the agent is done with some layers.
+- **Only the project the agent has read.** Tools act on the project open in Ninerr. An agent may write or delete only in the project it last connected to (`initialize`) or read with `project_info`, `layer_tree`, `layer_details`, `layer_children`, `find_layers`, `selection` or `layer_code` (#260). Otherwise the call is refused, before the person is asked anything, and the agent is told to call `project_info` first. Two cases are refused this way:
+  - the person has opened another project since the agent last read;
+  - Ninerr has no record of the agent, for example after a restart or for a client that never sent `initialize`.
+
+  Connecting again counts as reading, so an agent that reconnects can change whatever project is open. The record is kept per agent, so clients that share one agent credential share it.
 - **Deleting.** `delete_layers` asks the person to approve the call in the editor. The call waits up to 50 seconds for an answer (`CONFIRMATION_WAIT_MS`). If no answer comes, the agent is told to call again with the same arguments, and an approval stays usable for that exact call for 5 minutes.
 
 ## Authorizing a call

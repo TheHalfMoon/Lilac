@@ -98,6 +98,8 @@ test("every editor state audits clean, with the colours actually painted", brows
     await page.keyboard.press("Escape");
     // An agent's request for approval.
     const box = Object.values(host.session.document.nodes).find((node) => node.id.startsWith("box-")).id;
+    // Like an MCP client, the agent connects first (#260).
+    await fetch(host.mcpUrl, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 0, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } }) });
     const pending = fetch(host.mcpUrl, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "delete_layers", arguments: { nodeIds: [box] } } }) });
     await page.waitForFunction(() => /asks for your approval/u.test(document.getElementById("dialog-title")?.textContent ?? ""));
     await audit(page, "the approval dialog");
