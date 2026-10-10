@@ -1,4 +1,4 @@
-import { constants } from "node:fs";
+import { constants, type BigIntStats } from "node:fs";
 import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { ImportConflictError, ImportSecurityError, ImportValidationError } from "./errors.ts";
@@ -35,7 +35,7 @@ export async function readSingleLinkFile(path: string, label: string, maxBytes: 
   // opening there follows a link: so the path is checked first, and the file opened must be
   // the one checked (P08-G7). A swap between the two is then refused, not read.
   const noFollow = constants.O_NOFOLLOW;
-  let checked = null;
+  let checked: BigIntStats | null = null;
   if (noFollow === undefined) {
     checked = await lstat(path, { bigint: true });
     if (checked.isSymbolicLink()) throw new ImportSecurityError(`${label} must be a regular non-symlink file`);
