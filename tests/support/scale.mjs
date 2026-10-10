@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { PROJECT_FILES } from "../../packages/persistence/src/index.ts";
 import { MAX_IMPORT_NODES } from "../../packages/studio-host/src/imports.ts";
@@ -284,7 +284,16 @@ export function markdown({ platform, results }) {
   return lines.join("\n");
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+/** Whether this module is the program node was started with, through links or not. */
+function isMainModule(url) {
+  try {
+    return process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url)) {
   const sizes = (process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : "1000,10000,25000,50000").split(",").map(Number);
   const report = await measureAll(sizes);
   process.stdout.write(`${markdown(report)}\n`);

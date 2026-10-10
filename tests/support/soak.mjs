@@ -13,7 +13,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, wr
 import { cpus, tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { setFlagsFromString } from "node:v8";
 import { runInNewContext } from "node:vm";
 
@@ -268,7 +268,16 @@ export async function soak({ rounds, seed, window = 100 }) {
 /** The platform the numbers were taken on. */
 export const platform = () => `${process.platform} ${process.arch}, ${cpus()[0]?.model ?? "unknown CPU"} × ${cpus().length}, Node ${process.versions.node}`;
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+/** Whether this module is the program node was started with, through links or not. */
+function isMainModule(url) {
+  try {
+    return process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url)) {
   const rounds = Number(process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : 20_000);
   const seed = Number(process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : 230_005);
   const started = performance.now();

@@ -6,7 +6,7 @@
 // The same output for the same lockfile: no clock, sorted components, and a serial
 // number derived from the lockfile bytes.
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ELECTRON_ARCHIVES, ELECTRON_VERSION, archiveName } from "./desktop/electron.mjs";
@@ -258,7 +258,16 @@ export function checkPolicy(lockText, policy, notices, { nodeModules = join(ROOT
   return problems;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+/** Whether this module is the program node was started with, through links or not. */
+function isMainModule(url) {
+  try {
+    return process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url)) {
   const lockText = readFileSync(join(ROOT, "package-lock.json"), "utf8");
   const policy = JSON.parse(readFileSync(join(ROOT, "scripts", "license-policy.json"), "utf8"));
   if (process.argv.includes("--check")) {

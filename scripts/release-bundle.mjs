@@ -10,7 +10,7 @@
 // produce the same bytes on any host, so the bundle can be attested and re-verified.
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, realpathSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -180,7 +180,16 @@ export function verifyReleaseBundle(out) {
   return problems;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+/** Whether this module is the program node was started with, through links or not. */
+function isMainModule(url) {
+  try {
+    return process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url)) {
   const args = process.argv.slice(2);
   try {
     if (args[0] === "--verify") {

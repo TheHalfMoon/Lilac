@@ -6,10 +6,10 @@
 // tests/fixtures/projects/v2-basic (schema 2) and v1-basic (schema 1, before the rename) are
 // the same history written by earlier releases; they are frozen as the migration corpus and
 // never regenerated.
-import { rmSync } from "node:fs";
+import { rmSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { createDocument } from "../../packages/document-model/src/index.mjs";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { PROJECT_FILES, createProject, openProject } from "../../packages/persistence/src/index.ts";
 
 export const GOLDEN_AT = "2026-10-07T12:00:00.000Z";
@@ -93,7 +93,16 @@ export function writeSegmentedGoldenProject(root) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+/** Whether this module is the program node was started with, through links or not. */
+function isMainModule(url) {
+  try {
+    return process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url)) {
   if (process.argv[3] === "segments") writeSegmentedGoldenProject(process.argv[2]);
   else writeGoldenProject(process.argv[2]);
 }

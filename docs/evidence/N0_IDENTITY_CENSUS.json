@@ -11,7 +11,7 @@
     "LEGACY_COMPATIBILITY": 70,
     "TEST_FIXTURE": 0,
     "THIRD_PARTY_INDEPENDENT_OBLIGATION": 254,
-    "IMMUTABLE_HISTORICAL_FACT": 980,
+    "IMMUTABLE_HISTORICAL_FACT": 982,
     "REMOVE_ENTIRELY": 0
   },
   "byTerm": {
@@ -25,14 +25,14 @@
     "unreal-agent": 31,
     "website-downloader": 18,
     "appllama": 27,
-    "docling": 135,
+    "docling": 137,
     "design-resources": 18,
     "firecrawl": 31,
     "impeccable": 179,
     "ui-tars": 31
   },
   "byRule": {
-    "dated-evidence": 800,
+    "dated-evidence": 802,
     "donor-provenance-records": 122,
     "independent-runtime-docling": 93,
     "independent-runtime-impeccable": 82,
@@ -61,5 +61,5 @@
     "public-env": 1,
     "third-party-notices": 66
   },
-  "censusSha256": "56edc03c677e446ce5990b29a4170d73f1b647d5bda92a71e90a9a02d245b954"
+  "censusSha256": "e586c8f81fbf210de3a7bfca984c4a9360dc5243f2079877075cbd465f782034"
 }

@@ -14,7 +14,7 @@ import { writableMode } from "./support/platform.mjs";
 
 let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 8, 12, 0, 0) + clock++ * 1000).toISOString();
-const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), "ninerr-codebase-")));
+const scratch = () => realpathSync.native(mkdtempSync(join(tmpdir(), "ninerr-codebase-")));
 const CARD = `export function PriceCard() {
   return (
     <section className="card" style="padding: 16px; background: #f4f0ff">

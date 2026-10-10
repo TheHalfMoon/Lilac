@@ -26,6 +26,15 @@ Issue: #230 (P08 umbrella), founder section P08.7: Linux, macOS and Windows test
 - **No way to stop web mode cleanly where Ctrl+C is not delivered as a signal.** Some Windows terminals, such as Git Bash's, end Node outright, and no program can send a signal to a child process on Windows.
   - **Fix:** `npm start` now also stops cleanly when `stop` is typed. The test helper uses it on Windows, and SIGTERM elsewhere.
 
+**Found by the new CI jobs, on runners unlike this machine** (Windows with file-link rights, a checkout on another drive, macOS's linked temp folder):
+- **A symbolic link in place of an import's file was followed on Windows (security).**
+  - `readSingleLinkFile` (`packages/import-stack/src/filesystem.ts`) relied on `O_NOFOLLOW` to refuse a link when opening. Windows has no such flag, so a file link in place of Docling's output, for example, was read through.
+  - Now, where the flag is missing, the path is checked first, and the file opened must be the one checked (same device and inode), so a swap in between is refused. The Docling test that showed this runs on the Windows runner, which may create file links.
+- **The packaging check missed a file on another drive.** `scripts/package-desktop.mjs` fails packaging when the app would load a file from outside `packages/`, but on Windows `path.relative` across drives gives an absolute path, not one through `..`, which it then read as a package name. It now treats an absolute result as outside.
+- **Scripts did not run as programs when started through a link (macOS).** Five scripts and three test helpers compared `process.argv[1]` with `import.meta.url`, which Node resolves through links. Through macOS's linked temp folder, `/var` → `/private/var`, a script never saw itself as the program; `sbom.mjs --check` then exited 0 on a violation. They now compare real paths.
+- **Tests used temp folders that are not canonical paths:** `/var/…` on macOS, and Windows' 8.3 short names (`C:UsersRUNNER~1…`). Where Ninerr requires a canonical path, or compares with one, those tests now canonicalize their temp folders with `realpathSync.native`, the only form that expands short names.
+- **A browser test raced the editor's selection sharing.** It switched projects while the editor's selection update, sent for the first project, was still in flight. The host then refused that update, as #260 requires, and the browser logged the refusal. The test now waits for the update to finish.
+
 **Tests that assumed POSIX, fixed:**
 - **A module path built with `URL.pathname`**, which is `/C:/…` on Windows. It now uses `fileURLToPath` (`tests/sandbox-network.test.mjs`).
 - **An expected hash taken from the `sha256sum` program.** Git for Windows' version marks a path with a backslash by prefixing the hash with one. The test now uses Node's own hash (`tests/sbom.test.mjs`).

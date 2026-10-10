@@ -30,7 +30,7 @@ const CARD = `export function PriceCard() {
 const WRITTEN = CARD.replace("<h2>Pro</h2>", "<h2>Team</h2>");
 
 async function withEditedCard(callback) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-185-")));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ninerr-185-")));
   const projects = join(root, "projects");
   const code = join(root, "code");
   mkdirSync(projects);
@@ -286,7 +286,7 @@ test("#185: a file changed before the rename withdraws the record, and settles i
 });
 
 test("#185: settling sees every layer bound to a file, across components, and leaves unknown outcomes alone", () => {
-  const code = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-185-settle-")));
+  const code = realpathSync.native(mkdtempSync(join(tmpdir(), "ninerr-185-settle-")));
   try {
     writeFileSync(join(code, "Card.jsx"), WRITTEN);
     const temp = ".00000000-0000-4000-8000-000000000000.ninerr-tmp";
