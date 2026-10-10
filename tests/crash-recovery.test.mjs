@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { createDocument } from "../packages/document-model/src/index.mjs";
 import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, PersistenceCorruptionError, createProject, migrateLegacyProject, openProject } from "../packages/persistence/src/index.ts";
 import { isFilesystemError, removeStaleFiles } from "../packages/persistence/src/fsio.ts";
+import { linkDirectory, tryLinkFile } from "./support/links.mjs";
 
 // P06 gate 10 (#133): systematic crash-point injection. Every injected crash state either
 // recovers to the last durable revision, or fails closed with a specific error; none
@@ -313,13 +314,14 @@ test("a legacy migration interrupted before its directory rename leaves no Niner
   }
 });
 
-test("cleanup removes only regular files named as a known target's temporary", () => {
+test("cleanup removes only regular files named as a known target's temporary", (t) => {
   const root = project(1);
+  let linked = false;
   try {
     withCopy(root, (copy) => {
       const dir = join(copy, PROJECT_FILES.directory);
       mkdirSync(join(dir, temporaryName(PROJECT_FILES.snapshot)));
-      symlinkSync(join(copy, "outside.txt"), join(dir, temporaryName(PROJECT_FILES.journal)));
+      linked = tryLinkFile(t, join(copy, "outside.txt"), join(dir, temporaryName(PROJECT_FILES.journal)));
       writeFileSync(join(copy, "outside.txt"), "keep");
       writeFileSync(join(dir, "notes.tmp-1-not-a-uuid"), "keep");
       writeFileSync(join(dir, temporaryName("unknown.json")), "keep");
@@ -328,7 +330,7 @@ test("cleanup removes only regular files named as a known target's temporary", (
       const outside = join(copy, "outside-objects");
       mkdirSync(outside);
       writeFileSync(join(outside, temporaryName("a".repeat(62))), "keep");
-      symlinkSync(outside, join(dir, PROJECT_FILES.objects, "ab"));
+      linkDirectory(outside, join(dir, PROJECT_FILES.objects, "ab"));
       mkdirSync(join(dir, PROJECT_FILES.objects, "zz"));
       writeFileSync(join(dir, PROJECT_FILES.objects, "zz", temporaryName("b".repeat(62))), "keep");
       writeFileSync(join(dir, PROJECT_FILES.objects, temporaryName("c".repeat(62))), "keep");
@@ -336,7 +338,7 @@ test("cleanup removes only regular files named as a known target's temporary", (
       const result = outcome(copy);
       assert.equal(result.revision, 1);
       assert.equal(result.recovery.staleTemporaryFiles, 0);
-      assert.equal(readdirSync(join(copy, PROJECT_FILES.directory)).filter((name) => name.includes(".tmp-")).length, 4, "directory, symlink and foreign names stay");
+      assert.equal(readdirSync(join(copy, PROJECT_FILES.directory)).filter((name) => name.includes(".tmp-")).length, linked ? 4 : 3, "directory, symlink and foreign names stay");
       assert.equal(readFileSync(join(copy, "outside.txt"), "utf8"), "keep");
       assert.equal(readdirSync(join(copy, "outside-objects")).length, 1, "a symlinked fan-out directory is not followed");
       assert.equal(readdirSync(join(copy, PROJECT_FILES.directory, PROJECT_FILES.objects, "zz")).length, 1);

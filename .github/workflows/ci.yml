@@ -62,3 +62,48 @@ jobs:
               echo "::warning title=Failure reasons::head=${{ github.event.pull_request.head.sha || github.sha }} ${reasons}"
             fi
           fi
+
+  # P08-G7 (#192): the whole suite on Windows and macOS as well. A test that cannot run on a
+  # platform skips and says why; each such deviation is recorded in
+  # docs/evidence/P08_G7_CROSS_PLATFORM_2026-10-10.md.
+  foundation-other:
+    name: Foundation checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      # Files keep the line endings they are committed with, as on the other platforms.
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Cache the pinned Electron archive
+        uses: actions/cache@v4
+        with:
+          path: .ninerr-cache/electron/downloads
+          key: electron-${{ runner.os }}-${{ hashFiles('scripts/desktop/electron.mjs') }}
+      - name: Fetch the pinned Electron runtime (SHA-256 verified)
+        run: node scripts/fetch-electron.mjs
+      - name: Run checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run check 2>&1 | tee check.log
+      - name: Annotate test totals
+        if: always()
+        shell: bash
+        run: |
+          totals=$(grep -E '^# (tests|pass|fail|cancelled|skipped|todo) [0-9]+$' check.log 2>/dev/null | sed 's/^# //' | paste -sd ' ' - || true)
+          echo "::notice title=Test totals (${{ matrix.os }})::head=${{ github.event.pull_request.head.sha || github.sha }} tested=${{ github.sha }} ${totals:-no test summary found}"
+          failing=$(grep -E '^ *not ok [0-9]+ - ' check.log 2>/dev/null | sed -E 's/^ *not ok [0-9]+ - //' | cut -c1-200 | head -n 20 | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | paste -sd ';' - || true)
+          if [ -n "$failing" ]; then
+            echo "::warning title=Failing tests (${{ matrix.os }})::head=${{ github.event.pull_request.head.sha || github.sha }} ${failing}"
+          fi

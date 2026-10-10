@@ -13,8 +13,8 @@
 // result is an archive in <folder> (default dist/desktop) and a manifest of what is in it.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ELECTRON_LICENSE_SHA256, ELECTRON_VERSION, WINDOWS_TAR, currentTarget, electronDirectory, fetchElectron } from "./desktop/electron.mjs";
 import { RECORD_PATH, readRecord, validateRecord } from "./desktop/corresponding-source.mjs";
@@ -56,9 +56,11 @@ export function reachablePackages(entries) {
         }
       } else if (specifier.startsWith(".")) {
         const next = resolve(dirname(path), specifier);
-        const name = relative(join(ROOT, "packages"), next).split(/[\\/]/u)[0];
-        // Every file the app loads must be inside a packaged package: fail closed.
-        if (name.startsWith("..") || name === "") throw new Error(`${relative(ROOT, path)} imports ${specifier}, outside packages/`);
+        const inPackages = relative(join(ROOT, "packages"), next);
+        const name = inPackages.split(/[\\/]/u)[0];
+        // Every file the app loads must be inside a packaged package: fail closed. On another
+        // drive (Windows), relative() gives an absolute path, not one through "..".
+        if (isAbsolute(inPackages) || name.startsWith("..") || name === "") throw new Error(`${relative(ROOT, path)} imports ${specifier}, outside packages/`);
         if (!found.has(name)) {
           found.add(name);
           queue.push(join(ROOT, "packages", name, "src"));
@@ -206,7 +208,16 @@ async function main() {
   log(`Packaged Ninerr for ${target}: ${archive} (sha256 ${archiveSha256})`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+/** Whether this module is the program node was started with, through links or not. */
+function isMainModule(url) {
+  try {
+    return process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(`package-desktop: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(1);

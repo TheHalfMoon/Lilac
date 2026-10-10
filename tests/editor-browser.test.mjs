@@ -328,8 +328,13 @@ test("a change that arrives while the editor is refreshing is not lost", browser
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => document.getElementById("project-name").textContent === "first");
     await waitRevision(page, 0);
+    // The new box is selected, and the selection is shared with the host shortly after. Wait
+    // for that, so it is not still in flight when another client opens a second project: the
+    // host would then refuse it as made for "first" (#260), which the browser logs.
+    const shared = page.waitForResponse((response) => response.url().endsWith("/api/selection"));
     await page.locator("#action-insert-box").click();
     await waitRevision(page, 1);
+    assert.equal((await shared).status(), 200);
     // Hold the editor's next history fetch, so its refresh is in flight while changes land.
     let release;
     const gate = new Promise((resolve) => {

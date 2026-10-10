@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { appendFileSync, cpSync, existsSync, mkdtempSync, symlinkSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,7 @@ import {
 } from "../packages/persistence/src/index.ts";
 import { createDocument } from "../packages/document-model/src/index.mjs";
 import { GOLDEN_AT } from "./support/golden-project.mjs";
+import { linkDirectory } from "./support/links.mjs";
 
 // N0-G2 (#190): projects written before the rename (`.lilac`, project schema 1) migrate into
 // `.ninerr` deterministically, keep their journal chain, and are never modified; a refused
@@ -321,12 +322,7 @@ test("only a real legacy directory counts as a legacy project", (context) => {
   }
   const link = empty();
   try {
-    try {
-      symlinkSync(fileURLToPath(new URL("./fixtures/projects/v1-basic/.lilac", import.meta.url)), join(link, LEGACY_PROJECT_DIRECTORY), "dir");
-    } catch (error) {
-      if (error.code === "EPERM") return context.skip("creating symbolic links needs privileges here");
-      throw error;
-    }
+    linkDirectory(fileURLToPath(new URL("./fixtures/projects/v1-basic/.lilac", import.meta.url)), join(link, LEGACY_PROJECT_DIRECTORY));
     assert.throws(() => open(link), (error) => error instanceof PersistenceValidationError && /no Ninerr project exists/.test(error.message), "a linked legacy directory is not followed");
   } finally {
     rmSync(link, { recursive: true, force: true });

@@ -1,8 +1,8 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, unlink, writeFile } from "node:fs/promises";
-import { promisify } from "node:util";
 import { devNull } from "node:os";
+import { promisify } from "node:util";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { SupervisorOwnershipError, SupervisorRecordError, SupervisorRuntimeError, SupervisorWorktreeError } from "./errors.ts";
@@ -29,9 +29,14 @@ const execFileAsync = promisify(execFile);
 // caller's GIT_* variables. Overrides go through GIT_CONFIG_COUNT rather than `-c`, because
 // `-c` splits at the first "=" and a repository may name a filter driver "a=b".
 const GIT_ENV_OVERRIDES = /^GIT_/u;
+// Git's own name for the null device, on every platform: Git for Windows maps "/dev/null" to
+// it, and refuses the native \\.\nul that os.devNull gives there (P08-G7, #192).
+const GIT_NULL = "/dev/null";
 
 const SAFE_GIT_CONFIG: Array<[string, string]> = [
   ["core.fsmonitor", "false"],
+  // Hooks resolve under this path; on Windows "/dev/null/<hook>" is a folder on the current
+  // drive that anyone may create, while the native null device can never hold one.
   ["core.hooksPath", devNull],
   ["core.untrackedCache", "false"],
   ["core.pager", "cat"],
@@ -43,7 +48,7 @@ const SAFE_GIT_CONFIG: Array<[string, string]> = [
 function inspectionEnvironment(config: Array<[string, string]>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) if (!GIT_ENV_OVERRIDES.test(key)) env[key] = value;
-  Object.assign(env, { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: devNull, GIT_TERMINAL_PROMPT: "0", GIT_NO_LAZY_FETCH: "1", GIT_ALLOW_PROTOCOL: "none" });
+  Object.assign(env, { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: GIT_NULL, GIT_TERMINAL_PROMPT: "0", GIT_NO_LAZY_FETCH: "1", GIT_ALLOW_PROTOCOL: "none" });
   const entries = [...SAFE_GIT_CONFIG, ...config];
   env.GIT_CONFIG_COUNT = String(entries.length);
   entries.forEach(([key, value], index) => {

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -102,7 +103,8 @@ test("an override is checked against the installed license file", () => {
     writeFileSync(join(dir, "seelic", "LICENSE"), "MIT License text");
     const override = (sha) => [{ name: "seelic", version: "1.0.0", declared: "SEE LICENSE IN LICENSE", license: "MIT", licenseFile: "LICENSE", licenseSha256: sha }];
     const run = (sha, declared = "SEE LICENSE IN LICENSE") => checkPolicy(lockWith({ "node_modules/seelic": pkg(declared) }), { ...policy, overrides: override(sha) }, NOTICE, { nodeModules: dir });
-    const good = execFileSync("sha256sum", [join(dir, "seelic", "LICENSE")], { encoding: "utf8" }).split(" ")[0];
+    // Node's own hash: Git for Windows' sha256sum marks a path with a backslash by prefixing the hash with one.
+    const good = createHash("sha256").update(readFileSync(join(dir, "seelic", "LICENSE"))).digest("hex");
     assert.deepEqual(run(good), []);
     assert.match(run("f".repeat(64)).join("\n"), /does not match the override's sha256/u);
     assert.match(run(good, "SEE LICENSE IN COPYING").join("\n"), /override expects declared license/u);

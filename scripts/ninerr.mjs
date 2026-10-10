@@ -6,7 +6,7 @@
 //
 // Ninerr listens on 127.0.0.1 only and needs no network: projects stay in the projects
 // folder (default: "Ninerr Projects" in your home folder, or NINERR_PROJECTS). Each link
-// works once, for two minutes; press Enter for a new one. Ctrl+C stops Ninerr.
+// works once, for two minutes; press Enter for a new one. Ctrl+C, or typing stop, stops Ninerr.
 import { spawn } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -53,7 +53,7 @@ const say = (line) => process.stdout.write(`${line}\n`);
 say("Ninerr is running on this computer only (no network access is needed).");
 say(`Projects folder: ${projectsRoot}`);
 say(`Open Ninerr: ${host.launchUrl()}`);
-say("Each link works once. Press Enter for a new link, or Ctrl+C to stop Ninerr.");
+say("Each link works once. Press Enter for a new link. To stop Ninerr, type stop and press Enter, or press Ctrl+C.");
 
 if (args.includes("--open")) {
   // Only when asked: hand the system's browser opener a private file that forwards to a
@@ -73,7 +73,11 @@ if (args.includes("--open")) {
 }
 
 if (process.stdin.isTTY || process.env.NINERR_STDIN_LINKS === "1") {
-  createInterface({ input: process.stdin }).on("line", () => say(`Open Ninerr: ${host.launchUrl()}`));
+  // "stop" stops Ninerr where Ctrl+C does not reach it as a signal (some Windows terminals).
+  createInterface({ input: process.stdin }).on("line", (line) => {
+    if (line.trim().toLowerCase() === "stop") stop();
+    else say(`Open Ninerr: ${host.launchUrl()}`);
+  });
 }
 
 let stopping = false;

@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { chmodSync, linkSync, utimesSync } from "node:fs";
+import { linkFile } from "./support/links.mjs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
@@ -336,15 +337,7 @@ test("a symbolic-link project file is refused", (context) => withProject((root) 
   const outside = join(tempRoot(), "elsewhere.log");
   writeFileSync(outside, "");
   unlinkSync(file(root, PROJECT_FILES.journal));
-  try {
-    symlinkSync(outside, file(root, PROJECT_FILES.journal), "file");
-  } catch (error) {
-    if (error.code === "EPERM") {
-      context.skip("file symlinks need elevated privileges on this platform");
-      return;
-    }
-    throw error;
-  }
+  if (!linkFile(context, outside, file(root, PROJECT_FILES.journal))) return;
   assert.throws(() => open(root), /symbolic link/);
 }));
 

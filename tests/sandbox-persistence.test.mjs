@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createDocument } from "../packages/document-model/src/index.mjs";
 import { PROJECT_FILES, PersistenceValidationError, createProject, openProject } from "../packages/persistence/src/index.ts";
+import { linkDirectory } from "./support/links.mjs";
 
 // Sandbox escapes found by the P06 gate-5 probe (#115), plus attacks that already
 // failed closed but had no test.
@@ -30,9 +31,11 @@ function withRoot(callback) {
   }
 }
 
-const hasMkfifo = spawnSync("mkfifo", ["--version"]).error === undefined;
+// Windows has no FIFOs; Git for Windows brings an mkfifo that only emulates one (P08-G7).
+const hasMkfifo = process.platform !== "win32" && spawnSync("mkfifo", ["--version"]).error === undefined;
+const NO_FIFO = process.platform === "win32" ? "Windows has no FIFOs" : "mkfifo is unavailable";
 
-test("a FIFO in place of a project file is refused instead of hanging", { skip: !hasMkfifo && "mkfifo is unavailable" }, () => {
+test("a FIFO in place of a project file is refused instead of hanging", { skip: !hasMkfifo && NO_FIFO }, () => {
   for (const name of [PROJECT_FILES.snapshot, PROJECT_FILES.manifest, PROJECT_FILES.journal]) {
     withRoot((root) => {
       unlinkSync(file(root, name));
@@ -47,7 +50,7 @@ test("a FIFO in place of a project file is refused instead of hanging", { skip: 
   }
 });
 
-test("a FIFO in place of the lock is refused instead of hanging", { skip: !hasMkfifo && "mkfifo is unavailable" }, () => withRoot((root) => {
+test("a FIFO in place of the lock is refused instead of hanging", { skip: !hasMkfifo && NO_FIFO }, () => withRoot((root) => {
   // In a child process with a timeout, so a regression fails instead of hanging the suite.
   const script = `import { unlinkSync } from "node:fs"; import { execFileSync } from "node:child_process";
     import { openProject } from ${JSON.stringify(PERSISTENCE_URL)};
@@ -68,7 +71,7 @@ test("writes are refused after the project root is swapped for a symlink", () =>
   mkdirSync(join(outside, PROJECT_FILES.directory, PROJECT_FILES.objects), { recursive: true });
   cpSync(file(root, PROJECT_FILES.lock), join(outside, PROJECT_FILES.directory, PROJECT_FILES.lock));
   renameSync(root, join(parent, "moved"));
-  symlinkSync(outside, root);
+  linkDirectory(outside, root);
   assert.throws(() => store.checkpoint(), /project directory changed since the store was opened/u);
   assert.throws(() => store.putObject(Buffer.from("planted")), /changed since/u);
   assert.throws(() => store.commit(setTitle("t2", 1, "y")), /changed since/u);
@@ -110,7 +113,7 @@ test("symlinked object directories are refused", () => {
     assert.ok(fanouts.length > 0);
     const outside = mkdtempSync(join(parent, "fan-"));
     renameSync(join(objects, fanouts[0]), join(outside, "moved"));
-    symlinkSync(join(outside, "moved"), join(objects, fanouts[0]));
+    linkDirectory(join(outside, "moved"), join(objects, fanouts[0]));
     assert.throws(() => store.checkpoint(), PersistenceValidationError, "fan-out symlink");
     store.close();
   });
@@ -119,7 +122,7 @@ test("symlinked object directories are refused", () => {
     const objects = file(root, PROJECT_FILES.objects);
     const outside = mkdtempSync(join(parent, "objs-"));
     renameSync(objects, join(outside, "objects"));
-    symlinkSync(join(outside, "objects"), objects);
+    linkDirectory(join(outside, "objects"), objects);
     assert.throws(() => store.checkpoint(), PersistenceValidationError, "objects symlink");
     store.close();
   });
@@ -178,7 +181,7 @@ test("a root swapped while the project is being opened is refused", () => withRo
     fs.lstatSync = function (path, ...rest) {
       if (!swapped && String(path).endsWith(${JSON.stringify(PROJECT_FILES.journal)})) {
         swapped = true;
-        renameSync(root, parent + "/moved"); cpSync(parent + "/moved", parent + "/out", { recursive: true }); symlinkSync(parent + "/out", root);
+        renameSync(root, parent + "/moved"); cpSync(parent + "/moved", parent + "/out", { recursive: true }); symlinkSync(parent + "/out", root, ${JSON.stringify(process.platform === "win32" ? "junction" : "dir")});
       }
       return original.call(this, path, ...rest);
     };
@@ -194,7 +197,7 @@ test("a root swapped while the project is being opened is refused", () => withRo
 
 test("a legitimately symlinked root opens, commits and checkpoints", () => withRoot((root, parent) => {
   const alias = join(parent, "alias");
-  symlinkSync(root, alias);
+  linkDirectory(root, alias);
   const store = open(alias);
   store.commit(setTitle("t1", 0, "x"));
   store.checkpoint();
@@ -207,7 +210,7 @@ test("closing after the root moved leaves the lock instead of touching another d
   const outside = mkdtempSync(join(parent, "outside-"));
   cpSync(join(root, PROJECT_FILES.directory), join(outside, PROJECT_FILES.directory), { recursive: true });
   renameSync(root, join(parent, "moved"));
-  symlinkSync(outside, root);
+  linkDirectory(outside, root);
   store.close();
   assert.equal(existsSync(join(outside, PROJECT_FILES.directory, PROJECT_FILES.lock)), true, "the outside copy is untouched");
   assert.equal(existsSync(join(parent, "moved", PROJECT_FILES.directory, PROJECT_FILES.lock)), true, "the moved project keeps its lock for breakStaleLock");
@@ -218,7 +221,7 @@ test("close never throws when the identity check cannot complete", () => withRoo
   // A root replaced by a dangling symlink loop makes realpath fail with ELOOP, which the
   // write path rethrows; close must still return and leave the lock for breakStaleLock.
   renameSync(root, join(parent, "moved"));
-  symlinkSync(root, root);
+  linkDirectory(root, root);
   assert.throws(() => store.checkpoint());
   assert.doesNotThrow(() => store.close());
   assert.equal(existsSync(join(parent, "moved", PROJECT_FILES.directory, PROJECT_FILES.lock)), true);

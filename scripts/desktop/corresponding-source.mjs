@@ -15,7 +15,7 @@
 //
 //   node scripts/desktop/corresponding-source.mjs --write   resolve live and write the record
 //   node scripts/desktop/corresponding-source.mjs --check   resolve live and compare
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { ELECTRON_ARCHIVES, ELECTRON_LICENSE_SHA256, ELECTRON_VERSION } from "./electron.mjs";
@@ -123,7 +123,16 @@ export function readRecord() {
   return JSON.parse(readFileSync(new URL(`../../${RECORD_PATH}`, import.meta.url), "utf8"));
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+/** Whether this module is the program node was started with, through links or not. */
+function isMainModule(url) {
+  try {
+    return process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule(import.meta.url)) {
   const mode = process.argv[2];
   if (mode !== "--write" && mode !== "--check") {
     process.stderr.write("usage: corresponding-source.mjs --write | --check\n");

@@ -1,4 +1,4 @@
-import { constants } from "node:fs";
+import { constants, type BigIntStats } from "node:fs";
 import { lstat, mkdir, open, realpath, rm } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { ImportConflictError, ImportSecurityError, ImportValidationError } from "./errors.ts";
@@ -31,14 +31,27 @@ export async function canonicalFileWithinRoots(path: string, roots: string[], la
 // handle, so a swap after the check cannot substitute a symlink, a FIFO or a hard link to a
 // file elsewhere. A swap of a parent directory in between is not covered.
 export async function readSingleLinkFile(path: string, label: string, maxBytes: number): Promise<Buffer> {
+  // O_NOFOLLOW refuses a link when the file is opened (POSIX). Windows has no such flag, and
+  // opening there follows a link: so the path is checked first, and the file opened must be
+  // the one checked (P08-G7). A swap between the two is then refused, not read.
+  const noFollow = constants.O_NOFOLLOW;
+  let checked: BigIntStats | null = null;
+  if (noFollow === undefined) {
+    checked = await lstat(path, { bigint: true });
+    if (checked.isSymbolicLink()) throw new ImportSecurityError(`${label} must be a regular non-symlink file`);
+  }
   let handle;
   try {
-    handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    handle = await open(path, constants.O_RDONLY | (noFollow ?? 0) | (constants.O_NONBLOCK ?? 0));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ELOOP") throw new ImportSecurityError(`${label} must be a regular non-symlink file`);
     throw error;
   }
   try {
+    if (checked !== null) {
+      const opened = await handle.stat({ bigint: true });
+      if (opened.dev !== checked.dev || opened.ino !== checked.ino) throw new ImportSecurityError(`${label} changed while it was being opened`);
+    }
     const info = await handle.stat();
     if (!info.isFile()) throw new ImportSecurityError(`${label} must be a regular non-symlink file`);
     if (info.nlink > 1) throw new ImportSecurityError(`${label} must not be hard-linked`);

@@ -1,3 +1,4 @@
+import { lstatSync } from "node:fs";
 import { join } from "node:path";
 import { sha256Hex } from "./canonical.ts";
 import { PersistenceCorruptionError, PersistenceValidationError } from "./errors.ts";
@@ -32,8 +33,11 @@ export function putObject(projectDir: string, bytes: Buffer): string {
 /** Read an object and verify its content against its id. */
 export function getObject(projectDir: string, digest: string): Buffer {
   const { directory, file } = objectPath(projectDir, digest);
-  assertNotSymlink(join(projectDir, PROJECT_FILES.objects), "object store");
-  assertNotSymlink(directory, "object fan-out directory");
+  // A store or fan-out that is a file is refused as such on every platform: reading through it
+  // fails as ENOTDIR on POSIX, but as ENOENT, a missing object, on Windows (P08-G7).
+  for (const [path, label] of [[join(projectDir, PROJECT_FILES.objects), "object store"], [directory, "object fan-out directory"]]) {
+    if (assertNotSymlink(path, label) && !lstatSync(path).isDirectory()) throw new PersistenceValidationError(`${label} is not a directory`);
+  }
   const bytes = readBounded(file, PERSISTENCE_LIMITS.maxObjectBytes, `object ${digest}`);
   if (bytes === null) throw new PersistenceCorruptionError(`object ${digest} is missing`);
   if (sha256Hex(bytes) !== digest) throw new PersistenceCorruptionError(`object ${digest} does not match its content hash`);

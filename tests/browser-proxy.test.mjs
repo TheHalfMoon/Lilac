@@ -10,6 +10,10 @@ import { join } from "node:path";
 import { createImpeccableCliRunner, scanBrowserUrl, startBrowserPolicyProxy } from "../packages/design-assurance/src/index.mjs";
 import { isLinkLocalOrMetadataAddress } from "../packages/network-policy/src/index.ts";
 
+// The wrapper that forces the policy proxy is a POSIX shell script, so on Windows a
+// policy-enforced scan is refused, fail-closed (#266).
+const WRAPPER_SKIP = process.platform === "win32" && "the policy wrapper is a POSIX shell script; Windows scans are refused, fail-closed (#266)";
+
 // P06 gate 5, grain d (#114): browser scans run behind a policy proxy, so DNS
 // rebinding, redirects and subresource loads to private hosts fail closed.
 
@@ -272,7 +276,7 @@ test("metadata stays denied even when private-network scans are allowed", async 
 
 // The real engine launches whatever the runner names as its browser; a stand-in browser
 // records the argv it is started with and exits, so the scan itself fails.
-test("the runner starts the browser only through a wrapper that forces the proxy", { skip: process.platform === "win32" }, async () => {
+test("the runner starts the browser only through a wrapper that forces the proxy", { skip: WRAPPER_SKIP }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "ninerr-browser-proxy-"));
   try {
     const record = join(dir, "argv.txt");
@@ -299,7 +303,7 @@ test("the runner starts the browser only through a wrapper that forces the proxy
   }
 });
 
-test("the wrapper drops proxy switches the launcher passes", { skip: process.platform === "win32" }, async () => {
+test("the wrapper drops proxy switches the launcher passes", { skip: WRAPPER_SKIP }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "ninerr-browser-proxy-"));
   try {
     const record = join(dir, "argv.txt");
@@ -320,9 +324,9 @@ test("the wrapper drops proxy switches the launcher passes", { skip: process.pla
 
 // End to end with a real Chromium when one is available (NINERR_TEST_BROWSER, or the
 // usual locations). --no-sandbox only because CI and containers may run as root.
-const realBrowser = [process.env.NINERR_TEST_BROWSER, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find((path) => typeof path === "string" && path !== "" && existsSync(path));
+const realBrowser = [process.env.NINERR_TEST_BROWSER, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].find((path) => typeof path === "string" && path !== "" && existsSync(path));
 
-test("a real browser scan fails closed on a private subresource", { skip: realBrowser === undefined || process.platform === "win32" ? "no Chromium available" : false, timeout: 120_000 }, async () => {
+test("a real browser scan fails closed on a private subresource", { skip: WRAPPER_SKIP || (realBrowser === undefined && "no Chromium available"), timeout: 120_000 }, async () => {
   const page = '<html><body><h1>Scan me</h1><img src="http://169.254.169.254/latest/meta-data/x.png"></body></html>';
   await withServer((_request, response) => { response.setHeader("content-type", "text/html"); response.end(page); }, async (port, hits) => {
     const runner = createImpeccableCliRunner({ browserExecutable: realBrowser, browserFlags: ["--no-sandbox"], timeoutMs: 90_000 });
