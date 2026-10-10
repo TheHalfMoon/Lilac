@@ -71,8 +71,10 @@ async function assertReopenedExact(running, root, project, before, message) {
   const after = await exactState(running.call, root, project);
   assert.deepEqual([after.revision, after.document, after.files[PROJECT_FILES.journal]], [before.revision, before.document, before.files[PROJECT_FILES.journal]], message);
   assert.deepEqual({ files: after.files, objects: after.objects }, running.closed, `${message}: the reopen writes nothing`);
-  const entries = after.files[PROJECT_FILES.journal].split("\n").filter((line) => line !== "").length;
-  assert.equal(JSON.parse(after.files[PROJECT_FILES.snapshot]).journalSeq, entries, `${message}: the snapshot stands at the journal's end`);
+  // The journal's last entry, or the entry its segment starts after when it holds none (#258).
+  const last = after.files[PROJECT_FILES.journal].split("\n").filter((line) => line !== "").map((line) => JSON.parse(line)).at(-1);
+  const end = last === undefined ? 0 : last.segment?.baseSeq ?? last.entry.seq;
+  assert.equal(JSON.parse(after.files[PROJECT_FILES.snapshot]).journalSeq, end, `${message}: the snapshot stands at the journal's end`);
 }
 
 /**
@@ -374,7 +376,7 @@ perSeed("Journey D: an agent over MCP inspects and edits; the person reviews, ac
   assert.equal(content(JSON.parse(before.document)), withScratch, "what persisted is the reverted document");
   // Attribution persisted: the journal read back after the reopen names the agent and its tool
   // for the deletion, and the person for the revert, the undo and the redo.
-  const journal = new Map(before.files[PROJECT_FILES.journal].trim().split("\n").map((line) => JSON.parse(line).entry.transaction).map((entry) => [entry.id, entry]));
+  const journal = new Map(before.files[PROJECT_FILES.journal].trim().split("\n").map((line) => JSON.parse(line)).filter((line) => line.segment === undefined).map((line) => line.entry.transaction).map((entry) => [entry.id, entry]));
   assert.deepEqual([journal.get(deletion.transactionId).actor, journal.get(deletion.transactionId).tool], [deletion.actor, "delete_layers"]);
   assert.notEqual(deletion.actor, reverted.actor);
   // So do the links: the revert names the deletion, and the undo and the redo name the revert.

@@ -18,17 +18,28 @@ Ninerr stores a project under `<root>/.ninerr`. This page describes:
 | --- | --- |
 | `project.json` | The manifest: `{ format: "ninerr-project", schemaVersion, projectId, documentId, createdAt, journalGenesis }`. Exactly these fields. |
 | `snapshot.json` | The snapshot reference: `{ revision, documentObject, journalSeq, chainDigest }`. Exactly these fields. |
-| `objects/xx/yyyy...` | Content-addressed objects. Each file is named by the SHA-256 of its bytes. A snapshot's document object is canonical JSON. |
-| `journal.log` | Newline-terminated JSON lines `{ digest, entry: { seq, revision, transaction } }`. Each digest chains to the previous one, starting from a per-project genesis digest. |
+| `objects/xx/yyyy...` | Content-addressed objects. Each file is named by the SHA-256 of its bytes. A snapshot's document object is canonical JSON. An archived journal segment is stored as one or more objects. |
+| `journal.log` | Newline-terminated JSON lines `{ digest, entry: { seq, revision, transaction } }`. Each digest chains to the previous one, starting from a per-project genesis digest. A journal may start with a segment header (below). |
 | `lock` | The single-writer lock while a project is open. |
 
 **Journal genesis.** The genesis digest is `sha256("<journalGenesis>:<projectId>")`. A project created by this release records `journalGenesis: "ninerr-journal-genesis"`. A migrated project records the domain its journal was chained from. Its history is never re-chained, so every recorded digest still verifies. Only the two known domains are accepted.
 
 **The document comes only from replay.** It is produced by replaying history transactions from the snapshot's document onward.
 
+**Journal segments (project schema 3, #258).** A checkpoint starts a new segment once the journal is larger than `PERSISTENCE_LIMITS.journalSegmentBytes` (1 MiB; a host may pass `rotateJournalAt`) and than the document, since each segment also stores the document once. A commit that takes the journal past that size checkpoints by itself. If that fails (another program holding the journal open, say), the project stays as it is and the next try comes once the journal has grown by another segment. Starting a segment:
+
+1. stores the whole journal as objects (pieces of at most `archivePieceBytes`);
+2. replaces the journal, atomically, with a single header line `{ segment: { anchor, archive, baseSeq } }`. The header is canonical JSON. Its entries follow entry `baseSeq`, whose digest is `anchor`. `archive` lists the objects that hold the previous segment, in order.
+
+The snapshot stands at `baseSeq` when the segment starts, and must never point before it. Each archived segment can itself start with a header, so following the archives leads back to the genesis: no history is discarded.
+
+Why segments: each append verifies the journal's bytes before writing, and each open verifies the whole journal. Without segments both grew with the project's age, and the journal eventually reached its size limit. A crash while a segment starts leaves either the whole journal, which the moved snapshot still matches, or the new segment.
+
 **Golden fixtures.**
 
-- `tests/fixtures/projects/v2-basic` is the golden project of this release, and this release must regenerate it byte for byte. It is written as a crash leaves a project: the snapshot stands at tx-2 and the journal goes on past it, so opening it replays three entries of every kind. A clean close would have checkpointed at the journal's end (#239).
+- `tests/fixtures/projects/v3-basic` is the golden project of this release, and this release must regenerate it byte for byte. It is written as a crash leaves a project: the snapshot stands at tx-2 and the journal goes on past it, so opening it replays three entries of every kind. A clean close would have checkpointed at the journal's end (#239).
+- `tests/fixtures/projects/v3-segments` is the same history with its journal in segments: a segment after tx-2, whose archive is the journal from the genesis. This release must also regenerate it byte for byte.
+- `tests/fixtures/projects/v2-basic` is the same history written by the release before segments (schema 2). It is frozen; it opens migrated to schema 3 with its journal unchanged.
 - `tests/fixtures/projects/v1-basic` is the same history written before the rename. It is frozen as the legacy migration corpus.
 
 ## Versions
@@ -37,7 +48,7 @@ There are three version boundaries. Each is checked on open, before anything is 
 
 | Boundary | Current | Unknown or newer data |
 | --- | --- | --- |
-| Project manifest | `PROJECT_SCHEMA_VERSION` = 2 | Newer: refused. Older: migrated through the built-in step or a host step, or refused. Not a non-negative integer: refused. |
+| Project manifest | `PROJECT_SCHEMA_VERSION` = 3 | Newer: refused. Older: migrated through the built-in steps or a host step, or refused. Not a non-negative integer: refused. |
 | Document schema | `DOCUMENT_SCHEMA_VERSION` = 1 | Any `schemaVersion` other than the integer 1, or a document or node field outside `DOCUMENT_FIELDS`/`NODE_FIELDS`: refused. |
 | Journal format | 1 | A transaction, operation or node field outside format 1, or an unknown operation type, in any entry (including entries the snapshot already covers): refused. |
 
@@ -53,7 +64,9 @@ Every refusal above is a `PersistenceVersionError`. Its message names the bounda
 - a malformed snapshot reference;
 - a structurally invalid document;
 - an unknown `journalGenesis`;
-- a schema-1 manifest that is not in the legacy format.
+- a schema-1 manifest that is not in the legacy format;
+- a segment header that is malformed or not canonical, or that appears in the journal of a project of schema 1 or 2;
+- a snapshot reference that points before the journal's segment.
 
 The only damage that is repaired automatically is an unterminated last journal line from an interrupted write (`recovery.tornTailBytes`). Stale temporary files and leftover `lock.broken-*` copies are also cleared, and they are counted in `recovery.staleTemporaryFiles`.
 
@@ -105,7 +118,10 @@ A legacy project on read-only storage cannot be migrated, because its lock canno
 
 ## Host migration steps
 
-`PROJECT_MIGRATIONS` has one built-in step, from schema 1 to 2. It applies only to a manifest in the legacy format, and it also upgrades a schema-1 manifest placed directly in `.ninerr`.
+`PROJECT_MIGRATIONS` has two built-in steps:
+
+- **From schema 1 to 2.** It applies only to a manifest in the legacy format, and it also upgrades a schema-1 manifest placed directly in `.ninerr`.
+- **From schema 2 to 3.** It changes only the version: a schema-2 journal has no segment header, and is a valid schema-3 journal as it stands. The version change makes a release without segments refuse the project as newer instead of misreading a segment header.
 
 A host that reads pre-release manifests may pass `migrations` for versions without a built-in step. Each step takes a manifest at version `n` and returns version `n + 1`. A built-in step always wins for its own version. A host step that yields schema 1 must yield the legacy format, because schema 1 only ever existed in it.
 

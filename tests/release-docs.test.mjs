@@ -92,8 +92,9 @@ test("the migration documentation matches the version constants and layout", () 
   const doc = read("docs/MIGRATION.md");
   assert.match(doc, new RegExp(`\`PROJECT_SCHEMA_VERSION\` = ${PROJECT_SCHEMA_VERSION}\\b`));
   assert.match(doc, new RegExp(`\`DOCUMENT_SCHEMA_VERSION\` = ${DOCUMENT_SCHEMA_VERSION}\\b`));
-  assert.deepEqual(Object.keys(PROJECT_MIGRATIONS), ["1"], "the doc states the one built-in step");
-  assert.match(doc, /`PROJECT_MIGRATIONS` has one built-in step, from schema 1 to 2/);
+  assert.deepEqual(Object.keys(PROJECT_MIGRATIONS), ["1", "2"], "the doc states the two built-in steps");
+  assert.match(doc, /`PROJECT_MIGRATIONS` has two built-in steps/);
+  for (const from of Object.keys(PROJECT_MIGRATIONS)) assert.match(doc, new RegExp(`From schema ${from} to ${Number(from) + 1}\.`), `the doc describes the step from schema ${from}`);
   for (const name of [PROJECT_FILES.manifest, PROJECT_FILES.snapshot, PROJECT_FILES.journal, PROJECT_FILES.lock, PROJECT_FILES.objects]) {
     assert.ok(doc.includes(`\`${name}`), `the layout table names ${name}`);
   }
