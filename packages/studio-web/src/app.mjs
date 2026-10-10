@@ -561,7 +561,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error, p
         })();
       },
     },
-    el("label", { for: "codebase-folder" }, "A folder with your JSX or TSX components (its full path)", folder),
+    el("label", { for: "codebase-folder" }, "A folder with your React components, in .js, .jsx or .tsx files (its full path)", folder),
     el("div", { class: "actions" }, connect));
   };
   if (codebaseError !== null) {
@@ -586,7 +586,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error, p
     setStatus("The codebase is disconnected.");
   }));
   section.append(el("p", {}, "Connected: ", el("code", { id: "codebase-path" }, codebase.folder)), el("div", { class: "actions" }, disconnect));
-  if (codebase.components.length === 0) section.append(el("p", {}, "No exported function components were found in its .jsx and .tsx files."));
+  if (codebase.components.length === 0) section.append(el("p", {}, "No exported function components were found in its .js, .jsx and .tsx files."));
   else {
     section.append(el("ul", { class: "project-list", id: "codebase-components", "aria-label": "Components in the codebase" }, codebase.components.map(({ file, component }) => {
       const bring = el("button", { type: "button", "data-file": file, "data-component": component, "aria-label": `Bring in ${component} from ${file}` }, "Bring in");

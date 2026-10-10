@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { buildCodeIr, designToCode, type DesignDoc, type DesignDocNode } from "@ninerr/code-ir";
+import { buildCodeIr, designToCode, exportedComponents, type DesignDoc, type DesignDocNode } from "@ninerr/code-ir";
 import { planElement } from "@ninerr/renderer";
 import { StudioError } from "./errors.ts";
 import { styleProperties } from "./imports.ts";
@@ -179,11 +179,14 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
   if (typeof source !== "string" || source.trim() === "") throw new StudioError(400, "invalid-code", "code must be a non-empty string");
   if (Buffer.byteLength(source) > MAX_CODE_BYTES) throw new StudioError(413, "code-too-large", "code is limited to 256 KiB");
   const refuse = (message: string) => new StudioError(422, "code-refused", message.slice(0, 300));
-  // Each name once: a source can repeat a declaration thousands of times (#250).
-  const exportedNames = [...new Set([...source.matchAll(/export\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9]*)/gu)].map((match) => match[1]))];
+  // Pasted code is read as TSX, which also reads JSX; a file by its own extension.
+  const sourcePath = options.path ?? "Imported.tsx";
   let ir: any;
+  let exportedNames: string[];
   try {
-    ir = buildCodeIr([{ path: options.path ?? `${exportedNames[0] ?? "Imported"}.jsx`, content: source }]);
+    // Each name once: a source can repeat a declaration thousands of times (#250).
+    exportedNames = exportedComponents(sourcePath, source);
+    ir = buildCodeIr([{ path: sourcePath, content: source }]);
   } catch (error) {
     throw refuse(error instanceof Error ? error.message : "the code could not be read");
   }

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, closeSync, fchmodSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { applyPatch, buildCodeIr } from "@ninerr/code-ir";
+import { applyPatch, buildCodeIr, exportedComponents } from "@ninerr/code-ir";
 import { StudioError } from "./errors.ts";
 import { LEGACY_CODEBASE_LINKS_FILE, registrySource } from "./legacy.ts";
 import { type CodeSource, importJsx } from "./code.ts";
@@ -25,7 +25,8 @@ export const MAX_SCAN_DEPTH = 8;
 export const MAX_SOURCE_BYTES = 256 * 1024;
 /** Directory entries a scan looks at in all, so a very large folder cannot stall the host. */
 export const MAX_SCAN_ENTRIES = 20_000;
-const SOURCE = /\.(?:jsx|tsx)$/u;
+/** Files that can hold components: JSX, TSX, and JavaScript with JSX (P08-G11). */
+const SOURCE = /\.(?:jsx|tsx|js)$/u;
 const SKIPPED = new Set(["node_modules", "dist", "build"]);
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
@@ -182,7 +183,7 @@ export function assertFolder(folder: unknown, projectsRoot: string): string {
 export function readSourceFile(folder: string, file: unknown): { file: string; content: string; sha256: string; absolute: string } {
   // Forward slashes only: no backslash, and no colon (a Windows drive or alternate stream).
   if (typeof file !== "string" || file === "" || file.length > 512 || isAbsolute(file) || /[\\:\u0000-\u001f]/u.test(file) || file.split("/").some((part) => part === ".." || part === "." || part === "") || !SOURCE.test(file)) {
-    throw new StudioError(400, "invalid-file", "a source file is a .jsx or .tsx path inside the connected folder");
+    throw new StudioError(400, "invalid-file", "a source file is a .js, .jsx or .tsx path inside the connected folder");
   }
   const absolute = join(folder, file);
   let entry;
@@ -206,9 +207,16 @@ export function readSourceFile(folder: string, file: unknown): { file: string; c
   return { file: relative(folder, real).split(sep).join("/"), content, sha256: sha256(content), absolute: real };
 }
 
-const exportedNames = (content: string) => [...content.matchAll(/export\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9]*)/gu)].map((match) => match[1]);
+/** The file's exported components; none when it is not JavaScript Ninerr can read. */
+function exportedNames(file: string, content: string): string[] {
+  try {
+    return exportedComponents(file, content);
+  } catch {
+    return [];
+  }
+}
 
-/** The exported function components in the folder's JSX and TSX files. */
+/** The exported function components in the folder's JavaScript, JSX and TSX files. */
 export function scanComponents(folder: string): { components: Array<{ file: string; component: string }>; files: number; truncated: boolean } {
   const components: Array<{ file: string; component: string }> = [];
   let files = 0;
@@ -245,7 +253,7 @@ export function scanComponents(folder: string): { components: Array<{ file: stri
           continue; // unreadable, or not exact UTF-8: not offered, as planning would refuse it
         }
         const file = relative(folder, path).split(sep).join("/");
-        for (const component of exportedNames(content)) components.push({ file, component });
+        for (const component of exportedNames(file, content)) components.push({ file, component });
       }
       // Symbolic links are neither followed nor listed.
     }
