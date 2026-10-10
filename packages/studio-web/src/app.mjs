@@ -38,6 +38,9 @@ const state = {
   canRedo: false,
   history: [],
   seen: new Set(),
+  // Layers this editor has just added, to select once the change that adds them is applied:
+  // { ids, applied } for the latest insert, marked applied when that change selects them.
+  selectOnApply: null,
   collapsed: new Set(),
   focusedLayer: null,
   queue: Promise.resolve(),
@@ -757,6 +760,8 @@ async function resync() {
   state.canUndo = Boolean(session.canUndo);
   state.canRedo = Boolean(session.canRedo);
   canvas.setDocument(next);
+  // A layer inserted here whose change the refresh brought in is selected now.
+  takePendingSelection();
   state.selection = canvas.selection;
   measure("ninerr:render-project", started);
 }
@@ -793,6 +798,20 @@ function requestResync() {
 }
 
 /** Apply one committed change event to the local copy, in revision order. */
+/**
+ * Select the layers the latest insert added, once they are all in the copy; true if it did.
+ * Called while a change is applied or after a refresh, never later: a selection the person
+ * made since is theirs.
+ */
+function takePendingSelection() {
+  const pending = state.selectOnApply;
+  if (pending === null || !pending.ids.every((id) => Object.hasOwn(state.document.nodes, id))) return false;
+  canvas.select(pending.ids);
+  pending.applied = true;
+  state.selectOnApply = null;
+  return true;
+}
+
 function applyChange(event) {
   if (event.project !== undefined && event.project !== state.project) return; // another project's
   if (resyncing !== null) {
@@ -826,13 +845,19 @@ function applyChange(event) {
     if (state.history.length > MAX_HISTORY_SHOWN) state.history.shift();
   }
   const selectionBefore = [...state.selection];
+  let selectedNew = false;
   applying = true;
   try {
     canvas.update(state.document, result.affectedNodeIds);
+    // A layer added here is selected with the change that adds it, whether the change event
+    // or the edit's own answer arrives first (#274): a command made just after it then acts on
+    // what the canvas shows, not on the selection before.
+    selectedNew = takePendingSelection();
   } finally {
     applying = false;
   }
   state.selection = canvas.selection;
+  if (selectedNew && state.selection.length > 0) state.focusedLayer = state.selection.at(-1);
   // A change that removed selected layers changes the selection; agents see it too.
   if (state.selection.length !== selectionBefore.length || state.selection.some((id, index) => id !== selectionBefore[index])) shareSelection();
   if (event.actor === state.user.actorId) {
@@ -845,6 +870,8 @@ function applyChange(event) {
   } catch {
     renderLayers();
   }
+  // The new layer's row becomes the tree's one tab stop, as selecting it there would make it.
+  if (selectedNew && state.focusedLayer !== null) rovingTo(state.focusedLayer);
   renderInspector();
   renderHistory();
 }
@@ -1066,8 +1093,20 @@ function insert(kind) {
   operations.push(...(kind === "text"
     ? insertNode(parentId, index, { id, type: "text", tag: "p", text: "Text", style: { position: "absolute", left: "32px", top: "32px", margin: "0px", "font-size": "16px" } })
     : insertNode(parentId, index, { id, type: "element", tag: "div", style: { position: "absolute", left: "32px", top: "32px", width: "160px", height: "100px", background: "#d9d2ff" } })));
+  const pending = { ids: [id], applied: false };
+  state.selectOnApply = pending;
   commit(operations, kind === "text" ? "Insert text" : "Insert box").then((event) => {
-    if (event) selectLayers([id]);
+    // Selected when its change was applied, or later by the person: leave it.
+    if (pending.applied) return;
+    // Skipped or refused: nothing to select.
+    if (event === null) {
+      if (state.selectOnApply === pending) state.selectOnApply = null;
+      return;
+    }
+    // Held for a refresh: the refresh selects it once the copy has it.
+    if (state.revision < event.revision) return;
+    if (state.selectOnApply === pending) state.selectOnApply = null;
+    selectLayers([id]);
   });
 }
 
@@ -1219,9 +1258,14 @@ function patchLayers(affectedNodeIds, rootTouched, previousSelection) {
   if (hadFocus && !tree.contains(document.activeElement) && state.focusedLayer !== null) document.getElementById(`layer-${state.focusedLayer}`)?.focus();
 }
 
-function focusLayer(id) {
+/** The layers tree's roving tab stop: `id`'s row is the one the Tab key reaches. */
+function rovingTo(id) {
   state.focusedLayer = id;
   for (const item of $("layers").querySelectorAll("[role=treeitem]")) item.tabIndex = item.dataset.nodeId === id ? 0 : -1;
+}
+
+function focusLayer(id) {
+  rovingTo(id);
   $(`layer-${id}`)?.focus();
 }
 
