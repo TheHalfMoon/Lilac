@@ -766,7 +766,9 @@ export class ProjectStore {
     try {
       // In the journal form's key order, so the document applied here has the same key
       // order as the one replay builds (style order is meaningful: a later shorthand wins).
-      validated = applyTransaction(this.#document, withSortedKeys(transaction));
+      // This store's document is its own, validated when it was replayed or committed and
+      // never handed out (the getter copies it), so its input check is skipped (#252).
+      validated = applyTransaction(this.#document, withSortedKeys(transaction), { ownValidated: true });
     } catch (error) {
       if ((error as Error)?.name === "DataCloneError") throw new PersistenceValidationError("transaction contains values that cannot be cloned");
       throw error;
@@ -779,7 +781,7 @@ export class ProjectStore {
     // again would give the same document, so the first result is used; otherwise it is
     // applied again.
     const sameForm = sameValue(createTransaction(stored), validated.transaction);
-    const next = (sameForm ? validated.document : applyTransaction(this.#document, stored).document) as ProjectDocument;
+    const next = (sameForm ? validated.document : applyTransaction(this.#document, stored, { ownValidated: true }).document) as ProjectDocument;
     const entry = { seq: this.#seq + 1, revision: next.revision, transaction: stored };
     const { line, digest } = encodeJournalLine(entry, this.#digest);
     const bytes = Buffer.byteLength(line, "utf8");
