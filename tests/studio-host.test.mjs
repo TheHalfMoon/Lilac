@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { LocalCollaborationRoom } from "../packages/collaboration/src/index.ts";
 import { MAX_OPERATIONS_PER_EDIT, StudioSession, startStudioHost } from "../packages/studio-host/src/index.ts";
 import { PROJECT_FILES, openProject } from "../packages/persistence/src/index.ts";
+import { linkDirectory } from "./support/links.mjs";
 
 // PC1 (#146): the studio host composes persistence, history and collaboration behind a
 // loopback-only API, and streams attributed changes. Advances PC gate 4.
@@ -276,7 +277,7 @@ test("a failed open or create keeps the current project, and failures have speci
   const outside = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-outside-")));
   try {
     renameSync(join(root, "broken"), join(outside, "victim"));
-    symlinkSync(join(outside, "victim"), join(root, "link"));
+    linkDirectory(join(outside, "victim"), join(root, "link"));
     assert.equal((await api(host, "POST", "/api/projects/open", { name: "link" })).json.error.code, "invalid-project");
   } finally {
     rmSync(outside, { recursive: true, force: true });

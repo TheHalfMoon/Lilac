@@ -19,6 +19,12 @@ export function findBrowser() {
     for (const name of builds) candidates.push(join(cache, name, "chrome-linux", "chrome"));
   }
   candidates.push("/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser");
+  // Where Windows and macOS keep Chrome and Edge (P08-G7): what their CI runners have.
+  for (const programs of [process.env.PROGRAMFILES, process.env["PROGRAMFILES(X86)"]]) {
+    if (typeof programs !== "string") continue;
+    candidates.push(join(programs, "Google", "Chrome", "Application", "chrome.exe"), join(programs, "Microsoft", "Edge", "Application", "msedge.exe"));
+  }
+  candidates.push("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge");
   return candidates.find((path) => typeof path === "string" && path !== "" && existsSync(path)) ?? null;
 }
 

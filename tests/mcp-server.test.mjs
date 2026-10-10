@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { MCP_TOOL_NAMES, assertMCPToolSurface, classifyTool, validateMCPToolDefinition } from "../packages/mcp-protocol/src/index.mjs";
 import { mcpToolDefinitions, startStudioHost } from "../packages/studio-host/src/index.ts";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
+import { writableMode } from "./support/platform.mjs";
 
 // PC5 (#146, #82): Ninerr's MCP server in the studio host. Agents connected by the person,
 // the MCP protocol over loopback HTTP, authorization of every call
@@ -62,7 +63,7 @@ test("the person connects agents; only an agent credential reaches MCP, and none
     assert.deepEqual((await owner("GET", "/api/agents")).json.agents, [agent], "the listing never includes the credential");
     // The registry holds only a hash, with owner-only permissions.
     const registry = join(root, ".ninerr-agents.json");
-    assert.equal(statSync(registry).mode & 0o777, 0o600);
+    assert.equal(statSync(registry).mode & 0o777, writableMode(0o600));
     assert.ok(!readFileSync(registry, "utf8").includes(token));
     // MCP: no credential, the editor's token, a wrong credential, or a GET are refused.
     assert.equal((await mcp("nope", "ping")).status, 401);
@@ -74,7 +75,7 @@ test("the person connects agents; only an agent credential reaches MCP, and none
     // The discovery file tells relays where the host is, and holds no credential.
     const discovery = JSON.parse(readFileSync(join(root, ".ninerr-studio.json"), "utf8"));
     assert.equal(discovery.mcpUrl, host.mcpUrl);
-    assert.equal(statSync(join(root, ".ninerr-studio.json")).mode & 0o777, 0o600);
+    assert.equal(statSync(join(root, ".ninerr-studio.json")).mode & 0o777, writableMode(0o600));
     // A restarted host keeps the agent (the hash is persisted) under a new endpoint.
     await host.close();
     const again = await startStudioHost({ projectsRoot: root, now });

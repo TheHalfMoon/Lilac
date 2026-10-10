@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 
 import { classifyAddress } from "../packages/network-policy/src/index.ts";
 import { createImpeccableCliRunner, scanBrowserUrl } from "../packages/design-assurance/src/index.mjs";
@@ -76,7 +77,7 @@ test("a target that starts with a dash is refused before the CLI runs", async ()
   for (const target of ["--help", "--json", "-x", "--scope=type"]) {
     await assert.rejects(cli.scanTarget(target), /must not start with '-'/u, target);
   }
-  const echo = createImpeccableCliRunner({ cliPath: new URL("./support/argv-echo.mjs", import.meta.url).pathname, timeoutMs: 10_000 });
+  const echo = createImpeccableCliRunner({ cliPath: fileURLToPath(new URL("./support/argv-echo.mjs", import.meta.url)), timeoutMs: 10_000 });
   const { findings } = await echo.scanTarget("/tmp/scan-target.html", { scopes: ["a"] });
   assert.equal(findings[0].argv.at(-1), "/tmp/scan-target.html", "ordinary targets are passed through unchanged");
 });

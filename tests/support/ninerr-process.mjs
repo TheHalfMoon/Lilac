@@ -44,8 +44,13 @@ export async function startNinerr(projects) {
       ninerr.child.stdin.write("\n");
       return nextLink();
     },
+    /**
+     * A clean stop: SIGTERM, which reaches the same handler as Ctrl+C, where signals reach a
+     * process; on Windows, which cannot send one to a child, the typed "stop" (P08-G7).
+     */
     async stop() {
-      ninerr.child.kill("SIGTERM");
+      if (process.platform === "win32") ninerr.child.stdin.write("stop\n");
+      else ninerr.child.kill("SIGTERM");
       return ninerr.exited;
     },
     /** A crash: the process is killed outright, with no chance to clean up. */

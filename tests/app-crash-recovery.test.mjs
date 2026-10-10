@@ -18,7 +18,9 @@ import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
 
 // A restarted editor's one console error: the 409 when it first opens the locked project
 // (and, once Ninerr is killed under it, the connections it could no longer make).
-const LOST_CONNECTION = /ERR_CONNECTION_REFUSED|ERR_INCOMPLETE_CHUNKED_ENCODING/u;
+// How a browser reports connections to a Ninerr that is gone; Windows resets the ones a killed
+// process held open (P08-G7).
+const LOST_CONNECTION = /ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_INCOMPLETE_CHUNKED_ENCODING/u;
 function assertOnlyLockedConflict(errors, { killed = false } = {}) {
   if (killed) errors = errors.filter((message) => !LOST_CONNECTION.test(message));
   const conflicts = errors.filter((message) => /status of 409 \(Conflict\)/u.test(message));

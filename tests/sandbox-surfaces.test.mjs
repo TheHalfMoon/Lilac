@@ -22,6 +22,8 @@ import {
   safeRemoveImportJobDirectory,
 } from "../packages/import-stack/src/index.ts";
 import { NETWORK_POLICY_SCHEMA_VERSION } from "../packages/network-policy/src/index.ts";
+import { FILE_LINKS_NEED_RIGHTS, canLinkFiles, linkDirectoryAsync } from "./support/links.mjs";
+import { HAS_FIFOS, NO_FIFOS } from "./support/platform.mjs";
 
 // P06 gate 5 (sandbox escape), grain c: surfaces outside persistence and network policy
 // where untrusted content or a hostile local actor could run code, read outside a root,
@@ -163,7 +165,7 @@ async function doclingWith(dir, input, act) {
   });
 }
 
-test("Docling refuses hard-linked input and output that is not its own regular file", async () => {
+test("Docling refuses hard-linked input and output that is not its own regular file", async (t) => {
   await withTemp(async (dir) => {
     await mkdir(join(dir, "in"));
     const input = join(dir, "in", "doc.pdf");
@@ -178,13 +180,21 @@ test("Docling refuses hard-linked input and output that is not its own regular f
 
     const outsideJson = join(dir, "outside.json");
     await writeFile(outsideJson, doclingOutput);
-    const viaSymlink = await doclingWith(dir, input, async (output) => symlink(outsideJson, output));
-    assert.equal(viaSymlink.status, "failed");
-    assert.match(viaSymlink.reason, /regular non-symlink file/u);
+    if (canLinkFiles) {
+      const viaSymlink = await doclingWith(dir, input, async (output) => symlink(outsideJson, output));
+      assert.equal(viaSymlink.status, "failed");
+      assert.match(viaSymlink.reason, /regular non-symlink file/u);
+    } else {
+      t.diagnostic(`not checked with a file link: ${FILE_LINKS_NEED_RIGHTS}`);
+    }
 
-    const viaFifo = await doclingWith(dir, input, async (output) => { execFileSync("mkfifo", [output]); });
-    assert.equal(viaFifo.status, "failed", "a FIFO output fails without blocking");
-    assert.match(viaFifo.reason, /regular non-symlink file/u);
+    if (HAS_FIFOS) {
+      const viaFifo = await doclingWith(dir, input, async (output) => { execFileSync("mkfifo", [output]); });
+      assert.equal(viaFifo.status, "failed", "a FIFO output fails without blocking");
+      assert.match(viaFifo.reason, /regular non-symlink file/u);
+    } else {
+      t.diagnostic(`not checked with a FIFO: ${NO_FIFOS}`);
+    }
     assert.equal(existsSync(join(dir, "work")) ? readdirSync(join(dir, "work")).length : 0, 0, "job directories are cleaned");
   });
 });
@@ -244,7 +254,7 @@ test("an evidence root swapped after store creation receives no bundle", async (
     await mkdir(outside);
     const store = await createEvidenceStore({ evidenceRoot: root, disposableRoots: [] });
     await rename(root, join(dir, "moved"));
-    await symlink(outside, root);
+    await linkDirectoryAsync(outside, root);
     await assert.rejects(() => store.writeBundle(bundle()), /evidence root changed/u);
     assert.deepEqual(readdirSync(outside), [], "nothing was written through the link");
 
@@ -269,7 +279,7 @@ async function savedState(dir) {
   return store;
 }
 
-test("collaboration state loads only from its own single-link regular file", async () => {
+test("collaboration state loads only from its own single-link regular file", async (t) => {
   await withTemp(async (dir) => {
     const store = await savedState(join(dir, "store"));
     const path = store.filePath("doc-1");
@@ -282,13 +292,17 @@ test("collaboration state loads only from its own single-link regular file", asy
     await assert.rejects(() => store.load("doc-1"), /hard-linked/u);
 
     await rm(path);
-    await symlink(outside, path);
-    await assert.rejects(() => store.load("doc-1"), /symbolic link/u);
+    if (canLinkFiles) {
+      await symlink(outside, path);
+      await assert.rejects(() => store.load("doc-1"), /symbolic link/u);
+    } else {
+      t.diagnostic(`not checked with a file link: ${FILE_LINKS_NEED_RIGHTS}`);
+    }
   });
 });
 
 // In a child process so that a regression blocks a killable process, not the test runner.
-test("a FIFO in place of collaboration state fails closed without blocking", async () => {
+test("a FIFO in place of collaboration state fails closed without blocking", { skip: !HAS_FIFOS && NO_FIFOS }, async () => {
   await withTemp(async (dir) => {
     const store = await savedState(join(dir, "store"));
     const path = store.filePath("doc-1");

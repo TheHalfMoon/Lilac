@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { CodebaseLinks, MAX_SCAN_FILES, MAX_SOURCE_BYTES, assertFolder, readSourceFile, scanComponents, startStudioHost } from "../packages/studio-host/src/index.ts";
+import { linkDirectory, tryLinkFile } from "./support/links.mjs";
+import { writableMode } from "./support/platform.mjs";
 
 // PC11a (#182): a connected codebase. One local folder per project, whose JSX and TSX
 // components the person brings into the design with their source and writes edits back
@@ -42,7 +44,7 @@ test("the links are kept owner-only, and a file others could change is not trust
   }
 });
 
-test("a codebase folder is an existing directory outside the projects folder, and files stay inside it", () => {
+test("a codebase folder is an existing directory outside the projects folder, and files stay inside it", (t) => {
   const root = scratch();
   try {
     const projects = join(root, "projects");
@@ -64,8 +66,7 @@ test("a codebase folder is an existing directory outside the projects folder, an
     for (const file of ["../secret.jsx", "src/../../secret.jsx", join(root, "secret.jsx"), "src//Card.jsx", "./src/Card.jsx", "src\\..\\..\\secret.jsx", "C:secret.jsx", "src/Card.jsx:stream.jsx", "src/Card.js", ""]) {
       assert.throws(() => readSourceFile(code, file), /inside the connected folder|outside|not in/u, file);
     }
-    symlinkSync(join(root, "secret.jsx"), join(code, "src", "Linked.jsx"));
-    assert.throws(() => readSourceFile(code, "src/Linked.jsx"), /not a regular file/u, "a link is not followed");
+    if (tryLinkFile(t, join(root, "secret.jsx"), join(code, "src", "Linked.jsx"))) assert.throws(() => readSourceFile(code, "src/Linked.jsx"), /not a regular file/u, "a link is not followed");
     writeFileSync(join(code, "src", "Big.jsx"), `export function Big() { return <p>${"x".repeat(MAX_SOURCE_BYTES)}</p>; }`);
     assert.throws(() => readSourceFile(code, "src/Big.jsx"), /larger than/u);
   } finally {
@@ -83,7 +84,7 @@ test("the scan lists exported components, skips what it must, follows no link, a
     writeFileSync(join(code, "src", "util.js"), "export function Card() {}");
     for (const folder of ["node_modules/pkg", ".git", "dist"]) writeFileSync(join(code, folder, "X.jsx"), "export function Skipped() { return <p />; }");
     writeFileSync(join(code, "elsewhere", "Far.jsx"), "export function Far() { return <p />; }");
-    symlinkSync(join(code, "elsewhere"), join(code, "src", "linked"));
+    linkDirectory(join(code, "elsewhere"), join(code, "src", "linked"));
     const { components, truncated } = scanComponents(join(code, "src"));
     assert.deepEqual(components, [{ file: "Card.jsx", component: "PriceCard" }, { file: "ui/Buttons.tsx", component: "Primary" }, { file: "ui/Buttons.tsx", component: "Quiet" }]);
     assert.equal(truncated, false);
@@ -258,7 +259,7 @@ test("write-back keeps the file's own changes, writes only the previewed plan, a
     assert.match(after, /<h3>Heading<\/h3>/u);
     assert.match(after, /<p>Hi <b>you<\/b> there<\/p>/u, "the text's surroundings are kept");
     assert.match(after, /Footer from the file/u);
-    assert.equal(statSync(path).mode & 0o777, 0o664, "the file keeps its permissions");
+    assert.equal(statSync(path).mode & 0o777, writableMode(0o664), "the file keeps its permissions");
     preview = (await call("POST", "/api/codebase/preview", { nodeId: article.id })).json;
     assert.deepEqual(preview.changes, [], "and nothing reverts it later");
     assert.equal(find((node) => node.id === span.id).props.codeSource.base.text, "Footer", "the untouched field keeps its base");
