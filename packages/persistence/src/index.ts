@@ -17,6 +17,7 @@ export {
   type JournalEntry,
   type JournalGenesisDomain,
   type JournalSegment,
+  type JournalSummary,
   type LegacyMigrationReport,
   type LockOverride,
   type LockRecord,

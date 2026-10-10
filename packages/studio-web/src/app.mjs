@@ -1374,15 +1374,17 @@ function renderHistory() {
     list.replaceChildren();
     return;
   }
-  list.replaceChildren(...[...state.history].reverse().map((entry) => el("li", { class: entry.actorKind === "agent" ? "agent" : "user", "data-transaction": entry.transactionId },
+  // Changes from before this session (#231) are listed too; only this session's can be reverted.
+  list.replaceChildren(...[...state.history].reverse().map((entry) => el("li", { class: `${entry.actorKind === "agent" ? "agent" : "user"}${entry.earlier ? " earlier" : ""}`, "data-transaction": entry.transactionId },
     el("span", { class: "intent" }, entry.intent ?? "Edit"),
     el("span", { class: "who" },
       actorLabel(entry),
       entry.actorKind === "agent" ? el("span", { class: "kind" }, " · agent") : null,
       entry.tool && !/^(?:ninerr|lilac):/u.test(entry.tool) ? ` · ${entry.tool}` : null,
-      ` · revision ${entry.revision}`),
-    entry.actorKind === "agent" ? el("button", { type: "button", class: "revert", "aria-label": `Revert ${entry.intent ?? "change"} by ${actorLabel(entry)}`, onclick: () => revert(entry) }, "Revert") : null)));
-  if (state.history.length === 0) list.replaceChildren(el("li", {}, el("span", { class: "who" }, "No changes since this project was opened.")));
+      ` · revision ${entry.revision}`,
+      entry.earlier ? " · before this session" : null),
+    entry.actorKind === "agent" && !entry.earlier ? el("button", { type: "button", class: "revert", "aria-label": `Revert ${entry.intent ?? "change"} by ${actorLabel(entry)}`, onclick: () => revert(entry) }, "Revert") : null)));
+  if (state.history.length === 0) list.replaceChildren(el("li", {}, el("span", { class: "who" }, "No changes yet.")));
 }
 
 function renderToolbar() {

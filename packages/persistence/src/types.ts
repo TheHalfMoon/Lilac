@@ -60,6 +60,20 @@ export interface JournalSegment {
   archive: string[];
 }
 
+/**
+ * A change the journal holds, as the history panel lists it: who made it, what for, with
+ * what tool and when. Read from the journal at open (#231).
+ */
+export interface JournalSummary {
+  revision: number;
+  transactionId: string;
+  actor: string;
+  actorKind: "user" | "agent";
+  intent: string | null;
+  tool: string | null;
+  at: string | null;
+}
+
 export interface JournalEntry {
   seq: number;
   revision: number;

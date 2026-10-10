@@ -41,6 +41,13 @@ export interface ChangeEvent {
   revertOf?: string;
 }
 
+/**
+ * A line of the history panel: a change's summary. `earlier` marks one made before this
+ * session, read from the project's journal at open (#231): it is shown, but only this
+ * session's changes can be undone or reverted.
+ */
+export type HistoryEntry = Omit<ChangeEvent, "operations"> & { earlier?: true };
+
 export interface EditInput {
   baseRevision: number;
   operations: unknown[];
@@ -93,7 +100,7 @@ export class StudioSession {
   #undo = new Map<string, UndoEntry[]>();
   #redo = new Map<string, UndoEntry[]>();
   #listeners = new Set<(event: ChangeEvent) => void>();
-  #log: Array<Omit<ChangeEvent, "operations">> = [];
+  #log: Array<HistoryEntry> = [];
   #closed = false;
   #failure: string | null = null;
   // The document as of the last commit, as history state for the next one. The session is
@@ -110,6 +117,21 @@ export class StudioSession {
     this.#documentId = store.document.id;
     this.#grants = [{ principalKind: "actor", principalId: owner.actorId, capabilities: OWNER_CAPABILITIES }];
     this.#now = now;
+    // The project's earlier changes, from its journal, so the history panel shows who made
+    // them after a reopen (#231).
+    this.#log = store.history.slice(-MAX_LOG).map((summary) => ({
+      type: "transaction",
+      project: name,
+      revision: summary.revision,
+      transactionId: summary.transactionId,
+      actor: summary.actor,
+      actorKind: summary.actorKind,
+      actorName: summary.actor === owner.actorId ? owner.displayName : summary.actor,
+      intent: summary.intent,
+      tool: summary.tool,
+      affectedNodeIds: [],
+      earlier: true,
+    }));
   }
 
   /**
@@ -190,7 +212,7 @@ export class StudioSession {
   }
 
   /** The changes committed since the project was opened, newest last (at most 500). */
-  get log(): ReadonlyArray<Omit<ChangeEvent, "operations">> {
+  get log(): ReadonlyArray<HistoryEntry> {
     return this.#log;
   }
 
