@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "legacy-v1",
+      "category": "legacy",
+      "from": "v1-basic",
+      "what": "a project from before the rename (its own directory and format, schema 1)",
+      "expect": {
+        "opens": "golden",
+        "writes": true
+      }
+    },
+    {
+      "name": "historical-v2",
+      "category": "historical",
+      "from": "v2-basic",
+      "what": "project schema 2, from before journal segments",
+      "expect": {
+        "opens": "golden",
+        "writes": true
+      }
+    },
+    {
+      "name": "current-v3",
+      "category": "current",
+      "from": "v3-basic",
+      "what": "project schema 3",
+      "expect": {
+        "opens": "golden",
+        "writes": false
+      }
+    },
+    {
+      "name": "current-v3-segments",
+      "category": "current",
+      "from": "v3-segments",
+      "what": "project schema 3 with an archived journal segment",
+      "expect": {
+        "opens": "segments",
+        "writes": false
+      }
+    },
+    {
+      "name": "recoverable-torn-tail",
+      "category": "recoverable",
+      "from": "v3-basic",
+      "what": "a journal whose last write was cut off",
+      "expect": {
+        "opens": "golden",
+        "writes": true,
+        "recovery": {
+          "tornTailBytes": 15
+        }
+      }
+    },
+    {
+      "name": "recoverable-stale-temporary",
+      "category": "recoverable",
+      "from": "v3-basic",
+      "what": "a temporary file left by an interrupted save",
+      "expect": {
+        "opens": "golden",
+        "writes": true,
+        "recovery": {
+          "staleTemporaryFiles": 1
+        }
+      }
+    }
+  ],
+  "treeSha256": "20700ba70a369bb5a4f996c404a9eb10536dc9be404fcedda20ab5df86f17e05"
+}
