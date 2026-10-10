@@ -101,11 +101,13 @@ test("JSX comes into the design as layers, and refused code is reported, not gue
   // A hostile paste near the size limit is refused promptly: 1,666 roots each with a nested
   // <Aa>, then the name declared 11,000 times after them, once searched names × components ×
   // roots (43 s before the #250 review).
-  // Not JavaScript, it is refused by the parser; as a program (1,666 roots and a component
-  // that returns none of them), it is refused by name. Both promptly.
+  // Not JavaScript, it is refused by the parser; as a program (1,666 roots and an export with
+  // no JSX, so no component), it is refused as having none; a component that returns none of
+  // the roots is refused by name. All promptly.
   for (const [hostile, reason] of [
     [`${"<X><Aa><i/></Aa></X>".repeat(1666)}\n${"export function Aa(".repeat(11_000)}`, /could not be parsed/u],
-    [`${"<X><Aa><i/></Aa></X>;".repeat(1666)}\nexport function Aa() { return null; }\n`, /Aa does not return a JSX element/u],
+    [`${"<X><Aa><i/></Aa></X>;".repeat(1666)}\nexport function Aa() { return null; }\n`, /^bring in one exported function component/u],
+    [`${"<X><Aa><i/></Aa></X>;".repeat(1666)}\nexport function Aa() { if (x) <i />; return null; }\n`, /^Aa does not return a JSX element/u],
   ]) {
     const started = performance.now();
     assert.throws(() => importJsx(hostile), (error) => error.code === "code-refused" && reason.test(error.message));

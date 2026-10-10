@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, closeSync, fchmodSync, fsyncSync, lstatSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { applyPatch, buildCodeIr } from "@ninerr/code-ir";
+import { applyPatch, buildCodeIr, exportedComponents } from "@ninerr/code-ir";
 import { StudioError } from "./errors.ts";
 import { LEGACY_CODEBASE_LINKS_FILE, registrySource } from "./legacy.ts";
 import { type CodeSource, importJsx, layerName, sourceShape } from "./code.ts";
@@ -25,8 +25,23 @@ export const MAX_SCAN_DEPTH = 8;
 export const MAX_SOURCE_BYTES = 256 * 1024;
 /** Directory entries a scan looks at in all, so a very large folder cannot stall the host. */
 export const MAX_SCAN_ENTRIES = 20_000;
-const SOURCE = /\.(?:jsx|tsx)$/u;
-const SKIPPED = new Set(["node_modules", "dist", "build"]);
+/** Files that can hold components: JSX, TSX, and JavaScript with JSX (P08-G11). */
+const SOURCE = /\.(?:jsx|tsx|js)$/u;
+const SKIPPED = new Set(["node_modules", "dist", "build", "out", "coverage"]);
+/**
+ * The most source a scan parses, in all (P08-G11 review of #287): a real folder's components
+ * are far less (the largest dogfooding folder, excalidraw's components, is 1.3 MiB), and a
+ * folder of built bundles would otherwise hold the host for tens of seconds. Past it, the
+ * scan says it was cut short. Files a scan parsed are kept by size and time, so the next
+ * scan of an unchanged folder parses nothing.
+ */
+export const MAX_SCAN_PARSE_BYTES = 4 * 1024 * 1024;
+/** The most components a scan lists. */
+export const MAX_SCAN_COMPONENTS = 5_000;
+/** Lines this long on average are built output, not source a person edits. */
+const GENERATED_LINE_LENGTH = 500;
+const scanCache = new Map<string, { size: number; mtimeMs: number; names: string[] }>();
+const MAX_SCAN_CACHE = 2_000;
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 /** The temporary file a write-back renames into place, next to its target. */
@@ -182,7 +197,7 @@ export function assertFolder(folder: unknown, projectsRoot: string): string {
 export function readSourceFile(folder: string, file: unknown): { file: string; content: string; sha256: string; absolute: string } {
   // Forward slashes only: no backslash, and no colon (a Windows drive or alternate stream).
   if (typeof file !== "string" || file === "" || file.length > 512 || isAbsolute(file) || /[\\:\u0000-\u001f]/u.test(file) || file.split("/").some((part) => part === ".." || part === "." || part === "") || !SOURCE.test(file)) {
-    throw new StudioError(400, "invalid-file", "a source file is a .jsx or .tsx path inside the connected folder");
+    throw new StudioError(400, "invalid-file", "a source file is a .js, .jsx or .tsx path inside the connected folder");
   }
   const absolute = join(folder, file);
   let entry;
@@ -206,13 +221,21 @@ export function readSourceFile(folder: string, file: unknown): { file: string; c
   return { file: relative(folder, real).split(sep).join("/"), content, sha256: sha256(content), absolute: real };
 }
 
-const exportedNames = (content: string) => [...content.matchAll(/export\s+(?:default\s+)?function\s+([A-Z][A-Za-z0-9]*)/gu)].map((match) => match[1]);
+/** The file's exported components; none when it is not JavaScript Ninerr can read. */
+function exportedNames(file: string, content: string): string[] {
+  try {
+    return exportedComponents(file, content);
+  } catch {
+    return [];
+  }
+}
 
-/** The exported function components in the folder's JSX and TSX files. */
+/** The exported function components in the folder's JavaScript, JSX and TSX files. */
 export function scanComponents(folder: string): { components: Array<{ file: string; component: string }>; files: number; truncated: boolean } {
   const components: Array<{ file: string; component: string }> = [];
   let files = 0;
   let entriesSeen = 0;
+  let parsedBytes = 0;
   let truncated = false;
   const walk = (directory: string, depth: number) => {
     if (depth > MAX_SCAN_DEPTH || truncated) return;
@@ -231,21 +254,52 @@ export function scanComponents(folder: string): { components: Array<{ file: stri
       if (entry.name.startsWith(".") || SKIPPED.has(entry.name)) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) walk(path, depth + 1);
-      else if (entry.isFile() && SOURCE.test(entry.name)) {
+      else if (entry.isFile() && SOURCE.test(entry.name) && !entry.name.endsWith(".min.js")) {
         if (files >= MAX_SCAN_FILES) {
           truncated = true;
           return;
         }
         files += 1;
-        let content: string;
-        try {
-          if (lstatSync(path).size > MAX_SOURCE_BYTES) continue;
-          content = UTF8.decode(readFileSync(path));
-        } catch {
-          continue; // unreadable, or not exact UTF-8: not offered, as planning would refuse it
-        }
         const file = relative(folder, path).split(sep).join("/");
-        for (const component of exportedNames(content)) components.push({ file, component });
+        let stat;
+        try {
+          stat = lstatSync(path);
+        } catch {
+          continue;
+        }
+        if (stat.size > MAX_SOURCE_BYTES) continue;
+        let names: string[];
+        const cached = scanCache.get(path);
+        if (cached !== undefined && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) names = cached.names;
+        else {
+          let content: string;
+          try {
+            content = UTF8.decode(readFileSync(path));
+          } catch {
+            continue; // unreadable, or not exact UTF-8: not offered, as planning would refuse it
+          }
+          // No export, or no JSX, or built output: nothing a person would bring in. Cheap tests
+          // before the parse.
+          const lines = content.split("\n").length;
+          if (!/\bexport\b/u.test(content) || !/<[A-Za-z>]/u.test(content) || content.length / lines > GENERATED_LINE_LENGTH) names = [];
+          else {
+            if (parsedBytes + content.length > MAX_SCAN_PARSE_BYTES) {
+              truncated = true;
+              return;
+            }
+            parsedBytes += content.length;
+            names = exportedNames(file, content);
+          }
+          if (scanCache.size >= MAX_SCAN_CACHE) scanCache.delete(scanCache.keys().next().value!);
+          scanCache.set(path, { size: stat.size, mtimeMs: stat.mtimeMs, names });
+        }
+        for (const component of names) {
+          if (components.length >= MAX_SCAN_COMPONENTS) {
+            truncated = true;
+            return;
+          }
+          components.push({ file, component });
+        }
       }
       // Symbolic links are neither followed nor listed.
     }

@@ -432,27 +432,38 @@ function returnedJsx(fn: AstNode): AstNode | null {
   return returned !== null && (returned.type === "JSXElement" || returned.type === "JSXFragment") ? returned : null;
 }
 
+/** The component a default export names through memo(…), forwardRef(…) or a type: Card. */
+function wrappedName(expression: AstNode): string | null {
+  let current = unwrap(expression);
+  for (let depth = 0; current !== null && current.type === "CallExpression" && depth < 4; depth += 1) {
+    const name = calleeName(current.callee);
+    if (name === null || !WRAPPERS.has(name) || current.arguments.length === 0) return null;
+    current = unwrap(current.arguments[0]);
+  }
+  return current?.type === "Identifier" ? current.name : null;
+}
+
 /** The program's top-level function components, each with the JSX it returns. */
-function componentDefinitions(program: AstNode): Array<{ name: string; jsx: AstNode | null }> {
-  const definitions: Array<{ name: string; jsx: AstNode | null }> = [];
+function componentDefinitions(program: AstNode): Array<{ name: string; jsx: AstNode | null; fn: AstNode }> {
+  const definitions: Array<{ name: string; jsx: AstNode | null; fn: AstNode }> = [];
   const visit = (statement: AstNode | null) => {
     if (statement === null) return;
     if (statement.type === "ExportDefaultDeclaration" && statement.declaration.type !== "FunctionDeclaration") {
       // export default memo(function Card() {…}): the wrapped function's own name.
       const fn = componentFunction(statement.declaration);
-      if (fn?.id && /^[A-Z]/u.test(fn.id.name)) definitions.push({ name: fn.id.name, jsx: returnedJsx(fn) });
+      if (fn?.id && /^[A-Z]/u.test(fn.id.name)) definitions.push({ name: fn.id.name, jsx: returnedJsx(fn), fn });
       return;
     }
     if (statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration") return visit(statement.declaration);
     if (statement.type === "FunctionDeclaration" && statement.id && /^[A-Z]/u.test(statement.id.name)) {
-      definitions.push({ name: statement.id.name, jsx: returnedJsx(statement) });
+      definitions.push({ name: statement.id.name, jsx: returnedJsx(statement), fn: statement });
       return;
     }
     if (statement.type === "VariableDeclaration") {
       for (const declarator of statement.declarations as AstNode[]) {
         if (declarator.id.type !== "Identifier" || !/^[A-Z]/u.test(declarator.id.name)) continue;
         const fn = componentFunction(declarator.init);
-        if (fn !== null) definitions.push({ name: declarator.id.name, jsx: returnedJsx(fn) });
+        if (fn !== null) definitions.push({ name: declarator.id.name, jsx: returnedJsx(fn), fn });
       }
     }
   };
@@ -467,20 +478,68 @@ function grammar(file: string): Array<"jsx" | "typescript"> {
   return ["jsx"];
 }
 
-export function parseJsxFile(file: string, source: string): JsxParseResult {
+/** The file's program, or a refusal: not a string, empty, too large, or not JavaScript. */
+function parseProgram(file: string, source: string): AstNode {
   if (typeof source !== "string") throw new CodeIrValidationError("JSX source must be a string");
   if (source.length === 0) throw new CodeIrValidationError("JSX source must not be empty");
   if (source.length > CODE_IR_HARD_LIMITS.maxSourceBytes) {
     throw new CodeIrValidationError("JSX source exceeds maxSourceBytes");
   }
-  let program: AstNode;
   try {
-    program = parse(source, { sourceType: "module", plugins: grammar(file), errorRecovery: false }).program as unknown as AstNode;
+    return parse(source, { sourceType: "module", plugins: grammar(file), errorRecovery: false }).program as unknown as AstNode;
   } catch (error) {
     // Babel recurses: nesting deep enough to exhaust the stack is refused like any other.
     if (error instanceof RangeError) throw new CodeIrValidationError("JSX nesting exceeds maxDepth");
     throw new CodeIrValidationError(`the code could not be parsed: ${error instanceof Error ? error.message.slice(0, 200) : String(error)}`);
   }
+}
+
+/**
+ * The function components a file exports, by the names they are defined with, in source
+ * order (P08-G11, #282): export function X, export default function X, export const X =
+ * (…) =>, forwardRef(…) and memo(…), and a component exported by export { X },
+ * export { X as Y } or export default X, each with JSX in it. A re-export from another file
+ * is that file's.
+ * Refuses, as parseJsxFile does, a file that cannot be parsed.
+ */
+export function exportedComponents(file: string, source: string): string[] {
+  const program = parseProgram(file, source);
+  const exported = new Set<string>();
+  for (const statement of program.body as AstNode[]) {
+    if (statement.type === "ExportNamedDeclaration") {
+      const declaration = statement.declaration;
+      if (declaration?.type === "FunctionDeclaration" && declaration.id) exported.add(declaration.id.name);
+      if (declaration?.type === "VariableDeclaration") {
+        for (const declarator of declaration.declarations as AstNode[]) {
+          if (declarator.id.type === "Identifier") exported.add(declarator.id.name);
+        }
+      }
+      // export { Card, Card as Alias }: by the local name. A re-export (from "…") is another file's.
+      if (declaration === null && statement.source === null) {
+        for (const specifier of statement.specifiers as AstNode[]) {
+          if (specifier.local?.type === "Identifier") exported.add(specifier.local.name);
+        }
+      }
+    }
+    if (statement.type === "ExportDefaultDeclaration") {
+      const declaration = statement.declaration;
+      if (declaration.type === "FunctionDeclaration" && declaration.id) exported.add(declaration.id.name);
+      if (declaration.type === "Identifier") exported.add(declaration.name);
+      // export default memo(function Card() {…}): the wrapped function's own name.
+      const wrapped = declaration.type === "FunctionDeclaration" ? null : componentFunction(declaration);
+      if (wrapped?.id) exported.add(wrapped.id.name);
+      // export default memo(Card), export default Card satisfies FC: the component named.
+      const named = wrappedName(declaration);
+      if (named !== null) exported.add(named);
+    }
+  }
+  // A component has JSX: export function Card() {} in a .js helper is not one.
+  const names = componentDefinitions(program).filter((definition) => exported.has(definition.name) && outermostJsx(definition.fn).length > 0).map((definition) => definition.name);
+  return [...new Set(names)];
+}
+
+export function parseJsxFile(file: string, source: string): JsxParseResult {
+  const program = parseProgram(file, source);
   const starts: number[] = [0];
   for (let index = 0; index < source.length; index += 1) {
     if (source[index] === "\n") starts.push(index + 1);
