@@ -451,15 +451,13 @@ test("Journey E: a crash during a burst of edits recovers every confirmed change
         // Complete entries end in a newline; the kill itself may have torn the in-flight one.
         const complete = (readFileSync(journal, "utf8").match(/\n/gu) ?? []).length;
         appendFileSync(journal, TORN);
-        // Restart: the dead session's lock is refused until it is taken over with a reason.
+        // Restart: the lock is the stopped host's own, as its folder claim shows, so it is taken
+        // over at once (P08-G8).
         host = await startChild(projects, children);
-        const refused = await host.call("POST", "/api/projects/open", { name: "crashy" });
-        assert.equal(refused.status, 409, JSON.stringify(refused.json));
-        assert.match(refused.json.error.code, /lock/u);
-        const opened = await ok(host.call("POST", "/api/projects/open", { name: "crashy", breakStaleLock: { reason: "Journey E crash" } }), "recover");
+        const opened = await ok(host.call("POST", "/api/projects/open", { name: "crashy" }), "recover");
         // The reopen explains itself: the torn tail it dropped, and the lock taken over and why.
         assert.ok(opened.recovery.tornTailBytes >= TORN.length, `the torn tail is reported (${opened.recovery.tornTailBytes} bytes)`);
-        assert.equal(opened.recovery.lockOverride.reason, "Journey E crash");
+        assert.match(opened.recovery.lockOverride.reason, /^Ninerr stopped without closing \(process \d+\)$/u);
         const recovered = await exactState(host.call, projects, "crashy");
         assert.equal(recovered.revision, complete, "the recovered revision is every complete journal entry");
         assert.ok(recovered.revision >= confirmed, `every confirmed change survived (confirmed ${confirmed}, recovered ${recovered.revision})`);

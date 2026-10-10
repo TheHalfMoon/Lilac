@@ -84,6 +84,91 @@ test("a claim left by a host that crashed is taken over (#261)", () => withFolde
   await after.close();
 }));
 
+/** A host in its own process with `project` open, killed outright; returns its process id. */
+async function crashWithProjectOpen(root, project) {
+  const child = spawn(process.execPath, [HOST_CHILD, root], { stdio: ["ignore", "pipe", "inherit"] });
+  const exited = new Promise((resolve) => child.on("close", resolve));
+  let out = "";
+  child.stdout.on("data", (chunk) => { out += chunk; });
+  for (let tries = 0; tries < 500 && !out.includes("\n") && child.exitCode === null; tries += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+  const { url, token } = JSON.parse(out);
+  await ok(client(url, token)("POST", "/api/projects/open", { name: project }));
+  child.kill("SIGKILL");
+  await exited;
+  return child.pid;
+}
+
+test("a project left locked by the host that crashed opens at once, its takeover recorded (P08-G8)", () => withFolder(async (root) => {
+  const first = await startStudioHost({ projectsRoot: root, now });
+  await ok(client(first.url, first.token)("POST", "/api/projects/create", { name: "alpha" }));
+  await first.close();
+  const crashed = await crashWithProjectOpen(root, "alpha");
+  const lock = join(root, "alpha", ".ninerr", "lock");
+  assert.equal(JSON.parse(readFileSync(lock, "utf8")).pid, crashed, "the crash leaves the project's lock");
+  const host = await startStudioHost({ projectsRoot: root, now });
+  try {
+    // No reason asked for: the lock is the stopped host's own, as its folder claim showed.
+    const opened = await ok(client(host.url, host.token)("POST", "/api/projects/open", { name: "alpha" }));
+    assert.equal(opened.project, "alpha");
+    assert.equal(opened.recovery.lockOverride.reason, `Ninerr stopped without closing (process ${crashed})`);
+    assert.equal(opened.recovery.lockOverride.previous.pid, crashed);
+    assert.equal(JSON.parse(readFileSync(lock, "utf8")).override.reason, `Ninerr stopped without closing (process ${crashed})`, "recorded with the project");
+  } finally {
+    await host.close();
+  }
+}));
+
+test("a project lock the stopped host did not hold still asks for a reason (P08-G8)", () => withFolder(async (root) => {
+  const first = await startStudioHost({ projectsRoot: root, now });
+  const call = client(first.url, first.token);
+  await ok(call("POST", "/api/projects/create", { name: "alpha" }));
+  await ok(call("POST", "/api/projects/create", { name: "beta" }));
+  await first.close();
+  const crashed = await crashWithProjectOpen(root, "alpha");
+  // "beta" was left locked by some other process, not the host that crashed.
+  const other = join(root, "beta", ".ninerr", "lock");
+  writeFileSync(other, JSON.stringify({ owner: "someone", pid: crashed + 1_000_000, at: now(), nonce: "other" }));
+  const host = await startStudioHost({ projectsRoot: root, now });
+  try {
+    const next = client(host.url, host.token);
+    const refused = await next("POST", "/api/projects/open", { name: "beta" });
+    assert.equal(refused.status, 409);
+    assert.equal(refused.json.error.code, "project-locked");
+    assert.equal(JSON.parse(readFileSync(other, "utf8")).nonce, "other", "left as it was");
+    // The person may still take it over, giving a reason.
+    const taken = await ok(next("POST", "/api/projects/open", { name: "beta", breakStaleLock: { reason: "the other session is gone" } }));
+    assert.equal(taken.recovery.lockOverride.reason, "the other session is gone");
+  } finally {
+    await host.close();
+  }
+}));
+
+for (const [what, change] of [
+  // Its process id may belong to another process by now.
+  ["was made before the computer last started", (claim) => ({ ...claim, claimedAt: Date.now() - uptime() * 1000 - 11 * 60_000 })],
+  // Whether that process runs cannot be seen from here: it may be writing the project now.
+  ["was made on another computer sharing the folder", (claim) => ({ ...claim, machine: "another-computer" })],
+  // A claim from before the computer was recorded.
+  ["does not say which computer made it", ({ machine, ...claim }) => claim],
+]) {
+  test(`a crashed host's project lock still asks for a reason when its folder claim ${what} (P08-G8)`, () => withFolder(async (root) => {
+    const first = await startStudioHost({ projectsRoot: root, now });
+    await ok(client(first.url, first.token)("POST", "/api/projects/create", { name: "alpha" }));
+    await first.close();
+    await crashWithProjectOpen(root, "alpha");
+    const claim = join(root, HOST_LOCK);
+    writeFileSync(claim, `${JSON.stringify(change(JSON.parse(readFileSync(claim, "utf8"))))}\n`);
+    const host = await startStudioHost({ projectsRoot: root, now });
+    try {
+      const refused = await client(host.url, host.token)("POST", "/api/projects/open", { name: "alpha" });
+      assert.equal(refused.status, 409, JSON.stringify(refused.json));
+      assert.equal(refused.json.error.code, "project-locked");
+    } finally {
+      await host.close();
+    }
+  }));
+}
+
 test("a host removes only its own claim (#261)", () => withFolder(async (root) => {
   const host = await startStudioHost({ projectsRoot: root, now });
   // Someone replaced the claim while the host ran: closing leaves the replacement alone.

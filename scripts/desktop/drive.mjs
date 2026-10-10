@@ -47,9 +47,10 @@ function freePort() {
 /**
  * Unpack `archive` and prepare to run it. Returns the package, its manifest, the folders
  * it uses, the proxy's record, `launch()` and `close()` (which stops everything and
- * removes the temporary folder).
+ * removes the temporary folder). `home` and `projects` name the person's home and
+ * projects folders inside the temporary folder, for runs from unusual paths (P08-G8).
  */
-export async function preparePackage(archive) {
+export async function preparePackage(archive, { home: homeName = "home", projects: projectsName = "projects" } = {}) {
   const work = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-desktop-run-")));
   const screen = await display();
   const egress = [];
@@ -65,7 +66,13 @@ export async function preparePackage(archive) {
   const proxyArg = `--proxy-server=http://127.0.0.1:${proxy.address().port}`;
   const running = new Set();
   const close = async () => {
-    for (const child of running) child.kill();
+    // Each launch is ended and waited for: on Windows, files a process still holds cannot
+    // be removed.
+    await Promise.all([...running].map((child) => {
+      const gone = new Promise((resolveGone) => child.once("exit", resolveGone));
+      child.kill();
+      return Promise.race([gone, sleep(10_000)]);
+    }));
     await new Promise((resolveClose) => proxy.close(resolveClose));
     await screen.stop();
     rmSync(work, { recursive: true, force: true, maxRetries: 5 });
@@ -74,8 +81,8 @@ export async function preparePackage(archive) {
     const packaged = unpack(archive, work);
     const manifest = JSON.parse(readFileSync(join(packaged, "ninerr-package.json"), "utf8"));
     const executable = join(packaged, manifest.executable);
-    const home = join(work, "home");
-    const projects = join(work, "projects");
+    const home = join(work, homeName);
+    const projects = join(work, projectsName);
     // A home of its own, with the folders each platform keeps an app's data in.
     for (const folder of ["", join("AppData", "Roaming"), join("AppData", "Local"), ".config"]) mkdirSync(join(home, folder), { recursive: true });
     const env = {
@@ -103,9 +110,11 @@ export async function preparePackage(archive) {
       let output = "";
       // Noted as it arrives, so Chromium's own logging cannot push it out of the buffer.
       let packagedRun = false;
+      let rendererStopped = false;
       const record = (chunk) => {
         output = (output + chunk).slice(-4000);
         if (String(chunk).includes("ninerr: desktop app (packaged)")) packagedRun = true;
+        if (String(chunk).includes("ninerr: the editor's renderer stopped")) rendererStopped = true;
       };
       child.stdout.on("data", record);
       child.stderr.on("data", record);
@@ -129,8 +138,36 @@ export async function preparePackage(archive) {
       await page.waitForFunction(() => document.documentElement.dataset.ready === "true", null, { polling: 100, timeout: 30_000 });
       return {
         page,
+        browser,
+        pid: child.pid,
         output: () => output,
         packaged: () => packagedRun,
+        /** Whether Ninerr reported that the editor's renderer stopped. */
+        rendererStopped: () => rendererStopped,
+        running: () => child.exitCode === null && child.signalCode === null,
+        /** The editor's page once it is ready again, for example after its renderer was replaced. */
+        async editor() {
+          // A renderer that crashed stays dead to this connection, even once Ninerr loaded the
+          // editor again in its place: each try connects afresh.
+          for (let tries = 0; tries < 60; tries += 1) {
+            const fresh = await chromium.connectOverCDP(`http://127.0.0.1:${port}`).catch(() => null);
+            for (const candidate of fresh?.contexts().flatMap((context) => context.pages()) ?? []) {
+              if (!candidate.url().startsWith("http://127.0.0.1:")) continue;
+              if (await candidate.evaluate(() => document.documentElement.dataset.ready === "true").catch(() => false)) {
+                browser = fresh;
+                page = candidate;
+                return candidate;
+              }
+            }
+            await sleep(500);
+          }
+          throw new Error("the editor did not come back");
+        },
+        /** End the app at once, as a crash or a forced quit does: nothing gets to close. */
+        async kill() {
+          child.kill("SIGKILL");
+          return Promise.race([exited, sleep(20_000).then(() => "still running after 20 s")]);
+        },
         async quit() {
           // As the person does: close the window (its page target); Ninerr quits and closes
           // its host.

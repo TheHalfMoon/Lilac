@@ -397,14 +397,14 @@ export class StudioSession {
   }
 }
 
-/** Whether the process named in a lock file is still running; false when that cannot be read. */
-function lockHolderAlive(lockPath: string): boolean {
+/** The process id a project lock names, or null for a lock that is missing, odd or unreadable. */
+function lockHolderPid(lockPath: string): number | null {
   let pid: unknown;
   try {
     // Only a small regular file is read; links, FIFOs and anything odd are left to
     // persistence's own lock handling.
     const entry = lstatSync(lockPath);
-    if (!entry.isFile() || entry.size > 4096) return false;
+    if (!entry.isFile() || entry.size > 4096) return null;
     const fd = openSync(lockPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       pid = JSON.parse(readFileSync(fd, "utf8").slice(0, 4096)).pid;
@@ -412,15 +412,34 @@ function lockHolderAlive(lockPath: string): boolean {
       closeSync(fd);
     }
   } catch {
-    return false; // an unreadable lock is exactly what an override is for
+    return null;
   }
-  if (!Number.isSafeInteger(pid) || (pid as number) <= 0) return false;
+  return Number.isSafeInteger(pid) && (pid as number) > 0 ? (pid as number) : null;
+}
+
+function isRunning(pid: number): boolean {
   try {
-    process.kill(pid as number, 0);
+    process.kill(pid, 0);
     return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException)?.code === "EPERM";
   }
+}
+
+/** Whether the process named in a lock file is still running; false when that cannot be read. */
+function lockHolderAlive(lockPath: string): boolean {
+  const pid = lockHolderPid(lockPath);
+  // An unreadable lock is exactly what an override is for.
+  return pid !== null && isRunning(pid);
+}
+
+/**
+ * Whether the project's lock was left by process `pid`, which no longer runs: a host that
+ * stopped without closing (P08-G8).
+ */
+export function lockLeftBy(projectsRoot: string, name: string, pid: number): boolean {
+  const lockPath = join(projectsRoot, assertProjectName(name), PROJECT_FILES.directory, PROJECT_FILES.lock);
+  return lockHolderPid(lockPath) === pid && !isRunning(pid);
 }
 
 /** Refuse to break a lock whose holder is a process still running on this machine. */

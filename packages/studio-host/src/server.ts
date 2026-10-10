@@ -13,7 +13,7 @@ import { ImportDesk, MAX_IMPORT_HTML_BYTES } from "./imports.ts";
 import { ConfirmationBroker, handleMcpMessage } from "./mcp.ts";
 import { claimProjectsFolder } from "./folder-lock.ts";
 import { listenOnBrowserPort } from "./ports.ts";
-import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
+import { StudioSession, assertProjectName, lockLeftBy, type ChangeEvent, type StudioActor } from "./session.ts";
 
 export interface StudioHostOptions {
   /** Directory holding one sub-directory per project. Only names inside it can be opened. */
@@ -99,7 +99,12 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   // The projects folder is this host's alone while it runs (#261). Claimed before the folder's
   // files are read: a host that is refused must not touch them (the agent registry, for one,
   // can write on load). Nothing from here to listening throws.
-  const releaseFolder = claimProjectsFolder(projectsRoot, now());
+  const { release: releaseFolder, stoppedPid } = claimProjectsFolder(projectsRoot, now());
+  /** The takeover of `name`'s lock when the host this one replaced left it, or undefined. */
+  const crashedHostLock = (name: string): { reason: string } | undefined =>
+    stoppedPid !== null && lockLeftBy(projectsRoot, name, stoppedPid)
+      ? { reason: `Ninerr stopped without closing (process ${stoppedPid})` }
+      : undefined;
   const agents = new AgentRegistry(projectsRoot, owner);
   const codebases = new CodebaseLinks(projectsRoot);
   // Write-backs whose outcome their files now show are settled before anything is planned
@@ -239,7 +244,11 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       if (breakStaleLock !== undefined && (typeof breakStaleLock?.reason !== "string" || breakStaleLock.reason.trim() === "")) {
         throw new StudioError(400, "invalid-lock-override", "breakStaleLock needs a non-empty reason");
       }
-      switchTo(name, () => StudioSession.open({ projectsRoot, name, owner, now, ...(breakStaleLock ? { breakStaleLock: { reason: breakStaleLock.reason.slice(0, 500) } } : {}) }));
+      // A lock left by the host this one took the folder over from is that host's, stopped
+      // without closing: it is broken at once, recorded with the project like any takeover,
+      // rather than asking the person about "another session" that is gone (P08-G8).
+      const override = breakStaleLock !== undefined ? { reason: breakStaleLock.reason.slice(0, 500) } : crashedHostLock(name);
+      switchTo(name, () => StudioSession.open({ projectsRoot, name, owner, now, ...(override ? { breakStaleLock: override } : {}) }));
       const linked = codebases.get(name);
       if (linked !== null) {
         try {
