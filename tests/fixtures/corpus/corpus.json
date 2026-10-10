@@ -163,6 +163,66 @@
       }
     },
     {
+      "name": "corrupt-document-object",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a document object whose bytes no longer match its name",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "object [0-9a-f]{64} does not match its content hash"
+      }
+    },
+    {
+      "name": "corrupt-missing-object",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a document object that is gone",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "object [0-9a-f]{64} is missing"
+      }
+    },
+    {
+      "name": "corrupt-snapshot",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a snapshot reference that is not JSON",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "snapshot reference is not valid JSON"
+      }
+    },
+    {
+      "name": "corrupt-snapshot-past-end",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a snapshot reference past the end of the journal",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "snapshot reference points past the end of the journal"
+      }
+    },
+    {
+      "name": "corrupt-manifest",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a manifest that is not JSON",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "manifest is not valid JSON"
+      }
+    },
+    {
+      "name": "corrupt-object-fan-out",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "an object fan-out folder that is a file (Windows reports it as missing, so the store checks)",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "object fan-out directory is not a directory"
+      }
+    },
+    {
       "name": "legacy-v1-future-schema",
       "category": "future",
       "from": "v1-basic",
@@ -183,5 +243,5 @@
       }
     }
   ],
-  "treeSha256": "b2036cb1c5bbd18a01a163cb33e8c8dda759dcf8bd687ed9356d2a42c0253179"
+  "treeSha256": "ca66441fa9f45dcad83428e3ffae7eeb51a6920806e39ff8e31a20e5c64b2bca"
 }

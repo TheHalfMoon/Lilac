@@ -124,6 +124,61 @@ export const CASES = [
     change: (dir) => writeFileSync(join(dir, "journal.log"), readFileSync(join(dir, "journal.log"), "utf8").replace('"intent":"rename"', '"intent":"renamE"')),
     expect: { refused: "project-unreadable", pattern: "journal line 1 breaks the hash chain" },
   },
+  {
+    name: "corrupt-document-object",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a document object whose bytes no longer match its name",
+    change: (dir) => {
+      const { path } = documentObject(dir);
+      writeFileSync(path, readFileSync(path, "utf8").replace("doc-golden", "doc-golder"));
+    },
+    expect: { refused: "project-unreadable", pattern: "object [0-9a-f]{64} does not match its content hash" },
+  },
+  {
+    name: "corrupt-missing-object",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a document object that is gone",
+    change: (dir) => rmSync(documentObject(dir).path),
+    expect: { refused: "project-unreadable", pattern: "object [0-9a-f]{64} is missing" },
+  },
+  {
+    name: "corrupt-snapshot",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a snapshot reference that is not JSON",
+    change: (dir) => writeFileSync(join(dir, "snapshot.json"), "not json"),
+    expect: { refused: "project-unreadable", pattern: "snapshot reference is not valid JSON" },
+  },
+  {
+    name: "corrupt-snapshot-past-end",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a snapshot reference past the end of the journal",
+    change: (dir) => writeFileSync(join(dir, "snapshot.json"), canonical({ ...JSON.parse(readFileSync(join(dir, "snapshot.json"), "utf8")), journalSeq: 9 })),
+    expect: { refused: "project-unreadable", pattern: "snapshot reference points past the end of the journal" },
+  },
+  {
+    name: "corrupt-manifest",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "a manifest that is not JSON",
+    change: (dir) => writeFileSync(join(dir, "project.json"), "{"),
+    expect: { refused: "project-unreadable", pattern: "manifest is not valid JSON" },
+  },
+  {
+    name: "corrupt-object-fan-out",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "an object fan-out folder that is a file (Windows reports it as missing, so the store checks)",
+    change: (dir) => {
+      const { digest } = documentObject(dir);
+      rmSync(join(dir, "objects", digest.slice(0, 2)), { recursive: true });
+      writeFileSync(join(dir, "objects", digest.slice(0, 2)), "not a folder");
+    },
+    expect: { refused: "project-unreadable", pattern: "object fan-out directory is not a directory" },
+  },
   // Refused legacy projects: the one kind whose normal open writes (a Ninerr copy). Refused,
   // nothing may be created beside the original.
   {
