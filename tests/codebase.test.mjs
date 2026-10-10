@@ -129,7 +129,7 @@ test("bring a component in, edit it, preview and write back: three-way, atomic, 
     const section = nodes.find((node) => node.props.tag === "section");
     const h2 = nodes.find((node) => node.props.tag === "h2");
     const p = nodes.find((node) => node.props.tag === "p");
-    assert.deepEqual(section.props.codeSource, { file: "Card.jsx", component: "PriceCard", path: "", tag: "section", base: { props: { className: "card", style: "padding: 16px; background: #f4f0ff" } } });
+    assert.deepEqual(section.props.codeSource, { file: "Card.jsx", component: "PriceCard", path: "", tag: "section", base: { props: { className: "card", style: "padding: 16px; background: #f4f0ff" } }, shape: ["h2", "p"] });
     assert.deepEqual(h2.props.codeSource.base, { text: "Pro", props: {} });
     assert.equal(p.props.codeSource.path, "1");
 
