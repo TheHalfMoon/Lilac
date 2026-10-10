@@ -67,7 +67,10 @@ Chromium's own background requests are turned off too. The tests run the app beh
 - Closing the window quits Ninerr. The host closes first, so every project is closed and its lock released.
 - Ninerr runs once per user: starting it again brings the open window forward.
 - **If the editor's window crashes,** Ninerr loads the editor again in it, up to three times a minute. Every change was already committed by the host, so nothing is lost.
-- **If Ninerr itself stops without closing** (a crash or a forced quit), the next start takes over the projects folder and the locks that Ninerr left. A project it had open then opens at once with every committed change. The editor says it recovered the project, and the takeover is recorded with the project.
-- **Still asks for your reason first:** a lock that any other process left, and any lock left from before the computer last started (a power cut, say), since its process id may belong to another program by then.
+- **If Ninerr itself stops without closing** (a crash or a forced quit), the next start on the same computer takes over the projects folder, and the locks that the stopped Ninerr left. A project it had open then opens at once with every committed change. The editor says it recovered the project, and the takeover is recorded with the project.
+- **Still asks for your reason first:**
+  - a lock that any other process left, including a Ninerr before the one just replaced;
+  - a lock from before the computer last started (a power cut, say), since its process id may belong to another program by then;
+  - a lock from a Ninerr on another computer sharing the folder, which may still be running.
 - `scripts/resilience-desktop.mjs` checks all of this on each platform's packaged app in CI: a second start, a crashed editor, a forced quit and the restart after it, from folders whose paths hold spaces and letters outside ASCII, and what a clean shutdown leaves behind.
 - **MCP.** The stdio relay (`npm run mcp`) finds a desktop Ninerr exactly as it finds `npm start`, because both write the same discovery file in the projects folder.

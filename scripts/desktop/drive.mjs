@@ -110,9 +110,11 @@ export async function preparePackage(archive, { home: homeName = "home", project
       let output = "";
       // Noted as it arrives, so Chromium's own logging cannot push it out of the buffer.
       let packagedRun = false;
+      let rendererStopped = false;
       const record = (chunk) => {
         output = (output + chunk).slice(-4000);
         if (String(chunk).includes("ninerr: desktop app (packaged)")) packagedRun = true;
+        if (String(chunk).includes("ninerr: the editor's renderer stopped")) rendererStopped = true;
       };
       child.stdout.on("data", record);
       child.stderr.on("data", record);
@@ -140,6 +142,8 @@ export async function preparePackage(archive, { home: homeName = "home", project
         pid: child.pid,
         output: () => output,
         packaged: () => packagedRun,
+        /** Whether Ninerr reported that the editor's renderer stopped. */
+        rendererStopped: () => rendererStopped,
         running: () => child.exitCode === null && child.signalCode === null,
         /** The editor's page once it is ready again, for example after its renderer was replaced. */
         async editor() {

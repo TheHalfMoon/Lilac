@@ -54,6 +54,7 @@ jobs:
         # As in CI: lift Ubuntu's AppArmor restriction rather than run unsandboxed.
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Package
+        id: package
         shell: bash
         run: |
           set -uo pipefail
@@ -85,8 +86,9 @@ jobs:
           exit "${PIPESTATUS[0]}"
       - name: Resilience journey through the packaged app
         id: resilience
-        # Run even when the journey failed: what a crash does is separate evidence.
-        if: ${{ !cancelled() }}
+        # Run even when the journey failed (what a crash does is separate evidence), but only
+        # with a package to run.
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         shell: bash
         run: |
           set -uo pipefail
@@ -118,6 +120,10 @@ jobs:
           const smoke = read("smoke.json", true);
           const journey = read("journey.json", true);
           const resilience = read("resilience.json", true);
+          const outcome = (result) => {
+            if (result === null) return "not run";
+            return result.ok ? "ok" : "failed";
+          };
           const fuses = manifest ? Object.entries(manifest.fuses).map(([name, on]) => `${name}=${on === "removed" ? "r" : on ? 1 : 0}`).join(",") : "none";
           console.log(`::notice title=Desktop package evidence::${escape([
             `head=${head}`,
@@ -142,7 +148,7 @@ jobs:
           console.log(`::notice title=Desktop resilience evidence::${escape([
             `head=${head}`,
             `target=${{ matrix.target }}`,
-            `resilience=${resilience === null ? "not run" : resilience.ok ? "ok" : "failed"}`,
+            `resilience=${outcome(resilience)}`,
             `steps=${resilience === null ? 0 : resilience.steps.filter((item) => item.ok).length}/${resilience?.total ?? 0}`,
           ].join("; "))}`);
           if (resilience !== null && !resilience.ok) console.log(`::error title=Desktop resilience failure::${escape(`head=${head} target=${{ matrix.target }} ${resilience.error}`)}`);

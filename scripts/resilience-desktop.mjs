@@ -9,6 +9,7 @@
 // The packaged app runs as a person runs it (scripts/desktop/drive.mjs). The result is
 // printed as one JSON line; the exit code is 0 only if every step held.
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { HOST_LOCK } from "../packages/studio-host/src/index.ts";
 import { basename, join, resolve } from "node:path";
 import { preparePackage, sleep, waitForRevision } from "./desktop/drive.mjs";
 import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
@@ -20,10 +21,14 @@ if (archive === null || process.argv.length !== 3 || !existsSync(archive)) {
 }
 const TOTAL_STEPS = 10;
 const steps = [];
+const describe = (detail) => (typeof detail === "string" ? detail : JSON.stringify(detail));
 const step = (name, ok, detail) => {
   steps.push({ name, ok: Boolean(ok), ...(detail === undefined ? {} : { detail }) });
-  if (!ok) throw new Error(`${name}${detail === undefined ? "" : `: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`}`);
+  if (!ok) throw new Error(detail === undefined ? name : `${name}: ${describe(detail)}`);
 };
+
+/** Every file under `folder`, as paths relative to it. */
+const filesUnder = (folder) => readdirSync(folder, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name).slice(folder.length + 1));
 
 // Spaces, accented Latin, Greek and Japanese: each must survive every path Ninerr builds.
 const HOME = "Hôme of Zoë";
@@ -78,15 +83,18 @@ async function main() {
     const afterCrash = await layerIds(page);
     await page.locator("#action-insert-box").click();
     await waitForRevision(page, 3);
-    step("3 a crashed renderer is replaced and the project goes on", ninerr.running() && JSON.stringify(afterCrash) === JSON.stringify(beforeCrash) && /the editor's renderer stopped/u.test(ninerr.output()), { beforeCrash: beforeCrash.length, afterCrash: afterCrash.length });
+    step("3 a crashed renderer is replaced and the project goes on", ninerr.running() && JSON.stringify(afterCrash) === JSON.stringify(beforeCrash) && ninerr.rendererStopped(), { beforeCrash: beforeCrash.length, afterCrash: afterCrash.length });
 
     // 4. The app is ended at once: nothing gets to close, and nothing of it stays running.
     const hostUrl = new URL(page.url()).origin;
     const committed = await layerIds(page);
+    const killedPid = ninerr.pid;
     const killed = await ninerr.kill();
     await sleep(1000);
     const hostGone = !(await answers(`${hostUrl}/`));
-    step("4 an app ended at once stops serving, leaving its locks behind", killed !== "still running after 20 s" && hostGone && existsSync(join(projectDir, "lock")) && existsSync(join(projects, ".ninerr-host.lock")), { killed, hostGone });
+    // Both locks it left name the process that was ended.
+    const holders = [join(projectDir, PROJECT_FILES.lock), join(projects, HOST_LOCK)].map((path) => (existsSync(path) ? JSON.parse(readFileSync(path, "utf8")).pid : null));
+    step("4 an app ended at once stops serving, leaving its locks behind", killed !== "still running after 20 s" && hostGone && holders.every((pid) => pid === killedPid), { killed, hostGone, holders, killedPid });
 
     // 5. Started again, it takes the folder over from the stopped one.
     ninerr = await launch();
@@ -116,10 +124,11 @@ async function main() {
     const hostUrl2 = new URL(page.url()).origin;
     const code = await ninerr.quit();
     await sleep(500);
-    step("8 closing Ninerr exits cleanly, stops serving and releases its locks", code === 0 && !(await answers(`${hostUrl2}/`)) && !existsSync(join(projectDir, "lock")) && !existsSync(join(projects, ".ninerr-host.lock")), { code });
+    step("8 closing Ninerr exits cleanly, stops serving and releases its locks", code === 0 && !(await answers(`${hostUrl2}/`)) && !existsSync(join(projectDir, PROJECT_FILES.lock)) && !existsSync(join(projects, HOST_LOCK)), { code });
 
-    // 9. Nothing half-written is left in the project: no temporary or set-aside files.
-    const leftovers = readdirSync(projectDir).filter((entry) => /\.tmp|broken|partial/u.test(entry));
+    // 9. Nothing half-written is left in the projects folder: no temporary, staging or
+    // set-aside files anywhere in it.
+    const leftovers = filesUnder(projects).filter((entry) => /\.tmp|broken|partial/u.test(entry));
     const journal = readFileSync(join(projectDir, PROJECT_FILES.journal), "utf8");
     step("9 the project holds no temporary or set-aside files, and its journal ends whole", leftovers.length === 0 && journal.endsWith("\n"), { leftovers });
 
