@@ -75,7 +75,7 @@ Documents over a limit fail closed with `DocumentInvariantError`. The UTF-8 byte
 | Validate a chain at the 1,024 depth limit | 200 ms |
 | Validate a 64-level spine with 150 leaves per level | 300 ms |
 
-**Scaling guard.** The 50k/10k time ratio must stay at or below 10 for validate, serialize and commit, with a 20 ms floor on the 10k time so that a GC pause cannot trip it. Linear growth is about 5x; quadratic growth would be about 25x. Local ratios ranged from 5.3 to 7.6. The reopen budget replays the 3 entries committed by the persisted-commit measurement.
+**Scaling guard.** The 50k/10k time ratio must stay at or below 15 for validate, serialize and commit. Each time is the best of five samples of four calls in a row, with a 20 ms floor on a 10k sample so that a GC pause cannot trip it. Linear growth is about 5x; quadratic growth would be about 25x. Local ratios ranged from 5.3 to 7.6. The limit was 10, with single calls, best of 3, until #269: CI runs and full local runs crossed it on linear work (10.3x to 13.0x), and commit scales 7.6x to 9.0x. The reopen budget replays the 3 entries committed by the persisted-commit measurement.
 
 The same file also tests the node limit, the byte limit, nesting refusal and the serialize cap. The byte-limit test also checks that the size check runs before parsing and that 2-, 3- and 4-byte text is measured in UTF-8 bytes.
 
