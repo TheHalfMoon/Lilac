@@ -48,12 +48,28 @@ export interface SymbolProp {
   range: SourceRange;
 }
 
-export type SymbolKind = "component" | "element" | "style-rule" | "token";
+// "expression" is a {…} child that is code (named #expression), "fragment" a <>…</>
+// (named #fragment): both are kept, with their source range, and never patched.
+export type SymbolKind = "component" | "element" | "fragment" | "expression" | "style-rule" | "token";
 
 export interface SymbolText {
   value: string;
   range: SourceRange;
 }
+
+/**
+ * An attribute that is code, not a literal: className={cn(…)}, onClick={…}, {...props},
+ * an element as a value. `name` is "..." for a spread; `code` is its source text,
+ * shortened for display (at most CODE_DISPLAY_LENGTH characters).
+ */
+export interface CodeProp {
+  name: string;
+  code: string;
+  range: SourceRange;
+}
+
+/** The most characters of code a symbol keeps for display. */
+export const CODE_DISPLAY_LENGTH = 200;
 
 export interface SourceSymbol {
   id: string;
@@ -64,6 +80,10 @@ export interface SourceSymbol {
   children: string[];
   texts: SymbolText[];
   classTokens?: string[];
+  /** Attributes that are code (elements and components). */
+  codeProps?: CodeProp[];
+  /** An expression's source text, shortened for display. */
+  code?: string;
 }
 
 export interface UnsupportedRegion {

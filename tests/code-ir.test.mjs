@@ -64,13 +64,28 @@ test("subset parsing succeeds deterministically with provenance", () => {
   assert.equal(first.unsupported.length, 0);
 });
 
-test("out-of-subset constructs fail as unsupported with reasons", () => {
-  const mixed = buildCodeIr([{ path: "E.jsx", content: "const a = <section>ok</section>;\nconst b = <div onClick={handler}>x</div>;" }]);
-  assert.equal(mixed.rootIds.length, 1);
-  assert.match(mixed.unsupported[0].reason, /non-literal.*expression attribute/u);
-  const exprChild = buildCodeIr([{ path: "E.jsx", content: "const a = <section>ok</section>;\nconst b = <div>{items}</div>;" }]);
-  assert.match(exprChild.unsupported[0].reason, /expression child/u);
-  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<><div /></>" }]), /fragments/u);
+test("code in JSX is kept as code with its range; what cannot be read fails with reasons", () => {
+  // An attribute that is code, a {…} child and a fragment are kept as such (P08-G11, #282),
+  // each with its exact source range, never read into or guessed.
+  const source = "const b = <div title=\"t\" onClick={handler} {...rest}>x {items} <>y</></div>;";
+  const ir = buildCodeIr([{ path: "E.jsx", content: source }]);
+  assert.deepEqual(ir.unsupported, []);
+  const byKind = (kind) => Object.values(ir.symbols).filter((symbol) => symbol.kind === kind);
+  const [div] = byKind("element");
+  assert.deepEqual(div.props.map((prop) => prop.name), ["title"]);
+  assert.deepEqual(div.codeProps.map((prop) => [prop.name, prop.code, source.slice(prop.range.startOffset, prop.range.endOffset)]), [["onClick", "onClick={handler}", "onClick={handler}"], ["...", "{...rest}", "{...rest}"]]);
+  const [expression] = byKind("expression");
+  assert.equal(expression.code, "items");
+  assert.equal(source.slice(expression.range.startOffset, expression.range.endOffset), "{items}");
+  const [fragment] = byKind("fragment");
+  assert.deepEqual(fragment.texts.map((entry) => entry.value), ["y"]);
+  assert.deepEqual(div.children, [expression.id, fragment.id]);
+  // The literal design subset still has no place for code.
+  assert.throws(() => codeToDesign(ir, ir.rootIds[0], "Card"), /attributes that are code/u);
+  // Code is shortened for display, never split inside a character.
+  const long = buildCodeIr([{ path: "L.jsx", content: `const b = <div>{f(${"\"😀\", ".repeat(80)})}</div>;` }]);
+  const code = Object.values(long.symbols).find((symbol) => symbol.kind === "expression").code;
+  assert.ok(code.length <= 200 && code.endsWith("…") && code.isWellFormed(), code);
   // Not JavaScript at all: the parser refuses the file.
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<div><span>" }]), /could not be parsed/u);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<div></span>" }]), /could not be parsed/u);
