@@ -175,11 +175,15 @@ export function parseJournal(bytes: Buffer, genesis: string): ParsedJournal {
     throw new PersistenceCorruptionError("journal is not valid UTF-8");
   }
   const lines = complete === "" ? [] : complete.slice(0, -1).split("\n");
-  if (lines.length > PERSISTENCE_LIMITS.maxReplayEntries) {
+  if (lines.length > PERSISTENCE_LIMITS.maxReplayEntries + 1) {
     throw new PersistenceCorruptionError(`journal exceeds ${PERSISTENCE_LIMITS.maxReplayEntries} entries`);
   }
   const entries: ParsedJournal["entries"] = [];
   const segment = lines.length > 0 ? readSegmentHeader(lines[0]) : null;
+  // The header is not an entry: a segment of exactly the limit is what commit allows.
+  if (lines.length - (segment === null ? 0 : 1) > PERSISTENCE_LIMITS.maxReplayEntries) {
+    throw new PersistenceCorruptionError(`journal exceeds ${PERSISTENCE_LIMITS.maxReplayEntries} entries`);
+  }
   const base = segment?.baseSeq ?? 0;
   let previous = segment?.anchor ?? genesis;
   for (const [index, line] of lines.entries()) {

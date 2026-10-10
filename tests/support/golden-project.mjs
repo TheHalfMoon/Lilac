@@ -75,9 +75,9 @@ export function writeGoldenProject(root) {
 
 /**
  * v3-segments: the same history, written so the journal is in segments. The first session
- * starts a new segment after each of tx-1 and tx-2 and closes; the second commits tx-3 to tx-5
- * and stops as after a crash. The journal then holds a segment after tx-2 whose archive is the
- * segment after tx-1, whose archive is the journal from the genesis.
+ * starts a segment as soon as the journal outgrows the document, which is after tx-2, and
+ * closes; the second commits tx-3 to tx-5 and stops as after a crash. The journal then holds
+ * a segment after tx-2 whose archive is the journal from the genesis.
  */
 export function writeSegmentedGoldenProject(root) {
   create(root, "golden-v3-segments");

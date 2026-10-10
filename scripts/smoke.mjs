@@ -151,7 +151,7 @@ async function main() {
     check(nodes.some((node) => node.props?.semantics?.role === "main"), "intake recorded the main landmark");
     const documentDigest = sha256(serializeDocument(reopened.document));
     reopened.close();
-    const journal = readFileSync(join(root, PROJECT_FILES.directory, PROJECT_FILES.journal), "utf8").trim().split("\n").map((line) => JSON.parse(line).entry.transaction);
+    const journal = readFileSync(join(root, PROJECT_FILES.directory, PROJECT_FILES.journal), "utf8").trim().split("\n").map((line) => JSON.parse(line)).filter((line) => line.segment === undefined).map((line) => line.entry.transaction);
     check(journal.some((tx) => tx.id === "tx-agent" && tx.actor === agent.actorId && tx.metadata.collaboration.ownerActorId === owner.actorId), "the agent edit is durably attributed to its owner");
     steps.push("reopen");
 

@@ -484,8 +484,11 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   // Checked before the lock is taken: a refused call changes nothing on disk.
   const migrations = withBuiltInMigrations(options.migrations);
   const rotateAt = options.rotateJournalAt ?? PERSISTENCE_LIMITS.journalSegmentBytes;
-  if (!Number.isSafeInteger(rotateAt) || rotateAt < 1 || rotateAt > PERSISTENCE_LIMITS.maxJournalBytes) {
-    throw new PersistenceValidationError(`rotateJournalAt must be a whole number of bytes from 1 to ${PERSISTENCE_LIMITS.maxJournalBytes}`);
+  // Below the journal limit by one entry at least, so a segment always starts before a commit
+  // would be refused for the journal's size.
+  const largestRotateAt = PERSISTENCE_LIMITS.maxJournalBytes - PERSISTENCE_LIMITS.maxEntryBytes;
+  if (!Number.isSafeInteger(rotateAt) || rotateAt < 1 || rotateAt > largestRotateAt) {
+    throw new PersistenceValidationError(`rotateJournalAt must be a whole number of bytes from 1 to ${largestRotateAt}`);
   }
   if (!assertNotSymlink(projectDir, "project directory")) {
     if (hasLegacyProject(projectDir)) {
@@ -533,6 +536,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       digest: last?.digest ?? parsed.segment?.anchor ?? genesis,
       segmentBase: parsed.segment?.baseSeq ?? 0,
       rotateAt,
+      documentBytes: Buffer.byteLength(canonicalJson(document), "utf8"),
       journalBytes: parsed.validBytes,
       // Content pin: SHA-256 of exactly the bytes validated above (after any torn-tail truncation).
       // commit() extends it with each line it appends, and appendDurable compares the file to it
@@ -642,6 +646,8 @@ interface StoreState {
   /** The entry the journal's current segment starts after (0 for the first segment). */
   segmentBase: number;
   rotateAt: number;
+  /** The size of the document as a checkpoint stores it. */
+  documentBytes: number;
   journalBytes: number;
   journalContent: Hash;
   journalIdentity: FileIdentity;
@@ -671,6 +677,9 @@ export class ProjectStore {
   #committed = false;
   #segmentBase: number;
   #rotateAt: number;
+  #documentBytes: number;
+  /** The journal size at which a commit next tries to start a segment. */
+  #nextSegmentAt: number;
 
   constructor(token: symbol, projectDir: string, manifest: ProjectManifest, document: ProjectDocument, state: StoreState) {
     if (token !== STORE_TOKEN) throw new PersistenceValidationError("ProjectStore is created by openProject");
@@ -688,6 +697,16 @@ export class ProjectStore {
     this.#snapshotSeq = state.snapshotSeq;
     this.#segmentBase = state.segmentBase;
     this.#rotateAt = state.rotateAt;
+    this.#documentBytes = state.documentBytes;
+    this.#nextSegmentAt = this.#segmentBytes();
+  }
+
+  /**
+   * When a segment starts: past `rotateAt`, and never before the journal is as large as the
+   * document, since each segment also stores the document once (#258).
+   */
+  #segmentBytes(): number {
+    return Math.max(this.#rotateAt, this.#documentBytes);
   }
 
   #assertOpen(): void {
@@ -784,13 +803,14 @@ export class ProjectStore {
     this.#journalBytes += bytes;
     this.#journalContent.update(line, "utf8");
     // Past the segment size, checkpoint, which starts a new segment (#258). The change is
-    // already durable: a checkpoint that fails leaves the project as it is, and the next
-    // commit tries again.
-    if (this.#journalBytes > this.#rotateAt) {
+    // already durable: a checkpoint that fails leaves the project as it is. It is tried again
+    // only once the journal has grown by another segment, so a cause that persists (a file
+    // another program holds open, say) does not cost a document and an archive per commit.
+    if (this.#journalBytes > this.#nextSegmentAt) {
       try {
         this.checkpoint();
       } catch {
-        // See above.
+        this.#nextSegmentAt = this.#journalBytes + this.#segmentBytes();
       }
     }
     return { revision: next.revision, seq: entry.seq, transactionId: String(stored.id) };
@@ -799,11 +819,13 @@ export class ProjectStore {
   /** Persist the current document and move the snapshot reference to the journal head. */
   checkpoint(): SnapshotRef {
     this.#assertWritable();
-    const documentObject = putObject(this.projectDir, Buffer.from(canonicalJson(this.#document), "utf8"));
+    const documentBytes = Buffer.from(canonicalJson(this.#document), "utf8");
+    const documentObject = putObject(this.projectDir, documentBytes);
+    this.#documentBytes = documentBytes.length;
     const snapshot: SnapshotRef = { revision: this.#document.revision, documentObject, journalSeq: this.#seq, chainDigest: this.#digest };
     atomicWrite(join(this.projectDir, PROJECT_FILES.snapshot), canonicalJson(snapshot), "snapshot reference");
     this.#snapshotSeq = this.#seq;
-    if (this.#journalBytes > this.#rotateAt) this.#startSegment();
+    if (this.#journalBytes > this.#segmentBytes()) this.#startSegment();
     return snapshot;
   }
 
@@ -822,11 +844,31 @@ export class ProjectStore {
       archive.push(putObject(this.projectDir, previous.subarray(offset, offset + PERSISTENCE_LIMITS.archivePieceBytes)));
     }
     const header = encodeSegmentHeader({ baseSeq: this.#seq, anchor: this.#digest, archive });
-    atomicWrite(path, header, "journal");
-    this.#journalIdentity = fileIdentity(path, "journal");
+    const replaced = (): boolean => {
+      try {
+        const now = fileIdentity(path, "journal");
+        return now.dev !== this.#journalIdentity.dev || now.ino !== this.#journalIdentity.ino;
+      } catch {
+        return true;
+      }
+    };
+    // Until the rename the journal is as it was, and the store goes on with it. Once the new
+    // segment has replaced it, the store's pins describe a file that is gone: a failure after
+    // that point leaves a valid project on disk, which only a reopen can take up.
+    let identity: FileIdentity;
+    try {
+      atomicWrite(path, header, "journal");
+      identity = fileIdentity(path, "journal");
+    } catch (error) {
+      if (!replaced()) throw error;
+      this.#poisoned = true;
+      throw new PersistenceValidationError("the journal's new segment was written but this store could not take it up; reopen the project");
+    }
+    this.#journalIdentity = identity;
     this.#journalBytes = Buffer.byteLength(header, "utf8");
     this.#journalContent = createHash("sha256").update(header, "utf8");
     this.#segmentBase = this.#seq;
+    this.#nextSegmentAt = this.#segmentBytes();
   }
 
   putObject(bytes: Buffer): string {

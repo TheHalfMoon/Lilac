@@ -26,7 +26,7 @@ Ninerr stores a project under `<root>/.ninerr`. This page describes:
 
 **The document comes only from replay.** It is produced by replaying history transactions from the snapshot's document onward.
 
-**Journal segments (project schema 3, #258).** A checkpoint starts a new segment once the journal is larger than `PERSISTENCE_LIMITS.journalSegmentBytes` (1 MiB; a host may pass `rotateJournalAt`). A commit that takes the journal past that size checkpoints by itself. Starting a segment:
+**Journal segments (project schema 3, #258).** A checkpoint starts a new segment once the journal is larger than `PERSISTENCE_LIMITS.journalSegmentBytes` (1 MiB; a host may pass `rotateJournalAt`) and than the document, since each segment also stores the document once. A commit that takes the journal past that size checkpoints by itself. If that fails (another program holding the journal open, say), the project stays as it is and the next try comes once the journal has grown by another segment. Starting a segment:
 
 1. stores the whole journal as objects (pieces of at most `archivePieceBytes`);
 2. replaces the journal, atomically, with a single header line `{ segment: { anchor, archive, baseSeq } }`. The header is canonical JSON. Its entries follow entry `baseSeq`, whose digest is `anchor`. `archive` lists the objects that hold the previous segment, in order.
@@ -38,7 +38,7 @@ Why segments: each append verifies the journal's bytes before writing, and each 
 **Golden fixtures.**
 
 - `tests/fixtures/projects/v3-basic` is the golden project of this release, and this release must regenerate it byte for byte. It is written as a crash leaves a project: the snapshot stands at tx-2 and the journal goes on past it, so opening it replays three entries of every kind. A clean close would have checkpointed at the journal's end (#239).
-- `tests/fixtures/projects/v3-segments` is the same history with its journal in segments: a segment after tx-2, whose archive is the segment after tx-1, whose archive is the journal from the genesis. This release must also regenerate it byte for byte.
+- `tests/fixtures/projects/v3-segments` is the same history with its journal in segments: a segment after tx-2, whose archive is the journal from the genesis. This release must also regenerate it byte for byte.
 - `tests/fixtures/projects/v2-basic` is the same history written by the release before segments (schema 2). It is frozen; it opens migrated to schema 3 with its journal unchanged.
 - `tests/fixtures/projects/v1-basic` is the same history written before the rename. It is frozen as the legacy migration corpus.
 
@@ -48,7 +48,7 @@ There are three version boundaries. Each is checked on open, before anything is 
 
 | Boundary | Current | Unknown or newer data |
 | --- | --- | --- |
-| Project manifest | `PROJECT_SCHEMA_VERSION` = 3 | Newer: refused. Older: migrated through the built-in step or a host step, or refused. Not a non-negative integer: refused. |
+| Project manifest | `PROJECT_SCHEMA_VERSION` = 3 | Newer: refused. Older: migrated through the built-in steps or a host step, or refused. Not a non-negative integer: refused. |
 | Document schema | `DOCUMENT_SCHEMA_VERSION` = 1 | Any `schemaVersion` other than the integer 1, or a document or node field outside `DOCUMENT_FIELDS`/`NODE_FIELDS`: refused. |
 | Journal format | 1 | A transaction, operation or node field outside format 1, or an unknown operation type, in any entry (including entries the snapshot already covers): refused. |
 

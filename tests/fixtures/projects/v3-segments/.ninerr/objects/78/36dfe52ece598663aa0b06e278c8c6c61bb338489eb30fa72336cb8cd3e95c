@@ -1,1 +1,0 @@
-{"id":"doc-golden","metadata":{},"name":"Untitled","nodes":{"frame-1":{"children":["text-1"],"id":"frame-1","metadata":{},"parentId":null,"props":{"title":"Plans"},"type":"frame"},"text-1":{"children":[],"id":"text-1","metadata":{},"parentId":"frame-1","props":{"text":"Hello"},"type":"text"}},"revision":1,"rootIds":["frame-1"],"schemaVersion":1}
