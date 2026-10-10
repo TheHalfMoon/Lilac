@@ -36,6 +36,12 @@ export function hostPool(now, options = {}) {
       hosts.push(host);
       return { host, call: client(host.url, host.token) };
     },
+    /** Close one host and let it go, so a long test does not keep every host it closed. */
+    async close(host) {
+      const index = hosts.indexOf(host);
+      if (index >= 0) hosts.splice(index, 1);
+      await host.close();
+    },
     async closeAll() {
       for (const host of hosts.splice(0)) await host.close().catch(() => {});
     },
