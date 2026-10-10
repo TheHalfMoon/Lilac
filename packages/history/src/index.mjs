@@ -1,5 +1,6 @@
 import {
   cloneDocument,
+  cloneValidated,
   createNode,
   getNode,
   getNodeIndex,
@@ -315,8 +316,16 @@ export function getAffectedNodeIds(transaction) {
   return [...ids].sort();
 }
 
-export function applyTransaction(document, transaction, { enforceBaseRevision = true } = {}) {
-  validateDocument(document);
+/**
+ * Apply `transaction` to a copy of `document`, validating both. `ownValidated` skips
+ * validating the input, for a caller whose document was itself returned validated by this
+ * module and has never been shared or changed since (a store's private state, #252). The
+ * output is still fully validated, so a bad transaction is refused as before. A document that
+ * was changed after validation must not be passed with it: the copy is made for validated
+ * data, and would quietly turn a Map or a Date into {} rather than refuse it.
+ */
+export function applyTransaction(document, transaction, { enforceBaseRevision = true, ownValidated = false } = {}) {
+  if (!ownValidated) validateDocument(document);
   const normalizedTransaction = createTransaction(transaction);
   if (
     enforceBaseRevision
@@ -328,9 +337,9 @@ export function applyTransaction(document, transaction, { enforceBaseRevision = 
     );
   }
 
-  // The input was validated above, so a private structured clone suffices;
-  // cloneDocument/normalizeDocument would validate and clone it twice more.
-  const working = cloneData(document);
+  // The input was validated above, so a private copy suffices; cloneDocument and
+  // normalizeDocument would validate and copy it twice more.
+  const working = cloneValidated(document);
   const inverseOperations = [];
   const affectedNodeIds = new Set();
   for (const operation of normalizedTransaction.operations) {
@@ -372,7 +381,7 @@ export function applyTransaction(document, transaction, { enforceBaseRevision = 
  */
 export function replayTransactions(document, transactions) {
   validateDocument(document);
-  const working = cloneData(document);
+  const working = cloneValidated(document);
   for (const [index, transaction] of transactions.entries()) {
     try {
       const normalized = createTransaction(transaction);
