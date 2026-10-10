@@ -16,7 +16,7 @@
     "start": "node scripts/ninerr.mjs"
   },
   "engines": {
-    "node": ">=22.18.0"
+    "node": "^22.18.0 || >=24.11.0"
   },
   "devDependencies": {
     "playwright-core": "1.56.1"

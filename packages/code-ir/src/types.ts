@@ -3,8 +3,8 @@ export const CODE_IR_SCHEMA_VERSION = 1;
 // The limits follow what bringing in, previewing and writing back a component was measured
 // to cost (P08-G4, #250): every step grows linearly with the component, and a 247 KiB page
 // of 7,250 elements came in, previewed and wrote back in about a second each.
-// - maxTokens equals maxSourceBytes: each token is at least one character, so it only stops
-//   a source that the size limit has not already stopped.
+// - maxTokens equals maxSourceBytes. It bounded the token scanner that read JSX before
+//   @babel/parser (P08-G11); nothing reads it now, and the size limit bounds the parser.
 // - maxSymbols matches the studio host's export limit of 5,000 layers, counted in elements:
 //   runs of text between elements become layers of their own, so a component near the limit
 //   can still be too large to export at once (the export refuses it with its reason).

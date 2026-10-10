@@ -191,13 +191,20 @@ function readLiteral(state: ParserState, container: AstNode): PropLiteral | null
 
 /** A JSX tag's name: an identifier, or a member expression such as Item.Skeleton. */
 function tagName(name: AstNode): string | null {
-  if (name.type === "JSXIdentifier") return name.name;
-  if (name.type === "JSXMemberExpression") {
-    const object = tagName(name.object);
-    return object === null ? null : `${object}.${name.property.name}`;
+  // A loop, not recursion: a chain such as a.a.a… is as long as the source allows.
+  const parts: string[] = [];
+  let current = name;
+  while (current.type === "JSXMemberExpression") {
+    parts.push(current.property.name);
+    current = current.object;
   }
-  return null;
+  if (current.type !== "JSXIdentifier") return null;
+  parts.push(current.name);
+  return parts.reverse().join(".");
 }
+
+// The longest tag name a symbol keeps (normalizeSymbol's bound for names).
+const MAX_TAG_NAME = 256;
 
 /** Source text shortened for display: whitespace collapsed, at most CODE_DISPLAY_LENGTH characters. */
 function display(text: string): string {
@@ -300,6 +307,10 @@ function elementSymbol(state: ParserState, node: AstNode, depth: number): Source
     unsupportedAt(state, "non-identifier JSX tag", node.start, opening.name.end);
     throw new CodeIrValidationError("JSX tag name must be an identifier");
   }
+  if (name.length > MAX_TAG_NAME) {
+    unsupportedAt(state, `JSX tag name longer than ${MAX_TAG_NAME} characters`, node.start, opening.name.end);
+    throw new CodeIrValidationError(`JSX tag name is longer than ${MAX_TAG_NAME} characters`);
+  }
   const props: SymbolProp[] = [];
   const codeProps: CodeProp[] = [];
   const asCode = (attribute: AstNode, attrName: string) => {
@@ -391,22 +402,34 @@ function outermostJsx(program: AstNode): AstNode[] {
 
 // React's wrappers that take a component function: forwardRef(fn), memo(fn), React.memo(fn).
 const WRAPPERS = new Set(["forwardRef", "memo"]);
+/** The function a call names: memo for memo(…) and React.memo(…); null for anything else. */
+function calleeName(callee: AstNode): string | null {
+  if (callee.type === "Identifier") return callee.name;
+  if (callee.type === "MemberExpression" && callee.property.type === "Identifier") return callee.property.name;
+  return null;
+}
 function componentFunction(init: AstNode | null): AstNode | null {
   let current = unwrap(init);
   for (let depth = 0; current !== null && current.type === "CallExpression" && depth < 4; depth += 1) {
-    const callee = current.callee;
-    const name = callee.type === "Identifier" ? callee.name : callee.type === "MemberExpression" && callee.property.type === "Identifier" ? callee.property.name : null;
+    const name = calleeName(current.callee);
     if (name === null || !WRAPPERS.has(name) || current.arguments.length === 0) return null;
     current = unwrap(current.arguments[0]);
   }
   return current !== null && (current.type === "ArrowFunctionExpression" || current.type === "FunctionExpression") ? current : null;
 }
 
-/** The JSX a component function returns: an arrow's body, or its body's last top-level return. */
+/**
+ * The element a component function returns: an arrow's body, or its body's last top-level
+ * return, when that is an element (not, say, `<div /> || null`, which starts with one).
+ */
 function returnedJsx(fn: AstNode): AstNode | null {
-  if (fn.body.type !== "BlockStatement") return unwrap(fn.body);
-  const returns = (fn.body.body as AstNode[]).filter((statement) => statement.type === "ReturnStatement");
-  return returns.length === 0 ? null : unwrap(returns.at(-1)!.argument);
+  let returned: AstNode | null;
+  if (fn.body.type !== "BlockStatement") returned = unwrap(fn.body);
+  else {
+    const returns = (fn.body.body as AstNode[]).filter((statement) => statement.type === "ReturnStatement");
+    returned = returns.length === 0 ? null : unwrap(returns.at(-1)!.argument);
+  }
+  return returned !== null && (returned.type === "JSXElement" || returned.type === "JSXFragment") ? returned : null;
 }
 
 /** The program's top-level function components, each with the JSX it returns. */
@@ -414,6 +437,12 @@ function componentDefinitions(program: AstNode): Array<{ name: string; jsx: AstN
   const definitions: Array<{ name: string; jsx: AstNode | null; fn: AstNode }> = [];
   const visit = (statement: AstNode | null) => {
     if (statement === null) return;
+    if (statement.type === "ExportDefaultDeclaration" && statement.declaration.type !== "FunctionDeclaration") {
+      // export default memo(function Card() {…}): the wrapped function's own name.
+      const fn = componentFunction(statement.declaration);
+      if (fn?.id && /^[A-Z]/u.test(fn.id.name)) definitions.push({ name: fn.id.name, jsx: returnedJsx(fn) });
+      return;
+    }
     if (statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration") return visit(statement.declaration);
     if (statement.type === "FunctionDeclaration" && statement.id && /^[A-Z]/u.test(statement.id.name)) {
       definitions.push({ name: statement.id.name, jsx: returnedJsx(statement), fn: statement });
