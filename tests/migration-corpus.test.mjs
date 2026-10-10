@@ -123,7 +123,7 @@ for (const item of manifest.cases) {
     if (expect.refused) {
       assert.equal(first.answer.status, 422, JSON.stringify(first.answer));
       assert.equal(first.answer.json.error.code, expect.refused, JSON.stringify(first.answer.json));
-      assert.match(first.answer.json.error.message, new RegExp(expect.pattern, "iu"));
+      assert.match(first.answer.json.error.message, new RegExp(expect.pattern, "u"));
       assert.deepEqual(first.after, first.before, "a refused open changes no file of the project");
       assert.deepEqual(first.folderAfter, first.folderBefore, "nor any other file in the projects folder");
     } else {

@@ -61,7 +61,7 @@ Hand mutations each fail it, and each was restored:
 
 | Mutation | Fails |
 |---|---|
-| The host reporting a version error as damage | The three future cases |
+| The host reporting a version error as damage | Every case refused as `project-version` (4) |
 | A refused open writing a file into the project | Every refused case |
 | A refused open deleting the person's agent registry beside the project (the reviewer's) | Every refused case (12) |
 | One byte added to a corpus file | The frozen-corpus check |
