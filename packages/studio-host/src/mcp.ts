@@ -633,7 +633,8 @@ async function confirm(context: McpContext, session: StudioSession, actor: Studi
   };
   const summary = `${toolName === "delete_layers" ? "Delete" : toolName} ${ids.length} layer${ids.length === 1 ? "" : "s"}: ${ids.slice(0, 5).map(describeNode).join(", ")}${ids.length > 5 ? ", …" : ""}`;
   const decision = await context.confirmations.request({ ...key, agentName: actor.displayName, summary }, at, context.confirmationWaitMs ?? CONFIRMATION_WAIT_MS);
-  if (decision.outcome === "denied") return "The person declined this change.";
+  // A switch to another project drops the request: say so, rather than that the person declined.
+  if (decision.outcome === "denied") return context.session() === session ? "The person declined this change." : "The open project changed while the call was waiting.";
   if (decision.outcome === "busy") return "Too many changes are already waiting for the person's approval. Wait for them to decide, then call again.";
   if (decision.outcome === "timeout") return "Waiting for the person to approve this in Ninerr. Call again with the same arguments once they have.";
   return { documentId: session.documentId, toolName, argumentsSha256, actorId: actor.ownerActorId!, confirmedAt: decision.confirmedAt };
