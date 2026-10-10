@@ -6,7 +6,9 @@
   "type": "module",
   "exports": "./src/index.ts",
   "engines": {
-    "node": ">=22.18.0"
+    "node": "^22.18.0 || >=24.11.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@babel/parser": "8.0.6"
+  }
 }

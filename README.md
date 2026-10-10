@@ -16,7 +16,7 @@ Ninerr is a local-first design workspace for interfaces that are code. A design 
 `docs/ARCHITECTURE.md` describes the subsystems. The architecture catalog in `packages/architecture` records each one's status: implemented, stub (a delivered slice with planned work) or planned.
 
 ## Running it
-Ninerr needs Node.js 22.18 or later. Installing fetches its dependencies; once installed, it needs no network or account.
+Ninerr needs Node.js 22.18 or a later 22.x, or Node.js 24.11 or later. Installing fetches its dependencies; once installed, it needs no network or account.
 
 ```bash
 npm ci --ignore-scripts

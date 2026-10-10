@@ -108,22 +108,25 @@ test("JSX text and attribute strings follow JSX semantics", () => {
   assert.throws(() => lift("<p>&copy; 2026</p>"), /unsupported entity &copy;/u);
   assert.throws(() => lift("<p>&#xD800;</p>"), /invalid character reference/u);
   assert.throws(() => lift("<p>{\"a\\\nb\"}</p>"), /line continuations/u);
-  assert.throws(() => lift("<p>{\"\\1\"}</p>"), /octal escapes/u);
+  // Octal escapes are a syntax error in a module (strict mode): the file is refused.
+  assert.throws(() => lift("<p>{\"\\1\"}</p>"), /numeric escape in strict mode/u);
   assert.throws(() => lift("<p>{42}</p>"), /non-string literal child/u);
 });
 
 test("a failed element is skipped whole: none of its descendants becomes a root", () => {
   const broken = "<Card>{items}\n  <h1>inner</h1>\n</Card>";
   assert.throws(() => buildCodeIr([{ path: "B.jsx", content: broken }]), /no supported elements/u);
-  const withSibling = buildCodeIr([{ path: "B.jsx", content: `${broken}\n<p title="a > b">ok</p>` }]);
+  const withSibling = buildCodeIr([{ path: "B.jsx", content: `const a = ${broken};\nconst b = <p title="a > b">ok</p>;` }]);
   assert.deepEqual(withSibling.rootIds.map((id) => withSibling.symbols[id].name), ["p"]);
   // Braces and quoted ">" inside the failed element do not end it early.
-  const tricky = buildCodeIr([{ path: "B.jsx", content: "<div a={x}>{\"</div>\"}<span title=\"/>\">s</span>{fn()}</div><em>after</em>" }]);
+  const tricky = buildCodeIr([{ path: "B.jsx", content: "const a = <div a={x}>{\"</div>\"}<span title=\"/>\">s</span>{fn()}</div>;\nconst b = <em>after</em>;" }]);
   assert.deepEqual(tricky.rootIds.map((id) => tricky.symbols[id].name), ["em"]);
 });
 
-test("recovery stops rather than guess when the failed element's structure is ambiguous", () => {
-  // Each input once promoted <h1>inner</h1> to a root; now nothing is a root.
+test("an element inside another is never promoted to a root", () => {
+  // Each input once promoted <h1>inner</h1> to a root. The parser now reads the whole
+  // structure: the outer element is refused, or is itself the root, or the file is not
+  // JavaScript and is refused; <h1> is never a root of its own.
   for (const source of [
     "<Card><>{x}</><h1>inner</h1></Card>",
     "<Card>{a && <b>Don't</b>}<Inner>{'}'}</Inner><h1>inner</h1></Card>",
@@ -139,14 +142,20 @@ test("recovery stops rather than guess when the failed element's structure is am
     "<A x=<B y=\"1\"/>>{z}<h1>inner</h1></A>",
     "<A x=<B x=<C/>/>><h1>inner</h1></A>",
   ]) {
-    assert.throws(() => buildCodeIr([{ path: "R.jsx", content: source }]), /no supported elements/u, source);
+    let ir = null;
+    try {
+      ir = buildCodeIr([{ path: "R.jsx", content: source }]);
+    } catch (error) {
+      assert.match(error.message, /no supported elements|could not be parsed/u, source);
+    }
+    if (ir !== null) assert.ok(ir.rootIds.every((id) => ir.symbols[id].name !== "h1"), source);
   }
 });
 
-test("component binding stays fast on unclosed parameter lists", () => {
+test("an unclosed parameter list is refused promptly", () => {
   const source = `${"const A=(".repeat(1500)}${"x".repeat(200_000)}\n<p>ok</p>`;
   const started = performance.now();
-  buildCodeIr([{ path: "B.jsx", content: source }]);
+  assert.throws(() => buildCodeIr([{ path: "B.jsx", content: source }]), /could not be parsed/u);
   assert.ok(performance.now() - started < 500, `took ${(performance.now() - started).toFixed(0)} ms`);
 });
 
@@ -182,8 +191,10 @@ test("lone surrogates, __proto__ props and ambiguous numerals are refused, -0 is
   assert.throws(() => designToCode({ componentName: "S", root: { tag: "p", props: { title: char(0xdc00) } } }), /lone surrogate/u);
   assert.throws(() => lift("<div __proto__=\"evil\" />"), /unsupported key/u);
   assert.equal(lift("<div constructor=\"c\" />").props.constructor, "c");
-  assert.throws(() => lift("<p>{\"\\01\"}</p>"), /octal escapes/u);
-  assert.throws(() => lift("<p n={010} />"), /non-literal/u);
+  assert.throws(() => lift("<p>{\"\\01\"}</p>"), /numeric escape in strict mode/u);
+  // A legacy octal literal is a syntax error in a module.
+  assert.throws(() => lift("<p n={010} />"), /could not be parsed/u);
+  assert.throws(() => lift("<p n={0x10} />"), /non-literal/u);
   assert.equal(lift("<p>&#00000065;&#x0000041;</p>").text, "AA", "numeric references take any number of digits");
   assert.throws(() => lift("<p>&#X41;</p>"), /malformed character reference/u);
   assert.throws(() => lift("<p>&#;</p>"), /malformed character reference/u);

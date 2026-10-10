@@ -12,6 +12,16 @@ Ninerr uses or interoperates with third-party software under its respective lice
 
 Ninerr's `@ninerr/import-stack` package uses the published local Parse5 HTML parser as a bounded parser only. Ninerr owns sanitization, authority limits, deterministic identifiers, source provenance, proposal validation, and history commit boundaries. The MIT and BSD-2-Clause license texts are included by the upstream npm distributions. Any Ninerr release that redistributes Parse5 or entities source or object code must preserve the applicable licenses and attribution notices.
 
+## Babel parser
+
+- npm runtime: `@babel/parser@8.0.6`
+- Copyright: 2012-2014 various contributors (the AUTHORS file of the Babel repository)
+- License: MIT
+- Upstream project: https://github.com/babel/babel
+- Transitive runtime: `@babel/types@8.0.6`, `@babel/helper-string-parser@8.0.6` and `@babel/helper-validator-identifier@8.0.6` (Copyright 2014-present Sebastian McKenzie and other contributors, MIT)
+
+Ninerr's `@ninerr/code-ir` package uses the published Babel parser to read the syntax of JSX and TSX files, as a bounded parser only. Ninerr owns the supported subset, the values it reads, source ranges, component bindings, patches and write-back. The MIT license texts are included by the upstream npm distributions. Any Ninerr release that redistributes these packages must preserve their licenses and attribution notices.
+
 ## Impeccable
 
 - Project: `pbakaus/impeccable`
