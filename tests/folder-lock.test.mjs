@@ -75,7 +75,7 @@ test("a claim left by a host that crashed is taken over (#261)", () => withFolde
   }
   // So is a claim made before the computer last started, even when its process id is in use
   // again (here by this very process).
-  writeFileSync(join(root, HOST_LOCK), `${JSON.stringify({ version: 1, pid: process.pid, nonce: "before-boot", startedAt: now(), claimedAt: Date.now() - (uptime() + 60) * 1000 })}\n`);
+  writeFileSync(join(root, HOST_LOCK), `${JSON.stringify({ version: 1, pid: process.pid, nonce: "before-boot", startedAt: now(), claimedAt: Date.now() - uptime() * 1000 - 11 * 60_000 })}\n`);
   const rebooted = await startStudioHost({ projectsRoot: root, now });
   await rebooted.close();
   // So is a claim that cannot be read (a disk that kept only part of it, say).

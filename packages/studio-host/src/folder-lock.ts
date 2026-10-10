@@ -12,6 +12,7 @@ import { StudioError } from "./errors.ts";
 // a process that no longer runs (a crash) is taken over.
 
 export const HOST_LOCK = ".ninerr-host.lock";
+const BOOT_MARGIN_MS = 10 * 60_000;
 
 interface Holder {
   pid: number;
@@ -74,7 +75,9 @@ export function claimProjectsFolder(projectsRoot: string, startedAt: string): ()
   const release = (): void => {
     if (readHolder(path)?.nonce === nonce) removeQuietly(path);
   };
-  const bootedAt = Date.now() - uptime() * 1000;
+  // With a margin: a clock set forward after the computer started (time sync on a virtual
+  // machine, say) must not make a live claim look older than the start.
+  const bootedAt = Date.now() - uptime() * 1000 - BOOT_MARGIN_MS;
   const live = (holder: Holder | null): holder is Holder => holder !== null && holder.claimedAt >= bootedAt && isRunning(holder.pid);
   // Written in full first, then linked into place, so no other host ever reads a half-written
   // claim; a link fails if a claim is already there.
