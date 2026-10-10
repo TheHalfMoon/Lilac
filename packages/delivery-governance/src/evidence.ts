@@ -1,5 +1,5 @@
 import { lstat, mkdir, realpath, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { DeliveryValidationError } from "./errors.ts";
 import {
   DELIVERY_SCHEMA_VERSION,
@@ -33,7 +33,7 @@ async function resolveThroughExisting(path: string): Promise<string> {
       stat = await lstat(cursor);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      segments.unshift(cursor.slice(dirname(cursor).length + 1));
+      segments.unshift(basename(cursor));
       cursor = dirname(cursor);
       continue;
     }

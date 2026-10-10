@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 
 import {
   DELIVERY_GOVERNANCE_PROVENANCE,
@@ -180,6 +180,16 @@ test("evidence store pins one root outside disposable worktrees", async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("a missing evidence root under a filesystem root keeps every letter of its path (P08-G7)", async () => {
+  // Resolving a missing root walks up to a folder that exists; when that folder is the
+  // filesystem root, the next name once lost its first letter, so "/x-…" became "/-…" and
+  // containment in a disposable worktree under it went unseen.
+  const top = join(parse(tmpdir()).root, `ninerr-missing-${process.pid}-${Date.now()}`);
+  assert.equal(existsSync(top), false);
+  await assert.rejects(createEvidenceStore({ evidenceRoot: join(top, "sub"), disposableRoots: [top] }), DeliveryValidationError);
+  assert.equal(existsSync(top), false, "nothing is created for a refused root");
 });
 
 test("evidence store rejects malformed bundles with typed errors", async () => {
