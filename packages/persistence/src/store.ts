@@ -151,8 +151,9 @@ function documentVersionProblem(record: unknown): string | null {
   return null;
 }
 
-function loadDocument(projectDir: string, digest: string): ProjectDocument {
-  const record = parseJsonFile(getObject(projectDir, digest), `document object ${digest}`);
+function loadDocument(projectDir: string, digest: string): { document: ProjectDocument; bytes: number } {
+  const object = getObject(projectDir, digest);
+  const record = parseJsonFile(object, `document object ${digest}`);
   // The object's bytes already match its content hash, so a document this release does not
   // read (another schema version, or fields schema 1 lacks) is a version mismatch, as for the
   // manifest, not corruption.
@@ -160,7 +161,7 @@ function loadDocument(projectDir: string, digest: string): ProjectDocument {
   if (problem !== null) throw new PersistenceVersionError(`document object ${digest} ${problem}`);
   try {
     validateDocument(record);
-    return normalizeDocument(record) as ProjectDocument;
+    return { document: normalizeDocument(record) as ProjectDocument, bytes: object.length };
   } catch (error) {
     throw new PersistenceCorruptionError(`document object ${digest} is not a valid document: ${(error as Error).message.slice(0, 200)}`);
   }
@@ -416,6 +417,8 @@ interface VerifiedProject {
   genesis: string;
   snapshot: SnapshotRef;
   replayed: number;
+  /** The size of the snapshot's document object. */
+  snapshotBytes: number;
 }
 
 /**
@@ -430,7 +433,8 @@ function readVerifiedProject(projectDir: string, migrations: Readonly<Record<num
   const manifest = readManifest(migrated);
 
   const snapshot = readSnapshot(readJsonFile(files.snapshot, "snapshot reference"));
-  let document = loadDocument(projectDir, snapshot.documentObject);
+  const loaded = loadDocument(projectDir, snapshot.documentObject);
+  let document = loaded.document;
   if (document.revision !== snapshot.revision || document.id !== manifest.documentId) {
     throw new PersistenceCorruptionError("snapshot document does not match the snapshot reference or manifest");
   }
@@ -473,7 +477,7 @@ function readVerifiedProject(projectDir: string, migrations: Readonly<Record<num
     }
   }
   const replayed = pending.length;
-  return { manifest, migratedFrom, document, journalBytes, parsed, genesis, snapshot, replayed };
+  return { manifest, migratedFrom, document, journalBytes, parsed, genesis, snapshot, replayed, snapshotBytes: loaded.bytes };
 }
 
 /** Open a project for writing: lock, verify, recover a torn journal tail, and replay. */
@@ -510,7 +514,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
   const lockOverride = acquireLock(files.lock, lockRecord, options.breakStaleLock);
   try {
     unchanged();
-    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, snapshot, replayed } = readVerifiedProject(projectDir, migrations);
+    const { manifest, migratedFrom, document, journalBytes, parsed, genesis, snapshot, replayed, snapshotBytes } = readVerifiedProject(projectDir, migrations);
     // Repairs are written only once every check has passed, so an open refused as newer or
     // corrupt leaves the project's files as it found them (#241), leftovers included.
     unchanged();
@@ -536,7 +540,8 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
       digest: last?.digest ?? parsed.segment?.anchor ?? genesis,
       segmentBase: parsed.segment?.baseSeq ?? 0,
       rotateAt,
-      documentBytes: Buffer.byteLength(canonicalJson(document), "utf8"),
+      // The snapshot's document, as the size the next one will have (a checkpoint measures it again).
+      documentBytes: snapshotBytes,
       journalBytes: parsed.validBytes,
       // Content pin: SHA-256 of exactly the bytes validated above (after any torn-tail truncation).
       // commit() extends it with each line it appends, and appendDurable compares the file to it
@@ -803,15 +808,18 @@ export class ProjectStore {
     this.#journalBytes += bytes;
     this.#journalContent.update(line, "utf8");
     // Past the segment size, checkpoint, which starts a new segment (#258). The change is
-    // already durable: a checkpoint that fails leaves the project as it is. It is tried again
-    // only once the journal has grown by another segment, so a cause that persists (a file
-    // another program holds open, say) does not cost a document and an archive per commit.
+    // already durable: a checkpoint that fails leaves the project as it is. When no segment
+    // started, because the checkpoint failed or the document has outgrown the journal, the
+    // next try waits until the journal has grown by another segment, so neither a cause that
+    // persists (a file another program holds open, say) nor a growing document costs a
+    // document object, and maybe an archive, per commit.
     if (this.#journalBytes > this.#nextSegmentAt) {
       try {
         this.checkpoint();
       } catch {
-        this.#nextSegmentAt = this.#journalBytes + this.#segmentBytes();
+        // See above.
       }
+      if (this.#journalBytes > this.#nextSegmentAt) this.#nextSegmentAt = this.#journalBytes + this.#segmentBytes();
     }
     return { revision: next.revision, seq: entry.seq, transactionId: String(stored.id) };
   }

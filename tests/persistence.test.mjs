@@ -778,6 +778,28 @@ test("when a segment cannot start, the project stays as it is, and the next try 
   reopened.close();
 }));
 
+test("a document larger than the journal does not make every commit checkpoint (#258)", () => {
+  const root = tempRoot();
+  try {
+    // A 100 KB document, and commits that each add 1 KB to it: the document stays ahead of the journal.
+    const nodes = [{ id: "root", type: "frame", children: Array.from({ length: 100 }, (_, index) => `big-${index}`), props: {} }, ...Array.from({ length: 100 }, (_, index) => ({ id: `big-${index}`, type: "text", parentId: "root", props: { text: "x".repeat(1000) } }))];
+    createProject(root, { projectId: "proj-1", document: createDocument({ id: "doc-1", nodes }), createdAt: AT });
+    const objects = () => readdirSync(join(root, PROJECT_FILES.directory, PROJECT_FILES.objects), { recursive: true }).filter((name) => /[0-9a-f]{62}$/u.test(name)).length;
+    const before = objects();
+    const store = open(root, { rotateJournalAt: 2048 });
+    for (let revision = 0; revision < 200; revision += 1) {
+      store.commit({ id: `tx-${revision + 1}`, actor: "user-1", baseRevision: revision, operations: [{ type: "insert-node", node: { id: `n-${revision}`, type: "text", props: { text: "y".repeat(1000) } }, parentId: "root" }] });
+    }
+    const journal = readFileSync(file(root, PROJECT_FILES.journal)).length;
+    // A try stores the document; tries come once per segment of growth, not once per commit.
+    assert.ok(objects() - before <= 4, `${objects() - before} objects for a ${journal}-byte journal`);
+    store.close();
+    assert.equal(open(root).revision, 200);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a journal cut back to its segment header, with the snapshot past it, is refused (#239, #258)", () => withProject((root) => {
   const store = open(root, { rotateJournalAt: 1 });
   store.commit(setTitle("tx-1", 0, "One"));
