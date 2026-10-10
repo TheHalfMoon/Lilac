@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { applyPatch, buildCodeIr } from "@ninerr/code-ir";
 import { StudioError } from "./errors.ts";
 import { LEGACY_CODEBASE_LINKS_FILE, registrySource } from "./legacy.ts";
-import { type CodeSource, importJsx } from "./code.ts";
+import { type CodeSource, importJsx, layerName, sourceShape } from "./code.ts";
 import { styleProperties } from "./imports.ts";
 
 // A connected codebase (PC11, #182): one local folder linked to a project, whose JSX and
@@ -283,13 +283,12 @@ export interface WriteBackPlan {
   rebase: Array<{ nodeId: string; codeSource: CodeSource; settled: CodeSource }>;
 }
 
-const sourceName = (prop: string) => (prop === "className" ? "class" : prop === "htmlFor" ? "for" : prop);
 
 /** The layer's current value for a source prop, as source text. */
 function layerValue(node: any, prop: string): string | undefined {
   if (prop === "style") return Object.entries(node.props?.style ?? {}).map(([name, value]) => `${name}: ${value}`).join("; ");
   const attributes = node.props?.attributes ?? {};
-  const name = sourceName(prop);
+  const name = layerName(prop);
   return typeof attributes[name] === "string" ? attributes[name] : undefined;
 }
 
@@ -448,7 +447,21 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
   };
   countElements(ir.symbols[definition.children[0]]);
   const boundElements = bound.filter(({ source }) => source.tag !== "#text").length;
-  if (boundElements < sourceElements) notWritten.push({ nodeId: start.id, reason: "layers removed here are not written back" });
+  if (boundElements < sourceElements) notWritten.push({ nodeId: start.id, reason: "the file has elements these layers do not (added there, or removed here); they are not written back" });
+  // Where the file's children of an element no longer line up with what was brought in (an
+  // element or {…} added or removed there), a layer's position names another element: nothing
+  // under that element is written. Layers brought in before shapes were recorded have none.
+  const shifted = new Set<string>();
+  for (const { source } of bound) {
+    if (source.tag === "#text" || source.shape === undefined) continue;
+    const symbol = symbolAt(source.path);
+    if (symbol && sourceShape(ir, symbol).join("\n") !== source.shape.join("\n")) shifted.add(source.path);
+  }
+  const under = (path: string, inclusive: boolean) => {
+    const parts = path === "" ? [] : path.split(".");
+    for (let length = inclusive ? parts.length : parts.length - 1; length >= 0; length -= 1) if (shifted.has(parts.slice(0, length).join("."))) return true;
+    return false;
+  };
   // Runs of text: each must still be in its own element, in its source order, and none
   // removed (a run moved or removed is listed, never written to its old place).
   const misplacedText = new Set<string>();
@@ -485,6 +498,11 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
 
   for (const { node, source } of bound) {
     if (copies.has(node.id)) continue;
+    // A run of text is placed by its own element's children; an element by its parent's.
+    if (shifted.size > 0 && under(source.path, source.tag === "#text")) {
+      conflicts.push({ nodeId: node.id, field: "structure", reason: "the file's elements around this layer changed since it was brought in, so it no longer lines up with the source; bring the component in again" });
+      continue;
+    }
     if (unconfirmed.has(node.id)) {
       conflicts.push({ nodeId: node.id, field: "write-back", reason: `an earlier write-back to ${file} was not confirmed and the file has changed since; check it and bring the component in again` });
       continue;
@@ -500,7 +518,14 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
     }
     const symbol = symbolAt(source.path);
     if (!symbol || (!isText && symbol.name !== source.tag)) {
-      conflicts.push({ nodeId: node.id, field: "structure", reason: `the source no longer has <${source.tag}> there` });
+      conflicts.push({ nodeId: node.id, field: "structure", reason: `the source no longer has ${partName(source.tag)} there` });
+      continue;
+    }
+    // A {…} part is code: nothing about it is written back.
+    if (source.tag === "#expression") {
+      const shown = source.code?.[0];
+      const changed = node.props?.text !== shown || Object.keys(node.props?.attributes ?? {}).length > 0 || Object.keys(node.props?.style ?? {}).length > 0;
+      if (changed) notWritten.push({ nodeId: node.id, reason: `${shown ?? "this part"} is code in the source; changes to it are not written back` });
       continue;
     }
     const nextBase: CodeSource["base"] = { props: { ...source.base.props }, ...(source.base.text === undefined ? {} : { text: source.base.text }) };
@@ -571,11 +596,23 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
       checks.push({ nodeId: node.id, field: prop, path: source.path, expected: mine });
       nextBase.props[prop] = mine;
     }
-    if (!isText) {
-      // Attributes the layer has but the source does not are not added.
-      const sourceNames = new Set(symbol.props.map((prop: any) => sourceName(prop.name)));
-      for (const name of Object.keys(node.props?.attributes ?? {})) if (!sourceNames.has(name)) notWritten.push({ nodeId: node.id, reason: `the new attribute ${name} is not written back` });
-      if (Object.keys(node.props?.style ?? {}).length > 0 && !symbol.props.some((prop: any) => prop.name === "style")) notWritten.push({ nodeId: node.id, reason: "a style the source does not have is not written back" });
+    if (source.tag === "#fragment") {
+      // <>…</> has no attributes: the layer draws it as a box with display: contents.
+      const style = node.props?.style ?? {};
+      const asImported = Object.keys(style).length === 1 && style.display === "contents";
+      if (Object.keys(node.props?.attributes ?? {}).length > 0 || !asImported) notWritten.push({ nodeId: node.id, reason: "a fragment (<>…</>) has no attributes or style; changes to it are not written back" });
+    } else if (!isText) {
+      // Attributes the layer has but the source does not are not added, and an attribute that
+      // is code in the source (className={…}) is never written.
+      const code = new Set(source.code ?? []);
+      const sourceNames = new Set(symbol.props.map((prop: any) => layerName(prop.name)));
+      for (const name of Object.keys(node.props?.attributes ?? {})) {
+        if (code.has(name) && !sourceNames.has(name)) notWritten.push({ nodeId: node.id, reason: `${name} is code in the source and is not written back` });
+        else if (!sourceNames.has(name)) notWritten.push({ nodeId: node.id, reason: `the new attribute ${name} is not written back` });
+      }
+      if (Object.keys(node.props?.style ?? {}).length > 0 && !symbol.props.some((prop: any) => prop.name === "style")) {
+        notWritten.push({ nodeId: node.id, reason: code.has("style") ? "the style is code in the source and is not written back" : "a style the source does not have is not written back" });
+      }
     }
     rebase.push({ nodeId: node.id, codeSource: { ...source, base: nextBase }, settled: source });
   }
@@ -589,6 +626,11 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
     } catch (error) {
       throw new StudioError(409, "patch-refused", `the change could not be applied to ${file}: ${error instanceof Error ? error.message.slice(0, 200) : "refused"}`);
     }
+  }
+  // The component's code (every {…} part and attribute that is code) must be exactly as it
+  // was: a write-back patches literals only. Anything else is refused whole.
+  if (ops.length > 0 && !sameCode(read.content, after, read.file, component)) {
+    throw new StudioError(409, "patch-refused", `the change to ${file} would alter code in the component, so nothing is written`);
   }
   // Read the new file back: every written field must read as the value written (no
   // whitespace, entity or merge drift). A field that does not is left out and listed.
@@ -606,6 +648,42 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
   return { file: read.file, sha256: read.sha256, token, diff: unifiedDiff(read.file, read.content, after), changes, conflicts, notWritten, matched, after, rebase };
 }
 
+/** How a write-back names a part of the source. */
+function partName(tag: string): string {
+  if (tag === "#expression") return "this {…} part";
+  if (tag === "#fragment") return "this fragment (<>…</>)";
+  return `<${tag}>`;
+}
+
+/** The exact source text of every code part of `component` in `content`, in order, or null. */
+function codeTexts(file: string, content: string, component: string): string[] | null {
+  let ir: any;
+  try {
+    ir = buildCodeIr([{ path: file, content }]);
+  } catch {
+    return null;
+  }
+  const roots = new Set(ir.rootIds);
+  const definition = (Object.values(ir.symbols) as any[]).find((symbol) => symbol.kind === "component" && symbol.name === component && symbol.children.length > 0 && roots.has(symbol.children[0]));
+  if (!definition) return null;
+  const texts: string[] = [];
+  const walk = (id: string) => {
+    const symbol = ir.symbols[id];
+    if (symbol.kind === "expression") texts.push(content.slice(symbol.range.startOffset, symbol.range.endOffset));
+    for (const prop of symbol.codeProps ?? []) texts.push(content.slice(prop.range.startOffset, prop.range.endOffset));
+    for (const child of symbol.children) walk(child);
+  };
+  walk(definition.children[0]);
+  return texts;
+}
+
+/** Whether `before` and `after` have the component's code parts byte for byte. */
+export function sameCode(before: string, after: string, file: string, component: string): boolean {
+  const was = codeTexts(file, before, component);
+  const now = codeTexts(file, after, component);
+  return was !== null && now !== null && was.length === now.length && was.every((text, index) => text === now[index]);
+}
+
 /** The checks (as `nodeId:field`) whose value does not read back from `content`. */
 function readBackFailures(file: string, content: string, component: string, checks: Array<{ nodeId: string; field: string; path: string; textIndex?: number; expected: string }>): string[] {
   let ir: any;
@@ -616,7 +694,8 @@ function readBackFailures(file: string, content: string, component: string, chec
   }
   const roots = new Set(ir.rootIds);
   const definition = (Object.values(ir.symbols) as any[]).find((symbol) => symbol.kind === "component" && symbol.name === component && symbol.children.length > 0 && roots.has(symbol.children[0]));
-  if (!definition || ir.unsupported.length > 0) return checks.map((check) => `${check.nodeId}:${check.field}`);
+  const own = definition ? ir.symbols[definition.children[0]].range : null;
+  if (!definition || ir.unsupported.some((region: any) => region.range.startOffset < own.endOffset && region.range.endOffset > own.startOffset)) return checks.map((check) => `${check.nodeId}:${check.field}`);
   const at = (path: string) => {
     let symbol = ir.symbols[definition.children[0]];
     for (const index of path === "" ? [] : path.split(".").map(Number)) symbol = symbol?.children?.[index] === undefined ? undefined : ir.symbols[symbol.children[index]];

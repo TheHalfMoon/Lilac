@@ -1,6 +1,6 @@
 import { parse } from "@babel/parser";
 import { CodeIrValidationError } from "./errors.ts";
-import { CODE_IR_HARD_LIMITS, type PropLiteral, type SourceSymbol, type SymbolProp, type SymbolText, type UnsupportedRegion } from "./types.ts";
+import { CODE_DISPLAY_LENGTH, CODE_IR_HARD_LIMITS, type CodeProp, type PropLiteral, type SourceSymbol, type SymbolProp, type SymbolText, type UnsupportedRegion } from "./types.ts";
 import { makeRange, symbolId } from "./validation.ts";
 
 // JSX and TSX are read with @babel/parser (P08-G11, #230): the syntax comes from a real
@@ -43,10 +43,22 @@ function unsupportedAt(state: ParserState, reason: string, start: number, end: n
   });
 }
 
-// JSX text and attribute strings carry HTML entities, not JS escapes. The entities Ninerr
-// emits, and numeric references, are decoded; any other named entity is refused, because
-// JSX would decode it to a character this parser cannot know.
-const NAMED_ENTITIES: Readonly<Record<string, string>> = Object.freeze({ amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: "\u00a0" });
+// JSX text and attribute strings carry HTML entities, not JS escapes. A named entity is
+// decoded as JSX decodes it: the entities Ninerr emits from this table, any other from the
+// parser (the XHTML entities, &larr; is "←"), and a name JSX does not know stays as written
+// (&foo; is the text "&foo;"). Names are looked up as own keys: &constructor; was once
+// Object's constructor function (P08-G11).
+const NAMED_ENTITIES = new Map(Object.entries({ amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: "\u00a0" }));
+const PARSED_ENTITIES = new Map<string, string>();
+function namedEntity(name: string): string {
+  const known = NAMED_ENTITIES.get(name) ?? PARSED_ENTITIES.get(name);
+  if (known !== undefined) return known;
+  // The name is [A-Za-z][A-Za-z0-9]{0,31}, so this is one element with one text child.
+  const element = (parse(`<x>&${name};</x>`, { plugins: ["jsx"] }).program.body[0] as unknown as AstNode).expression;
+  const text: string = element.children[0].value;
+  if (PARSED_ENTITIES.size < 512) PARSED_ENTITIES.set(name, text);
+  return text;
+}
 
 // Numeric references take any number of digits and a lowercase x, as in Babel and
 // TypeScript; any other "&#" is refused rather than guessed.
@@ -58,9 +70,7 @@ function decodeJsxEntities(raw: string, label: string): string {
       if (!(code > 0 && code <= 0x10ffff) || (code >= 0xd800 && code <= 0xdfff)) throw new CodeIrValidationError(`${label} has an invalid character reference &${body};`);
       return String.fromCodePoint(code);
     }
-    const named = NAMED_ENTITIES[body];
-    if (named === undefined) throw new CodeIrValidationError(`${label} uses the unsupported entity &${body};`);
-    return named;
+    return namedEntity(body);
   });
 }
 
@@ -196,57 +206,39 @@ function tagName(name: AstNode): string | null {
 // The longest tag name a symbol keeps (normalizeSymbol's bound for names).
 const MAX_TAG_NAME = 256;
 
-function elementSymbol(state: ParserState, node: AstNode, depth: number): SourceSymbol {
-  if (depth > CODE_IR_HARD_LIMITS.maxDepth) {
-    throw new CodeIrValidationError("JSX nesting exceeds maxDepth");
-  }
-  if (node.type === "JSXFragment") {
-    unsupportedAt(state, "JSX fragments are outside the supported subset", node.start, node.openingFragment.end);
-    throw new CodeIrValidationError("JSX fragments are outside the supported subset");
-  }
+/** Source text shortened for display: whitespace collapsed, at most CODE_DISPLAY_LENGTH characters. */
+function display(text: string): string {
+  const flat = text.replace(/\s+/gu, " ").trim();
+  if (flat.length <= CODE_DISPLAY_LENGTH) return flat;
+  let cut = flat.slice(0, CODE_DISPLAY_LENGTH - 1);
+  // Never end on half of a surrogate pair.
+  if (/[\ud800-\udbff]$/u.test(cut)) cut = cut.slice(0, -1);
+  return `${cut}…`;
+}
+
+/** A {…} child that is code: kept whole, with its range, never read into or patched. */
+function expressionSymbol(state: ParserState, child: AstNode): SourceSymbol {
+  const inner = child.type === "JSXSpreadChild" ? `...${state.source.slice(child.expression.start, child.expression.end)}` : state.source.slice(child.expression.start, child.expression.end);
+  const symbol: SourceSymbol = {
+    id: symbolId(state.file, "expression", "#expression", child.start),
+    kind: "expression",
+    name: "#expression",
+    range: makeRange(state.file, state.source, state.starts, child.start, child.end),
+    props: [],
+    children: [],
+    texts: [],
+    code: display(inner),
+  };
+  state.symbols.push(symbol);
+  return symbol;
+}
+
+/** The text runs and child symbols of an element's or a fragment's children, in order. */
+function readChildren(state: ParserState, nodes: AstNode[], name: string, depth: number): { texts: SymbolText[]; children: SourceSymbol[] } {
   const { source } = state;
-  const opening: AstNode = node.openingElement;
-  const name = tagName(opening.name);
-  if (name === null) {
-    unsupportedAt(state, "non-identifier JSX tag", node.start, opening.name.end);
-    throw new CodeIrValidationError("JSX tag name must be an identifier");
-  }
-  if (name.length > MAX_TAG_NAME) {
-    unsupportedAt(state, `JSX tag name longer than ${MAX_TAG_NAME} characters`, node.start, opening.name.end);
-    throw new CodeIrValidationError(`JSX tag name is longer than ${MAX_TAG_NAME} characters`);
-  }
-  const props: SymbolProp[] = [];
   const texts: SymbolText[] = [];
   const children: SourceSymbol[] = [];
-  for (const attribute of opening.attributes as AstNode[]) {
-    if (attribute.type !== "JSXAttribute" || attribute.name.type !== "JSXIdentifier") {
-      unsupportedAt(state, `unsupported JSX attribute form in ${name}`, attribute.start, attribute.end);
-      throw new CodeIrValidationError(`JSX element ${name} has an unsupported attribute form`);
-    }
-    const attrName: string = attribute.name.name;
-    const value: AstNode | null = attribute.value;
-    if (value === null) {
-      props.push({ name: attrName, literal: { kind: "boolean", value: true }, range: makeRange(state.file, source, state.starts, attribute.name.start, attribute.name.end) });
-      continue;
-    }
-    if (value.type === "StringLiteral") {
-      const scanned = scanStringLiteral(source, value.start);
-      props.push({ name: attrName, literal: { kind: "string", value: scanned.value }, range: makeRange(state.file, source, state.starts, attribute.start, scanned.end) });
-      continue;
-    }
-    if (value.type !== "JSXExpressionContainer") {
-      unsupportedAt(state, `unsupported JSX attribute value in ${name}`, value.start, value.end);
-      throw new CodeIrValidationError(`JSX element ${name} has an unsupported attribute value`);
-    }
-    const literal = readLiteral(state, value);
-    if (literal === null) {
-      unsupportedAt(state, `non-literal JSX expression attribute in ${name}`, value.start, value.end);
-      throw new CodeIrValidationError(`JSX element ${name} uses a non-literal expression attribute`);
-    }
-    props.push({ name: attrName, literal, range: makeRange(state.file, source, state.starts, attribute.start, value.end) });
-  }
-
-  for (const child of node.children as AstNode[]) {
+  for (const child of nodes) {
     if (child.type === "JSXText") {
       if (child.end - child.start > MAX_RAW_TEXT) throw new CodeIrValidationError(`JSX text in ${name} exceeds ${MAX_RAW_TEXT} source characters`);
       const value = cleanJsxText(decodeJsxEntities(source.slice(child.start, child.end), `JSX text in ${name}`));
@@ -265,12 +257,12 @@ function elementSymbol(state: ParserState, node: AstNode, depth: number): Source
         if (literal.value !== "") texts.push({ value: literal.value, range: makeRange(state.file, source, state.starts, child.start, child.end) });
         continue;
       }
-      if (literal !== null) {
-        unsupportedAt(state, `non-string literal child in ${name}`, child.start, child.end);
-        throw new CodeIrValidationError(`JSX element ${name} contains a non-string literal child`);
-      }
-      unsupportedAt(state, `expression child in ${name}`, child.start, child.end);
-      throw new CodeIrValidationError(`JSX element ${name} contains an expression child outside the supported subset`);
+      children.push(expressionSymbol(state, child));
+      continue;
+    }
+    if (child.type === "JSXSpreadChild") {
+      children.push(expressionSymbol(state, child));
+      continue;
     }
     if (child.type === "JSXElement" || child.type === "JSXFragment") {
       children.push(elementSymbol(state, child, depth + 1));
@@ -279,18 +271,87 @@ function elementSymbol(state: ParserState, node: AstNode, depth: number): Source
     unsupportedAt(state, `unsupported JSX child in ${name}`, child.start, child.end);
     throw new CodeIrValidationError(`JSX element ${name} contains an unsupported child`);
   }
-
-  if (props.length > CODE_IR_HARD_LIMITS.maxPropsPerSymbol) {
-    throw new CodeIrValidationError(`JSX element ${name} exceeds maxPropsPerSymbol`);
-  }
-  if (new Set(props.map((prop) => prop.name)).size !== props.length) {
-    throw new CodeIrValidationError(`JSX element ${name} declares duplicate props`);
-  }
   if (children.length > CODE_IR_HARD_LIMITS.maxChildrenPerSymbol) {
     throw new CodeIrValidationError(`JSX element ${name} exceeds maxChildrenPerSymbol`);
   }
   if (texts.length > CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol) {
     throw new CodeIrValidationError(`JSX element ${name} has more than ${CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol} runs of text`);
+  }
+  return { texts, children };
+}
+
+function elementSymbol(state: ParserState, node: AstNode, depth: number): SourceSymbol {
+  if (depth > CODE_IR_HARD_LIMITS.maxDepth) {
+    throw new CodeIrValidationError("JSX nesting exceeds maxDepth");
+  }
+  const { source } = state;
+  if (node.type === "JSXFragment") {
+    // <>…</>: no tag and no attributes, only its children.
+    const { texts, children } = readChildren(state, node.children, "fragment", depth);
+    const fragment: SourceSymbol = {
+      id: symbolId(state.file, "fragment", "#fragment", node.start),
+      kind: "fragment",
+      name: "#fragment",
+      range: makeRange(state.file, source, state.starts, node.start, node.end),
+      props: [],
+      children: children.map((child) => child.id),
+      texts,
+    };
+    state.symbols.push(fragment);
+    for (const child of children) state.relations.push({ from: fragment.id, to: child.id, kind: "renders" });
+    return fragment;
+  }
+  const opening: AstNode = node.openingElement;
+  const name = tagName(opening.name);
+  if (name === null) {
+    unsupportedAt(state, "non-identifier JSX tag", node.start, opening.name.end);
+    throw new CodeIrValidationError("JSX tag name must be an identifier");
+  }
+  if (name.length > MAX_TAG_NAME) {
+    unsupportedAt(state, `JSX tag name longer than ${MAX_TAG_NAME} characters`, node.start, opening.name.end);
+    throw new CodeIrValidationError(`JSX tag name is longer than ${MAX_TAG_NAME} characters`);
+  }
+  const props: SymbolProp[] = [];
+  const codeProps: CodeProp[] = [];
+  const asCode = (attribute: AstNode, attrName: string) => {
+    codeProps.push({ name: attrName, code: display(source.slice(attribute.start, attribute.end)), range: makeRange(state.file, source, state.starts, attribute.start, attribute.end) });
+  };
+  for (const attribute of opening.attributes as AstNode[]) {
+    if (attribute.type === "JSXSpreadAttribute") {
+      asCode(attribute, "...");
+      continue;
+    }
+    // A namespaced name (xlink:href) is kept as code, by its full name.
+    if (attribute.name.type !== "JSXIdentifier") {
+      asCode(attribute, `${attribute.name.namespace.name}:${attribute.name.name.name}`);
+      continue;
+    }
+    const attrName: string = attribute.name.name;
+    const value: AstNode | null = attribute.value;
+    if (value === null) {
+      props.push({ name: attrName, literal: { kind: "boolean", value: true }, range: makeRange(state.file, source, state.starts, attribute.name.start, attribute.name.end) });
+      continue;
+    }
+    if (value.type === "StringLiteral") {
+      const scanned = scanStringLiteral(source, value.start);
+      props.push({ name: attrName, literal: { kind: "string", value: scanned.value }, range: makeRange(state.file, source, state.starts, attribute.start, scanned.end) });
+      continue;
+    }
+    const literal = value.type === "JSXExpressionContainer" ? readLiteral(state, value) : null;
+    if (literal === null) {
+      asCode(attribute, attrName);
+      continue;
+    }
+    props.push({ name: attrName, literal, range: makeRange(state.file, source, state.starts, attribute.start, value.end) });
+  }
+  const { texts, children } = node.closingElement === null ? { texts: [], children: [] } : readChildren(state, node.children, name, depth);
+
+  if (props.length + codeProps.length > CODE_IR_HARD_LIMITS.maxPropsPerSymbol) {
+    throw new CodeIrValidationError(`JSX element ${name} exceeds maxPropsPerSymbol`);
+  }
+  const names = [...props.map((prop) => prop.name), ...codeProps.filter((prop) => prop.name !== "...").map((prop) => prop.name)];
+  if (new Set(names).size !== names.length) {
+    throw new CodeIrValidationError(`JSX element ${name} declares duplicate props`);
   }
   const kind = /^[A-Z]/u.test(name) ? "component" : "element";
   const id = symbolId(state.file, kind, name, node.start);
@@ -302,6 +363,7 @@ function elementSymbol(state: ParserState, node: AstNode, depth: number): Source
     props,
     children: children.map((child) => child.id),
     texts,
+    ...(codeProps.length === 0 ? {} : { codeProps }),
   };
   const classProp = props.find((prop) => prop.name === "className" && prop.literal.kind === "string");
   if (classProp && classProp.literal.kind === "string") {
@@ -465,6 +527,7 @@ export function parseJsxFile(file: string, source: string): JsxParseResult {
       children: [root.id],
       texts: [],
       ...(root.classTokens === undefined ? {} : { classTokens: [...root.classTokens] }),
+      ...(root.codeProps === undefined ? {} : { codeProps: root.codeProps.map((prop) => ({ ...prop, range: { ...prop.range } })) }),
     });
     state.relations.push({ from: id, to: root.id, kind: "renders" });
     if (state.symbols.length > CODE_IR_HARD_LIMITS.maxSymbols) {

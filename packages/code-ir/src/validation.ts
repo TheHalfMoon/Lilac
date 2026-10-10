@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import { CodeIrValidationError } from "./errors.ts";
 import {
+  CODE_DISPLAY_LENGTH,
   CODE_IR_HARD_LIMITS,
   CODE_IR_SCHEMA_VERSION,
   type CodeIr,
+  type CodeProp,
   type DesignDoc,
   type DesignDocNode,
   type MergeConflict,
@@ -130,9 +132,9 @@ function normalizeLiteral(value: unknown, label: string): SourceSymbol["props"][
 
 export function normalizeSymbol(value: unknown, label: string): SourceSymbol {
   assertPlainObject(value, label);
-  assertAllowedKeys(value, ["id", "kind", "name", "range", "props", "children", "texts", "classTokens"], label);
+  assertAllowedKeys(value, ["id", "kind", "name", "range", "props", "children", "texts", "classTokens", "codeProps", "code"], label);
   assertBoundedString(value.id, `${label}.id`, 256);
-  if (!["component", "element", "style-rule", "token"].includes(value.kind as string)) {
+  if (!["component", "element", "fragment", "expression", "style-rule", "token"].includes(value.kind as string)) {
     throw new CodeIrValidationError(`${label}.kind is unsupported`);
   }
   assertBoundedString(value.name, `${label}.name`, 256);
@@ -168,6 +170,20 @@ export function normalizeSymbol(value: unknown, label: string): SourceSymbol {
     for (const token of value.classTokens) assertBoundedString(token, `${label}.classToken`, 256);
     classTokens = [...value.classTokens as string[]];
   }
+  let codeProps: CodeProp[] | undefined;
+  if (value.codeProps !== undefined) {
+    if (!Array.isArray(value.codeProps) || props.length + value.codeProps.length > CODE_IR_HARD_LIMITS.maxPropsPerSymbol) {
+      throw new CodeIrValidationError(`${label}.codeProps exceeds its bounded budget`);
+    }
+    codeProps = (value.codeProps as unknown[]).map((entry, index) => {
+      assertPlainObject(entry, `${label}.codeProps[${index}]`);
+      assertAllowedKeys(entry, ["name", "code", "range"], `${label}.codeProps[${index}]`);
+      assertBoundedString(entry.name, `${label}.codeProps[${index}].name`, 256);
+      assertBoundedString(entry.code, `${label}.codeProps[${index}].code`, CODE_DISPLAY_LENGTH);
+      return { name: entry.name as string, code: entry.code as string, range: normalizeRange(entry.range, `${label}.codeProps[${index}].range`) };
+    });
+  }
+  if (value.code !== undefined) assertBoundedString(value.code, `${label}.code`, CODE_DISPLAY_LENGTH);
   return {
     id: value.id as string,
     kind: value.kind as SourceSymbol["kind"],
@@ -177,6 +193,8 @@ export function normalizeSymbol(value: unknown, label: string): SourceSymbol {
     children: [...value.children as string[]],
     texts,
     ...(classTokens === undefined ? {} : { classTokens }),
+    ...(codeProps === undefined ? {} : { codeProps }),
+    ...(value.code === undefined ? {} : { code: value.code as string }),
   };
 }
 

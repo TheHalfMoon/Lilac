@@ -105,22 +105,31 @@ test("JSX text and attribute strings follow JSX semantics", () => {
   assert.equal(lift("<p title=\"a\\b &quot;q&quot;\" />").props.title, "a\\b \"q\"", "attribute strings have no backslash escapes");
   assert.equal(lift("<p>{\"  a\\tb \\u00e9\\u{1F600}  \"}</p>").text, `  a\tb ${char(0xe9)}${String.fromCodePoint(0x1f600)}  `);
   assert.deepEqual(lift("<p n={1e+21} m={ -2.5 } />").props, { n: 1e21, m: -2.5 });
-  assert.throws(() => lift("<p>&copy; 2026</p>"), /unsupported entity &copy;/u);
+  // Named entities decode as JSX decodes them; a name JSX does not know stays as written, and
+  // a name is never looked up on Object's prototype (P08-G11).
+  assert.equal(lift("<p>&copy; 2026 &larr; &foo;</p>").text, "© 2026 ← &foo;");
+  assert.equal(lift("<p title=\"&rarr;\">&constructor; &toString;</p>").text, "&constructor; &toString;");
+  assert.equal(lift("<p title=\"&rarr; &hasOwnProperty;\" />").props.title, "→ &hasOwnProperty;");
   assert.throws(() => lift("<p>&#xD800;</p>"), /invalid character reference/u);
   assert.throws(() => lift("<p>{\"a\\\nb\"}</p>"), /line continuations/u);
   // Octal escapes are a syntax error in a module (strict mode): the file is refused.
   assert.throws(() => lift("<p>{\"\\1\"}</p>"), /numeric escape in strict mode/u);
-  assert.throws(() => lift("<p>{42}</p>"), /non-string literal child/u);
+  // A number child is code, not text: the literal design subset has no place for it.
+  assert.throws(() => lift("<p>{42}</p>"), /not renderable/u);
 });
 
 test("a failed element is skipped whole: none of its descendants becomes a root", () => {
-  const broken = "<Card>{items}\n  <h1>inner</h1>\n</Card>";
+  // A malformed character reference fails the element it is in.
+  const broken = "<Card>&#X41;\n  <h1>inner</h1>\n</Card>";
   assert.throws(() => buildCodeIr([{ path: "B.jsx", content: broken }]), /no supported elements/u);
   const withSibling = buildCodeIr([{ path: "B.jsx", content: `const a = ${broken};\nconst b = <p title="a > b">ok</p>;` }]);
   assert.deepEqual(withSibling.rootIds.map((id) => withSibling.symbols[id].name), ["p"]);
-  // Braces and quoted ">" inside the failed element do not end it early.
-  const tricky = buildCodeIr([{ path: "B.jsx", content: "const a = <div a={x}>{\"</div>\"}<span title=\"/>\">s</span>{fn()}</div>;\nconst b = <em>after</em>;" }]);
-  assert.deepEqual(tricky.rootIds.map((id) => tricky.symbols[id].name), ["em"]);
+  // Code inside an element is kept in it: the element is the root, and <h1> stays inside.
+  const withCode = buildCodeIr([{ path: "B.jsx", content: "const a = <div a={x}>{\"</div>\"}<span title=\"/>\">s</span>{fn()}</div>;\nconst b = <em>after</em>;" }]);
+  assert.deepEqual(withCode.rootIds.map((id) => withCode.symbols[id].name), ["div", "em"]);
+  const div = withCode.symbols[withCode.rootIds[0]];
+  assert.deepEqual(div.texts.map((entry) => entry.value), ["</div>"]);
+  assert.deepEqual(div.children.map((id) => withCode.symbols[id].kind), ["element", "expression"]);
 });
 
 test("an element inside another is never promoted to a root", () => {
@@ -194,7 +203,7 @@ test("lone surrogates, __proto__ props and ambiguous numerals are refused, -0 is
   assert.throws(() => lift("<p>{\"\\01\"}</p>"), /numeric escape in strict mode/u);
   // A legacy octal literal is a syntax error in a module.
   assert.throws(() => lift("<p n={010} />"), /could not be parsed/u);
-  assert.throws(() => lift("<p n={0x10} />"), /non-literal/u);
+  assert.throws(() => lift("<p n={0x10} />"), /attributes that are code/u);
   assert.equal(lift("<p>&#00000065;&#x0000041;</p>").text, "AA", "numeric references take any number of digits");
   assert.throws(() => lift("<p>&#X41;</p>"), /malformed character reference/u);
   assert.throws(() => lift("<p>&#;</p>"), /malformed character reference/u);
