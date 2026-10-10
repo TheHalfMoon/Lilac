@@ -150,6 +150,13 @@ Ninerr has one Node studio host (`@ninerr/studio-host`). It composes persistence
 
 The host has one open project, and any tab or client can open another. The editor therefore names the project it shows in every request (`X-Ninerr-Project`, URI-encoded). The host refuses a change made for any other project with `409 project-changed` and writes nothing. It checks this when the change is applied, after its body has arrived (#260). An edit also carries the revision it was made at, and one made at an earlier revision is refused as `stale-revision`. Agents get the same protection through the rule in `docs/MCP.md`.
 
+**One host per projects folder (#261).** Some files are shared by the whole projects folder:
+- the connected agents (`.ninerr-agents.json`);
+- the codebase links (`.ninerr-codebases.json`);
+- the discovery file MCP relays read (`.ninerr-studio.json`).
+
+Each host keeps them in memory and writes them back whole, so a host claims the folder when it starts (`.ninerr-host.lock`, holding its process id) and releases it when it closes. A second host on the same folder, for example `npm start` while the desktop app is open, refuses to start. Its message names the running one and how to reach it. A claim left by a process that no longer runs (a crash) is taken over.
+
 Local web mode runs the host directly. The desktop shell starts the same host and owns its lifecycle, which is how the shell's "local MCP lifecycle" below is met.
 
 ## Desktop boundary

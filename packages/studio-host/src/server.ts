@@ -11,6 +11,7 @@ import { exportJsx, importJsx } from "./code.ts";
 import { CodebaseLinks, assertFolder, bringIn, planWriteBack, removeTemporary, scanComponents, settleWriteBacks, writeBack, type WriteBackPlan } from "./codebase.ts";
 import { ImportDesk, MAX_IMPORT_HTML_BYTES } from "./imports.ts";
 import { ConfirmationBroker, handleMcpMessage } from "./mcp.ts";
+import { claimProjectsFolder } from "./folder-lock.ts";
 import { listenOnBrowserPort } from "./ports.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
 
@@ -95,6 +96,10 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     if (folder === null) throw new StudioError(409, "no-codebase", "connect a codebase folder first");
     return assertFolder(folder, projectsRoot);
   };
+  // The projects folder is this host's alone while it runs (#261). Claimed before the folder's
+  // files are read: a host that is refused must not touch them (the agent registry, for one,
+  // can write on load). Nothing from here to listening throws.
+  const releaseFolder = claimProjectsFolder(projectsRoot, now());
   const agents = new AgentRegistry(projectsRoot, owner);
   const codebases = new CodebaseLinks(projectsRoot);
   // Write-backs whose outcome their files now show are settled before anything is planned
@@ -474,12 +479,18 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   server.requestTimeout = 30_000;
   server.keepAliveTimeout = 5_000;
   // Never a port browsers refuse to open (ports.ts): the editor must load in every browser.
-  await listenOnBrowserPort(server, options.port ?? 0, LOOPBACK);
+  try {
+    await listenOnBrowserPort(server, options.port ?? 0, LOOPBACK);
+  } catch (error) {
+    releaseFolder();
+    throw error;
+  }
   // An error after listening (a failed accept, for example) does not stop the host, as before.
   server.on("error", () => {});
   const address = server.address();
   if (address === null || typeof address === "string" || !isLoopbackAddress(address.address)) {
     server.close();
+    releaseFolder();
     throw new StudioError(500, "not-loopback", "the studio host must listen on a loopback address");
   }
   port = address.port;
@@ -518,6 +529,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeAllConnections?.();
       await closed;
+      releaseFolder();
     },
   };
 }
