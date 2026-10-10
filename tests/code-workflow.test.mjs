@@ -85,11 +85,19 @@ test("JSX comes into the design as layers, and refused code is reported, not gue
   assert.equal(importJsx("// export function Old() {}\nexport function New() { return <p>n</p>; }").componentName, "New");
   const second = importJsx("export function A() { return <p>a</p>; }\nfunction B() { return <i>b</i>; }");
   assert.equal(second.operations[0].nodes[1].props.tag, "p");
-  // Code with anything code-ir cannot read is refused whole, never partly imported.
-  for (const partial of [
-    "export function A() { return <div onClick={go}>a</div>; }\nexport function B() { return <p>b</p>; }",
-    "export function X() { return <p>a</p>; }\n<div {...rest}>b</div>",
-  ]) assert.throws(() => importJsx(partial), (error) => error.code === "code-refused", partial);
+  // Code in a component comes in as read-only parts (#282): attributes that are code stay in
+  // the source and off the layer; a {…} child is a text layer that shows it.
+  const coded = importJsx("export function A() { return <div title=\"t\" onClick={go} {...rest}>a {label}</div>; }").operations[0].nodes;
+  assert.deepEqual(coded.slice(1).map((node) => [node.type, node.props.tag ?? null, node.props.text ?? null]), [["element", "div", null], ["text", null, "a "], ["text", null, "{label}"]]);
+  assert.deepEqual(coded[1].props.attributes, { title: "t" });
+  assert.equal(coded[3].props.name, "Code");
+  // What code-ir cannot read inside a component is refused whole, never partly imported,
+  // with what it is; elsewhere in the file it is not this component's.
+  const twoComponents = "export function A() { return <div><svg:rect /></div>; }\nexport function B() { return <p>b</p>; }\n";
+  assert.throws(() => importJsx(twoComponents, { component: "A" }), (error) => error.code === "code-refused" && error.message === "A does not return a JSX element Ninerr can read (this file uses something Ninerr cannot bring in yet: non-identifier JSX tag, line 1)");
+  assert.equal(importJsx(twoComponents, { component: "B" }).componentName, "B");
+  // Attribute names a layer cannot take stay in the source too.
+  assert.deepEqual(importJsx("export function P() { return <p _private=\"x\" id=\"i\">p</p>; }").operations[0].nodes[1].props.attributes, { id: "i" });
   // A hostile paste near the size limit is refused promptly: 1,666 roots each with a nested
   // <Aa>, then the name declared 11,000 times after them, once searched names × components ×
   // roots (43 s before the #250 review).
@@ -112,7 +120,9 @@ test("JSX comes into the design as layers, and refused code is reported, not gue
   assert.deepEqual(flags.attributes, { draggable: "" });
   assert.deepEqual(flags.style, { "--brand": "red", color: "var(--brand)" });
   assert.throws(() => importJsx(""), /non-empty/u);
-  assert.throws(() => importJsx("export function A() { return <>x</>; }"), (error) => error.code === "code-refused");
+  // A fragment is a box that takes no part in layout.
+  const fragment = importJsx("export function A() { return <>x</>; }").operations[0].nodes[1].props;
+  assert.deepEqual([fragment.tag, fragment.name, fragment.style, fragment.text], ["div", "A", { display: "contents" }, "x"]);
   assert.throws(() => importJsx("x".repeat(256 * 1024 + 1)), (error) => error.status === 413);
 });
 

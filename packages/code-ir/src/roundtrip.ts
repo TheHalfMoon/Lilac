@@ -59,6 +59,10 @@ function symbolToDesignNode(ir: CodeIr, symbolId: string, depth: number): Design
   if (symbol.kind !== "element" && symbol.kind !== "component") {
     throw new CodeIrValidationError(`round-trip symbol ${symbolId} is not renderable`);
   }
+  // The design subset is literal: an attribute that is code has no design value.
+  if (symbol.codeProps !== undefined && symbol.codeProps.length > 0) {
+    throw new CodeIrValidationError(`round-trip symbol ${symbolId} has attributes that are code`);
+  }
   // defineProperty, so a prop named __proto__ is an own key that the design normal form
   // refuses, not an assignment that silently drops it.
   const props: Record<string, string | number | boolean> = {};

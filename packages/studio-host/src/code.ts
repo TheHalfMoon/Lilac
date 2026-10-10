@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { buildCodeIr, codeToDesign, designToCode, type DesignDoc, type DesignDocNode } from "@ninerr/code-ir";
+import { buildCodeIr, designToCode, type DesignDoc, type DesignDocNode } from "@ninerr/code-ir";
 import { planElement } from "@ninerr/renderer";
 import { StudioError } from "./errors.ts";
 import { styleProperties } from "./imports.ts";
@@ -145,12 +145,26 @@ export interface CodeSource {
   /** The source's literal values when it was brought in (or last written back). */
   base: { text?: string; props: Record<string, string> };
   /**
+   * What is code in the source and never written back (P08-G11, #282): for an element, its
+   * attributes that are code (by their layer names, class for className); for a {…} part
+   * ("#expression"), its source text as the layer shows it.
+   */
+  code?: string[];
+  /**
    * A write-back recorded before its file was renamed into place and not yet confirmed: the
    * bases it writes, the SHA-256 the file has once it lands, and the name of the temporary
    * file next to it that becomes the file (#185). See codebase.ts, pendingState.
    */
   pending?: { base: { text?: string; props: Record<string, string> }; sha256: string; temp?: string };
 }
+
+/** An element tag the canvas draws as itself (svg's linearGradient too); others are named boxes. */
+const PLAIN_TAG = /^[a-z][A-Za-z0-9]*$/u;
+/** A prop name a layer attribute can take: what the design subset allows. */
+const DESIGN_NAME = /^[A-Za-z][A-Za-z0-9-]*$/u;
+/** The layer's name for a source prop: class for className, for for htmlFor. */
+const LAYER_NAMES = new Map([["className", "class"], ["htmlFor", "for"]]);
+export const layerName = (prop: string) => LAYER_NAMES.get(prop) ?? prop;
 
 export interface ImportJsxOptions {
   /** The source file's path, as code-ir records it (its extension picks JSX or TSX). */
@@ -173,11 +187,6 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
   } catch (error) {
     throw refuse(error instanceof Error ? error.message : "the code could not be read");
   }
-  // Anything code-ir could not read is refused as a whole, never partly imported.
-  if (ir.unsupported.length > 0) {
-    const first = ir.unsupported[0];
-    throw refuse(`this code uses something Ninerr cannot bring in yet (${String(first.reason ?? first.kind ?? "unsupported construct")}, line ${first.range?.startLine ?? "?"})`);
-  }
   // The exported component's own element, by name, not whichever element came first.
   // A component's definition is the component symbol whose element is a root; a JSX use of
   // the same name (<Button>) is also a component symbol, but inside another element. The
@@ -193,14 +202,15 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
   const declared = options.component ?? exportedNames.find((name) => definitionOf(name) !== undefined) ?? exportedNames[0] ?? null;
   const component = declared === null ? undefined : definitionOf(declared);
   const rootId = component ? component.children[0] : (declared === null && ir.rootIds.length === 1 ? ir.rootIds[0] : null);
-  if (!rootId) throw refuse(declared === null ? "bring in one exported function component, e.g. export function Card() { return <section>…</section>; }" : `${declared} does not return a JSX element`);
-  const componentName = declared ?? "Imported";
-  // Keep the subset codeToDesign accepts (literal props, element trees) as the gate.
-  try {
-    codeToDesign(ir, rootId, componentName);
-  } catch (error) {
-    throw refuse(error instanceof Error ? error.message : "the code could not be read");
+  // JSX that code-ir cannot read gives no element at all (it is refused whole, never partly
+  // imported), so a component whose own JSX cannot be read has no element here; the file's
+  // first such construct is named. What cannot be read elsewhere is not this component's.
+  if (!rootId) {
+    const first = ir.unsupported[0];
+    const why = first === undefined ? "" : ` (this file uses something Ninerr cannot bring in yet: ${String(first.reason)}, line ${first.range?.startLine ?? "?"})`;
+    throw refuse(declared === null ? "bring in one exported function component, e.g. export function Card() { return <section>…</section>; }" : `${declared} does not return a JSX element Ninerr can read${why}`);
   }
+  const componentName = declared ?? "Imported";
 
   const frameId = `page-code-${randomUUID().slice(0, 12)}`;
   const suffix = randomUUID().slice(0, 8);
@@ -210,9 +220,19 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
   const convert = (symbolId: string, parentId: string, name?: string, path: number[] = []): string => {
     const symbol = ir.symbols[symbolId];
     const id = nextId();
+    if (symbol.kind === "expression") {
+      // A {…} part is code: a text layer that shows it, bound so a write-back knows to leave it.
+      const shown = `{${symbol.code}}`;
+      const props: Record<string, unknown> = { name: "Code", text: shown };
+      if (options.bind) props.codeSource = { file: options.path ?? "", component: componentName, path: path.join("."), tag: "#expression", base: { props: {} }, code: [shown] } satisfies CodeSource;
+      nodes.push({ id, type: "text", parentId, children: [], props, metadata: {} });
+      return id;
+    }
     const attributes: Record<string, string> = {};
     let style: Record<string, string> = {};
-    for (const prop of symbol.props) {
+    // Only names a design attribute can have (no __proto__): others stay code in the source.
+    const designable = (prop: any) => DESIGN_NAME.test(prop.name);
+    for (const prop of symbol.props.filter(designable)) {
       const value = prop.literal.value;
       if (value === false) continue; // absent, as in JSX
       const text = value === true ? "" : String(value);
@@ -221,22 +241,29 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
       else if (prop.name === "style" && typeof value === "string") style = styleProperties({ cssText: value });
       else attributes[prop.name] = text;
     }
-    // A component (Button, Card) is kept as a named layer; the canvas draws it as a box.
-    const isComponent = /^[A-Z]/u.test(symbol.name);
+    // A component (Button, Item.Skeleton) or a name that is not a plain tag is kept as a named
+    // layer the canvas draws as a box; a fragment is a box that takes no part in layout.
+    const fragment = symbol.kind === "fragment";
+    const named = fragment || !PLAIN_TAG.test(symbol.name);
+    if (fragment) style = { display: "contents" };
+    const label = name ?? (fragment ? "Fragment" : symbol.name);
     const record: any = {
       id,
       type: "element",
       parentId,
       children: [],
-      props: { tag: isComponent ? "div" : symbol.name, ...(isComponent || name ? { name: name ?? symbol.name } : {}), attributes, style },
+      props: { tag: named ? "div" : symbol.name, ...(named || name ? { name: label } : {}), attributes, style },
       metadata: {},
     };
     if (options.bind) {
       // The source's literal values, the base a later write-back compares against.
       const base: CodeSource["base"] = { props: {} };
-      for (const prop of symbol.props) if (typeof prop.literal.value === "string") base.props[prop.name] = prop.literal.value;
+      for (const prop of symbol.props.filter(designable)) if (typeof prop.literal.value === "string") base.props[prop.name] = prop.literal.value;
       if (symbol.children.length === 0 && symbol.texts.length === 1) base.text = symbol.texts[0].value;
       const codeSource: CodeSource = { file: options.path ?? "", component: componentName, path: path.join("."), tag: symbol.name, base };
+      // Attributes that are code, by the names a layer would give them.
+      const code = [...(symbol.codeProps ?? []).map((prop: any) => layerName(prop.name)), ...symbol.props.filter((prop: any) => !designable(prop)).map((prop: any) => prop.name)];
+      if (code.length > 0) codeSource.code = code;
       record.props.codeSource = codeSource;
     }
     nodes.push(record);
