@@ -463,6 +463,8 @@ test("an agent's MCP changes appear live, ask the person before deleting, and ca
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method: "tools/call", params: { name, arguments: args } }),
     }).then((response) => response.json()).then((answer) => answer.result);
+    // Like an MCP client, the agent connects first (#260).
+    await fetch(host.mcpUrl, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 0, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } }) });
 
     // Agent edits appear on the canvas and in the tree as they are committed.
     const frameId = (await tool("create_frame", { name: "Landing", width: 640, height: 400 })).structuredContent.nodeId;

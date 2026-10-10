@@ -1,11 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { request } from "node:http";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { startStudioHost } from "../packages/studio-host/src/index.ts";
 import { createClient } from "../packages/studio-web/src/client.mjs";
+import { browserTestOptions } from "./support/browser.mjs";
+import { openEditor, waitRevision } from "./support/editor.mjs";
 import { hostPool, mcpClient, ok } from "./support/host-api.mjs";
 
 // #260: a change is applied only to the project it was made for. The studio host has one open
@@ -82,6 +85,43 @@ test("an editor's change made for one project is refused once another is open, a
   assert.deepEqual([closed.status, closed.json.error.code], [409, "project-changed"]);
 }));
 
+test("a codebase write-back and an import review made for one project are refused in another (#260)", () => withHost(async ({ host, call }) => {
+  // A codebase folder lies outside the projects folder.
+  const code = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-scope-code-")));
+  try {
+    await refusedAcrossProjects(host, call, code);
+  } finally {
+    rmSync(code, { recursive: true, force: true });
+  }
+}));
+
+async function refusedAcrossProjects(host, call, code) {
+  writeFileSync(join(code, "Card.jsx"), "export function Card() {\n  return <section><p>Text</p></section>;\n}\n");
+  await ok(call("POST", "/api/projects/create", { name: "alpha" }));
+  const alpha = named(host, "alpha");
+  await ok(alpha("POST", "/api/codebase/connect", { folder: code }));
+  await ok(alpha("POST", "/api/codebase/import", { file: "Card.jsx", component: "Card" }));
+  const { document, revision } = await ok(alpha("GET", "/api/document"));
+  const p = Object.values(document.nodes).find((node) => node.props.tag === "p");
+  const section = Object.values(document.nodes).find((node) => node.props.tag === "section");
+  await ok(alpha("POST", "/api/edit", { baseRevision: revision, intent: "Retext", operations: [{ type: "set-props", nodeId: p.id, set: { text: "Changed" } }] }));
+  const preview = await ok(alpha("POST", "/api/codebase/preview", { nodeId: section.id }));
+  const review = await ok(alpha("POST", "/api/import", { html: "<!doctype html><html><body><p>Alpha</p></body></html>", name: "Alpha page" }));
+  // Another tab opens beta; alpha's tab goes on.
+  await ok(call("POST", "/api/projects/create", { name: "beta" }));
+  for (const [path, body] of [
+    ["/api/codebase/import", { file: "Card.jsx", component: "Card" }],
+    ["/api/codebase/preview", { nodeId: section.id }],
+    ["/api/codebase/write", { nodeId: section.id, token: preview.token }],
+    ["/api/import/discard", { proposalId: review.proposalId }],
+  ]) {
+    const refused = await alpha("POST", path, body);
+    assert.deepEqual([refused.status, refused.json?.error?.code], [409, "project-changed"], path);
+  }
+  assert.equal(readFileSync(join(code, "Card.jsx"), "utf8").includes("Changed"), false, "nothing was written to the file");
+  assert.deepEqual(Object.keys((await ok(call("GET", "/api/document"))).document.nodes), [], "beta got nothing");
+}
+
 test("a project opened while a change's body is still arriving: the change is refused (#260)", () => withHost(async ({ host, call }) => {
   await ok(call("POST", "/api/projects/create", { name: "alpha" }));
   const body = JSON.stringify(insert("in-flight", 0));
@@ -113,6 +153,10 @@ test("an agent cannot change a project it has not read since the open project ch
   await ok(call("POST", "/api/projects/create", { name: "alpha" }));
   const { token } = await ok(call("POST", "/api/agents/create", { name: "Agent" }));
   const agent = mcpClient(host.mcpUrl, token);
+  // An agent that has neither connected nor read anything here changes nothing until it reads.
+  const unseen = await agent.tool("create_frame", { name: "Unseen", width: 10, height: 10 });
+  assert.equal(unseen.isError, true);
+  assert.match(unseen.content[0].text, /Call project_info first/u);
   await agent.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "scope", version: "1" } });
   const frame = await agent.tool("create_frame", { name: "In alpha", width: 10, height: 10 });
   assert.equal(frame.isError, undefined, "connected while alpha was open, it changes alpha");
@@ -148,6 +192,42 @@ test("the editor's client names the project it shows in every request (#260)", a
   await client.post("/api/edit", {});
   project = null;
   await client.post("/api/projects/open", { name: "x" });
-  assert.deepEqual(seen, [["/api/session", undefined], ["/api/edit", encodeURIComponent("Café ünïcode")], ["/api/projects/open", undefined]]);
+  // A dialog names the project it was opened for, whatever the tab follows by then.
+  project = "beta";
+  await client.post("/api/codebase/connect", { folder: "f" }, { project: "alpha" });
+  assert.deepEqual(seen, [["/api/session", undefined], ["/api/edit", encodeURIComponent("Café ünïcode")], ["/api/projects/open", undefined], ["/api/codebase/connect", "alpha"]]);
   assert.equal(decodeURIComponent(seen[1][1]), "Café ünïcode");
+});
+
+test("the Code dialog connects a folder only to the project it was opened for (#260)", browserTestOptions(), async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-scope-editor-")));
+  const projects = join(root, "projects");
+  const code = join(root, "app");
+  mkdirSync(projects);
+  mkdirSync(code);
+  writeFileSync(join(code, "Card.jsx"), "export function Card() {\n  return <section><p>Text</p></section>;\n}\n");
+  const host = await startStudioHost({ projectsRoot: projects, now });
+  const editor = await openEditor(host);
+  try {
+    const { page } = editor;
+    await page.locator("#new-project-name").fill("alpha");
+    await page.locator("#dialog[open] button.primary", { hasText: "Create project" }).click();
+    await waitRevision(page, 0);
+    await page.locator("#action-code").click();
+    await page.locator("#codebase-folder").waitFor();
+    // Another tab opens beta while the dialog is open; this tab follows it.
+    const other = named(host, "alpha");
+    await ok(other("POST", "/api/projects/create", { name: "beta" }));
+    await page.waitForFunction(() => document.querySelector("#project-name")?.textContent === "beta");
+    // The dialog was opened for alpha: connecting is refused, and beta gets no codebase.
+    await page.locator("#codebase-folder").fill(code);
+    await page.locator("#dialog[open] button.primary", { hasText: "Connect folder" }).click();
+    await page.locator("#dialog[open] .error", { hasText: "made for project" }).waitFor();
+    assert.match(await page.locator("#dialog[open] .error").first().textContent(), /made for project "alpha", but project "beta" is open now/u);
+    assert.equal((await ok(other("GET", "/api/codebase"))).folder, null);
+  } finally {
+    await editor.close();
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -30,7 +30,16 @@ async function withStudio(callback, options = {}) {
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }), ...(notification ? {} : { id: ++id }) }),
   }).then(async (response) => ({ status: response.status, json: response.status === 202 ? null : await response.json() }));
-  const tool = async (token, name, args) => (await mcp(token, "tools/call", { name, arguments: args })).json.result;
+  // Like an MCP client, each agent initializes before its first call; that is also what lets
+  // it change the open project (#260).
+  const initialized = new Set();
+  const tool = async (token, name, args) => {
+    if (!initialized.has(token)) {
+      initialized.add(token);
+      await mcp(token, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    }
+    return (await mcp(token, "tools/call", { name, arguments: args })).json.result;
+  };
   try {
     await callback({ root, host, owner, mcp, tool });
   } finally {

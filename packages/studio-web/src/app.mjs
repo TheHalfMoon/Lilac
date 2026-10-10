@@ -343,6 +343,8 @@ const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
 
 function openImportDialog() {
   if (state.document === null) return;
+  // The project this dialog imports into: a click after another tab opened a different one is refused (#260).
+  const project = state.project;
   showDialog("Import HTML", (close) => {
     const error = el("p", { class: "error", role: "alert" });
     const file = el("input", { id: "import-file", type: "file", accept: ".html,.htm,text/html" });
@@ -368,9 +370,9 @@ function openImportDialog() {
           return;
         }
         try {
-          const review = await state.client.post("/api/import", { html, name });
+          const review = await state.client.post("/api/import", { html, name }, { project });
           close();
-          showImportReview(review);
+          showImportReview(review, project);
         } catch (failure) {
           if (!handleSessionEnded(failure)) error.textContent = describeError(failure);
         }
@@ -384,18 +386,18 @@ function openImportDialog() {
   });
 }
 
-function showImportReview(review) {
+function showImportReview(review, project) {
   const KINDS = { scriptsRemoved: "script", eventHandlersRemoved: "event handler", dangerousUrlsRemoved: "unsafe link", dangerousElementsRemoved: "unsafe element", unsafeStylesRemoved: "unsafe style" };
   const removed = Object.entries(review.security).filter(([kind, count]) => count > 0 && Object.hasOwn(KINDS, kind)).map(([kind, count]) => `${count} ${KINDS[kind]}${count === 1 ? "" : "s"} removed`);
   showDialog(`Review import: ${review.name}`, (close) => {
     const error = el("p", { class: "error", role: "alert" });
     const discard = async () => {
       close();
-      await state.client.post("/api/import/discard", { proposalId: review.proposalId }).catch(() => {});
+      await state.client.post("/api/import/discard", { proposalId: review.proposalId }, { project }).catch(() => {});
     };
     const commit = () => enqueue(async () => {
       try {
-        const event = await state.client.post("/api/import/commit", { proposalId: review.proposalId });
+        const event = await state.client.post("/api/import/commit", { proposalId: review.proposalId }, { project });
         close();
         applyChange(event);
         selectLayers([event.frameId]);
@@ -430,6 +432,8 @@ function showImportReview(review) {
 
 async function openCodeDialog() {
   if (state.document === null) return;
+  // The project this dialog changes: a click after another tab opened a different one is refused (#260).
+  const project = state.project;
   const selected = state.selection.length === 1 ? state.selection[0] : null;
   let exported = null;
   let exportError = null;
@@ -465,7 +469,7 @@ async function openCodeDialog() {
   })();
   showDialog("Design and code", (close) => {
     const error = el("p", { class: "error", role: "alert" });
-    const codebasePart = buildCodebasePart({ codebase, codebaseError, boundNode, close, error });
+    const codebasePart = buildCodebasePart({ codebase, codebaseError, boundNode, close, error, project });
     const output = exported === null ? null : el("textarea", { id: "code-export", rows: 10, readonly: true, spellcheck: "false", "aria-describedby": "code-export-note" });
     if (output) output.value = exported.code;
     const source = el("textarea", { id: "code-import", rows: 8, spellcheck: "false", placeholder: "export function Card() {\n  return <section>…</section>;\n}" });
@@ -495,7 +499,7 @@ async function openCodeDialog() {
         }
         enqueue(async () => {
           try {
-            const result = await state.client.post("/api/code/import", { code: source.value });
+            const result = await state.client.post("/api/code/import", { code: source.value }, { project });
             close();
             applyChange(result);
             selectLayers([result.frameId]);
@@ -529,7 +533,7 @@ function planSummary(plan) {
 
 // The Code dialog's codebase section: connect a local folder, bring its components in,
 // and write a component's edits back to its file after previewing them (PC11).
-function buildCodebasePart({ codebase, codebaseError, boundNode, close, error }) {
+function buildCodebasePart({ codebase, codebaseError, boundNode, close, error, project }) {
   const section = el("section", { id: "codebase", "aria-labelledby": "codebase-title" }, el("h3", { id: "codebase-title" }, "Codebase"));
   const busy = (button, task) => async () => {
     error.textContent = "";
@@ -550,7 +554,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
       onsubmit: (event) => {
         event.preventDefault();
         busy(connect, async () => {
-          const result = await state.client.post("/api/codebase/connect", { folder: folder.value.trim() });
+          const result = await state.client.post("/api/codebase/connect", { folder: folder.value.trim() }, { project });
           close();
           setStatus(`Connected ${result.folder}: ${result.components.length} component${result.components.length === 1 ? "" : "s"} found.`);
           openCodeDialog();
@@ -564,7 +568,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
     section.append(el("p", {}, `The connected folder cannot be read: ${codebaseError}`));
     const disconnect = el("button", { type: "button" }, "Disconnect");
     disconnect.addEventListener("click", busy(disconnect, async () => {
-      await state.client.post("/api/codebase/disconnect", {});
+      await state.client.post("/api/codebase/disconnect", {}, { project });
       close();
       openCodeDialog();
     }));
@@ -577,7 +581,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
   }
   const disconnect = el("button", { type: "button" }, "Disconnect");
   disconnect.addEventListener("click", busy(disconnect, async () => {
-    await state.client.post("/api/codebase/disconnect", {});
+    await state.client.post("/api/codebase/disconnect", {}, { project });
     close();
     setStatus("The codebase is disconnected.");
   }));
@@ -591,7 +595,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
         bring.disabled = true;
         enqueue(async () => {
           try {
-            const result = await state.client.post("/api/codebase/import", { file, component });
+            const result = await state.client.post("/api/codebase/import", { file, component }, { project });
             close();
             applyChange(result);
             selectLayers([result.frameId]);
@@ -616,7 +620,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
     const preview = el("div", { id: "codebase-preview", "aria-live": "polite" });
     const review = el("button", { type: "button", id: "codebase-review" }, `Write changes back to ${file}`);
     review.addEventListener("click", busy(review, async () => {
-      const plan = await state.client.post("/api/codebase/preview", { nodeId: boundNode.id });
+      const plan = await state.client.post("/api/codebase/preview", { nodeId: boundNode.id }, { project });
       const items = (entries, render) => (entries.length === 0 ? [] : [el("ul", {}, entries.map((entry) => el("li", {}, render(entry))))]);
       preview.replaceChildren(
         el("p", {}, planSummary(plan)),
@@ -633,7 +637,7 @@ function buildCodebasePart({ codebase, codebaseError, boundNode, close, error })
           write.disabled = true;
           enqueue(async () => {
             try {
-              const result = await state.client.post("/api/codebase/write", { nodeId: boundNode.id, token: plan.token });
+              const result = await state.client.post("/api/codebase/write", { nodeId: boundNode.id, token: plan.token }, { project });
               close();
               applyChange(result);
               setStatus(result.written > 0 ? `Wrote ${result.written} change${result.written === 1 ? "" : "s"} to ${result.file}.` : `Marked ${result.matched} field${result.matched === 1 ? "" : "s"} as matching ${result.file}.`);

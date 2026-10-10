@@ -548,10 +548,15 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
   if (session === null) return toolResult("No project is open in Ninerr. Ask the person to open one.", true);
   if (session.failure !== null) return toolResult("The project must be reopened in Ninerr before it can be used.", true);
   const toolClass = classifyTool(toolName);
-  const lastRead = context.lastRead.get(actor.actorId);
-  if ((toolClass === "write" || toolClass === "consequential") && lastRead !== undefined && lastRead !== session.name) {
-    return toolResult(`The open project in Ninerr is now ${JSON.stringify(session.name)}, not ${JSON.stringify(lastRead)}, the one you last read. Call project_info, and make sure you mean to change this project, before changing anything.`, true);
-  }
+  // An agent changes only the project it connected to or last read (#260); one it has never
+  // seen here (a host restarted under it, a client that did not initialize) reads first.
+  const notRead = (): string | null => {
+    if (toolClass !== "write" && toolClass !== "consequential") return null;
+    const lastRead = context.lastRead.get(actor.actorId);
+    if (lastRead === session.name) return null;
+    if (lastRead === undefined) return `Call project_info first: Ninerr changes only a project you have read, and ${JSON.stringify(session.name)} is open.`;
+    return `The open project in Ninerr is now ${JSON.stringify(session.name)}, not ${JSON.stringify(lastRead)}, the one you last read. Call project_info, and make sure you mean to change this project, before changing anything.`;
+  };
   const at = context.now();
   const call = { actor, toolName, arguments: args, at };
   // Authorize before anything else, including before a consequential call asks the person.
@@ -559,6 +564,9 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
     requireMCPToolCall(session.accessPolicy(), call);
   } catch (error) {
     if (!(error instanceof MCPAuthorizationError) || error.decision.outcome !== "confirmation-required") return refusal(error);
+    // Before the person is asked to confirm anything.
+    const unread = notRead();
+    if (unread !== null) return toolResult(unread, true);
     const confirmation = await confirm(context, session, actor, toolName, args, at);
     if (typeof confirmation === "string") return toolResult(confirmation, true);
     try {
@@ -567,6 +575,8 @@ async function callTool(context: McpContext, actor: StudioActor, params: any) {
       return refusal(again);
     }
   }
+  const unread = notRead();
+  if (unread !== null) return toolResult(unread, true);
   const tool = TOOL_BY_NAME.get(toolName);
   // Unreachable while the server's tools are exactly the catalog (checked at load); fail closed.
   if (tool === undefined) return toolResult(`Ninerr has no tool ${toolName}.`, true);

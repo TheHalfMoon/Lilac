@@ -143,10 +143,13 @@ test("offline smoke: create, import, edit, code, an agent over stdio, save, rest
     const token = await editor.locator("#agent-credential").inputValue();
     await editor.locator("#dialog[open] button.primary").click();
     const relay = run(["scripts/ninerr-mcp.mjs", "--projects", projects], { NINERR_MCP_TOKEN: token });
+    // Like an MCP client, the agent connects first (#260), then adds a frame.
+    relay.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 0, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } })}\n`);
     relay.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_frame", arguments: { name: "From agent", width: 400, height: 300 } } })}\n`);
     relay.child.stdin.end();
     assert.equal(await relay.exited, 0);
-    assert.equal(JSON.parse(relay.output.stdout.trim()).result.structuredContent.revision, 4);
+    const answers = relay.output.stdout.trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(answers.find((answer) => answer.id === 1).result.structuredContent.revision, 4);
     attempts.push(...attemptsIn(relay.output.stderr));
     await waitRevision(editor, 4);
     await editor.locator("#action-save").click();
