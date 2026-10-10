@@ -121,7 +121,67 @@
           "lockOverride": null
         }
       }
+    },
+    {
+      "name": "future-manifest-schema",
+      "category": "future",
+      "from": "v3-basic",
+      "what": "project schema 4",
+      "expect": {
+        "refused": "project-version",
+        "pattern": "project schema 4 is newer than supported schema 3"
+      }
+    },
+    {
+      "name": "future-document-schema",
+      "category": "future",
+      "from": "v3-basic",
+      "what": "a document of document schema 2",
+      "expect": {
+        "refused": "project-version",
+        "pattern": "is document schema 2, newer than supported schema 1"
+      }
+    },
+    {
+      "name": "future-journal-operation",
+      "category": "future",
+      "from": "v3-basic",
+      "what": "a correctly chained journal entry with an operation this release does not know",
+      "expect": {
+        "refused": "project-version",
+        "pattern": "uses operation type \"morph-node\", which journal format 1 does not have"
+      }
+    },
+    {
+      "name": "corrupt-journal-chain",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "a journal entry changed after it was written",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "journal line 1 breaks the hash chain"
+      }
+    },
+    {
+      "name": "legacy-v1-future-schema",
+      "category": "future",
+      "from": "v1-basic",
+      "what": "a project from before the rename, of a newer schema than any release wrote",
+      "expect": {
+        "refused": "project-version",
+        "pattern": "project schema 4 is newer than supported schema 3"
+      }
+    },
+    {
+      "name": "legacy-v1-corrupt-chain",
+      "category": "corrupt",
+      "from": "v1-basic",
+      "what": "a project from before the rename with a journal entry changed after it was written",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "journal line 1 breaks the hash chain"
+      }
     }
   ],
-  "treeSha256": "28103132c5cad193e1d1281eef2523a85e1daf22372f8be3a32dc6a5c1290c90"
+  "treeSha256": "b2036cb1c5bbd18a01a163cb33e8c8dda759dcf8bd687ed9356d2a42c0253179"
 }
