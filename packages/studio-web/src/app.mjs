@@ -38,7 +38,8 @@ const state = {
   canRedo: false,
   history: [],
   seen: new Set(),
-  // Layers this editor has just added, to select once the change that adds them is applied.
+  // Layers this editor has just added, to select once the change that adds them is applied:
+  // { ids, applied } for the latest insert, marked applied when that change selects them.
   selectOnApply: null,
   collapsed: new Set(),
   focusedLayer: null,
@@ -759,6 +760,8 @@ async function resync() {
   state.canUndo = Boolean(session.canUndo);
   state.canRedo = Boolean(session.canRedo);
   canvas.setDocument(next);
+  // A layer inserted here whose change the refresh brought in is selected now.
+  takePendingSelection();
   state.selection = canvas.selection;
   measure("ninerr:render-project", started);
 }
@@ -795,6 +798,20 @@ function requestResync() {
 }
 
 /** Apply one committed change event to the local copy, in revision order. */
+/**
+ * Select the layers the latest insert added, once they are all in the copy; true if it did.
+ * Called while a change is applied or after a refresh, never later: a selection the person
+ * made since is theirs.
+ */
+function takePendingSelection() {
+  const pending = state.selectOnApply;
+  if (pending === null || !pending.ids.every((id) => Object.hasOwn(state.document.nodes, id))) return false;
+  canvas.select(pending.ids);
+  pending.applied = true;
+  state.selectOnApply = null;
+  return true;
+}
+
 function applyChange(event) {
   if (event.project !== undefined && event.project !== state.project) return; // another project's
   if (resyncing !== null) {
@@ -835,12 +852,7 @@ function applyChange(event) {
     // A layer added here is selected with the change that adds it, whether the change event
     // or the edit's own answer arrives first (#274): a command made just after it then acts on
     // what the canvas shows, not on the selection before.
-    const added = state.selectOnApply;
-    if (added !== null && added.every((id) => Object.hasOwn(state.document.nodes, id))) {
-      canvas.select(added);
-      state.selectOnApply = null;
-      selectedNew = true;
-    }
+    selectedNew = takePendingSelection();
   } finally {
     applying = false;
   }
@@ -1081,11 +1093,20 @@ function insert(kind) {
   operations.push(...(kind === "text"
     ? insertNode(parentId, index, { id, type: "text", tag: "p", text: "Text", style: { position: "absolute", left: "32px", top: "32px", margin: "0px", "font-size": "16px" } })
     : insertNode(parentId, index, { id, type: "element", tag: "div", style: { position: "absolute", left: "32px", top: "32px", width: "160px", height: "100px", background: "#d9d2ff" } })));
-  state.selectOnApply = [id];
+  const pending = { ids: [id], applied: false };
+  state.selectOnApply = pending;
   commit(operations, kind === "text" ? "Insert text" : "Insert box").then((event) => {
-    // Not applied (skipped or refused): nothing to select.
-    if (state.selectOnApply?.[0] === id) state.selectOnApply = null;
-    if (event && !(state.selection.length === 1 && state.selection[0] === id)) selectLayers([id]);
+    // Selected when its change was applied, or later by the person: leave it.
+    if (pending.applied) return;
+    // Skipped or refused: nothing to select.
+    if (event === null) {
+      if (state.selectOnApply === pending) state.selectOnApply = null;
+      return;
+    }
+    // Held for a refresh: the refresh selects it once the copy has it.
+    if (state.revision < event.revision) return;
+    if (state.selectOnApply === pending) state.selectOnApply = null;
+    selectLayers([id]);
   });
 }
 

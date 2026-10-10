@@ -561,3 +561,41 @@ test("a layer inserted here is selected as soon as it appears, whichever answer 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a selection made before an insert's late answer is kept (#274)", browserTestOptions(), async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-editor-late-")));
+  const host = await startStudioHost({ projectsRoot: root, now });
+  const editor = await openEditor(host);
+  try {
+    const { page } = editor;
+    await page.locator("#new-project-name").fill("late");
+    await page.keyboard.press("Enter");
+    await waitRevision(page, 0);
+    await page.locator("#action-insert-box").click();
+    await waitRevision(page, 1);
+    await page.locator("#status").filter({ hasText: "Insert box." }).waitFor();
+    const pageId = host.session.document.rootIds[0];
+    let answered = 0;
+    await page.context().route(`${host.url}/api/edit`, async (route) => {
+      const response = await route.fetch();
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      await route.fulfill({ response });
+      answered += 1;
+    });
+    // A second box, selected as it appears; the person then selects the page before the answer.
+    await page.locator("#action-insert-box").click();
+    await waitRevision(page, 2);
+    await page.locator(`[role=treeitem][data-node-id="${pageId}"] > .row`).click();
+    while (answered === 0) await new Promise((resolve) => setTimeout(resolve, 50));
+    await page.waitForFunction(() => document.getElementById("status").textContent === "Insert box.");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const selected = await page.evaluate(() => [...document.querySelectorAll("#layers [role=treeitem][aria-selected=true]")].map((item) => item.dataset.nodeId));
+    assert.deepEqual(selected, [pageId], "the late answer does not take the person's selection back");
+    assert.deepEqual(editor.foreign, []);
+    assert.deepEqual(editor.errors, []);
+  } finally {
+    await editor.close();
+    await host.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
