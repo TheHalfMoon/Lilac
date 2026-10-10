@@ -2,7 +2,7 @@
 // folder on disk, made once from the golden fixtures by a small, stated change, and committed:
 // legacy (the format before the rename, schema 1), historical (schema 2), current (schema 3,
 // with and without segments), future (a newer manifest, document or journal entry), corrupt
-// (each kind of damage the store detects), and recoverable damage (a torn tail, a stale
+// (a sample of the damage the store detects), and recoverable damage (a torn tail, a stale
 // temporary). Every case says what opening it must do. tests/migration-corpus.test.mjs opens
 // each one through the studio host and holds it to that.
 //
@@ -46,7 +46,7 @@ function replaceDocumentObject(dir, bytes) {
  * or the legacy directory for the format before the rename). `expect` is what opening it must do:
  * `{ opens: "golden" | "segments", writes, recovery }`, where `writes` says whether opening it
  * may change its files and `recovery` is the whole report the host must give, or
- * `{ refused, pattern }` with the host's error code and message. Each is written by hand from
+ * `{ refused, pattern }` with the host's error code and the cause its message must name. Each is written by hand from
  * the fixture: the golden snapshot stands at entry 2 of 5, so an open replays 3 entries.
  */
 // The start of a journal line whose write was cut off.
@@ -92,7 +92,7 @@ export const CASES = [
     from: "v3-basic",
     what: "project schema 4",
     change: (dir) => writeFileSync(join(dir, "project.json"), canonical({ ...JSON.parse(readFileSync(join(dir, "project.json"), "utf8")), schemaVersion: 4 })),
-    expect: { refused: "project-version", pattern: "schema" },
+    expect: { refused: "project-version", pattern: "project schema 4 is newer than supported schema 3" },
   },
   {
     name: "future-document-schema",
@@ -100,7 +100,7 @@ export const CASES = [
     from: "v3-basic",
     what: "a document of document schema 2",
     change: (dir) => replaceDocumentObject(dir, Buffer.from(canonical({ ...JSON.parse(readFileSync(documentObject(dir).path, "utf8")), schemaVersion: 2 }), "utf8")),
-    expect: { refused: "project-version", pattern: "document" },
+    expect: { refused: "project-version", pattern: "is document schema 2, newer than supported schema 1" },
   },
   {
     name: "future-journal-operation",
@@ -113,7 +113,7 @@ export const CASES = [
       const entry = { seq: last.entry.seq + 1, revision: last.entry.revision + 1, transaction: { actor: "user-1", baseRevision: last.entry.revision, id: "tx-future", intent: null, metadata: {}, operations: [{ nodeId: "frame-1", type: "morph-node" }], timestamp: null, tool: null } };
       writeFileSync(journal, `${readFileSync(journal, "utf8")}${encodeJournalLine(entry, last.digest).line}`);
     },
-    expect: { refused: "project-version", pattern: "newer|format" },
+    expect: { refused: "project-version", pattern: "uses operation type \"morph-node\", which journal format 1 does not have" },
   },
   // Corrupt: refused as unreadable, and never changed.
   {
@@ -122,7 +122,7 @@ export const CASES = [
     from: "v3-basic",
     what: "a journal entry changed after it was written",
     change: (dir) => writeFileSync(join(dir, "journal.log"), readFileSync(join(dir, "journal.log"), "utf8").replace('"intent":"rename"', '"intent":"renamE"')),
-    expect: { refused: "project-unreadable", pattern: "digest|chain" },
+    expect: { refused: "project-unreadable", pattern: "journal line 1 breaks the hash chain" },
   },
   {
     name: "corrupt-document-object",
@@ -133,7 +133,7 @@ export const CASES = [
       const { path } = documentObject(dir);
       writeFileSync(path, readFileSync(path, "utf8").replace("doc-golden", "doc-golder"));
     },
-    expect: { refused: "project-unreadable", pattern: "hash" },
+    expect: { refused: "project-unreadable", pattern: "object [0-9a-f]{64} does not match its content hash" },
   },
   {
     name: "corrupt-missing-object",
@@ -141,7 +141,7 @@ export const CASES = [
     from: "v3-basic",
     what: "a document object that is gone",
     change: (dir) => rmSync(documentObject(dir).path),
-    expect: { refused: "project-unreadable", pattern: "missing" },
+    expect: { refused: "project-unreadable", pattern: "object [0-9a-f]{64} is missing" },
   },
   {
     name: "corrupt-snapshot",
@@ -149,7 +149,7 @@ export const CASES = [
     from: "v3-basic",
     what: "a snapshot reference that is not JSON",
     change: (dir) => writeFileSync(join(dir, "snapshot.json"), "not json"),
-    expect: { refused: "project-unreadable", pattern: "snapshot" },
+    expect: { refused: "project-unreadable", pattern: "snapshot reference is not valid JSON" },
   },
   {
     name: "corrupt-snapshot-past-end",
@@ -157,7 +157,7 @@ export const CASES = [
     from: "v3-basic",
     what: "a snapshot reference past the end of the journal",
     change: (dir) => writeFileSync(join(dir, "snapshot.json"), canonical({ ...JSON.parse(readFileSync(join(dir, "snapshot.json"), "utf8")), journalSeq: 9 })),
-    expect: { refused: "project-unreadable", pattern: "past the end" },
+    expect: { refused: "project-unreadable", pattern: "snapshot reference points past the end of the journal" },
   },
   {
     name: "corrupt-manifest",
@@ -165,7 +165,37 @@ export const CASES = [
     from: "v3-basic",
     what: "a manifest that is not JSON",
     change: (dir) => writeFileSync(join(dir, "project.json"), "{"),
-    expect: { refused: "project-unreadable", pattern: "manifest" },
+    expect: { refused: "project-unreadable", pattern: "manifest is not valid JSON" },
+  },
+  {
+    name: "corrupt-object-fan-out",
+    category: "corrupt",
+    from: "v3-basic",
+    what: "an object fan-out folder that is a file (Windows reports it as missing, so the store checks)",
+    change: (dir) => {
+      const { digest } = documentObject(dir);
+      rmSync(join(dir, "objects", digest.slice(0, 2)), { recursive: true });
+      writeFileSync(join(dir, "objects", digest.slice(0, 2)), "not a folder");
+    },
+    expect: { refused: "project-unreadable", pattern: "object fan-out directory is not a directory" },
+  },
+  // Refused legacy projects: the one kind whose normal open writes (a Ninerr copy). Refused,
+  // nothing may be created beside the original.
+  {
+    name: "legacy-v1-future-schema",
+    category: "future",
+    from: "v1-basic",
+    what: "a project from before the rename, of a newer schema than any release wrote",
+    change: (dir) => writeFileSync(join(dir, "project.json"), canonical({ ...JSON.parse(readFileSync(join(dir, "project.json"), "utf8")), schemaVersion: 4 })),
+    expect: { refused: "project-version", pattern: "project schema 4 is newer than supported schema 3" },
+  },
+  {
+    name: "legacy-v1-corrupt-chain",
+    category: "corrupt",
+    from: "v1-basic",
+    what: "a project from before the rename with a journal entry changed after it was written",
+    change: (dir) => writeFileSync(join(dir, "journal.log"), readFileSync(join(dir, "journal.log"), "utf8").replace('"intent":"rename"', '"intent":"renamE"')),
+    expect: { refused: "project-unreadable", pattern: "journal line 1 breaks the hash chain" },
   },
 ];
 

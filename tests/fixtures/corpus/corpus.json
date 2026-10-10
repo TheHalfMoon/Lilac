@@ -129,7 +129,7 @@
       "what": "project schema 4",
       "expect": {
         "refused": "project-version",
-        "pattern": "schema"
+        "pattern": "project schema 4 is newer than supported schema 3"
       }
     },
     {
@@ -139,7 +139,7 @@
       "what": "a document of document schema 2",
       "expect": {
         "refused": "project-version",
-        "pattern": "document"
+        "pattern": "is document schema 2, newer than supported schema 1"
       }
     },
     {
@@ -149,7 +149,7 @@
       "what": "a correctly chained journal entry with an operation this release does not know",
       "expect": {
         "refused": "project-version",
-        "pattern": "newer|format"
+        "pattern": "uses operation type \"morph-node\", which journal format 1 does not have"
       }
     },
     {
@@ -159,7 +159,7 @@
       "what": "a journal entry changed after it was written",
       "expect": {
         "refused": "project-unreadable",
-        "pattern": "digest|chain"
+        "pattern": "journal line 1 breaks the hash chain"
       }
     },
     {
@@ -169,7 +169,7 @@
       "what": "a document object whose bytes no longer match its name",
       "expect": {
         "refused": "project-unreadable",
-        "pattern": "hash"
+        "pattern": "object [0-9a-f]{64} does not match its content hash"
       }
     },
     {
@@ -179,7 +179,7 @@
       "what": "a document object that is gone",
       "expect": {
         "refused": "project-unreadable",
-        "pattern": "missing"
+        "pattern": "object [0-9a-f]{64} is missing"
       }
     },
     {
@@ -189,7 +189,7 @@
       "what": "a snapshot reference that is not JSON",
       "expect": {
         "refused": "project-unreadable",
-        "pattern": "snapshot"
+        "pattern": "snapshot reference is not valid JSON"
       }
     },
     {
@@ -199,7 +199,7 @@
       "what": "a snapshot reference past the end of the journal",
       "expect": {
         "refused": "project-unreadable",
-        "pattern": "past the end"
+        "pattern": "snapshot reference points past the end of the journal"
       }
     },
     {
@@ -209,9 +209,39 @@
       "what": "a manifest that is not JSON",
       "expect": {
         "refused": "project-unreadable",
-        "pattern": "manifest"
+        "pattern": "manifest is not valid JSON"
+      }
+    },
+    {
+      "name": "corrupt-object-fan-out",
+      "category": "corrupt",
+      "from": "v3-basic",
+      "what": "an object fan-out folder that is a file (Windows reports it as missing, so the store checks)",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "object fan-out directory is not a directory"
+      }
+    },
+    {
+      "name": "legacy-v1-future-schema",
+      "category": "future",
+      "from": "v1-basic",
+      "what": "a project from before the rename, of a newer schema than any release wrote",
+      "expect": {
+        "refused": "project-version",
+        "pattern": "project schema 4 is newer than supported schema 3"
+      }
+    },
+    {
+      "name": "legacy-v1-corrupt-chain",
+      "category": "corrupt",
+      "from": "v1-basic",
+      "what": "a project from before the rename with a journal entry changed after it was written",
+      "expect": {
+        "refused": "project-unreadable",
+        "pattern": "journal line 1 breaks the hash chain"
       }
     }
   ],
-  "treeSha256": "04ed6a42c73731a21a298aa61374ffe73def65b19258e3f74a12cc1c7d1c3232"
+  "treeSha256": "ca66441fa9f45dcad83428e3ffae7eeb51a6920806e39ff8e31a20e5c64b2bca"
 }

@@ -9,7 +9,7 @@ import { canonicalJson } from "../packages/persistence/src/canonical.ts";
 import { LEGACY_PROJECT_DIRECTORY, PROJECT_FILES, openProject } from "../packages/persistence/src/index.ts";
 import { startStudioHost } from "../packages/studio-host/src/index.ts";
 import { GOLDEN_AT, writeGoldenProject, writeSegmentedGoldenProject } from "./support/golden-project.mjs";
-import { client } from "./support/host-api.mjs";
+import { client, ok } from "./support/host-api.mjs";
 import { CASES, CORPUS, MANIFEST, filesUnder, treeDigest, writeCorpus } from "./support/migration-corpus.mjs";
 
 // P08-G10 (#230, founder section P08.10): the durable migration corpus
@@ -61,12 +61,24 @@ const REFERENCE = { golden: reference(writeGoldenProject), segments: reference(w
 // still be caught: the canonical golden document at revision 5 (both histories end there).
 const GOLDEN_DOCUMENT_SHA256 = "b5bab3855fa87f1934c9df56deb6681fff18d5e7f862789419b71f0a5d630388";
 
-/** Open corpus case `name` in a fresh projects folder; returns the answer, the document, and the folder's files before and after. */
+/**
+ * Open corpus case `name` in a fresh projects folder; returns the answer, the document, the
+ * journal, and the files before and after, of the project and of the whole projects folder.
+ * The folder already holds what a person's does, an agent registry, so a change to anything
+ * beside the project shows too.
+ */
 async function openCase(name) {
   const projects = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-corpus-")));
   try {
+    const setup = await startStudioHost({ projectsRoot: projects, now: () => GOLDEN_AT });
+    try {
+      await ok(client(setup.url, setup.token)("POST", "/api/agents/create", { name: "Kept" }));
+    } finally {
+      await setup.close();
+    }
     cpSync(join(CORPUS, name), join(projects, name), { recursive: true });
     const before = tree(join(projects, name));
+    const folderBefore = tree(projects);
     let clock = 0;
     const now = () => new Date(Date.parse(GOLDEN_AT) + 60_000 + clock++ * 1000).toISOString();
     const host = await startStudioHost({ projectsRoot: projects, now });
@@ -79,7 +91,10 @@ async function openCase(name) {
       await host.close();
     }
     const journal = existsSync(join(projects, name, PROJECT_FILES.directory, PROJECT_FILES.journal)) ? journalOf(join(projects, name)) : null;
-    return { answer, document, journal, before, after: tree(join(projects, name)) };
+    const folderAfter = tree(projects);
+    // Everything in the projects folder but the project itself: the person's other files.
+    const besides = (files) => Object.fromEntries(Object.entries(files).filter(([path]) => !path.startsWith(`${name}/`)));
+    return { answer, document, journal, before, after: tree(join(projects, name)), folderBefore, folderAfter, besidesBefore: besides(folderBefore), besidesAfter: besides(folderAfter) };
   } finally {
     rmSync(projects, { recursive: true, force: true });
   }
@@ -106,10 +121,11 @@ for (const item of manifest.cases) {
     const first = await openCase(item.name);
     const { expect } = item;
     if (expect.refused) {
-      assert.ok([404, 409, 422].includes(first.answer.status), JSON.stringify(first.answer));
+      assert.equal(first.answer.status, 422, JSON.stringify(first.answer));
       assert.equal(first.answer.json.error.code, expect.refused, JSON.stringify(first.answer.json));
       assert.match(first.answer.json.error.message, new RegExp(expect.pattern, "iu"));
-      assert.deepEqual(first.after, first.before, "a refused open changes no file");
+      assert.deepEqual(first.after, first.before, "a refused open changes no file of the project");
+      assert.deepEqual(first.folderAfter, first.folderBefore, "nor any other file in the projects folder");
     } else {
       assert.equal(first.answer.status, 200, JSON.stringify(first.answer));
       assert.equal(first.document, REFERENCE[expect.opens].document, "it opens to the document this release writes for the same history");
@@ -127,6 +143,7 @@ for (const item of manifest.cases) {
       if (expect.writes) assert.notDeepEqual(first.after, first.before, "opening it migrated or repaired it");
       else assert.deepEqual(first.after, first.before, "opening and closing a current project leaves it byte-identical");
       assert.deepEqual(first.answer.json.recovery, expect.recovery, "the whole recovery report is as expected");
+      assert.deepEqual(first.besidesAfter, first.besidesBefore, "opening it changes nothing beside the project");
       if (item.category === "legacy") {
         // The original is left exactly as it was, beside the migrated copy: no file changed, added or removed.
         const legacy = (files) => Object.fromEntries(Object.entries(files).filter(([path]) => path.startsWith(`${LEGACY_PROJECT_DIRECTORY}/`)));

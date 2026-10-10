@@ -2,7 +2,7 @@
 
 Issue: #230 (P08 umbrella), founder section P08.10: a durable migration corpus covering historical, legacy, current, future and corrupt projects. Migration must be deterministic and preserve meaning, and a refusal must change nothing.
 
-**Status:** sixteen project folders, committed under `tests/fixtures/corpus/`. Each says in advance what opening it must do. `tests/migration-corpus.test.mjs` opens every one through the studio host, as the editor opens a project, and every case does what it says. **No defect was found.**
+**Status:** nineteen project folders, committed under `tests/fixtures/corpus/`. Each says in advance what opening it must do. `tests/migration-corpus.test.mjs` opens every one through the studio host, as the editor opens a project, and every case does what it says. **No defect was found.**
 
 It landed in two parts: #276 (the projects that open) and this one (future and corrupt projects). The split keeps each diff within the exact-head review's size limit.
 
@@ -28,12 +28,17 @@ It landed in two parts: #276 (the projects that open) and this one (future and c
 | Future | `future-manifest-schema` | Project schema 4 | Refuse as `project-version`, and change nothing |
 | Future | `future-document-schema` | A document of document schema 2 (its object correctly named by its hash) | Refuse as `project-version`, and change nothing |
 | Future | `future-journal-operation` | A correctly chained journal entry with an operation this release does not know | Refuse as `project-version`, not as damage, and change nothing |
+| Future | `legacy-v1-future-schema` | A project from before the rename, of a newer schema than any release wrote | Refuse as `project-version`, and create no Ninerr copy |
 | Corrupt | `corrupt-journal-chain` | A journal entry changed after it was written | Refuse as `project-unreadable`, and change nothing |
-| Corrupt | `corrupt-document-object` | A document object whose bytes no longer match its name | Refuse, and change nothing |
-| Corrupt | `corrupt-missing-object` | A document object that is gone | Refuse, and change nothing |
-| Corrupt | `corrupt-snapshot` | A snapshot reference that is not JSON | Refuse, and change nothing |
-| Corrupt | `corrupt-snapshot-past-end` | A snapshot reference past the end of the journal | Refuse, and change nothing |
-| Corrupt | `corrupt-manifest` | A manifest that is not JSON | Refuse, and change nothing |
+| Corrupt | `corrupt-document-object` | A document object whose bytes no longer match its name | Refuse as `project-unreadable`, and change nothing |
+| Corrupt | `corrupt-missing-object` | A document object that is gone | Refuse as `project-unreadable`, and change nothing |
+| Corrupt | `corrupt-object-fan-out` | An object fan-out folder that is a file (on Windows it would read as a missing object) | Refuse as `project-unreadable`, and change nothing |
+| Corrupt | `corrupt-snapshot` | A snapshot reference that is not JSON | Refuse as `project-unreadable`, and change nothing |
+| Corrupt | `corrupt-snapshot-past-end` | A snapshot reference past the end of the journal | Refuse as `project-unreadable`, and change nothing |
+| Corrupt | `corrupt-manifest` | A manifest that is not JSON | Refuse as `project-unreadable`, and change nothing |
+| Corrupt | `legacy-v1-corrupt-chain` | A project from before the rename with a journal entry changed after it was written | Refuse as `project-unreadable`, and create no Ninerr copy |
+
+The corrupt cases are a sample of the damage the store detects; `tests/persistence.test.mjs` and the store fuzz cover the rest at the store's level.
 
 ## What each case is held to
 - **The document is preserved:** a case that opens must open to the document this release writes for the same history, compared as canonical JSON.
@@ -43,8 +48,8 @@ It landed in two parts: #276 (the projects that open) and this one (future and c
   - A legacy project keeps its own entries exactly as they were written, old tool names included: migration copies history and never rewrites it.
   - With only the package scope from before the rename swapped, that history must equal the golden one.
 - **The recovery report is exact:** what the host says it did on opening (torn bytes dropped, temporaries removed, entries replayed, the version migrated from, and that a legacy project was copied) must equal a report written by hand for each case.
-- **Refusals change nothing:** every file's SHA-256 before and after the open, and the set of files, must be the same.
-- **The right reason:** each refusal gives the host's error code and a message naming the cause.
+- **Refusals change nothing,** in the project or anywhere in the projects folder. Each case's projects folder first gets what a person's has, an agent registry from a real host run. Every file's SHA-256 before and after the open, and the set of files, must be the same. A project that opens changes nothing beside itself either.
+- **The right reason:** each refusal is a 422 with the host's error code, and its message must name the exact cause (for example "journal line 1 breaks the hash chain"), not just a word shared with other causes.
   - A newer format is refused as a version problem, never reported as damage.
   - The future journal entry is chained correctly, so the open reaches the format check instead of stopping at the chain.
 - **The legacy original is untouched:** after the open, its directory holds exactly the files it did, byte for byte.
@@ -57,7 +62,8 @@ Hand mutations each fail it, and each was restored:
 | Mutation | Fails |
 |---|---|
 | The host reporting a version error as damage | The three future cases |
-| A refused open writing a file into the project | All nine refused cases |
+| A refused open writing a file into the project | Every refused case |
+| A refused open deleting the person's agent registry beside the project (the reviewer's) | Every refused case (12) |
 | One byte added to a corpus file | The frozen-corpus check |
 | The v2 migration rewriting each entry's actor and tool and dropping its metadata (the reviewer's) | `historical-v2` |
 | The host no longer reporting a legacy migration (the reviewer's) | Both legacy cases and the migrate-once test |
