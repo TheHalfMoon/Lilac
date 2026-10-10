@@ -93,10 +93,16 @@ test("JSX comes into the design as layers, and refused code is reported, not gue
   // A hostile paste near the size limit is refused promptly: 1,666 roots each with a nested
   // <Aa>, then the name declared 11,000 times after them, once searched names × components ×
   // roots (43 s before the #250 review).
-  const hostile = `${"<X><Aa><i/></Aa></X>".repeat(1666)}\n${"export function Aa(".repeat(11_000)}`;
-  const started = performance.now();
-  assert.throws(() => importJsx(hostile), (error) => error.code === "code-refused" && /Aa does not return a JSX element/u.test(error.message));
-  assert.ok(performance.now() - started < 5_000, `refusing it took ${Math.round(performance.now() - started)} ms`);
+  // Not JavaScript, it is refused by the parser; as a program (1,666 roots and a component
+  // that returns none of them), it is refused by name. Both promptly.
+  for (const [hostile, reason] of [
+    [`${"<X><Aa><i/></Aa></X>".repeat(1666)}\n${"export function Aa(".repeat(11_000)}`, /could not be parsed/u],
+    [`${"<X><Aa><i/></Aa></X>;".repeat(1666)}\nexport function Aa() { return null; }\n`, /Aa does not return a JSX element/u],
+  ]) {
+    const started = performance.now();
+    assert.throws(() => importJsx(hostile), (error) => error.code === "code-refused" && reason.test(error.message));
+    assert.ok(performance.now() - started < 5_000, `refusing it took ${Math.round(performance.now() - started)} ms`);
+  }
   // Mixed text keeps its order around the elements.
   const mixed = importJsx("export function T() { return <p>Click <a href=\"https://example.com\">here</a> to start</p>; }").operations[0].nodes;
   const paragraph = mixed[1];

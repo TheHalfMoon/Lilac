@@ -1,56 +1,13 @@
+import { parse } from "@babel/parser";
 import { CodeIrValidationError } from "./errors.ts";
-import { CODE_IR_HARD_LIMITS, type SourceSymbol, type UnsupportedRegion } from "./types.ts";
+import { CODE_IR_HARD_LIMITS, type PropLiteral, type SourceSymbol, type SymbolProp, type SymbolText, type UnsupportedRegion } from "./types.ts";
 import { makeRange, symbolId } from "./validation.ts";
 
-interface JsxToken {
-  type: "lt" | "gt" | "slashGt" | "slash" | "equals" | "ident" | "lbrace" | "rbrace" | "text";
-  value: string;
-  start: number;
-  end: number;
-}
-
-function isIdentStart(char: string): boolean {
-  return /[A-Za-z_]/u.test(char);
-}
-
-function isIdentPart(char: string): boolean {
-  return /[A-Za-z0-9_.-]/u.test(char);
-}
-
-function tokenizeJsx(source: string): JsxToken[] {
-  const tokens: JsxToken[] = [];
-  let index = 0;
-  const push = (type: JsxToken["type"], value: string, start: number, end: number): void => {
-    tokens.push({ type, value, start, end });
-    if (tokens.length > CODE_IR_HARD_LIMITS.maxTokens) {
-      throw new CodeIrValidationError("JSX input exceeds the bounded token budget");
-    }
-  };
-  while (index < source.length) {
-    const char = source[index];
-    if (char === "<") { push("lt", char, index, index + 1); index += 1; continue; }
-    if (char === ">") { push("gt", char, index, index + 1); index += 1; continue; }
-    if (char === "/" && source[index + 1] === ">") { push("slashGt", "/>", index, index + 2); index += 2; continue; }
-    if (char === "/") { push("slash", char, index, index + 1); index += 1; continue; }
-    if (char === "=") { push("equals", char, index, index + 1); index += 1; continue; }
-    if (char === "{" || char === "}") {
-      push(char === "{" ? "lbrace" : "rbrace", char, index, index + 1); index += 1; continue;
-    }
-    if (isIdentStart(char)) {
-      let end = index + 1;
-      while (end < source.length && isIdentPart(source[end])) end += 1;
-      push("ident", source.slice(index, end), index, end);
-      index = end;
-      continue;
-    }
-    let end = index;
-    while (end < source.length && !"<>=/\"'{}\n".includes(source[end]) && !isIdentStart(source[end])) end += 1;
-    if (end === index) end = index + 1;
-    push("text", source.slice(index, end), index, end);
-    index = end;
-  }
-  return tokens;
-}
+// JSX and TSX are read with @babel/parser (P08-G11, #230): the syntax comes from a real
+// parser, so a type argument (useState<string>), a comparison (a < b) or a "<" in a string
+// or comment is never taken for an element. What Ninerr makes of the syntax is its own: the
+// supported subset, every value (decoded from the source text exactly as before), the ranges
+// a write-back patches, and the refusals, which become unsupported regions with reasons.
 
 export interface JsxParseResult {
   symbols: SourceSymbol[];
@@ -63,22 +20,17 @@ interface ParserState {
   file: string;
   source: string;
   starts: number[];
-  tokens: JsxToken[];
-  position: number;
   symbols: SourceSymbol[];
   relations: { from: string; to: string; kind: "renders" }[];
   unsupported: UnsupportedRegion[];
 }
 
-function peek(state: ParserState): JsxToken | undefined {
-  return state.tokens[state.position];
-}
-
-function next(state: ParserState): JsxToken {
-  const token = state.tokens[state.position];
-  if (!token) throw new CodeIrValidationError("JSX ended unexpectedly");
-  state.position += 1;
-  return token;
+// A Babel syntax node, as far as this module reads it.
+interface AstNode {
+  type: string;
+  start: number;
+  end: number;
+  [key: string]: any;
 }
 
 function unsupportedAt(state: ParserState, reason: string, start: number, end: number): void {
@@ -89,14 +41,6 @@ function unsupportedAt(state: ParserState, reason: string, start: number, end: n
     reason,
     range: makeRange(state.file, state.source, state.starts, start, end),
   });
-}
-
-function skipWhitespace(state: ParserState): void {
-  while (state.position < state.tokens.length) {
-    const token = state.tokens[state.position];
-    if (token.type === "text" && token.value.trim() === "") state.position += 1;
-    else break;
-  }
 }
 
 // JSX text and attribute strings carry HTML entities, not JS escapes. The entities Ninerr
@@ -204,192 +148,125 @@ function scanJsStringLiteral(source: string, start: number): { value: string; en
 // No leading zeros: JS reads 010 as octal or refuses it.
 const NUMERIC_LITERAL = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/u;
 
-// The literal inside an expression container opened at `open`: true, false, a number or
-// a quoted string. Returns null for anything else. On success, the parser is moved past
-// the closing brace.
-function readLiteralExpression(state: ParserState, open: JsxToken): { literal: SymbolProp["literal"]; end: number } | null {
+// TypeScript-only wrappers around an expression: (x), x as T, x satisfies T, x!.
+function unwrap(node: AstNode | null | undefined): AstNode | null {
+  let current = node ?? null;
+  while (current !== null && (current.type === "TSAsExpression" || current.type === "TSSatisfiesExpression" || current.type === "TSNonNullExpression" || current.type === "ParenthesizedExpression")) current = current.expression;
+  return current;
+}
+
+// The literal in an expression container: true, false, a number or a quoted string, and
+// nothing else inside the braces (no comment, no other code). Null for anything else.
+function readLiteral(state: ParserState, container: AstNode): PropLiteral | null {
   const { source } = state;
-  let index = open.end;
-  while (/\s/u.test(source[index] ?? "")) index += 1;
-  let literal: SymbolProp["literal"];
-  if (source[index] === '"' || source[index] === "'") {
-    const scanned = scanJsStringLiteral(source, index);
-    literal = { kind: "string", value: scanned.value };
-    index = scanned.end;
-  } else {
-    const close = source.indexOf("}", index);
-    if (close < 0) return null;
-    const body = source.slice(index, close).trim();
-    if (body === "true" || body === "false") literal = { kind: "boolean", value: body === "true" };
-    else if (NUMERIC_LITERAL.test(body)) {
-      const numeric = Number(body);
-      if (!Number.isFinite(numeric)) throw new CodeIrValidationError("JSX numeric literal must be finite");
-      literal = { kind: "number", value: numeric };
-    } else return null;
-    index = close;
+  const expression: AstNode = container.expression;
+  if (expression.type === "JSXEmptyExpression") return null;
+  const raw = source.slice(expression.start, expression.end);
+  // Only the literal between the braces: a comment beside it would be lost by a write-back.
+  if (source.slice(container.start + 1, container.end - 1).trim() !== raw) return null;
+  if (expression.type === "StringLiteral") {
+    const scanned = scanJsStringLiteral(source, expression.start);
+    if (scanned.end !== expression.end) return null;
+    return { kind: "string", value: scanned.value };
   }
-  while (/\s/u.test(source[index] ?? "")) index += 1;
-  if (source[index] !== "}") return null;
-  const end = index + 1;
-  while (state.position < state.tokens.length && state.tokens[state.position].start < end) state.position += 1;
-  return { literal, end };
+  if (expression.type === "BooleanLiteral") return { kind: "boolean", value: raw === "true" };
+  if (expression.type === "NumericLiteral" || (expression.type === "UnaryExpression" && expression.operator === "-" && expression.argument?.type === "NumericLiteral")) {
+    if (!NUMERIC_LITERAL.test(raw)) return null;
+    const numeric = Number(raw);
+    if (!Number.isFinite(numeric)) throw new CodeIrValidationError("JSX numeric literal must be finite");
+    return { kind: "number", value: numeric };
+  }
+  return null;
 }
 
-function skipBalancedBraces(state: ParserState, open: JsxToken): number {
-  let depth = 1;
-  while (state.position < state.tokens.length) {
-    const token = next(state);
-    if (token.type === "lbrace") depth += 1;
-    if (token.type === "rbrace") {
-      depth -= 1;
-      if (depth === 0) return token.end;
-    }
+/** A JSX tag's name: an identifier, or a member expression such as Item.Skeleton. */
+function tagName(name: AstNode): string | null {
+  if (name.type === "JSXIdentifier") return name.name;
+  if (name.type === "JSXMemberExpression") {
+    const object = tagName(name.object);
+    return object === null ? null : `${object}.${name.property.name}`;
   }
-  throw new CodeIrValidationError(`JSX expression opened at offset ${open.start} is unbalanced`);
+  return null;
 }
 
-function parseElement(state: ParserState, depth: number): SourceSymbol {
+function elementSymbol(state: ParserState, node: AstNode, depth: number): SourceSymbol {
   if (depth > CODE_IR_HARD_LIMITS.maxDepth) {
     throw new CodeIrValidationError("JSX nesting exceeds maxDepth");
   }
-  const open = next(state);
-  if (open.type !== "lt") throw new CodeIrValidationError("JSX element must open with <");
-  skipWhitespace(state);
-  const nameToken = next(state);
-  if (nameToken.type !== "ident") {
-    unsupportedAt(state, "non-identifier JSX tag", open.start, nameToken.end);
+  if (node.type === "JSXFragment") {
+    unsupportedAt(state, "JSX fragments are outside the supported subset", node.start, node.openingFragment.end);
+    throw new CodeIrValidationError("JSX fragments are outside the supported subset");
+  }
+  const { source } = state;
+  const opening: AstNode = node.openingElement;
+  const name = tagName(opening.name);
+  if (name === null) {
+    unsupportedAt(state, "non-identifier JSX tag", node.start, opening.name.end);
     throw new CodeIrValidationError("JSX tag name must be an identifier");
   }
-  const name = nameToken.value;
   const props: SymbolProp[] = [];
   const texts: SymbolText[] = [];
   const children: SourceSymbol[] = [];
-  let selfClosing = false;
-  for (;;) {
-    skipWhitespace(state);
-    const token = peek(state);
-    if (!token) throw new CodeIrValidationError(`JSX element ${name} is unterminated`);
-    if (token.type === "gt") { next(state); break; }
-    if (token.type === "slashGt") { next(state); selfClosing = true; break; }
-    if (token.type !== "ident") {
-      unsupportedAt(state, `unsupported JSX attribute form in ${name}`, token.start, token.end);
+  for (const attribute of opening.attributes as AstNode[]) {
+    if (attribute.type !== "JSXAttribute" || attribute.name.type !== "JSXIdentifier") {
+      unsupportedAt(state, `unsupported JSX attribute form in ${name}`, attribute.start, attribute.end);
       throw new CodeIrValidationError(`JSX element ${name} has an unsupported attribute form`);
     }
-    const attrName = next(state);
-    skipWhitespace(state);
-    const maybeEquals = peek(state);
-    if (!maybeEquals || maybeEquals.type !== "equals") {
-      props.push({
-        name: attrName.value,
-        literal: { kind: "boolean", value: true },
-        range: makeRange(state.file, state.source, state.starts, attrName.start, attrName.end),
-      });
+    const attrName: string = attribute.name.name;
+    const value: AstNode | null = attribute.value;
+    if (value === null) {
+      props.push({ name: attrName, literal: { kind: "boolean", value: true }, range: makeRange(state.file, source, state.starts, attribute.name.start, attribute.name.end) });
       continue;
     }
-    next(state);
-    skipWhitespace(state);
-    const valuePeek = peek(state);
-    if (!valuePeek) throw new CodeIrValidationError(`JSX attribute in ${name} is missing a value`);
-    if (valuePeek.value === '"' || valuePeek.value === "'") {
-      const scanned = scanStringLiteral(state.source, valuePeek.start);
-      state.position += 1;
-      while (state.position < state.tokens.length && state.tokens[state.position].start < scanned.end) {
-        state.position += 1;
-      }
-      props.push({
-        name: attrName.value,
-        literal: { kind: "string", value: scanned.value },
-        range: makeRange(state.file, state.source, state.starts, attrName.start, scanned.end),
-      });
+    if (value.type === "StringLiteral") {
+      const scanned = scanStringLiteral(source, value.start);
+      props.push({ name: attrName, literal: { kind: "string", value: scanned.value }, range: makeRange(state.file, source, state.starts, attribute.start, scanned.end) });
       continue;
     }
-    if (valuePeek.type !== "lbrace") {
-      unsupportedAt(state, `unsupported JSX attribute value in ${name}`, valuePeek.start, valuePeek.end);
+    if (value.type !== "JSXExpressionContainer") {
+      unsupportedAt(state, `unsupported JSX attribute value in ${name}`, value.start, value.end);
       throw new CodeIrValidationError(`JSX element ${name} has an unsupported attribute value`);
     }
-    const valueToken = next(state);
-    const parsed = readLiteralExpression(state, valueToken);
-    if (!parsed) {
-      const end = skipBalancedBraces(state, valueToken);
-      unsupportedAt(state, `non-literal JSX expression attribute in ${name}`, valueToken.start, end);
+    const literal = readLiteral(state, value);
+    if (literal === null) {
+      unsupportedAt(state, `non-literal JSX expression attribute in ${name}`, value.start, value.end);
       throw new CodeIrValidationError(`JSX element ${name} uses a non-literal expression attribute`);
     }
-    props.push({
-      name: attrName.value,
-      literal: parsed.literal,
-      range: makeRange(state.file, state.source, state.starts, attrName.start, parsed.end),
-    });
-    continue;
+    props.push({ name: attrName, literal, range: makeRange(state.file, source, state.starts, attribute.start, value.end) });
   }
 
-  if (!selfClosing) {
-    const textParts: { value: string; start: number; end: number }[] = [];
-    const flushText = (): void => {
-      if (textParts.length === 0) return;
-      const first = textParts[0];
-      const last = textParts[textParts.length - 1];
-      textParts.length = 0;
-      if (last.end - first.start > MAX_RAW_TEXT) throw new CodeIrValidationError(`JSX text in ${name} exceeds ${MAX_RAW_TEXT} source characters`);
-      const value = cleanJsxText(decodeJsxEntities(state.source.slice(first.start, last.end), `JSX text in ${name}`));
-      if (value === "") return;
+  for (const child of node.children as AstNode[]) {
+    if (child.type === "JSXText") {
+      if (child.end - child.start > MAX_RAW_TEXT) throw new CodeIrValidationError(`JSX text in ${name} exceeds ${MAX_RAW_TEXT} source characters`);
+      const value = cleanJsxText(decodeJsxEntities(source.slice(child.start, child.end), `JSX text in ${name}`));
+      if (value === "") continue;
       if (value.length > 4096) throw new CodeIrValidationError(`JSX text in ${name} exceeds 4096 characters`);
-      texts.push({
-        value,
-        range: makeRange(state.file, state.source, state.starts, first.start, last.end),
-      });
-    };
-    for (;;) {
-      const token = peek(state);
-      if (!token) throw new CodeIrValidationError(`JSX element ${name} is missing its closing tag`);
-      if (token.type === "lt") {
-        flushText();
-        const lookahead = state.tokens[state.position + 1];
-        if (lookahead && lookahead.type === "slash") {
-          next(state);
-          next(state);
-          skipWhitespace(state);
-          const closeName = next(state);
-          if (closeName.type !== "ident" || closeName.value !== name) {
-            throw new CodeIrValidationError(`JSX mismatched closing tag for ${name}`);
-          }
-          skipWhitespace(state);
-          const end = next(state);
-          if (end.type !== "gt") throw new CodeIrValidationError(`JSX closing tag for ${name} is malformed`);
-          break;
-        }
-        children.push(parseElement(state, depth + 1));
-        continue;
-      }
-      if (token.type === "lbrace") {
-        flushText();
-        const openBrace = next(state);
-        // A string literal child is exact text: {"  spaced  "} keeps its whitespace.
-        const literal = readLiteralExpression(state, openBrace);
-        if (literal !== null && literal.literal.kind === "string") {
-          if (literal.literal.value.length > 4096) throw new CodeIrValidationError(`JSX text in ${name} exceeds 4096 characters`);
-          if (literal.literal.value !== "") {
-            texts.push({ value: literal.literal.value, range: makeRange(state.file, state.source, state.starts, openBrace.start, literal.end) });
-          }
-          continue;
-        }
-        if (literal !== null) {
-          unsupportedAt(state, `non-string literal child in ${name}`, openBrace.start, literal.end);
-          throw new CodeIrValidationError(`JSX element ${name} contains a non-string literal child`);
-        }
-        const end = skipBalancedBraces(state, openBrace);
-        unsupportedAt(state, `expression child in ${name}`, openBrace.start, end);
-        throw new CodeIrValidationError(`JSX element ${name} contains an expression child outside the supported subset`);
-      }
-      if (token.type === "text" || token.type === "gt" || token.type === "slash" || token.type === "slashGt" || token.type === "equals" || token.type === "ident" || token.type === "rbrace") {
-        const part = next(state);
-        textParts.push({ value: part.value, start: part.start, end: part.end });
-        continue;
-      }
-      flushText();
-      unsupportedAt(state, `unsupported JSX child in ${name}`, token.start, token.end);
-      throw new CodeIrValidationError(`JSX element ${name} contains an unsupported child`);
+      texts.push({ value, range: makeRange(state.file, source, state.starts, child.start, child.end) });
+      continue;
     }
-    flushText();
+    if (child.type === "JSXExpressionContainer") {
+      // A comment, {/* … */}, is no content.
+      if (child.expression.type === "JSXEmptyExpression") continue;
+      // A string literal child is exact text: {"  spaced  "} keeps its whitespace.
+      const literal = readLiteral(state, child);
+      if (literal !== null && literal.kind === "string") {
+        if (literal.value.length > 4096) throw new CodeIrValidationError(`JSX text in ${name} exceeds 4096 characters`);
+        if (literal.value !== "") texts.push({ value: literal.value, range: makeRange(state.file, source, state.starts, child.start, child.end) });
+        continue;
+      }
+      if (literal !== null) {
+        unsupportedAt(state, `non-string literal child in ${name}`, child.start, child.end);
+        throw new CodeIrValidationError(`JSX element ${name} contains a non-string literal child`);
+      }
+      unsupportedAt(state, `expression child in ${name}`, child.start, child.end);
+      throw new CodeIrValidationError(`JSX element ${name} contains an expression child outside the supported subset`);
+    }
+    if (child.type === "JSXElement" || child.type === "JSXFragment") {
+      children.push(elementSymbol(state, child, depth + 1));
+      continue;
+    }
+    unsupportedAt(state, `unsupported JSX child in ${name}`, child.start, child.end);
+    throw new CodeIrValidationError(`JSX element ${name} contains an unsupported child`);
   }
 
   if (props.length > CODE_IR_HARD_LIMITS.maxPropsPerSymbol) {
@@ -404,14 +281,13 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
   if (texts.length > CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol) {
     throw new CodeIrValidationError(`JSX element ${name} has more than ${CODE_IR_HARD_LIMITS.maxTextRunsPerSymbol} runs of text`);
   }
-  const endOffset = state.tokens[state.position - 1].end;
   const kind = /^[A-Z]/u.test(name) ? "component" : "element";
-  const id = symbolId(state.file, kind, name, open.start);
+  const id = symbolId(state.file, kind, name, node.start);
   const symbol: SourceSymbol = {
     id,
     kind,
     name,
-    range: makeRange(state.file, state.source, state.starts, open.start, endOffset),
+    range: makeRange(state.file, source, state.starts, node.start, node.end),
     props,
     children: children.map((child) => child.id),
     texts,
@@ -420,132 +296,84 @@ function parseElement(state: ParserState, depth: number): SourceSymbol {
   if (classProp && classProp.literal.kind === "string") {
     symbol.classTokens = classProp.literal.value.split(/\s+/u).filter((entry) => entry !== "");
   }
-  // Each child pushed itself when it was parsed; pushing it again here counted every
-  // nested element twice against maxSymbols (#250).
+  // Each child pushed itself when it was converted (#250: never twice).
   state.symbols.push(symbol);
   for (const child of children) state.relations.push({ from: id, to: child.id, kind: "renders" });
   return symbol;
 }
 
-/**
- * Repository component binding: match exported function and arrow components
- * to the root element they render. Each definition claims the nearest
- * following unclaimed root; the component symbol anchors at its rendered
- * output range with copied literal props. Anonymous defaults cannot bind.
- */
-function bindComponentDefinitions(state: ParserState, roots: SourceSymbol[]): void {
-  const pattern = /(?:export\s+default\s+)?(?:export\s+)?function\s+([A-Z][A-Za-z0-9]*)\s*\(|const\s+([A-Z][A-Za-z0-9]*)\s*=\s*(?:\([^)]{0,2048}\)|[A-Za-z_$][\w$]*)\s*=>/gu;
-  const definitions: { name: string; offset: number }[] = [];
-  for (const match of state.source.matchAll(pattern)) {
-    if (definitions.length >= 64) break;
-    definitions.push({ name: (match[1] ?? match[2]) as string, offset: match.index ?? 0 });
-  }
-  const claimed = new Set<number>();
-  const orderedRoots = [...roots].sort((a, b) => a.range.startOffset - b.range.startOffset);
-  for (const root of orderedRoots) {
-    let chosen = -1;
-    for (let index = 0; index < definitions.length; index += 1) {
-      if (claimed.has(index)) continue;
-      if (definitions[index].offset < root.range.startOffset) chosen = index;
-      else break;
+// Keys of a Babel node that are not syntax.
+const NOT_SYNTAX = new Set(["type", "start", "end", "loc", "range", "extra", "leadingComments", "trailingComments", "innerComments", "comments", "tokens", "errors"]);
+
+/** Every outermost JSX element or fragment of the program, in source order. */
+function outermostJsx(program: AstNode): AstNode[] {
+  const found: AstNode[] = [];
+  // Iterative, so a deeply nested expression cannot overflow the stack.
+  const stack: unknown[] = [program];
+  while (stack.length > 0) {
+    const value = stack.pop();
+    if (Array.isArray(value)) {
+      for (const entry of value) stack.push(entry);
+      continue;
     }
-    if (chosen === -1) continue;
-    claimed.add(chosen);
-    const id = symbolId(state.file, "component", definitions[chosen].name, root.range.startOffset);
-    state.symbols.push({
-      id,
-      kind: "component",
-      name: definitions[chosen].name,
-      range: { ...root.range },
-      props: root.props.map((prop) => ({ name: prop.name, literal: { ...prop.literal } as SourceSymbol["props"][number]["literal"], range: { ...prop.range } })),
-      children: [root.id],
-      texts: [],
-      ...(root.classTokens === undefined ? {} : { classTokens: [...root.classTokens] }),
-    });
-    state.relations.push({ from: id, to: root.id, kind: "renders" });
+    if (value === null || typeof value !== "object" || typeof (value as AstNode).type !== "string") continue;
+    const node = value as AstNode;
+    if (node.type === "JSXElement" || node.type === "JSXFragment") {
+      found.push(node);
+      continue;
+    }
+    for (const key of Object.keys(node)) if (!NOT_SYNTAX.has(key)) stack.push(node[key]);
   }
+  return found.sort((a, b) => a.start - b.start);
 }
 
-// End offset of a braced expression starting at `start`, skipping quoted strings, template
-// literals and nested braces; -1 when it never closes. JSX, a comment or a regex literal
-// inside the braces makes quotes and braces ambiguous (an apostrophe in JSX text is not a
-// string, a "}" in a regex closes nothing, a template literal can nest more templates
-// inside ${}), so any "<", "/" or backtick also gives -1: recovery then stops instead of
-// guessing where the element ends.
-function bracedEnd(source: string, start: number): number {
-  let depth = 0;
-  for (let index = start; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === "<" || char === "/" || char === "`") return -1;
-    if (char === '"' || char === "'") {
-      for (index += 1; index < source.length && source[index] !== char; index += 1) if (source[index] === "\\") index += 1;
-      continue;
-    }
-    if (char === "{") depth += 1;
-    else if (char === "}" && --depth === 0) return index + 1;
+// React's wrappers that take a component function: forwardRef(fn), memo(fn), React.memo(fn).
+const WRAPPERS = new Set(["forwardRef", "memo"]);
+function componentFunction(init: AstNode | null): AstNode | null {
+  let current = unwrap(init);
+  for (let depth = 0; current !== null && current.type === "CallExpression" && depth < 4; depth += 1) {
+    const callee = current.callee;
+    const name = callee.type === "Identifier" ? callee.name : callee.type === "MemberExpression" && callee.property.type === "Identifier" ? callee.property.name : null;
+    if (name === null || !WRAPPERS.has(name) || current.arguments.length === 0) return null;
+    current = unwrap(current.arguments[0]);
   }
-  return -1;
+  return current !== null && (current.type === "ArrowFunctionExpression" || current.type === "FunctionExpression") ? current : null;
 }
 
-// Where an element that failed to parse ends, by balancing its tags (quoted attribute
-// values and braces skipped). Returns -1 when the element never closes. Recovery resumes
-// after this offset, so no descendant of a failed element becomes a root.
-function failedElementEnd(state: ParserState, startIndex: number): number {
-  const { source, tokens } = state;
-  const open: string[] = [];
-  let offset = tokens[startIndex].start;
-  while (offset < source.length) {
-    const char = source[offset];
-    if (char === "{") {
-      const end = bracedEnd(source, offset);
-      if (end < 0) return -1;
-      offset = end;
-      continue;
+/** The JSX a component function returns: an arrow's body, or its body's last top-level return. */
+function returnedJsx(fn: AstNode): AstNode | null {
+  if (fn.body.type !== "BlockStatement") return unwrap(fn.body);
+  const returns = (fn.body.body as AstNode[]).filter((statement) => statement.type === "ReturnStatement");
+  return returns.length === 0 ? null : unwrap(returns.at(-1)!.argument);
+}
+
+/** The program's top-level function components, each with the JSX it returns. */
+function componentDefinitions(program: AstNode): Array<{ name: string; jsx: AstNode | null }> {
+  const definitions: Array<{ name: string; jsx: AstNode | null }> = [];
+  const visit = (statement: AstNode | null) => {
+    if (statement === null) return;
+    if (statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration") return visit(statement.declaration);
+    if (statement.type === "FunctionDeclaration" && statement.id && /^[A-Z]/u.test(statement.id.name)) {
+      definitions.push({ name: statement.id.name, jsx: returnedJsx(statement) });
+      return;
     }
-    if (char !== "<") { offset += 1; continue; }
-    if (source[offset + 1] === "/") {
-      const close = source.indexOf(">", offset);
-      if (close < 0) return -1;
-      // A closing tag must name the innermost open element; a mismatch or a fragment
-      // close means the structure is not what it seems, so recovery stops.
-      if (source.slice(offset + 2, close).trim() !== open.pop()) return -1;
-      offset = close + 1;
-      if (open.length === 0) return offset;
-      continue;
-    }
-    if (/^<\s*>/u.test(source.slice(offset, offset + 64))) return -1;
-    if (!isIdentStart(source[offset + 1] ?? "")) { offset += 1; continue; }
-    let nameEnd = offset + 1;
-    while (nameEnd < source.length && isIdentPart(source[nameEnd])) nameEnd += 1;
-    const tagName = source.slice(offset + 1, nameEnd);
-    // An opening tag: scan its header to > or />.
-    let index = offset + 1;
-    let selfClosing = false;
-    for (;;) {
-      const headerChar = source[index];
-      // An element as an attribute value (x=<B/>) would end the header early.
-      if (headerChar === undefined || headerChar === "<") return -1;
-      if (headerChar === '"' || headerChar === "'") {
-        const end = source.indexOf(headerChar, index + 1);
-        if (end < 0) return -1;
-        index = end + 1;
-        continue;
+    if (statement.type === "VariableDeclaration") {
+      for (const declarator of statement.declarations as AstNode[]) {
+        if (declarator.id.type !== "Identifier" || !/^[A-Z]/u.test(declarator.id.name)) continue;
+        const fn = componentFunction(declarator.init);
+        if (fn !== null) definitions.push({ name: declarator.id.name, jsx: returnedJsx(fn) });
       }
-      if (headerChar === "{") {
-        const end = bracedEnd(source, index);
-        if (end < 0) return -1;
-        index = end;
-        continue;
-      }
-      if (headerChar === "/" && source[index + 1] === ">") { selfClosing = true; index += 2; break; }
-      if (headerChar === ">") { index += 1; break; }
-      index += 1;
     }
-    offset = index;
-    if (!selfClosing) open.push(tagName);
-    else if (open.length === 0) return offset;
-  }
-  return -1;
+  };
+  for (const statement of program.body as AstNode[]) visit(statement);
+  return definitions;
+}
+
+/** Babel's grammar for the file: TSX, TypeScript (no JSX) or JSX. */
+function grammar(file: string): Array<"jsx" | "typescript"> {
+  if (file.endsWith(".tsx")) return ["jsx", "typescript"];
+  if (file.endsWith(".ts")) return ["typescript"];
+  return ["jsx"];
 }
 
 export function parseJsxFile(file: string, source: string): JsxParseResult {
@@ -554,65 +382,65 @@ export function parseJsxFile(file: string, source: string): JsxParseResult {
   if (source.length > CODE_IR_HARD_LIMITS.maxSourceBytes) {
     throw new CodeIrValidationError("JSX source exceeds maxSourceBytes");
   }
+  let program: AstNode;
+  try {
+    program = parse(source, { sourceType: "module", plugins: grammar(file), errorRecovery: false }).program as unknown as AstNode;
+  } catch (error) {
+    // Babel recurses: nesting deep enough to exhaust the stack is refused like any other.
+    if (error instanceof RangeError) throw new CodeIrValidationError("JSX nesting exceeds maxDepth");
+    throw new CodeIrValidationError(`the code could not be parsed: ${error instanceof Error ? error.message.slice(0, 200) : String(error)}`);
+  }
   const starts: number[] = [0];
   for (let index = 0; index < source.length; index += 1) {
     if (source[index] === "\n") starts.push(index + 1);
   }
-  const state: ParserState = {
-    file,
-    source,
-    starts,
-    tokens: tokenizeJsx(source),
-    position: 0,
-    symbols: [],
-    relations: [],
-    unsupported: [],
-  };
+  const state: ParserState = { file, source, starts, symbols: [], relations: [], unsupported: [] };
   const roots: SourceSymbol[] = [];
-  while (state.position < state.tokens.length) {
-    const token = peek(state);
-    if (!token) break;
-    if (token.type === "lt") {
-      const lookahead = state.tokens[state.position + 1];
-      if (lookahead && lookahead.type === "ident") {
-        const attempt = state.position;
-        const symbolCount = state.symbols.length;
-        const relationCount = state.relations.length;
-        try {
-          roots.push(parseElement(state, 0));
-        } catch (error) {
-          state.symbols.length = symbolCount;
-          state.relations.length = relationCount;
-          if (state.unsupported.length >= CODE_IR_HARD_LIMITS.maxUnsupported) throw error;
-          const contextEnd = Math.min(state.tokens.length - 1, attempt + 8);
-          unsupportedAt(state, `unparseable top-level JSX: ${error instanceof Error ? error.message : String(error)}`, token.start, state.tokens[contextEnd].end);
-          const resume = failedElementEnd(state, attempt);
-          state.position = attempt + 1;
-          if (resume < 0) state.position = state.tokens.length;
-          else while (state.position < state.tokens.length && state.tokens[state.position].start < resume) state.position += 1;
-        }
-        continue;
-      }
-      if (lookahead && lookahead.type === "gt") {
-        unsupportedAt(state, "JSX fragment outside the supported subset", token.start, lookahead.end);
-        throw new CodeIrValidationError("JSX fragments are outside the supported subset");
-      }
-      unsupportedAt(state, "stray angle bracket outside JSX", token.start, lookahead ? lookahead.end : token.end);
-      state.position += 1;
-      continue;
+  const rootAt = new Map<number, SourceSymbol>();
+  for (const node of outermostJsx(program)) {
+    const symbolCount = state.symbols.length;
+    const relationCount = state.relations.length;
+    try {
+      const root = elementSymbol(state, node, 0);
+      roots.push(root);
+      rootAt.set(node.start, root);
+    } catch (error) {
+      if (!(error instanceof CodeIrValidationError)) throw error;
+      // A refused element is left out whole: none of its descendants becomes a root.
+      state.symbols.length = symbolCount;
+      state.relations.length = relationCount;
+      if (state.unsupported.length >= CODE_IR_HARD_LIMITS.maxUnsupported) throw error;
+      const header = node.type === "JSXElement" ? node.openingElement.end : node.openingFragment.end;
+      unsupportedAt(state, `unparseable top-level JSX: ${error.message}`, node.start, header);
     }
-    state.position += 1;
+    if (state.symbols.length > CODE_IR_HARD_LIMITS.maxSymbols) {
+      throw new CodeIrValidationError("JSX symbols exceed maxSymbols");
+    }
   }
   if (roots.length === 0) {
     const reason = state.unsupported.length > 0 ? `: ${state.unsupported[0].reason}` : "";
     throw new CodeIrValidationError(`JSX source contains no supported elements${reason}`);
   }
-  if (state.symbols.length > CODE_IR_HARD_LIMITS.maxSymbols) {
-    throw new CodeIrValidationError("JSX symbols exceed maxSymbols");
-  }
-  bindComponentDefinitions(state, roots);
-  if (state.symbols.length > CODE_IR_HARD_LIMITS.maxSymbols) {
-    throw new CodeIrValidationError("JSX symbols exceed maxSymbols");
+  // Each function component, bound to the element it returns: the component symbol anchors at
+  // that element's range with its literal props copied.
+  for (const { name, jsx } of componentDefinitions(program)) {
+    const root = jsx === null ? undefined : rootAt.get(jsx.start);
+    if (root === undefined) continue;
+    const id = symbolId(file, "component", name, root.range.startOffset);
+    state.symbols.push({
+      id,
+      kind: "component",
+      name,
+      range: { ...root.range },
+      props: root.props.map((prop) => ({ name: prop.name, literal: { ...prop.literal } as PropLiteral, range: { ...prop.range } })),
+      children: [root.id],
+      texts: [],
+      ...(root.classTokens === undefined ? {} : { classTokens: [...root.classTokens] }),
+    });
+    state.relations.push({ from: id, to: root.id, kind: "renders" });
+    if (state.symbols.length > CODE_IR_HARD_LIMITS.maxSymbols) {
+      throw new CodeIrValidationError("JSX symbols exceed maxSymbols");
+    }
   }
   return {
     symbols: state.symbols,

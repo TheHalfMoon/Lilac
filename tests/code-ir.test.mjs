@@ -65,27 +65,56 @@ test("subset parsing succeeds deterministically with provenance", () => {
 });
 
 test("out-of-subset constructs fail as unsupported with reasons", () => {
-  const mixed = buildCodeIr([{ path: "E.jsx", content: "<section>ok</section><div onClick={handler}>x</div>" }]);
+  const mixed = buildCodeIr([{ path: "E.jsx", content: "const a = <section>ok</section>;\nconst b = <div onClick={handler}>x</div>;" }]);
   assert.equal(mixed.rootIds.length, 1);
   assert.match(mixed.unsupported[0].reason, /non-literal.*expression attribute/u);
-  const exprChild = buildCodeIr([{ path: "E.jsx", content: "<section>ok</section><div>{items}</div>" }]);
+  const exprChild = buildCodeIr([{ path: "E.jsx", content: "const a = <section>ok</section>;\nconst b = <div>{items}</div>;" }]);
   assert.match(exprChild.unsupported[0].reason, /expression child/u);
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<><div /></>" }]), /fragments/u);
-  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<div><span>" }]), /no supported elements/u);
-  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<div></span>" }]), /no supported elements/u);
+  // Not JavaScript at all: the parser refuses the file.
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<div><span>" }]), /could not be parsed/u);
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<div></span>" }]), /could not be parsed/u);
   assert.throws(() => buildCodeIr([{ path: "E.txt", content: "<div />" }]), CodeIrUnsupportedError);
   const nested = "<div>" + "<section>".repeat(40) + "x" + "</section>".repeat(40) + "</div>";
   // A failed element is skipped whole: no nested <section> is promoted to a root (#123).
   assert.throws(() => buildCodeIr([{ path: "E.jsx", content: nested }]), /no supported elements: unparseable top-level JSX: JSX nesting exceeds maxDepth/u);
   const unclosedDeep = "<div>" + "<section>".repeat(40);
-  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: unclosedDeep }]), /maxDepth/u);
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: unclosedDeep }]), /could not be parsed/u);
 });
 
-test("stray top-level angle brackets become unsupported regions, not silent loss", () => {
-  const ir = buildCodeIr([{ path: "Mix.jsx", content: "if (a < b) { }\n<span>ok</span>" }]);
-  assert.equal(ir.rootIds.length, 1);
-  assert.equal(ir.unsupported.length, 1);
-  assert.match(ir.unsupported[0].reason, /stray angle bracket/u);
+test("comparisons, type arguments and strings with < are code, not elements (P08-G11)", () => {
+  // The token reader took each "<" before a name for an element: a comparison, a type argument
+  // or a "<" in a string became an unsupported region, and a file with one was refused whole.
+  for (const [path, content] of [
+    ["Mix.jsx", "if (a < b) { }\n<span>ok</span>"],
+    ["Typed.tsx", "const [v] = useState<string>(\"\");\nconst m = new Map<string, number>();\nexport function Card() {\n  return <span>ok</span>;\n}\n"],
+    ["Text.jsx", "const s = \"<b>not an element</b>\"; // <i>nor this</i>\nexport function Card() {\n  return <span>ok</span>;\n}\n"],
+  ]) {
+    const ir = buildCodeIr([{ path, content }]);
+    assert.equal(ir.rootIds.length, 1, path);
+    assert.deepEqual(ir.unsupported, [], path);
+  }
+});
+
+test("a component is bound to the element it returns (P08-G11)", () => {
+  // Bound by position, a component took the first element after its name: here the icon,
+  // which it never renders.
+  const source = `export function Card() {
+  const icon = <span>i</span>;
+  if (!icon) return <em>none</em>;
+  return <div className="card">card</div>;
+}
+export const Badge = forwardRef((props, ref) => <b ref="r">badge</b>);
+export const Tag = React.memo(function Tag() { return <i>tag</i>; });
+`;
+  const ir = buildCodeIr([{ path: "Card.jsx", content: source }]);
+  const rendered = (name) => {
+    const component = Object.values(ir.symbols).find((symbol) => symbol.kind === "component" && symbol.name === name && ir.rootIds.includes(symbol.children[0]));
+    return component && ir.symbols[component.children[0]].name;
+  };
+  assert.equal(rendered("Card"), "div");
+  assert.equal(rendered("Badge"), "b");
+  assert.equal(rendered("Tag"), "i");
 });
 
 test("CSS subset parses flat rules and reports at-rules", () => {
@@ -207,8 +236,8 @@ test("bounds and malformed inputs fail closed", () => {
   // Every token is at least one character, so the token budget covers any source the size limit lets through.
   assert.ok(CODE_IR_HARD_LIMITS.maxTokens >= CODE_IR_HARD_LIMITS.maxSourceBytes);
   assert.throws(() => parseJsxFile("E.jsx", "<div>" + "b".repeat(5000) + "</div>"), /exceeds 4096/u);
-  assert.equal(Object.keys(buildCodeIr([{ path: "E.jsx", content: "<i />".repeat(CODE_IR_HARD_LIMITS.maxSymbols) }]).symbols).length, CODE_IR_HARD_LIMITS.maxSymbols);
-  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<i />".repeat(CODE_IR_HARD_LIMITS.maxSymbols + 1) }]), /maxSymbols/u);
+  assert.equal(Object.keys(buildCodeIr([{ path: "E.jsx", content: "<i />;".repeat(CODE_IR_HARD_LIMITS.maxSymbols) }]).symbols).length, CODE_IR_HARD_LIMITS.maxSymbols);
+  assert.throws(() => buildCodeIr([{ path: "E.jsx", content: "<i />;".repeat(CODE_IR_HARD_LIMITS.maxSymbols + 1) }]), /maxSymbols/u);
   // Nested elements count once against maxSymbols (#250): 1,600 cards of three elements each.
   const cards = Array.from({ length: 1600 }, (_, index) => `<section><h2>Card ${index}</h2><p>Text ${index}</p></section>`).join("");
   assert.equal(Object.keys(buildCodeIr([{ path: "E.jsx", content: `<main>${cards}</main>` }]).symbols).length, 4801);
