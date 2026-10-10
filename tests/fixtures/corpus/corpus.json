@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "legacy-v1",
+      "category": "legacy",
+      "from": "v1-basic",
+      "what": "a project from before the rename (its own directory and format, schema 1)",
+      "expect": {
+        "opens": "golden",
+        "writes": true,
+        "recovery": {
+          "tornTailBytes": 0,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": 1,
+          "lockOverride": null,
+          "legacyProject": true
+        }
+      }
+    },
+    {
+      "name": "legacy-v1-torn-tail",
+      "category": "legacy",
+      "from": "v1-basic",
+      "what": "a project from before the rename whose last journal write was cut off (a crash of the earlier release)",
+      "expect": {
+        "opens": "golden",
+        "writes": true,
+        "recovery": {
+          "tornTailBytes": 15,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": 1,
+          "lockOverride": null,
+          "legacyProject": true
+        }
+      }
+    },
+    {
+      "name": "historical-v2",
+      "category": "historical",
+      "from": "v2-basic",
+      "what": "project schema 2, from before journal segments",
+      "expect": {
+        "opens": "golden",
+        "writes": true,
+        "recovery": {
+          "tornTailBytes": 0,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": 2,
+          "lockOverride": null
+        }
+      }
+    },
+    {
+      "name": "current-v3",
+      "category": "current",
+      "from": "v3-basic",
+      "what": "project schema 3",
+      "expect": {
+        "opens": "golden",
+        "writes": false,
+        "recovery": {
+          "tornTailBytes": 0,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": null,
+          "lockOverride": null
+        }
+      }
+    },
+    {
+      "name": "current-v3-segments",
+      "category": "current",
+      "from": "v3-segments",
+      "what": "project schema 3 with an archived journal segment",
+      "expect": {
+        "opens": "segments",
+        "writes": false,
+        "recovery": {
+          "tornTailBytes": 0,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": null,
+          "lockOverride": null
+        }
+      }
+    },
+    {
+      "name": "recoverable-torn-tail",
+      "category": "recoverable",
+      "from": "v3-basic",
+      "what": "a journal whose last write was cut off",
+      "expect": {
+        "opens": "golden",
+        "writes": true,
+        "recovery": {
+          "tornTailBytes": 15,
+          "staleTemporaryFiles": 0,
+          "replayedEntries": 3,
+          "migratedFrom": null,
+          "lockOverride": null
+        }
+      }
+    },
+    {
+      "name": "recoverable-stale-temporary",
+      "category": "recoverable",
+      "from": "v3-basic",
+      "what": "a temporary file left by an interrupted save",
+      "expect": {
+        "opens": "golden",
+        "writes": true,
+        "recovery": {
+          "tornTailBytes": 0,
+          "staleTemporaryFiles": 1,
+          "replayedEntries": 3,
+          "migratedFrom": null,
+          "lockOverride": null
+        }
+      }
+    }
+  ],
+  "treeSha256": "28103132c5cad193e1d1281eef2523a85e1daf22372f8be3a32dc6a5c1290c90"
+}

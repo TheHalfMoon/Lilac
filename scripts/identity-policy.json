@@ -59,8 +59,8 @@
     {
       "id": "legacy-project-fixture",
       "category": "LEGACY_COMPATIBILITY",
-      "path": "^tests/fixtures/projects/v1-[a-z0-9-]+/\\.lilac/",
-      "reason": "Golden projects in the legacy format: the migration corpus that proves old projects still open.",
+      "path": "^tests/fixtures/(projects/v1-[a-z0-9-]+|corpus/legacy-[a-z0-9-]+)/\\.lilac/",
+      "reason": "Golden projects in the legacy format, and the migration corpus's legacy cases built from them: the corpus that proves old projects still open.",
       "terms": [
         "lilac"
       ]
