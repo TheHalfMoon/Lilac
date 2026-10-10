@@ -1478,6 +1478,8 @@ async function main() {
     showDialog("Open Ninerr from its launcher", () => [el("p", {}, "This page needs the link Ninerr prints or opens when it starts. Start Ninerr again to get a new one.")], { dismissable: false });
     return;
   }
+  // Each change names the project this tab shows, so it cannot land in one another tab opened (#260).
+  state.client.followProject(() => state.project);
   let session;
   try {
     session = await requestLoad();

@@ -108,6 +108,8 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   };
   // What the person has selected in the editor, for MCP's selection.
   let selection: string[] = [];
+  // The project each agent last connected to or read (#260).
+  const agentLastRead = new Map<string, string>();
   let session: StudioSession | null = null;
   let unsubscribe: (() => void) | null = null;
   let port = 0;
@@ -174,6 +176,42 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     const header = request.headers.authorization;
     if (typeof header === "string" && header.startsWith("Bearer ")) return matches(header.slice(7));
     return request.method === "GET" && url.pathname === "/api/events" && matches(url.searchParams.get("token"));
+  };
+
+  // Requests that change the open project. One that names the project it was made for (the
+  // editor sends X-Ninerr-Project) is refused when another project is open, so a change made
+  // in one tab never lands in a project another tab opened (#260). It is checked when the
+  // route runs, after the body has arrived, since a project can be opened in between.
+  const PROJECT_SCOPED = new Set([
+    "POST /api/edit",
+    "POST /api/undo",
+    "POST /api/redo",
+    "POST /api/revert",
+    "POST /api/checkpoint",
+    "POST /api/selection",
+    "POST /api/import",
+    "POST /api/import/commit",
+    "POST /api/import/discard",
+    "POST /api/code/import",
+    "POST /api/codebase/connect",
+    "POST /api/codebase/disconnect",
+    "POST /api/codebase/import",
+    "POST /api/codebase/preview",
+    "POST /api/codebase/write",
+  ]);
+  const assertMadeForOpenProject = (request: IncomingMessage): void => {
+    const header = request.headers["x-ninerr-project"];
+    if (header === undefined) return;
+    let intended: string;
+    try {
+      intended = decodeURIComponent(Array.isArray(header) ? header.join(",") : header);
+    } catch {
+      throw new StudioError(400, "invalid-project-header", "X-Ninerr-Project must be a URI-encoded project name");
+    }
+    const open = session?.name ?? null;
+    if (intended !== open) {
+      throw new StudioError(409, "project-changed", `this change was made for project ${JSON.stringify(intended).slice(0, 80)}, but ${open === null ? "no project" : `project ${JSON.stringify(open).slice(0, 80)}`} is open now`);
+    }
   };
 
   const routes: Record<string, (body: any) => unknown> = {
@@ -362,11 +400,13 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       openStream(response);
       return;
     }
-    const route = routes[`${request.method} ${url.pathname}`];
+    const key = `${request.method} ${url.pathname}`;
+    const route = routes[key];
     if (route === undefined) throw new StudioError(404, "not-found", "not found");
     // An HTML import may be larger than other requests (the import stack's own limit).
     // JSON escaping can make HTML up to six times larger (control characters as \uXXXX).
     const body = request.method === "POST" ? await readJson(request, url.pathname === "/api/import" ? MAX_IMPORT_HTML_BYTES * 6 + 64 * 1024 : MAX_BODY_BYTES) : undefined;
+    if (PROJECT_SCOPED.has(key)) assertMadeForOpenProject(request);
     respondJson(response, 200, route(body));
   }
 
@@ -386,7 +426,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       respondJson(response, 400, { jsonrpc: "2.0", id: null, error: { code: -32600, message: "batches are not supported" } });
       return;
     }
-    const answer = await handleMcpMessage({ session: () => session, selection: () => selection, confirmations, now, ...(options.confirmationWaitMs ? { confirmationWaitMs: options.confirmationWaitMs } : {}) }, actor, message);
+    const answer = await handleMcpMessage({ session: () => session, selection: () => selection, confirmations, now, lastRead: agentLastRead, ...(options.confirmationWaitMs ? { confirmationWaitMs: options.confirmationWaitMs } : {}) }, actor, message);
     if (answer === null) {
       response.writeHead(202, SECURITY_HEADERS);
       response.end();
