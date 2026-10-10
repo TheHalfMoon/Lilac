@@ -432,6 +432,17 @@ function returnedJsx(fn: AstNode): AstNode | null {
   return returned !== null && (returned.type === "JSXElement" || returned.type === "JSXFragment") ? returned : null;
 }
 
+/** The component a default export names through memo(…), forwardRef(…) or a type: Card. */
+function wrappedName(expression: AstNode): string | null {
+  let current = unwrap(expression);
+  for (let depth = 0; current !== null && current.type === "CallExpression" && depth < 4; depth += 1) {
+    const name = calleeName(current.callee);
+    if (name === null || !WRAPPERS.has(name) || current.arguments.length === 0) return null;
+    current = unwrap(current.arguments[0]);
+  }
+  return current?.type === "Identifier" ? current.name : null;
+}
+
 /** The program's top-level function components, each with the JSX it returns. */
 function componentDefinitions(program: AstNode): Array<{ name: string; jsx: AstNode | null; fn: AstNode }> {
   const definitions: Array<{ name: string; jsx: AstNode | null; fn: AstNode }> = [];
@@ -498,8 +509,17 @@ export function exportedComponents(file: string, source: string): string[] {
     if (statement.type === "ExportNamedDeclaration") {
       const declaration = statement.declaration;
       if (declaration?.type === "FunctionDeclaration" && declaration.id) exported.add(declaration.id.name);
-      if (declaration?.type === "VariableDeclaration") for (const declarator of declaration.declarations as AstNode[]) if (declarator.id.type === "Identifier") exported.add(declarator.id.name);
-      if (declaration === null && statement.source === null) for (const specifier of statement.specifiers as AstNode[]) if (specifier.local?.type === "Identifier") exported.add(specifier.local.name);
+      if (declaration?.type === "VariableDeclaration") {
+        for (const declarator of declaration.declarations as AstNode[]) {
+          if (declarator.id.type === "Identifier") exported.add(declarator.id.name);
+        }
+      }
+      // export { Card, Card as Alias }: by the local name. A re-export (from "…") is another file's.
+      if (declaration === null && statement.source === null) {
+        for (const specifier of statement.specifiers as AstNode[]) {
+          if (specifier.local?.type === "Identifier") exported.add(specifier.local.name);
+        }
+      }
     }
     if (statement.type === "ExportDefaultDeclaration") {
       const declaration = statement.declaration;
@@ -508,6 +528,9 @@ export function exportedComponents(file: string, source: string): string[] {
       // export default memo(function Card() {…}): the wrapped function's own name.
       const wrapped = declaration.type === "FunctionDeclaration" ? null : componentFunction(declaration);
       if (wrapped?.id) exported.add(wrapped.id.name);
+      // export default memo(Card), export default Card satisfies FC: the component named.
+      const named = wrappedName(declaration);
+      if (named !== null) exported.add(named);
     }
   }
   // A component has JSX: export function Card() {} in a .js helper is not one.

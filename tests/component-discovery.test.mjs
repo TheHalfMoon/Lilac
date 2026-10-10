@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { exportedComponents } from "../packages/code-ir/src/index.ts";
 import { scanComponents } from "../packages/studio-host/src/index.ts";
+import { MAX_SCAN_COMPONENTS } from "../packages/studio-host/src/codebase.ts";
 import { hostPool, ok } from "./support/host-api.mjs";
 
 // P08-G11 (#282): components are found as real projects declare them. Only
@@ -86,4 +87,46 @@ test("a component found only now is brought in and written back like any other",
   const plan = await ok(call("POST", "/api/codebase/preview", { nodeId: header.id }), "preview");
   await ok(call("POST", "/api/codebase/write", { nodeId: header.id, token: plan.token }), "write");
   assert.equal(readFileSync(join(code, "Header.js"), "utf8"), HEADER.replace(">conduit<", ">Conduit<"));
+});
+
+test("a component exported through memo(…) or a type assertion by name is found", () => {
+  const card = "function Card() { return <p>card</p>; }\n";
+  assert.deepEqual(exportedComponents("a.jsx", `${card}export default memo(Card);\n`), ["Card"]);
+  assert.deepEqual(exportedComponents("b.tsx", `${card}export default React.memo(Card);\n`), ["Card"]);
+  assert.deepEqual(exportedComponents("c.tsx", `${card}export default Card satisfies FC;\n`), ["Card"]);
+  assert.deepEqual(exportedComponents("d.jsx", `${card}export default connect(map)(Card);\n`), [], "other wrappers are not followed");
+});
+
+test("a scan skips built output and stops at its parse budget, quickly, and sees changed files", () => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ninerr-discovery-budget-")));
+  try {
+    const component = (name) => `export function ${name}() { return <p>${name}</p>; }\n`;
+    mkdirSync(join(root, "src"));
+    for (const folder of ["out", "coverage"]) {
+      mkdirSync(join(root, folder));
+      writeFileSync(join(root, folder, "Built.jsx"), component("Built"));
+    }
+    writeFileSync(join(root, "src", "Card.jsx"), component("Card"));
+    writeFileSync(join(root, "src", "vendor.min.js"), component("Minified"));
+    // One long line: a bundle, not source a person edits.
+    writeFileSync(join(root, "src", "bundle.js"), `${component("Bundled").trim()}${";var x=1".repeat(2000)}\n`);
+    assert.deepEqual(scanComponents(root).components, [{ file: "src/Card.jsx", component: "Card" }]);
+    // A changed file is read again.
+    writeFileSync(join(root, "src", "Card.jsx"), `${component("Card")}${component("Badge")}`);
+    assert.deepEqual(scanComponents(root).components.map((entry) => entry.component), ["Card", "Badge"]);
+
+    // A folder of near-limit sources is cut short at the budget, in bounded time.
+    const many = join(root, "many");
+    mkdirSync(many);
+    const body = Array.from({ length: 2000 }, (_, index) => `export const C${index} = () => <p title="${"x".repeat(60)}">${index}</p>;`).join("\n");
+    for (let index = 0; index < 40; index += 1) writeFileSync(join(many, `F${index}.jsx`), body);
+    const started = performance.now();
+    const scan = scanComponents(many);
+    const elapsed = performance.now() - started;
+    assert.equal(scan.truncated, true);
+    assert.ok(scan.components.length <= MAX_SCAN_COMPONENTS);
+    assert.ok(elapsed < 10_000, `the scan took ${Math.round(elapsed)} ms`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

@@ -199,7 +199,7 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
   let ir: any;
   let exportedNames: string[];
   try {
-    // Each name once: a source can repeat a declaration thousands of times (#250).
+    // Each component once, by the name it is defined with.
     exportedNames = exportedComponents(sourcePath, source);
     ir = buildCodeIr([{ path: sourcePath, content: source }]);
   } catch (error) {

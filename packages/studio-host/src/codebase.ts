@@ -27,7 +27,21 @@ export const MAX_SOURCE_BYTES = 256 * 1024;
 export const MAX_SCAN_ENTRIES = 20_000;
 /** Files that can hold components: JSX, TSX, and JavaScript with JSX (P08-G11). */
 const SOURCE = /\.(?:jsx|tsx|js)$/u;
-const SKIPPED = new Set(["node_modules", "dist", "build"]);
+const SKIPPED = new Set(["node_modules", "dist", "build", "out", "coverage"]);
+/**
+ * The most source a scan parses, in all (P08-G11 review of #287): a real folder's components
+ * are far less (the largest dogfooding folder, excalidraw's components, is 1.3 MiB), and a
+ * folder of built bundles would otherwise hold the host for tens of seconds. Past it, the
+ * scan says it was cut short. Files a scan parsed are kept by size and time, so the next
+ * scan of an unchanged folder parses nothing.
+ */
+export const MAX_SCAN_PARSE_BYTES = 4 * 1024 * 1024;
+/** The most components a scan lists. */
+export const MAX_SCAN_COMPONENTS = 5_000;
+/** Lines this long on average are built output, not source a person edits. */
+const GENERATED_LINE_LENGTH = 500;
+const scanCache = new Map<string, { size: number; mtimeMs: number; names: string[] }>();
+const MAX_SCAN_CACHE = 2_000;
 const sha256 = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 /** The temporary file a write-back renames into place, next to its target. */
@@ -221,6 +235,7 @@ export function scanComponents(folder: string): { components: Array<{ file: stri
   const components: Array<{ file: string; component: string }> = [];
   let files = 0;
   let entriesSeen = 0;
+  let parsedBytes = 0;
   let truncated = false;
   const walk = (directory: string, depth: number) => {
     if (depth > MAX_SCAN_DEPTH || truncated) return;
@@ -239,21 +254,52 @@ export function scanComponents(folder: string): { components: Array<{ file: stri
       if (entry.name.startsWith(".") || SKIPPED.has(entry.name)) continue;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) walk(path, depth + 1);
-      else if (entry.isFile() && SOURCE.test(entry.name)) {
+      else if (entry.isFile() && SOURCE.test(entry.name) && !entry.name.endsWith(".min.js")) {
         if (files >= MAX_SCAN_FILES) {
           truncated = true;
           return;
         }
         files += 1;
-        let content: string;
-        try {
-          if (lstatSync(path).size > MAX_SOURCE_BYTES) continue;
-          content = UTF8.decode(readFileSync(path));
-        } catch {
-          continue; // unreadable, or not exact UTF-8: not offered, as planning would refuse it
-        }
         const file = relative(folder, path).split(sep).join("/");
-        for (const component of exportedNames(file, content)) components.push({ file, component });
+        let stat;
+        try {
+          stat = lstatSync(path);
+        } catch {
+          continue;
+        }
+        if (stat.size > MAX_SOURCE_BYTES) continue;
+        let names: string[];
+        const cached = scanCache.get(path);
+        if (cached !== undefined && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) names = cached.names;
+        else {
+          let content: string;
+          try {
+            content = UTF8.decode(readFileSync(path));
+          } catch {
+            continue; // unreadable, or not exact UTF-8: not offered, as planning would refuse it
+          }
+          // No export, or no JSX, or built output: nothing a person would bring in. Cheap tests
+          // before the parse.
+          const lines = content.split("\n").length;
+          if (!/\bexport\b/u.test(content) || !/<[A-Za-z>]/u.test(content) || content.length / lines > GENERATED_LINE_LENGTH) names = [];
+          else {
+            if (parsedBytes + content.length > MAX_SCAN_PARSE_BYTES) {
+              truncated = true;
+              return;
+            }
+            parsedBytes += content.length;
+            names = exportedNames(file, content);
+          }
+          if (scanCache.size >= MAX_SCAN_CACHE) scanCache.delete(scanCache.keys().next().value!);
+          scanCache.set(path, { size: stat.size, mtimeMs: stat.mtimeMs, names });
+        }
+        for (const component of names) {
+          if (components.length >= MAX_SCAN_COMPONENTS) {
+            truncated = true;
+            return;
+          }
+          components.push({ file, component });
+        }
       }
       // Symbolic links are neither followed nor listed.
     }
