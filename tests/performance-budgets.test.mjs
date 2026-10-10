@@ -56,10 +56,12 @@ function measureModel(nodeCount) {
   const committed = commitTransaction(history, setProps("t1", document.revision, 9));
   const undone = undo(committed);
   return {
-    validate: best(3, () => validateDocument(document)),
-    serialize: best(3, () => serializeDocument(document)),
+    // The three the scaling guard compares take the best of five, so one slow run (a GC pause,
+    // a busy CI runner) cannot set the figure (#269).
+    validate: best(5, () => validateDocument(document)),
+    serialize: best(5, () => serializeDocument(document)),
     parse: best(3, () => parseDocument(text)),
-    commit: best(3, () => commitTransaction(history, setProps("t1", document.revision, 9))),
+    commit: best(5, () => commitTransaction(history, setProps("t1", document.revision, 9))),
     undo: best(3, () => undo(committed)),
     redo: best(3, () => redo(undone)),
   };
@@ -74,10 +76,12 @@ test("model and history operations on 50k nodes stay within budget and scale lin
     assert.ok(large[name] <= budget, `${name} on 50k nodes took ${large[name].toFixed(0)} ms; budget ${budget} ms`);
   }
   for (const name of ["validate", "serialize", "commit"]) {
-    // 5x the nodes; linear work stays near 5x, quadratic work would be near 25x.
+    // 5x the nodes; linear work stays near 5x, quadratic work would be near 25x. A limit of 15
+    // sits between them: at 10 the guard failed now and then on linear work (10.3x to 13.0x on
+    // macOS CI and under a full local run, #269), while quadratic work still exceeds 15.
     // The 20 ms floor keeps a GC pause in a very fast 10k run from tripping the guard.
     const ratio = large[name] / Math.max(small[name], 20);
-    assert.ok(ratio <= 10, `${name} grew ${ratio.toFixed(1)}x from 10k to 50k nodes`);
+    assert.ok(ratio <= 15, `${name} grew ${ratio.toFixed(1)}x from 10k to 50k nodes`);
   }
 });
 
