@@ -35,6 +35,7 @@ import {
   PROJECT_FILES,
   PROJECT_FORMAT,
   PROJECT_SCHEMA_VERSION,
+  type JournalSummary,
   type LegacyMigrationReport,
   type LockOverride,
   type LockRecord,
@@ -536,6 +537,7 @@ export function openProject(root: string, options: OpenProjectOptions): ProjectS
     const last = parsed.entries.at(-1);
     unchanged();
     return new ProjectStore(STORE_TOKEN, projectDir, manifest, document, {
+      history: parsed.entries.slice(-MAX_JOURNAL_SUMMARIES).map(({ entry }) => journalSummary(entry)).filter((summary): summary is JournalSummary => summary !== null),
       seq: last?.entry.seq ?? parsed.segment?.baseSeq ?? 0,
       digest: last?.digest ?? parsed.segment?.anchor ?? genesis,
       segmentBase: parsed.segment?.baseSeq ?? 0,
@@ -645,7 +647,29 @@ export function migrateLegacyProject(root: string, options: MigrateLegacyProject
   }
 }
 
+/** The most changes a store keeps a summary of from its journal at open (#231). */
+export const MAX_JOURNAL_SUMMARIES = 500;
+
+/** The summary of a journal entry's transaction, or null for one that lacks the fields. */
+function journalSummary(entry: { revision: number; transaction: Record<string, unknown> }): JournalSummary | null {
+  const transaction = entry.transaction;
+  const text = (value: unknown) => (typeof value === "string" ? value.slice(0, 500) : null);
+  const metadata = transaction.metadata as { collaboration?: { actorKind?: unknown } } | undefined;
+  if (typeof transaction.id !== "string" || typeof transaction.actor !== "string") return null;
+  return {
+    revision: entry.revision,
+    transactionId: transaction.id,
+    actor: transaction.actor,
+    actorKind: metadata?.collaboration?.actorKind === "agent" ? "agent" : "user",
+    intent: text(transaction.intent),
+    tool: text(transaction.tool),
+    at: text(transaction.timestamp),
+  };
+}
+
 interface StoreState {
+  /** The journal's latest changes when the project was opened, oldest first. */
+  history: JournalSummary[];
   seq: number;
   digest: string;
   /** The entry the journal's current segment starts after (0 for the first segment). */
@@ -668,6 +692,12 @@ export class ProjectStore {
   readonly projectDir: string;
   readonly manifest: Readonly<ProjectManifest>;
   readonly recovery: Readonly<RecoveryReport>;
+  /**
+   * The journal's latest changes (up to MAX_JOURNAL_SUMMARIES) when the project was opened,
+   * oldest first: the history before this session. A journal segment (#258) holds the changes
+   * since it started, so older ones are no longer listed.
+   */
+  readonly history: ReadonlyArray<Readonly<JournalSummary>>;
   #document: ProjectDocument;
   #seq: number;
   #digest: string;
@@ -691,6 +721,7 @@ export class ProjectStore {
     this.projectDir = projectDir;
     this.manifest = Object.freeze({ ...manifest });
     this.recovery = Object.freeze(state.recovery);
+    this.history = Object.freeze(state.history.map((summary) => Object.freeze(summary)));
     this.#document = document;
     this.#seq = state.seq;
     this.#digest = state.digest;
