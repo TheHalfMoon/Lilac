@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { LocalCollaborationRoom } from "../packages/collaboration/src/index.ts";
 import { MAX_OPERATIONS_PER_EDIT, StudioSession, startStudioHost } from "../packages/studio-host/src/index.ts";
-import { PROJECT_FILES } from "../packages/persistence/src/index.ts";
+import { PROJECT_FILES, openProject } from "../packages/persistence/src/index.ts";
 
 // PC1 (#146): the studio host composes persistence, history and collaboration behind a
 // loopback-only API, and streams attributed changes. Advances PC gate 4.
@@ -199,11 +199,15 @@ test("create, edit, undo and redo are attributed transactions streamed live and 
 
 test("locks and recovery are reported, and a stale lock is replaced only with a reason", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "ninerr-studio-lock-")));
-  const first = await startStudioHost({ projectsRoot: root, now });
+  // One host per projects folder (#261): the other writer here holds the project through the
+  // store directly, as another tool or an earlier session left running would.
   const second = await startStudioHost({ projectsRoot: root, now, owner: { actorId: "other-user", kind: "user", accessClass: "member", displayName: "Other" } });
+  let first = null;
   try {
-    await api(first, "POST", "/api/projects/create", { name: "shared" });
-    await api(first, "POST", "/api/edit", { baseRevision: 0, operations: [insertFrame("a")] });
+    await api(second, "POST", "/api/projects/create", { name: "shared" });
+    await api(second, "POST", "/api/edit", { baseRevision: 0, operations: [insertFrame("a")] });
+    await api(second, "POST", "/api/projects/close");
+    first = openProject(join(root, "shared"), { owner: "other-writer", at: now() });
     const locked = await api(second, "POST", "/api/projects/open", { name: "shared" });
     assert.equal(locked.status, 409);
     assert.equal(locked.json.error.code, "project-locked");
@@ -212,9 +216,10 @@ test("locks and recovery are reported, and a stale lock is replaced only with a 
     const live = await api(second, "POST", "/api/projects/open", { name: "shared", breakStaleLock: { reason: "the other studio crashed" } });
     assert.equal(live.status, 409);
     assert.equal(live.json.error.code, "lock-held-by-live-process");
-    assert.equal((await api(first, "GET", "/api/session")).json.revision, 1, "the live holder keeps the project");
+    assert.equal(first.revision, 1, "the live holder keeps the project");
     // A lock left by a process that no longer exists is broken with a reason, and reported.
-    await first.close();
+    first.close();
+    first = null;
     const lockPath = join(root, "shared", PROJECT_FILES.directory, "lock");
     writeFileSync(lockPath, JSON.stringify({ owner: "crashed-studio", pid: 2 ** 22 + 4321, at: "2026-10-07T11:00:00.000Z", nonce: "dead" }));
     const taken = await api(second, "POST", "/api/projects/open", { name: "shared", breakStaleLock: { reason: "the other studio crashed" } });
@@ -230,7 +235,7 @@ test("locks and recovery are reported, and a stale lock is replaced only with a 
     assert.equal(repaired.json.recovery.tornTailBytes, '{"digest":"torn'.length);
     assert.equal(repaired.json.revision, 1);
   } finally {
-    await first.close();
+    first?.close();
     await second.close();
     rmSync(root, { recursive: true, force: true });
   }

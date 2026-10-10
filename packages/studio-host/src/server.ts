@@ -11,6 +11,7 @@ import { exportJsx, importJsx } from "./code.ts";
 import { CodebaseLinks, assertFolder, bringIn, planWriteBack, removeTemporary, scanComponents, settleWriteBacks, writeBack, type WriteBackPlan } from "./codebase.ts";
 import { ImportDesk, MAX_IMPORT_HTML_BYTES } from "./imports.ts";
 import { ConfirmationBroker, handleMcpMessage } from "./mcp.ts";
+import { claimProjectsFolder } from "./folder-lock.ts";
 import { listenOnBrowserPort } from "./ports.ts";
 import { StudioSession, assertProjectName, type ChangeEvent, type StudioActor } from "./session.ts";
 
@@ -473,13 +474,21 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   server.headersTimeout = 10_000;
   server.requestTimeout = 30_000;
   server.keepAliveTimeout = 5_000;
+  // The projects folder is this host's alone while it runs (#261); a second host is refused here.
+  const releaseFolder = claimProjectsFolder(projectsRoot, now());
   // Never a port browsers refuse to open (ports.ts): the editor must load in every browser.
-  await listenOnBrowserPort(server, options.port ?? 0, LOOPBACK);
+  try {
+    await listenOnBrowserPort(server, options.port ?? 0, LOOPBACK);
+  } catch (error) {
+    releaseFolder();
+    throw error;
+  }
   // An error after listening (a failed accept, for example) does not stop the host, as before.
   server.on("error", () => {});
   const address = server.address();
   if (address === null || typeof address === "string" || !isLoopbackAddress(address.address)) {
     server.close();
+    releaseFolder();
     throw new StudioError(500, "not-loopback", "the studio host must listen on a loopback address");
   }
   port = address.port;
@@ -518,6 +527,7 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeAllConnections?.();
       await closed;
+      releaseFolder();
     },
   };
 }
