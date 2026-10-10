@@ -44,6 +44,23 @@ async function resolveThroughExisting(path: string): Promise<string> {
   throw new DeliveryValidationError("evidence path is nested too deeply");
 }
 
+/** The canonical form of a path that may not exist yet, following links in its existing part. */
+async function canonicalThroughExisting(path: string): Promise<string> {
+  const segments: string[] = [];
+  let cursor = resolve(path);
+  for (let depth = 0; depth < 64; depth += 1) {
+    try {
+      const canonical = await realpath(cursor);
+      return segments.length === 0 ? canonical : join(canonical, ...segments);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      segments.unshift(basename(cursor));
+      cursor = dirname(cursor);
+    }
+  }
+  throw new DeliveryValidationError("disposable worktree path is nested too deeply");
+}
+
 export interface EvidenceStoreOptions {
   evidenceRoot: string;
   disposableRoots?: string[];
@@ -84,7 +101,9 @@ export async function createEvidenceStore(options: EvidenceStoreOptions): Promis
       if (link !== null) {
         throw new DeliveryValidationError(`disposable worktree ${disposable} cannot be resolved`);
       }
-      canonicalDisposable = resolve(disposable);
+      // Canonical like the evidence root, through its nearest existing folder, so two
+      // spellings of one place (a Windows short name, macOS's /var) cannot pass as two.
+      canonicalDisposable = await canonicalThroughExisting(disposable);
     }
     if (insideDirectory(root, canonicalDisposable)) {
       throw new DeliveryValidationError(`evidence root must persist outside disposable worktree ${disposable}`);

@@ -188,8 +188,29 @@ test("a missing evidence root under a filesystem root keeps every letter of its 
   // containment in a disposable worktree under it went unseen.
   const top = join(parse(tmpdir()).root, `ninerr-missing-${process.pid}-${Date.now()}`);
   assert.equal(existsSync(top), false);
-  await assert.rejects(createEvidenceStore({ evidenceRoot: join(top, "sub"), disposableRoots: [top] }), DeliveryValidationError);
-  assert.equal(existsSync(top), false, "nothing is created for a refused root");
+  try {
+    await assert.rejects(createEvidenceStore({ evidenceRoot: join(top, "sub"), disposableRoots: [top] }), DeliveryValidationError);
+    assert.equal(existsSync(top), false, "nothing is created for a refused root");
+  } finally {
+    await rm(top, { recursive: true, force: true });
+  }
+});
+
+test("a missing disposable worktree is compared in canonical form, like the evidence root (P08-G7)", async () => {
+  // The evidence root is canonical; a disposable root that does not exist yet must be too, or
+  // one place spelled two ways (here through a link to a folder) passes the containment check.
+  const real = realpathSync.native(await mkdtemp(join(tmpdir(), "ninerr-delivery-real-")));
+  const alias = join(tmpdir(), `ninerr-delivery-spelling-${process.pid}-${Date.now()}`);
+  try {
+    await symlink(real, alias, "junction");
+    await assert.rejects(
+      createEvidenceStore({ evidenceRoot: join(real, "wt", "evidence"), disposableRoots: [join(alias, "wt")] }),
+      (error) => error instanceof DeliveryValidationError && /outside disposable worktree/u.test(error.message),
+    );
+  } finally {
+    await rm(alias, { recursive: true, force: true });
+    await rm(real, { recursive: true, force: true });
+  }
 });
 
 test("evidence store rejects malformed bundles with typed errors", async () => {
