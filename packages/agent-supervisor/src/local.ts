@@ -1,6 +1,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, unlink, writeFile } from "node:fs/promises";
+import { devNull } from "node:os";
 import { promisify } from "node:util";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -34,7 +35,9 @@ const GIT_NULL = "/dev/null";
 
 const SAFE_GIT_CONFIG: Array<[string, string]> = [
   ["core.fsmonitor", "false"],
-  ["core.hooksPath", GIT_NULL],
+  // Hooks resolve under this path; on Windows "/dev/null/<hook>" is a folder on the current
+  // drive that anyone may create, while the native null device can never hold one.
+  ["core.hooksPath", devNull],
   ["core.untrackedCache", "false"],
   ["core.pager", "cat"],
   ["core.sshCommand", "false"],

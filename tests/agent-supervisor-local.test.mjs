@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import {
-import { realpathSync } from "node:fs"; mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { execFile, spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";

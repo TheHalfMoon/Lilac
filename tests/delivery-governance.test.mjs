@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-import { realpathSync } from "node:fs"; mkdtemp, rm, symlink } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 

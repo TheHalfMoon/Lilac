@@ -35,17 +35,6 @@ export function linkFile(context, target, path) {
   }
 }
 
-export async function linkFileAsync(context, target, path) {
-  try {
-    await symlink(target, path, "file");
-    return true;
-  } catch (error) {
-    if (!fileLinkRefused(error)) throw error;
-    context.skip(FILE_LINKS_NEED_RIGHTS);
-    return false;
-  }
-}
-
 /**
  * Link `path` to the file `target` where this account may, for a test that has other checks
  * to make without it: true when linked, false with a note of the check that did not run.
