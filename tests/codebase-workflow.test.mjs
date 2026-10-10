@@ -15,6 +15,10 @@ import { openEditor, rendered, waitRevision } from "./support/editor.mjs";
 
 let clock = 0;
 const now = () => new Date(Date.UTC(2026, 9, 8, 12, 0, 0) + clock++ * 1000).toISOString();
+// The status line is set when the editor's own request answers, which can come after the
+// change events that move the revision (#274): wait for it rather than read it once.
+const statusMatches = (page, pattern) => page.waitForFunction((source) => new RegExp(source, "u").test(document.getElementById("status").textContent), pattern.source);
+
 const CARD = `export function PriceCard() {
   return (
     <section className="card" style="padding: 16px; background: #f4f0ff">
@@ -54,7 +58,7 @@ test("connect a folder, bring a component in, edit it and write the edit back to
     await waitRevision(page, 1);
     const section = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("section.card").getAttribute("data-ninerr-id"));
     const heading = await page.evaluate(() => document.querySelector("iframe").contentDocument.querySelector("h2").getAttribute("data-ninerr-id"));
-    assert.match(await page.locator("#status").textContent(), /^Bring in PriceCard from PriceCard\.jsx: \d+ layers added\.$/u);
+    await statusMatches(page, /^Bring in PriceCard from PriceCard\.jsx: \d+ layers added\.$/u);
 
     // Reviewed from the selection Bring in leaves (the frame around the component), it plans
     // for the component itself: nothing to write and nothing spurious listed.
@@ -87,7 +91,7 @@ test("connect a folder, bring a component in, edit it and write the edit back to
     assert.equal(readFileSync(cardPath, "utf8"), CARD, "reviewing writes nothing");
     await page.locator("#codebase-write").click();
     await waitRevision(page, 5); // a write-back is two commits: recorded, then confirmed (#185)
-    assert.equal(await page.locator("#status").textContent(), "Wrote 2 changes to PriceCard.jsx.");
+    await statusMatches(page, /^Wrote 2 changes to PriceCard\.jsx\.$/u);
     assert.equal(readFileSync(cardPath, "utf8"), CARD.replace("<h2>Pro</h2>", "<h2>Pro &amp; Team</h2>").replace("background: #f4f0ff", "background: #ffe4e6"));
 
     // Changed in both places: the dialog says so, and writes nothing for it.
@@ -122,7 +126,7 @@ test("connect a folder, bring a component in, edit it and write the edit back to
     const before = readFileSync(cardPath, "utf8");
     await page.locator("#codebase-write").click();
     await waitRevision(page, 8);
-    assert.equal(await page.locator("#status").textContent(), "Marked 1 field as matching PriceCard.jsx.");
+    await statusMatches(page, /^Marked 1 field as matching PriceCard\.jsx\.$/u);
     assert.equal(readFileSync(cardPath, "utf8"), before, "marking writes nothing to the file");
     assert.deepEqual(editor.foreign, []);
     assert.deepEqual(editor.errors, []);

@@ -38,6 +38,8 @@ const state = {
   canRedo: false,
   history: [],
   seen: new Set(),
+  // Layers this editor has just added, to select once the change that adds them is applied.
+  selectOnApply: null,
   collapsed: new Set(),
   focusedLayer: null,
   queue: Promise.resolve(),
@@ -826,13 +828,24 @@ function applyChange(event) {
     if (state.history.length > MAX_HISTORY_SHOWN) state.history.shift();
   }
   const selectionBefore = [...state.selection];
+  let selectedNew = false;
   applying = true;
   try {
     canvas.update(state.document, result.affectedNodeIds);
+    // A layer added here is selected with the change that adds it, whether the change event
+    // or the edit's own answer arrives first (#274): a command made just after it then acts on
+    // what the canvas shows, not on the selection before.
+    const added = state.selectOnApply;
+    if (added !== null && added.every((id) => Object.hasOwn(state.document.nodes, id))) {
+      canvas.select(added);
+      state.selectOnApply = null;
+      selectedNew = true;
+    }
   } finally {
     applying = false;
   }
   state.selection = canvas.selection;
+  if (selectedNew && state.selection.length > 0) state.focusedLayer = state.selection.at(-1);
   // A change that removed selected layers changes the selection; agents see it too.
   if (state.selection.length !== selectionBefore.length || state.selection.some((id, index) => id !== selectionBefore[index])) shareSelection();
   if (event.actor === state.user.actorId) {
@@ -845,6 +858,8 @@ function applyChange(event) {
   } catch {
     renderLayers();
   }
+  // The new layer's row becomes the tree's one tab stop, as selecting it there would make it.
+  if (selectedNew && state.focusedLayer !== null) rovingTo(state.focusedLayer);
   renderInspector();
   renderHistory();
 }
@@ -1066,8 +1081,11 @@ function insert(kind) {
   operations.push(...(kind === "text"
     ? insertNode(parentId, index, { id, type: "text", tag: "p", text: "Text", style: { position: "absolute", left: "32px", top: "32px", margin: "0px", "font-size": "16px" } })
     : insertNode(parentId, index, { id, type: "element", tag: "div", style: { position: "absolute", left: "32px", top: "32px", width: "160px", height: "100px", background: "#d9d2ff" } })));
+  state.selectOnApply = [id];
   commit(operations, kind === "text" ? "Insert text" : "Insert box").then((event) => {
-    if (event) selectLayers([id]);
+    // Not applied (skipped or refused): nothing to select.
+    if (state.selectOnApply?.[0] === id) state.selectOnApply = null;
+    if (event && !(state.selection.length === 1 && state.selection[0] === id)) selectLayers([id]);
   });
 }
 
@@ -1219,9 +1237,14 @@ function patchLayers(affectedNodeIds, rootTouched, previousSelection) {
   if (hadFocus && !tree.contains(document.activeElement) && state.focusedLayer !== null) document.getElementById(`layer-${state.focusedLayer}`)?.focus();
 }
 
-function focusLayer(id) {
+/** The layers tree's roving tab stop: `id`'s row is the one the Tab key reaches. */
+function rovingTo(id) {
   state.focusedLayer = id;
   for (const item of $("layers").querySelectorAll("[role=treeitem]")) item.tabIndex = item.dataset.nodeId === id ? 0 : -1;
+}
+
+function focusLayer(id) {
+  rovingTo(id);
   $(`layer-${id}`)?.focus();
 }
 
