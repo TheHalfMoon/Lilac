@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { linkSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { uptime } from "node:os";
 import { join } from "node:path";
 import { StudioError } from "./errors.ts";
 
@@ -15,16 +16,29 @@ export const HOST_LOCK = ".ninerr-host.lock";
 interface Holder {
   pid: number;
   nonce: string;
+  /** When the claim was made, in milliseconds since the epoch (the real clock, not a host's `now`). */
+  claimedAt: number;
 }
 
 function readHolder(path: string): Holder | null {
   try {
     const record = JSON.parse(readFileSync(path, "utf8"));
-    if (Number.isSafeInteger(record?.pid) && record.pid > 0 && typeof record.nonce === "string") return { pid: record.pid, nonce: record.nonce };
+    if (Number.isSafeInteger(record?.pid) && record.pid > 0 && typeof record.nonce === "string" && Number.isSafeInteger(record.claimedAt)) {
+      return { pid: record.pid, nonce: record.nonce, claimedAt: record.claimedAt };
+    }
   } catch {
     // Unreadable or not ours: treated as left behind.
   }
   return null;
+}
+
+/** Remove a file, quietly: a claim that cannot be removed now is left for the next start. */
+function removeQuietly(path: string): void {
+  try {
+    rmSync(path, { force: true });
+  } catch {
+    // See above.
+  }
 }
 
 function isRunning(pid: number): boolean {
@@ -50,15 +64,18 @@ function runningUrl(projectsRoot: string): string | null {
 /**
  * Claim `projectsRoot` for this host, or refuse with 409 `projects-folder-in-use` while another
  * running process holds it. Returns the release, which removes the claim only while it is
- * still this host's.
+ * still this host's. A claim is left behind when its process stopped, or when it was made
+ * before the computer last started (its process id may belong to another process by now).
  */
 export function claimProjectsFolder(projectsRoot: string, startedAt: string): () => void {
   const path = join(projectsRoot, HOST_LOCK);
   const nonce = randomBytes(8).toString("hex");
-  const content = `${JSON.stringify({ version: 1, pid: process.pid, nonce, startedAt })}\n`;
+  const content = `${JSON.stringify({ version: 1, pid: process.pid, nonce, startedAt, claimedAt: Date.now() })}\n`;
   const release = (): void => {
-    if (readHolder(path)?.nonce === nonce) rmSync(path, { force: true });
+    if (readHolder(path)?.nonce === nonce) removeQuietly(path);
   };
+  const bootedAt = Date.now() - uptime() * 1000;
+  const live = (holder: Holder | null): holder is Holder => holder !== null && holder.claimedAt >= bootedAt && isRunning(holder.pid);
   // Written in full first, then linked into place, so no other host ever reads a half-written
   // claim; a link fails if a claim is already there.
   const temporary = `${path}.${nonce}.tmp`;
@@ -80,20 +97,20 @@ export function claimProjectsFolder(projectsRoot: string, startedAt: string): ()
       throw error;
     }
   };
-  writeFileSync(temporary, content, { mode: 0o600, flag: "wx" });
   try {
+    writeFileSync(temporary, content, { mode: 0o600, flag: "wx" });
     for (let attempt = 0; attempt < 2; attempt += 1) {
       if (place()) return release;
       const holder = readHolder(path);
-      if (holder !== null && isRunning(holder.pid)) {
+      if (live(holder)) {
         const url = runningUrl(projectsRoot);
         throw new StudioError(409, "projects-folder-in-use", `Ninerr is already running for this projects folder (process ${holder.pid}${url === null ? "" : `, at ${url}`}). Use that Ninerr, or start this one with another projects folder. If no Ninerr is running, remove ${HOST_LOCK} from the projects folder.`);
       }
       // Left by a process that has stopped: take it over, unless another host just did.
-      if (readHolder(path)?.nonce === holder?.nonce) rmSync(path, { force: true });
+      if (readHolder(path)?.nonce === holder?.nonce) removeQuietly(path);
     }
     throw new StudioError(409, "projects-folder-in-use", "another Ninerr claimed this projects folder while this one was starting");
   } finally {
-    rmSync(temporary, { force: true });
+    removeQuietly(temporary);
   }
 }

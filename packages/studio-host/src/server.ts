@@ -96,6 +96,10 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
     if (folder === null) throw new StudioError(409, "no-codebase", "connect a codebase folder first");
     return assertFolder(folder, projectsRoot);
   };
+  // The projects folder is this host's alone while it runs (#261). Claimed before the folder's
+  // files are read: a host that is refused must not touch them (the agent registry, for one,
+  // can write on load). Nothing from here to listening throws.
+  const releaseFolder = claimProjectsFolder(projectsRoot, now());
   const agents = new AgentRegistry(projectsRoot, owner);
   const codebases = new CodebaseLinks(projectsRoot);
   // Write-backs whose outcome their files now show are settled before anything is planned
@@ -474,8 +478,6 @@ export async function startStudioHost(options: StudioHostOptions): Promise<Studi
   server.headersTimeout = 10_000;
   server.requestTimeout = 30_000;
   server.keepAliveTimeout = 5_000;
-  // The projects folder is this host's alone while it runs (#261); a second host is refused here.
-  const releaseFolder = claimProjectsFolder(projectsRoot, now());
   // Never a port browsers refuse to open (ports.ts): the editor must load in every browser.
   try {
     await listenOnBrowserPort(server, options.port ?? 0, LOOPBACK);

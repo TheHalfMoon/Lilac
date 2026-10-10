@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, uptime } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -73,6 +73,11 @@ test("a claim left by a host that crashed is taken over (#261)", () => withFolde
   } finally {
     await host.close();
   }
+  // So is a claim made before the computer last started, even when its process id is in use
+  // again (here by this very process).
+  writeFileSync(join(root, HOST_LOCK), `${JSON.stringify({ version: 1, pid: process.pid, nonce: "before-boot", startedAt: now(), claimedAt: Date.now() - (uptime() + 60) * 1000 })}\n`);
+  const rebooted = await startStudioHost({ projectsRoot: root, now });
+  await rebooted.close();
   // So is a claim that cannot be read (a disk that kept only part of it, say).
   writeFileSync(join(root, HOST_LOCK), "{\"pid\":");
   const after = await startStudioHost({ projectsRoot: root, now });
@@ -82,7 +87,7 @@ test("a claim left by a host that crashed is taken over (#261)", () => withFolde
 test("a host removes only its own claim (#261)", () => withFolder(async (root) => {
   const host = await startStudioHost({ projectsRoot: root, now });
   // Someone replaced the claim while the host ran: closing leaves the replacement alone.
-  const replacement = `${JSON.stringify({ version: 1, pid: process.pid, nonce: "someone-else", startedAt: now() })}\n`;
+  const replacement = `${JSON.stringify({ version: 1, pid: process.pid, nonce: "someone-else", startedAt: now(), claimedAt: Date.now() })}\n`;
   writeFileSync(join(root, HOST_LOCK), replacement);
   await host.close();
   assert.equal(readFileSync(join(root, HOST_LOCK), "utf8"), replacement);
