@@ -11,7 +11,7 @@ A Ninerr release is a tagged commit together with its signed release files: the 
 | `ninerr-release-evidence-<sha>.tar.gz` | The evidence bundle below, as one archive. |
 | `SHA256SUMS` | The SHA-256 of each file above. |
 
-**Local web mode** is the tagged source itself. Run it with Node 22.18 or later, and no network beyond loopback once the dependencies are installed:
+**Local web mode** is the tagged source itself. Run it with Node 22.18 or a later 22.x, or Node 24.11 or later, and no network beyond loopback once the dependencies are installed:
 
 ```sh
 git clone --branch <tag> https://github.com/TheHalfMoon/Ninerr.git && cd Ninerr
@@ -112,7 +112,7 @@ The trust anchor is the attestation on `MANIFEST.json`. `--verify` only checks t
    ```sh
    node scripts/release-bundle.mjs --verify <bundle dir>
    ```
-4. Rebuild from the tagged commit with Node 22.18 or later into a directory that does not exist yet, and compare. The two must be identical:
+4. Rebuild from the tagged commit with Node 22.18 or a later 22.x, or Node 24.11 or later, into a directory that does not exist yet, and compare. The two must be identical:
 
    ```sh
    git checkout <tag> && npm ci --ignore-scripts
