@@ -123,23 +123,28 @@ test("hostile neighbours get nothing from a running Ninerr: a foreign page, a re
       reachedOutside.push(url);
       return route.abort();
     });
-    // What Ninerr answered each request the attacker's page made of it.
-    const answered = [];
+    // What Ninerr answered each request the attacker's page made of it, with its host: two reads
+    // go to the same path, one through 127.0.0.1 and one through localhost.
+    const posts = [];
     context.on("response", (response) => {
       const url = new URL(response.url());
-      if (ninerrOrigins.includes(url.origin) && response.request().method() !== "GET") answered.push({ method: response.request().method(), path: url.pathname, status: response.status() });
+      if (ninerrOrigins.includes(url.origin) && response.request().method() !== "GET") posts.push({ host: url.host, method: response.request().method(), path: url.pathname, status: response.status() });
     });
     const evil = await context.newPage();
     // A read or an event stream the browser blocks for CORS has no response for Playwright,
     // though Ninerr answered it: Chromium's own network events still carry that status.
     const network = await context.newCDPSession(evil);
+    // Both events are kept and joined when the answers are read, whichever came first.
     const sent = new Map();
+    const statuses = new Map();
     network.on("Network.requestWillBeSent", ({ requestId, request }) => sent.set(requestId, request));
-    network.on("Network.responseReceivedExtraInfo", ({ requestId, statusCode }) => {
+    network.on("Network.responseReceivedExtraInfo", ({ requestId, statusCode }) => statuses.set(requestId, statusCode));
+    const gets = () => [...statuses].flatMap(([requestId, status]) => {
       const request = sent.get(requestId);
       const url = request === undefined ? null : new URL(request.url);
-      if (url !== null && ninerrOrigins.includes(url.origin) && request.method === "GET") answered.push({ method: "GET", path: url.pathname, status: statusCode });
+      return url !== null && ninerrOrigins.includes(url.origin) && request.method === "GET" ? [{ host: url.host, method: "GET", path: url.pathname, status }] : [];
     });
+    const answered = () => [...posts, ...gets()];
     await network.send("Network.enable");
     await evil.goto(`${attackerOrigin}/`);
     await evil.waitForFunction(() => window.results?.done === true, null, { timeout: 30_000 });
@@ -147,16 +152,19 @@ test("hostile neighbours get nothing from a running Ninerr: a foreign page, a re
     for (const name of ["read session", "read projects", "read via localhost"]) assert.match(String(results[name]), /^refused/u, `${name}: ${results[name]}`);
     assert.equal(results.events, "refused");
     // Ninerr itself refused every one, at its Origin check: not the browser, not a media type.
+    // Every one through 127.0.0.1, where Ninerr listens; the read through localhost is checked
+    // only if it arrived (where localhost resolves to ::1, it cannot connect).
+    const host = new URL(ninerr.origin).host;
     const expected = ["GET /api/session", "GET /api/projects", "POST /api/undo", "POST /api/projects/close", "POST /api/checkpoint", "POST /api/projects/create", "POST /mcp", "GET /api/events"];
-    const seen = (request) => answered.some((entry) => `${entry.method} ${entry.path}` === request);
-    const creates = () => answered.filter((entry) => entry.path === "/api/projects/create").length;
+    const seen = (request) => answered().some((entry) => entry.host === host && `${entry.method} ${entry.path}` === request);
+    const creates = () => answered().filter((entry) => entry.path === "/api/projects/create").length;
     // The page learns of a CORS refusal before Chromium reports the answer behind it, and the
     // form's post is a later navigation of the sink frame: wait, up to 10 s, until Ninerr's
     // answer to every one has been recorded.
     for (let tries = 0; tries < 100 && !(expected.every(seen) && creates() >= 2); tries += 1) await new Promise((resolve) => setTimeout(resolve, 100));
-    for (const request of expected) assert.ok(seen(request), `${request} reached Ninerr: ${JSON.stringify(answered)}`);
+    for (const request of expected) assert.ok(seen(request), `${request} reached Ninerr at ${host}: ${JSON.stringify(answered())}`);
     assert.equal(creates(), 2, "both the fetch and the form post reached Ninerr");
-    assert.deepEqual(answered.filter((entry) => entry.status !== 403), [], "every request from the foreign page was refused for its origin (403)");
+    assert.deepEqual(answered().filter((entry) => entry.status !== 403), [], "every request from the foreign page was refused for its origin (403)");
 
     // 2. A used launch link, from shell history say, opens nothing: Ninerr refuses the ticket.
     const replay = await context.newPage();
