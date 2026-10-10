@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { applyPatch, buildCodeIr, exportedComponents } from "@ninerr/code-ir";
 import { StudioError } from "./errors.ts";
 import { LEGACY_CODEBASE_LINKS_FILE, registrySource } from "./legacy.ts";
-import { type CodeSource, importJsx } from "./code.ts";
+import { type CodeSource, importJsx, layerName, sourceShape } from "./code.ts";
 import { styleProperties } from "./imports.ts";
 
 // A connected codebase (PC11, #182): one local folder linked to a project, whose JSX and
@@ -291,13 +291,12 @@ export interface WriteBackPlan {
   rebase: Array<{ nodeId: string; codeSource: CodeSource; settled: CodeSource }>;
 }
 
-const sourceName = (prop: string) => (prop === "className" ? "class" : prop === "htmlFor" ? "for" : prop);
 
 /** The layer's current value for a source prop, as source text. */
 function layerValue(node: any, prop: string): string | undefined {
   if (prop === "style") return Object.entries(node.props?.style ?? {}).map(([name, value]) => `${name}: ${value}`).join("; ");
   const attributes = node.props?.attributes ?? {};
-  const name = sourceName(prop);
+  const name = layerName(prop);
   return typeof attributes[name] === "string" ? attributes[name] : undefined;
 }
 
@@ -456,7 +455,21 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
   };
   countElements(ir.symbols[definition.children[0]]);
   const boundElements = bound.filter(({ source }) => source.tag !== "#text").length;
-  if (boundElements < sourceElements) notWritten.push({ nodeId: start.id, reason: "layers removed here are not written back" });
+  if (boundElements < sourceElements) notWritten.push({ nodeId: start.id, reason: "the file has elements these layers do not (added there, or removed here); they are not written back" });
+  // Where the file's children of an element no longer line up with what was brought in (an
+  // element or {…} added or removed there), a layer's position names another element: nothing
+  // under that element is written. Layers brought in before shapes were recorded have none.
+  const shifted = new Set<string>();
+  for (const { source } of bound) {
+    if (source.tag === "#text" || source.shape === undefined) continue;
+    const symbol = symbolAt(source.path);
+    if (symbol && sourceShape(ir, symbol).join("\n") !== source.shape.join("\n")) shifted.add(source.path);
+  }
+  const under = (path: string, inclusive: boolean) => {
+    const parts = path === "" ? [] : path.split(".");
+    for (let length = inclusive ? parts.length : parts.length - 1; length >= 0; length -= 1) if (shifted.has(parts.slice(0, length).join("."))) return true;
+    return false;
+  };
   // Runs of text: each must still be in its own element, in its source order, and none
   // removed (a run moved or removed is listed, never written to its old place).
   const misplacedText = new Set<string>();
@@ -493,6 +506,11 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
 
   for (const { node, source } of bound) {
     if (copies.has(node.id)) continue;
+    // A run of text is placed by its own element's children; an element by its parent's.
+    if (shifted.size > 0 && under(source.path, source.tag === "#text")) {
+      conflicts.push({ nodeId: node.id, field: "structure", reason: "the file's elements around this layer changed since it was brought in, so it no longer lines up with the source; bring the component in again" });
+      continue;
+    }
     if (unconfirmed.has(node.id)) {
       conflicts.push({ nodeId: node.id, field: "write-back", reason: `an earlier write-back to ${file} was not confirmed and the file has changed since; check it and bring the component in again` });
       continue;
@@ -595,9 +613,9 @@ export function planWriteBack(document: any, nodeId: unknown, folder: string, ex
       // Attributes the layer has but the source does not are not added, and an attribute that
       // is code in the source (className={…}) is never written.
       const code = new Set(source.code ?? []);
-      const sourceNames = new Set(symbol.props.map((prop: any) => sourceName(prop.name)));
+      const sourceNames = new Set(symbol.props.map((prop: any) => layerName(prop.name)));
       for (const name of Object.keys(node.props?.attributes ?? {})) {
-        if (code.has(name)) notWritten.push({ nodeId: node.id, reason: `${name} is code in the source and is not written back` });
+        if (code.has(name) && !sourceNames.has(name)) notWritten.push({ nodeId: node.id, reason: `${name} is code in the source and is not written back` });
         else if (!sourceNames.has(name)) notWritten.push({ nodeId: node.id, reason: `the new attribute ${name} is not written back` });
       }
       if (Object.keys(node.props?.style ?? {}).length > 0 && !symbol.props.some((prop: any) => prop.name === "style")) {

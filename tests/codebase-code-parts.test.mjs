@@ -144,3 +144,55 @@ test("a patch that would change any code is refused whole", () => {
   // A file that no longer has the component is never the same code.
   assert.equal(sameCode(PLAN, PLAN.replace("PlanCard", "Other"), "plan-card.tsx", "PlanCard"), false);
 });
+
+test("when the file's elements shift, a layer no longer lines up and nothing under that element is written (#285)", async (t) => {
+  // Layers are found in the file by position. Two identical items, and a {…} added before the
+  // first in the file: the second item's position now names the first, which has its text.
+  const LIST = `export function Plans() {
+  return (
+    <section>
+      <h2>Plans</h2>
+      <ul>
+        <li>Item</li>
+        <li>Item</li>
+      </ul>
+      <p>Pay <b>monthly</b> or yearly</p>
+    </section>
+  );
+}
+`;
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "ninerr-code-shift-")));
+  const pool = hostPool(now);
+  t.after(async () => {
+    await pool.closeAll();
+    rmSync(root, { recursive: true, force: true });
+  });
+  mkdirSync(join(root, "projects"));
+  mkdirSync(join(root, "app"));
+  const file = join(root, "app", "plans.jsx");
+  writeFileSync(file, LIST);
+  const { call } = await pool.open(join(root, "projects"));
+  await ok(call("POST", "/api/projects/create", { name: "site" }), "create");
+  await ok(call("POST", "/api/codebase/connect", { folder: join(root, "app") }), "connect");
+  const brought = await ok(call("POST", "/api/codebase/import", { file: "plans.jsx", component: "Plans" }), "bring in");
+  let { document, revision } = await ok(call("GET", "/api/document"), "document");
+  const section = document.nodes[brought.frameId].children[0];
+  const [heading, list, paragraph] = document.nodes[section].children;
+  const [, second] = document.nodes[list].children;
+  const yearly = document.nodes[paragraph].children.find((id) => document.nodes[id].props.text === " or yearly");
+  const event = await ok(call("POST", "/api/edit", { baseRevision: revision, intent: "Edit", operations: [
+    { type: "set-props", nodeId: second, set: { text: "Last" } },
+    { type: "set-props", nodeId: yearly, set: { text: " or every year" } },
+    { type: "set-props", nodeId: heading, set: { text: "Our plans" } },
+  ] }), "edit");
+  revision = event.revision;
+  // In the file: a {…} before the first item, and an element before the paragraph's text.
+  const shifted = LIST.replace("<ul>\n        <li>", "<ul>\n        {extra}\n        <li>").replace("<p>Pay ", "<p><i>New</i> Pay ");
+  writeFileSync(file, shifted);
+  const plan = await ok(call("POST", "/api/codebase/preview", { nodeId: section }), "preview");
+  // The heading did not move: it is written. Nothing under the list or the paragraph is.
+  assert.deepEqual(plan.changes.map((change) => [change.field, change.to]), [["text", "Our plans"]]);
+  assert.deepEqual(plan.conflicts.filter((conflict) => conflict.field === "structure").map((conflict) => conflict.nodeId).sort(), [...document.nodes[list].children, ...document.nodes[paragraph].children.filter((id) => document.nodes[id].type === "text"), ...document.nodes[paragraph].children.filter((id) => document.nodes[id].type !== "text")].sort());
+  await ok(call("POST", "/api/codebase/write", { nodeId: section, token: plan.token }), "write");
+  assert.equal(readFileSync(file, "utf8"), shifted.replace("<h2>Plans</h2>", "<h2>Our plans</h2>"), "only the heading changed; both items keep their text");
+});

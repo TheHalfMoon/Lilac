@@ -151,6 +151,13 @@ export interface CodeSource {
    */
   code?: string[];
   /**
+   * For an element or fragment: its children in the source when it was brought in, in order
+   * (each child's tag, "#expression", "#fragment", or "#text" for a run of text). A layer is
+   * found in the file by its position, so when these no longer line up, nothing under the
+   * element is written back (#285).
+   */
+  shape?: string[];
+  /**
    * A write-back recorded before its file was renamed into place and not yet confirmed: the
    * bases it writes, the SHA-256 the file has once it lands, and the name of the temporary
    * file next to it that becomes the file (#185). See codebase.ts, pendingState.
@@ -165,6 +172,14 @@ const DESIGN_NAME = /^[A-Za-z][A-Za-z0-9-]*$/u;
 /** The layer's name for a source prop: class for className, for for htmlFor. */
 const LAYER_NAMES = new Map([["className", "class"], ["htmlFor", "for"]]);
 export const layerName = (prop: string) => LAYER_NAMES.get(prop) ?? prop;
+
+/** An element's children in source order, as CodeSource.shape records them. */
+export function sourceShape(ir: any, symbol: any): string[] {
+  return [
+    ...symbol.texts.filter((entry: any) => entry.value !== "").map((entry: any) => ({ at: entry.range.startOffset, name: "#text" })),
+    ...symbol.children.map((child: string) => ({ at: ir.symbols[child].range.startOffset, name: ir.symbols[child].name })),
+  ].sort((a, b) => a.at - b.at).map((piece) => piece.name);
+}
 
 export interface ImportJsxOptions {
   /** The source file's path, as code-ir records it (its extension picks JSX or TSX). */
@@ -267,6 +282,7 @@ export function importJsx(source: unknown, options: ImportJsxOptions = {}): { op
       // Attributes that are code, by the names a layer would give them.
       const code = [...(symbol.codeProps ?? []).map((prop: any) => layerName(prop.name)), ...symbol.props.filter((prop: any) => !designable(prop)).map((prop: any) => prop.name)];
       if (code.length > 0) codeSource.code = code;
+      codeSource.shape = sourceShape(ir, symbol);
       record.props.codeSource = codeSource;
     }
     nodes.push(record);
